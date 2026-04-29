@@ -1,0 +1,1593 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:gonow/core/providers/travel_provider.dart';
+import 'package:gonow/features/discover/presentation/screens/blind_box_screen.dart';
+import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
+import 'package:provider/provider.dart';
+
+class DiscoverScreen extends StatefulWidget {
+  const DiscoverScreen({super.key});
+
+  @override
+  State<DiscoverScreen> createState() => _DiscoverScreenState();
+}
+
+class _DiscoverScreenState extends State<DiscoverScreen> {
+  String _selectedCategory = '推荐';
+  final List<String> _searchHints = <String>[
+    '下个月看海，人少一点',
+    '带父母去北京玩五天',
+    '去新疆看雪需要准备什么',
+    '周末去哪能吃地道火锅',
+    '预算3000元，适合情侣去哪',
+    '江浙沪 2 天自驾游',
+    '曼谷+普吉岛 7天避坑',
+    '独自旅行，治安好的古镇',
+    '带 5 岁小孩去哪度假',
+    '川西自驾需要防高反吗',
+  ];
+  int _currentHintIndex = 0;
+  Timer? _hintTimer;
+  bool _isLocked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentHintIndex = math.Random().nextInt(_searchHints.length);
+    _startTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final TravelProvider provider = Provider.of<TravelProvider>(
+        context,
+        listen: false,
+      );
+      provider.refreshBlindBox();
+      provider.fetchInternationalCountries();
+      provider.refreshVisaData();
+    });
+  }
+
+  void _startTimer() {
+    _hintTimer?.cancel();
+    _hintTimer = Timer.periodic(const Duration(seconds: 15), (Timer timer) {
+      if (mounted && !_isLocked) {
+        setState(() {
+          _currentHintIndex = (_currentHintIndex + 1) % _searchHints.length;
+        });
+      }
+    });
+  }
+
+  void _handleSearchTap() {
+    if (!_isLocked) {
+      setState(() => _isLocked = true);
+      _hintTimer?.cancel();
+    }
+    final String lockedHint = _searchHints[_currentHintIndex];
+    final MainNavProvider navProvider = Provider.of<MainNavProvider>(
+      context,
+      listen: false,
+    );
+    navProvider.triggerAiPlanning(lockedHint);
+  }
+
+  @override
+  void dispose() {
+    _hintTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _onRefresh() async {
+    final TravelProvider provider = Provider.of<TravelProvider>(
+      context,
+      listen: false,
+    );
+    await provider.refreshBlindBox(force: true);
+    await provider.fetchInternationalCountries(force: true);
+    await provider.refreshVisaData(force: true);
+  }
+
+  static const List<String> _categories = <String>[
+    '推荐',
+    '海岛度假',
+    '城市漫步',
+    '户外露营',
+    '自驾越野',
+  ];
+
+  static const List<_DiscoverItem> _mockItems = <_DiscoverItem>[
+    _DiscoverItem(
+      id: '1',
+      imageUrl: 'https://picsum.photos/400/600?random=1',
+      title: '沿海悬崖与日落步道，感受风和光的温柔拥抱',
+      authorName: '旅行家小A',
+      likes: 1843,
+      authorAvatar: 'https://picsum.photos/80/80?random=21',
+      isAiGenerated: false,
+    ),
+    _DiscoverItem(
+      id: '2',
+      imageUrl: 'https://picsum.photos/400/300?random=2',
+      title: '京都和服 OOTD 绝美机位大公开',
+      authorName: 'OOTD女孩',
+      likes: 962,
+      authorAvatar: 'https://picsum.photos/80/80?random=22',
+      isAiGenerated: true,
+    ),
+    _DiscoverItem(
+      id: '3',
+      imageUrl: 'https://picsum.photos/400/520?random=3',
+      title: '瑞士少女峰小众路线，教你避开人流拍大片',
+      authorName: '探索者Leo',
+      likes: 2364,
+      authorAvatar: 'https://picsum.photos/80/80?random=23',
+      isAiGenerated: true,
+    ),
+    _DiscoverItem(
+      id: '4',
+      imageUrl: 'https://picsum.photos/400/360?random=4',
+      title: '老城咖啡街区一日漫游，步行也能发现美',
+      authorName: '周末计划',
+      likes: 783,
+      authorAvatar: 'https://picsum.photos/80/80?random=24',
+      isAiGenerated: false,
+    ),
+    _DiscoverItem(
+      id: '5',
+      imageUrl: 'https://picsum.photos/400/500?random=5',
+      title: '海岛清晨环岛骑行，风景从不重样',
+      authorName: '海风笔记',
+      likes: 3182,
+      authorAvatar: 'https://picsum.photos/80/80?random=25',
+      isAiGenerated: false,
+    ),
+    _DiscoverItem(
+      id: '6',
+      imageUrl: 'https://picsum.photos/400/320?random=6',
+      title: '周末短途自驾路线，2 小时直达天然氧吧',
+      authorName: '公路派',
+      likes: 1290,
+      authorAvatar: 'https://picsum.photos/80/80?random=26',
+      isAiGenerated: false,
+    ),
+    _DiscoverItem(
+      id: '7',
+      imageUrl: 'https://picsum.photos/400/680?random=7',
+      title: '雪山脚下的晨雾与草甸，像一场电影开场',
+      authorName: '雪境旅人',
+      likes: 2675,
+      authorAvatar: 'https://picsum.photos/80/80?random=27',
+      isAiGenerated: true,
+    ),
+    _DiscoverItem(
+      id: '8',
+      imageUrl: 'https://picsum.photos/400/340?random=8',
+      title: '艺术馆与河岸夜景联动，城市漫步新体验',
+      authorName: '城市漫游者',
+      likes: 1541,
+      authorAvatar: 'https://picsum.photos/80/80?random=28',
+      isAiGenerated: false,
+    ),
+    _DiscoverItem(
+      id: '9',
+      imageUrl: 'https://picsum.photos/400/700?random=9',
+      title: '秘境峡谷轻徒步，沿线瀑布连成风景长卷',
+      authorName: '山野手册',
+      likes: 2016,
+      authorAvatar: 'https://picsum.photos/80/80?random=29',
+      isAiGenerated: true,
+    ),
+    _DiscoverItem(
+      id: '10',
+      imageUrl: 'https://picsum.photos/400/360?random=10',
+      title: '海边木栈道与灯塔，傍晚黄金时刻很治愈',
+      authorName: '慢游日记',
+      likes: 1128,
+      authorAvatar: 'https://picsum.photos/80/80?random=30',
+      isAiGenerated: false,
+    ),
+  ];
+
+  static const List<_CultureTip> _cultureTips = <_CultureTip>[
+    _CultureTip(
+      country: '🇸🇬 新加坡',
+      category: '法律禁令',
+      content: '严禁售卖和咀嚼口香糖，违者将面临高达 1000 新元的罚款！',
+      tone: _CultureTone.warning,
+    ),
+    _CultureTip(
+      country: '🇹🇭 泰国',
+      category: '文化禁忌',
+      content: '切勿摸当地人的头部（包括小孩），头部在泰国文化中被视为神圣不可侵犯。',
+      tone: _CultureTone.custom,
+    ),
+    _CultureTip(
+      country: '🇪🇸 西班牙',
+      category: '特殊作息',
+      content: '著名的 Siesta（午休）文化，下午 2 点到 5 点很多商店和餐厅会歇业。',
+      tone: _CultureTone.note,
+    ),
+    _CultureTip(
+      country: '🇯🇵 日本',
+      category: '交通礼仪',
+      content: '电车上请勿大声接打电话，建议手机保持静音（マナーモード）。',
+      tone: _CultureTone.note,
+    ),
+    _CultureTip(
+      country: '🇮🇳 印度',
+      category: '饮食习惯',
+      content: '传统上视左手为不洁，递东西或抓取食物请优先使用右手。',
+      tone: _CultureTone.custom,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: colorScheme.surfaceContainerLowest,
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: CustomScrollView(
+          slivers: <Widget>[
+            _buildHeaderSliver(context),
+            _buildQuickActionsSliver(context),
+            _buildCategorySliver(context),
+            _buildSectionHeaderSliver(context),
+            _buildWaterfallSliver(),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderSliver(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                '去哪儿寻找灵感？',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '输入你想去的地方，剩下的交给我',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _SearchBox(
+                hint: _searchHints[_currentHintIndex],
+                hintIndex: _currentHintIndex,
+                onTap: _handleSearchTap,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActionsSliver(BuildContext context) {
+    final List<_QuickActionData> actions = <_QuickActionData>[
+      _QuickActionData(
+        label: '周末盲盒',
+        icon: Icons.card_giftcard_outlined,
+        tone: _QuickTone.purple,
+        onTap: () async {
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const BlindBoxScreen(isInternational: false),
+            ),
+          );
+        },
+      ),
+      _QuickActionData(
+        label: '免签直飞',
+        icon: Icons.flight_takeoff_outlined,
+        tone: _QuickTone.blue,
+        onTap: _showVisaBottomSheet,
+      ),
+      _QuickActionData(
+        label: '入乡随俗',
+        icon: Icons.menu_book_outlined,
+        tone: _QuickTone.teal,
+        onTap: _showCultureBottomSheet,
+      ),
+      _QuickActionData(
+        label: '国际盲盒',
+        icon: Icons.public,
+        tone: _QuickTone.orange,
+        onTap: () async {
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const BlindBoxScreen(isInternational: true),
+            ),
+          );
+        },
+      ),
+    ];
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+        child: Row(
+          children: actions
+              .map(
+                (_QuickActionData action) =>
+                    Expanded(child: _QuickActionCard(data: action)),
+              )
+              .toList(growable: false),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategorySliver(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 52,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: _categories.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (BuildContext context, int index) {
+            final String category = _categories[index];
+            final bool isSelected = category == _selectedCategory;
+            return Center(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => setState(() => _selectedCategory = category),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected ? colorScheme.primary : Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    border: isSelected
+                        ? null
+                        : Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Text(
+                    category,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: isSelected ? Colors.white : Colors.grey.shade600,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeaderSliver(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                '达人足迹',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              '更多>',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWaterfallSliver() {
+    const EdgeInsets gridPadding = EdgeInsets.all(16);
+    const double spacing = 12;
+    const double minTileWidth = 140;
+    return SliverLayoutBuilder(
+      builder: (BuildContext context, constraints) {
+        final double innerWidth =
+            constraints.crossAxisExtent - gridPadding.horizontal;
+        final int computedCount =
+            ((innerWidth + spacing) / (minTileWidth + spacing)).floor().clamp(
+              1,
+              2,
+            );
+        return SliverPadding(
+          padding: gridPadding,
+          sliver: SliverMasonryGrid.count(
+            crossAxisCount: computedCount,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            childCount: _mockItems.length,
+            itemBuilder: (BuildContext context, int index) {
+              return _DiscoverCard(item: _mockItems[index]);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showVisaBottomSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return const _VisaBottomSheet();
+      },
+    );
+  }
+
+  Future<void> _showCultureBottomSheet() async {
+    final TravelProvider provider = Provider.of<TravelProvider>(
+      context,
+      listen: false,
+    );
+    if (provider.culturalCustoms.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('档案馆正在同步全球数据，请稍后再试...')));
+      await provider.fetchCulturalCustoms();
+      if (provider.culturalCustoms.isEmpty || !mounted) {
+        return;
+      }
+    }
+
+    final List<Map<String, dynamic>> allCustoms = provider.culturalCustoms;
+    final List<Map<String, dynamic>> normalizedCustoms = allCustoms
+        .map(_normalizeCultureItem)
+        .where((Map<String, dynamic> e) => (e['content'] as String).isNotEmpty)
+        .toList(growable: false);
+    if (normalizedCustoms.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('风俗数据字段暂未匹配，请检查 Supabase 列名')),
+      );
+      return;
+    }
+    final List<Map<String, dynamic>> shuffledCustoms =
+        List<Map<String, dynamic>>.from(normalizedCustoms)..shuffle();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        int visibleCount = math.min(32, shuffledCustoms.length);
+        bool isAppending = false;
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> appendMore() async {
+                  if (isAppending || visibleCount >= shuffledCustoms.length) {
+                    return;
+                  }
+                  setSheetState(() => isAppending = true);
+                  await Future<void>.delayed(const Duration(milliseconds: 180));
+                  if (!context.mounted) return;
+                  setSheetState(() {
+                    visibleCount = math.min(
+                      visibleCount + 28,
+                      shuffledCustoms.length,
+                    );
+                    isAppending = false;
+                  });
+                }
+
+                return Container(
+                  height: MediaQuery.of(context).size.height * 0.85,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF5F7FA),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
+                    ),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(28),
+                            topRight: Radius.circular(28),
+                          ),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.02),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  const Text(
+                                    '世界风俗避坑局 🛡️',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    '每次打开都能解锁全新冷知识',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black45,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: <Widget>[
+                                      _buildLegendBadge(
+                                        Colors.red.shade400,
+                                        '法律红线',
+                                      ),
+                                      const SizedBox(width: 14),
+                                      _buildLegendBadge(
+                                        Colors.orange.shade400,
+                                        '文化禁忌',
+                                      ),
+                                      const SizedBox(width: 14),
+                                      _buildLegendBadge(
+                                        Colors.blue.shade400,
+                                        '当地冷知识',
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.black54,
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (ScrollNotification notification) {
+                            if (notification.metrics.pixels >=
+                                notification.metrics.maxScrollExtent - 220) {
+                              appendMore();
+                            }
+                            return false;
+                          },
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
+                            itemCount: visibleCount + (isAppending ? 2 : 0),
+                            itemBuilder: (BuildContext context, int index) {
+                              if (index >= visibleCount) {
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  height: 88,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                );
+                              }
+                              final Map<String, dynamic> item =
+                                  shuffledCustoms[index];
+                              Color warningColor;
+                              switch ((item['warning_level'] ?? '')
+                                  .toString()) {
+                                case 'danger':
+                                  warningColor = Colors.red.shade400;
+                                  break;
+                                case 'warning':
+                                  warningColor = Colors.orange.shade400;
+                                  break;
+                                default:
+                                  warningColor = Colors.blue.shade400;
+                              }
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.03),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: <Widget>[
+                                      ColoredBox(
+                                        color: warningColor,
+                                        child: const SizedBox(width: 6),
+                                      ),
+                                      Expanded(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              Row(
+                                                children: <Widget>[
+                                                  Text(
+                                                    (item['flag_emoji'] ?? '🌍')
+                                                        .toString(),
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      (item['country'] ?? '未知')
+                                                          .toString(),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: Colors.black87,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 3,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: warningColor
+                                                          .withOpacity(0.1),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            8,
+                                                          ),
+                                                    ),
+                                                    child: Text(
+                                                      (item['category'] ?? '')
+                                                          .toString(),
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: warningColor,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Text(
+                                                (item['content'] ?? '')
+                                                    .toString(),
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: Colors.black87,
+                                                  height: 1.5,
+                                                  letterSpacing: 0.2,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+        );
+      },
+    );
+  }
+
+  Widget _buildLegendBadge(Color color, String text) {
+    return Row(
+      children: <Widget>[
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            border: Border.all(color: color, width: 2),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Map<String, dynamic> _normalizeCultureItem(Map<String, dynamic> raw) {
+    final String warningLevel =
+        (raw['warning_level'] ?? raw['level'] ?? raw['risk_level'] ?? '')
+            .toString();
+    final String country =
+        (raw['country'] ?? raw['name'] ?? raw['nation'] ?? '未知').toString();
+    final String flag = (raw['flag_emoji'] ?? raw['flag'] ?? '🌍').toString();
+    final String category = (raw['category'] ?? raw['type'] ?? raw['tag'] ?? '')
+        .toString();
+    final String content =
+        (raw['content'] ??
+                raw['description'] ??
+                raw['tip'] ??
+                raw['note'] ??
+                '')
+            .toString();
+    return <String, dynamic>{
+      'warning_level': warningLevel,
+      'country': country,
+      'flag_emoji': flag,
+      'category': category,
+      'content': content,
+    };
+  }
+}
+
+class _SearchBox extends StatelessWidget {
+  const _SearchBox({
+    required this.hint,
+    required this.hintIndex,
+    required this.onTap,
+  });
+
+  final String hint;
+  final int hintIndex;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: colorScheme.shadow.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          child: Row(
+            children: <Widget>[
+              Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0.0, 0.2),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                  child: Text(
+                    hint,
+                    key: ValueKey<int>(hintIndex),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: <Color>[colorScheme.primary, colorScheme.tertiary],
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 18,
+                    color: colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionCard extends StatelessWidget {
+  const _QuickActionCard({required this.data});
+
+  final _QuickActionData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final Color baseColor = switch (data.tone) {
+      _QuickTone.purple => Colors.purple.withOpacity(0.08),
+      _QuickTone.blue => Colors.blue.withOpacity(0.08),
+      _QuickTone.teal => Colors.teal.withOpacity(0.08),
+      _QuickTone.orange => Colors.orange.withOpacity(0.08),
+    };
+    final Color iconColor = switch (data.tone) {
+      _QuickTone.purple => Colors.purple,
+      _QuickTone.blue => Colors.blue,
+      _QuickTone.teal => Colors.teal,
+      _QuickTone.orange => Colors.orange,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: data.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Column(
+            children: <Widget>[
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: baseColor,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(data.icon, color: iconColor, size: 28),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                data.label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: Colors.grey.shade700,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DiscoverCard extends StatelessWidget {
+  const _DiscoverCard({required this.item});
+
+  final _DiscoverItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Stack(
+            children: <Widget>[
+              CachedNetworkImage(
+                imageUrl: item.imageUrl,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                placeholder: (_, __) => AspectRatio(
+                  aspectRatio: 1,
+                  child: Container(color: colorScheme.surfaceContainerHighest),
+                ),
+                errorWidget: (_, __, ___) => AspectRatio(
+                  aspectRatio: 1,
+                  child: Container(
+                    color: Colors.blueGrey.shade800,
+                    child: const Center(
+                      child: Icon(
+                        Icons.public,
+                        color: Colors.white30,
+                        size: 40,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (item.isAiGenerated)
+                Positioned(
+                  left: 8,
+                  bottom: 8,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        color: colorScheme.primary.withOpacity(0.86),
+                        child: Text(
+                          '✨ AI生成',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: item.authorAvatar,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.person_rounded,
+                              size: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        item.authorName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.favorite_rounded,
+                      size: 14,
+                      color: colorScheme.error,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${item.likes}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisaBottomSheet extends StatelessWidget {
+  const _VisaBottomSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final TravelProvider provider = context.watch<TravelProvider>();
+    final Map<String, List<Map<String, dynamic>>> grouped =
+        provider.visaFreeData;
+    final Size size = MediaQuery.of(context).size;
+    return Container(
+      height: size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Color(0xFF0F172A),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: DefaultTabController(
+        length: grouped.keys.isEmpty ? 1 : grouped.keys.length,
+        child: Column(
+          children: <Widget>[
+            Container(
+              height: 190,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+                image: DecorationImage(
+                  image: const NetworkImage(
+                    'https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&q=80&w=1200',
+                  ),
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withOpacity(0.52),
+                    BlendMode.darken,
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 26, 20, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Spacer(),
+                    const Text(
+                      '中国护照免签 / 落地签目的地',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '随时买机票，拿上护照说走就走',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(child: _buildBody(provider, grouped)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(
+    TravelProvider provider,
+    Map<String, List<Map<String, dynamic>>> grouped,
+  ) {
+    if (provider.isVisaLoading && grouped.isEmpty) {
+      return const _VisaSkeletonGrid();
+    }
+
+    if (provider.visaError != null || grouped.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.public, color: Colors.grey.shade500, size: 42),
+            const SizedBox(height: 10),
+            Text('暂时无法加载免签数据', style: TextStyle(color: Colors.grey.shade400)),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: () {
+                provider.refreshVisaData(force: true);
+              },
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final List<String> continents = grouped.keys.toList(growable: false);
+    return Column(
+      children: <Widget>[
+        TabBar(
+          isScrollable: true,
+          tabs: continents
+              .map((String e) => Tab(text: e))
+              .toList(growable: false),
+        ),
+        Expanded(
+          child: TabBarView(
+            children: continents
+                .map(
+                  (String c) => _VisaGrid(
+                    countries: grouped[c] ?? <Map<String, dynamic>>[],
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VisaSkeletonGrid extends StatefulWidget {
+  const _VisaSkeletonGrid();
+
+  @override
+  State<_VisaSkeletonGrid> createState() => _VisaSkeletonGridState();
+}
+
+class _VisaSkeletonGridState extends State<_VisaSkeletonGrid>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (BuildContext context, _) {
+        final double t = _controller.value;
+        final Color base =
+            Color.lerp(Colors.grey.shade800, Colors.grey.shade700, t) ??
+            Colors.grey.shade800;
+        final Color highlight =
+            Color.lerp(Colors.grey.shade700, Colors.grey.shade600, t) ??
+            Colors.grey.shade700;
+        return GridView.builder(
+          padding: const EdgeInsets.all(14),
+          itemCount: 6,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 0.95,
+          ),
+          itemBuilder: (BuildContext context, int index) {
+            return Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[base, highlight, base],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _VisaGrid extends StatelessWidget {
+  const _VisaGrid({required this.countries});
+
+  final List<Map<String, dynamic>> countries;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      padding: const EdgeInsets.all(14),
+      crossAxisCount: 2,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.95,
+      children: countries
+          .map((Map<String, dynamic> c) => _VisaCard(country: c))
+          .toList(growable: false),
+    );
+  }
+}
+
+class _VisaCard extends StatelessWidget {
+  const _VisaCard({required this.country});
+
+  final Map<String, dynamic> country;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          CachedNetworkImage(
+            imageUrl: _normalizeImageUrl(country['img'] ?? ''),
+            fit: BoxFit.cover,
+            httpHeaders: const <String, String>{
+              'User-Agent':
+                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            errorWidget: (context, url, error) => Container(
+              color: Colors.blueGrey.shade800,
+              child: const Center(
+                child: Icon(Icons.public, color: Colors.white30, size: 40),
+              ),
+            ),
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: <Color>[Colors.black87, Colors.transparent],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 10,
+            bottom: 10,
+            child: Text(
+              '${country['flag'] ?? ''} ${country['name'] ?? ''}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                _normalizeVisaTypeLabel(country['type']?.toString() ?? ''),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _normalizeImageUrl(String raw) {
+  final RegExp pattern = RegExp(r'\((https?:\/\/[^)]+)\)');
+  final RegExpMatch? match = pattern.firstMatch(raw);
+  if (match != null) {
+    return match.group(1) ?? raw;
+  }
+  return raw;
+}
+
+String _normalizeVisaTypeLabel(String raw) {
+  if (raw.contains('落地')) {
+    return '落地签';
+  }
+  if (raw.contains('免签')) {
+    return '免签';
+  }
+  return raw;
+}
+
+class _CultureBottomSheet extends StatelessWidget {
+  const _CultureBottomSheet({
+    required this.tips,
+    required this.buildLegendBadge,
+  });
+
+  final List<_CultureTip> tips;
+  final Widget Function(Color color, String text) buildLegendBadge;
+
+  @override
+  Widget build(BuildContext context) {
+    final Size size = MediaQuery.of(context).size;
+    return Container(
+      height: size.height * 0.82,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9F0EC),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 30),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    '世界风俗避坑局 🛡️',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '每次打开都能解锁全新冷知识',
+                    style: TextStyle(fontSize: 12, color: Colors.black45),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      buildLegendBadge(Colors.red.shade400, '法律红线'),
+                      const SizedBox(width: 14),
+                      buildLegendBadge(Colors.orange.shade400, '文化禁忌'),
+                      const SizedBox(width: 14),
+                      buildLegendBadge(Colors.blue.shade400, '当地冷知识'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: tips.length,
+                itemBuilder: (BuildContext context, int index) {
+                  final _CultureTip tip = tips[index];
+                  final Color accent = switch (tip.tone) {
+                    _CultureTone.warning => Colors.red,
+                    _CultureTone.custom => Colors.orange,
+                    _CultureTone.note => Colors.purple,
+                  };
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Container(
+                          width: 4,
+                          height: 92,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(16),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  tip.country,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '【${tip.category}】${tip.content}',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade700,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _QuickTone { purple, blue, teal, orange }
+
+class _QuickActionData {
+  const _QuickActionData({
+    required this.label,
+    required this.icon,
+    required this.tone,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final _QuickTone tone;
+  final Future<void> Function() onTap;
+}
+
+class _DiscoverItem {
+  const _DiscoverItem({
+    required this.id,
+    required this.imageUrl,
+    required this.title,
+    required this.authorName,
+    required this.likes,
+    required this.authorAvatar,
+    required this.isAiGenerated,
+  });
+
+  final String id;
+  final String imageUrl;
+  final String title;
+  final String authorName;
+  final int likes;
+  final String authorAvatar;
+  final bool isAiGenerated;
+}
+
+enum _CultureTone { warning, custom, note }
+
+class _CultureTip {
+  const _CultureTip({
+    required this.country,
+    required this.category,
+    required this.content,
+    required this.tone,
+  });
+
+  final String country;
+  final String category;
+  final String content;
+  final _CultureTone tone;
+}
