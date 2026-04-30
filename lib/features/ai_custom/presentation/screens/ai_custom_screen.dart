@@ -263,6 +263,9 @@ JSON 格式必须为：
     if (pickedDate == null) {
       return;
     }
+    if (!mounted) {
+      return;
+    }
     try {
       final ItineraryModel parsed = ItineraryModel.fromJson(itineraryData);
       final int dayCount = parsed.days.isEmpty ? 1 : parsed.days.length;
@@ -362,39 +365,41 @@ JSON 格式必须为：
           ],
         ),
       ),
-      body: Column(
-        children: <Widget>[
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-              itemCount: _messages.length + (_isLoading ? 1 : 0),
-              itemBuilder: (BuildContext context, int index) {
-                if (_isLoading && index == _messages.length) {
-                  return _buildLoadingBubble();
-                }
-                final Map<String, dynamic> message = _messages[index];
-                if (message['role'] == 'system') {
-                  return _buildSystemHint(message['text'] as String? ?? '');
-                }
-                final bool isUser = message['role'] == 'user';
-                final bool isError = message['isError'] == true;
-                final String text = message['text'] as String? ?? '';
-                if (isUser) {
-                  return _buildUserBubble(text);
-                }
-                final Map<String, dynamic>? itineraryData =
-                    message['itineraryData'] as Map<String, dynamic>?;
-                return _buildAiBubble(
-                  text,
-                  isError: isError,
-                  itineraryData: itineraryData,
-                );
-              },
+      body: SafeArea(
+        child: Column(
+          children: <Widget>[
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                itemCount: _messages.length + (_isLoading ? 1 : 0),
+                itemBuilder: (BuildContext context, int index) {
+                  if (_isLoading && index == _messages.length) {
+                    return _buildLoadingBubble();
+                  }
+                  final Map<String, dynamic> message = _messages[index];
+                  if (message['role'] == 'system') {
+                    return _buildSystemHint(message['text'] as String? ?? '');
+                  }
+                  final bool isUser = message['role'] == 'user';
+                  final bool isError = message['isError'] == true;
+                  final String text = message['text'] as String? ?? '';
+                  if (isUser) {
+                    return _buildUserBubble(text);
+                  }
+                  final Map<String, dynamic>? itineraryData =
+                      message['itineraryData'] as Map<String, dynamic>?;
+                  return _buildAiBubble(
+                    text,
+                    isError: isError,
+                    itineraryData: itineraryData,
+                  );
+                },
+              ),
             ),
-          ),
-          _buildInputBar(),
-        ],
+            _buildInputBar(),
+          ],
+        ),
       ),
     );
   }
@@ -450,7 +455,7 @@ JSON 格式必须为：
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 10,
                       offset: const Offset(0, 2),
                     ),
@@ -522,7 +527,7 @@ JSON 格式必须为：
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 10,
                       offset: const Offset(0, 2),
                     ),
@@ -605,81 +610,78 @@ JSON 格式必须为：
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.grey.shade200)),
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: TextField(
-                    controller: _textController,
-                    focusNode: _inputFocusNode,
-                    minLines: 1,
-                    maxLines: 3,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (String value) => _sendMessage(),
-                    decoration: InputDecoration(
-                      hintText: _hintPrompt ?? '例如：日本关西 7天特种兵打卡',
-                      border: InputBorder.none,
-                    ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: TextField(
+                  controller: _textController,
+                  focusNode: _inputFocusNode,
+                  minLines: 1,
+                  maxLines: 3,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (String value) => _sendMessage(),
+                  decoration: InputDecoration(
+                    hintText: _hintPrompt ?? '例如：日本关西 7天特种兵打卡',
+                    border: InputBorder.none,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Material(
-                color: Colors.transparent,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: _isLoading
-                      ? InkWell(
-                          key: const ValueKey<String>('stop'),
-                          onTap: _cancelRequest,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade800,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.stop_rounded,
-                              size: 20,
-                              color: Colors.white,
-                            ),
+            ),
+            const SizedBox(width: 10),
+            Material(
+              color: Colors.transparent,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _isLoading
+                    ? InkWell(
+                        key: const ValueKey<String>('stop'),
+                        onTap: _cancelRequest,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade800,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        )
-                      : InkWell(
-                          key: const ValueKey<String>('send'),
-                          onTap: () => _sendMessage(),
-                          borderRadius: BorderRadius.circular(999),
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: <Color>[Colors.indigo, Colors.purple],
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.send_rounded,
-                              size: 20,
-                              color: Colors.white,
-                            ),
+                          child: const Icon(
+                            Icons.stop_rounded,
+                            size: 20,
+                            color: Colors.white,
                           ),
                         ),
-                ),
+                      )
+                    : InkWell(
+                        key: const ValueKey<String>('send'),
+                        onTap: () => _sendMessage(),
+                        borderRadius: BorderRadius.circular(999),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: <Color>[Colors.indigo, Colors.purple],
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.send_rounded,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

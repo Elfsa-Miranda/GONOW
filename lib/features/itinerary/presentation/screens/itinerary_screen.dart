@@ -891,6 +891,28 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     return Dismissible(
       key: ValueKey<String>('prep_${module.key}_${task.key}'),
       direction: DismissDirection.endToStart,
+      confirmDismiss: (DismissDirection direction) async {
+        final bool? ok = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              title: const Text('确认删除？'),
+              content: Text('将删除「${task.title}」'),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('删除'),
+                ),
+              ],
+            );
+          },
+        );
+        return ok == true;
+      },
       background: Container(
         alignment: Alignment.centerRight,
         margin: const EdgeInsets.only(bottom: 10),
@@ -1107,6 +1129,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     };
     final List<_PrepTask> localTasks = List<_PrepTask>.from(module.tasks);
     final TextEditingController customController = TextEditingController();
+    final ScrollController listScrollController = ScrollController();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1118,161 +1141,212 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                 void Function(void Function()) setModalState,
               ) {
                 final bool isPitfallMode = module.key == 'pitfalls';
-                return Container(
-                  color: Colors.grey.shade50,
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Container(
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              module.title,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                Future<void> submitCustomTask() async {
+                  final String value = customController.text.trim();
+                  if (value.isEmpty) return;
+                  final String? taskId = await provider.addPrepCustomTask(
+                    moduleKey: module.key,
+                    title: value,
+                  );
+                  if (taskId == null || !mounted) {
+                    return;
+                  }
+                  final _PrepTask task = _PrepTask(
+                    key: taskId,
+                    title: value,
+                    tips: '',
+                    isDone: false,
+                  );
+                  setModalState(() {
+                    localTasks.add(task);
+                    localDone[task.key] = false;
+                    customController.clear();
+                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (listScrollController.hasClients) {
+                      listScrollController.animateTo(
+                        listScrollController.position.maxScrollExtent,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  });
+                }
+
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: Container(
+                    color: Colors.grey.shade50,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(2),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            height: 380,
-                            child: ListView.builder(
-                              itemCount:
-                                  localTasks.length +
-                                  1 +
-                                  (localTasks.isEmpty ? 1 : 0),
-                              itemBuilder: (BuildContext context, int index) {
-                                if (localTasks.isEmpty && index == 0) {
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 16,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: Colors.grey.shade200,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: <Widget>[
-                                        Icon(
-                                          Icons.inbox_outlined,
-                                          color: Colors.grey.shade500,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '暂无事项，可在下方添加',
-                                          style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-
-                                final int inputIndex =
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                module.title,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Expanded(
+                              child: ListView.builder(
+                                controller: listScrollController,
+                                itemCount:
                                     localTasks.length +
-                                    (localTasks.isEmpty ? 1 : 0);
-                                if (index == inputIndex) {
-                                  return Container(
-                                    margin: const EdgeInsets.only(top: 16),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade100,
-                                      borderRadius: BorderRadius.circular(24),
-                                    ),
-                                    child: Row(
-                                      children: <Widget>[
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: TextField(
-                                            controller: customController,
-                                            decoration: const InputDecoration(
-                                              hintText: '添加新的备忘事项...',
-                                              hintStyle: TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.black38,
-                                              ),
-                                              border: InputBorder.none,
-                                            ),
-                                          ),
+                                    (localTasks.isEmpty ? 1 : 0),
+                                itemBuilder: (BuildContext context, int index) {
+                                  if (localTasks.isEmpty && index == 0) {
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 16,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Colors.grey.shade200,
                                         ),
-                                        InkWell(
-                                          onTap: () async {
-                                            final String value =
-                                                customController.text.trim();
-                                            if (value.isEmpty) return;
-                                            final String? taskId =
-                                                await provider
-                                                    .addPrepCustomTask(
-                                                      moduleKey: module.key,
-                                                      title: value,
-                                                    );
-                                            if (taskId == null || !mounted) {
-                                              return;
-                                            }
-                                            final _PrepTask task = _PrepTask(
-                                              key: taskId,
-                                              title: value,
-                                              tips: '',
-                                              isDone: false,
-                                            );
-                                            setModalState(() {
-                                              localTasks.add(task);
-                                              localDone[task.key] = false;
-                                              customController.clear();
-                                            });
-                                          },
-                                          borderRadius: BorderRadius.circular(
-                                            20,
+                                      ),
+                                      child: Row(
+                                        children: <Widget>[
+                                          Icon(
+                                            Icons.inbox_outlined,
+                                            color: Colors.grey.shade500,
+                                            size: 18,
                                           ),
-                                          child: Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: const BoxDecoration(
-                                              color: Colors.indigo,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: const Icon(
-                                              Icons.add,
-                                              color: Colors.white,
-                                              size: 20,
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '暂无事项，可在下方添加',
+                                            style: TextStyle(
+                                              color: Colors.grey.shade600,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
+                                        ],
+                                      ),
+                                    );
+                                  }
 
-                                final int taskIndex = localTasks.isEmpty
-                                    ? index - 1
-                                    : index;
-                                final _PrepTask task = localTasks[taskIndex];
-                                final bool checked =
-                                    localDone[task.key] == true;
-                                if (isPitfallMode) {
+                                  final int taskIndex = localTasks.isEmpty
+                                      ? index - 1
+                                      : index;
+                                  final _PrepTask task = localTasks[taskIndex];
+                                  final bool checked =
+                                      localDone[task.key] == true;
+                                  if (isPitfallMode) {
+                                    return _buildDismissiblePrepItem(
+                                      task: task,
+                                      setModalState: setModalState,
+                                      localTasks: localTasks,
+                                      localDone: localDone,
+                                      provider: provider,
+                                      module: module,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 16,
+                                        ),
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            boxShadow: <BoxShadow>[
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.04,
+                                                ),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                            border: Border(
+                                              left: BorderSide(
+                                                color: Colors.orange.shade500,
+                                                width: 4,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              12,
+                                              10,
+                                              10,
+                                              10,
+                                            ),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: <Widget>[
+                                                Icon(
+                                                  Icons.warning_amber_rounded,
+                                                  color: Colors.orange.shade600,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: <Widget>[
+                                                      Text(
+                                                        task.title,
+                                                        style: const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                      if (task
+                                                          .tips
+                                                          .isNotEmpty) ...<
+                                                        Widget
+                                                      >[
+                                                        const SizedBox(
+                                                          height: 4,
+                                                        ),
+                                                        Text(
+                                                          task.tips,
+                                                          style: TextStyle(
+                                                            color: Colors
+                                                                .grey
+                                                                .shade700,
+                                                            fontSize: 12,
+                                                            height: 1.4,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
                                   return _buildDismissiblePrepItem(
                                     task: task,
                                     setModalState: setModalState,
@@ -1282,7 +1356,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                                     module: module,
                                     child: Padding(
                                       padding: const EdgeInsets.only(
-                                        bottom: 16,
+                                        bottom: 10,
                                       ),
                                       child: Container(
                                         decoration: BoxDecoration(
@@ -1299,140 +1373,102 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                                               offset: const Offset(0, 2),
                                             ),
                                           ],
-                                          border: Border(
-                                            left: BorderSide(
-                                              color: Colors.orange.shade500,
-                                              width: 4,
+                                        ),
+                                        child: CheckboxListTile(
+                                          value: checked,
+                                          onChanged: (bool? value) {
+                                            final bool next = value == true;
+                                            provider.togglePrepTask(
+                                              task.key,
+                                              next,
+                                            );
+                                            setModalState(() {
+                                              localDone[task.key] = next;
+                                            });
+                                          },
+                                          controlAffinity:
+                                              ListTileControlAffinity.leading,
+                                          title: Text(
+                                            task.title,
+                                            style: TextStyle(
+                                              color: checked
+                                                  ? Colors.grey.shade500
+                                                  : Colors.grey.shade900,
+                                              decoration: checked
+                                                  ? TextDecoration.lineThrough
+                                                  : TextDecoration.none,
                                             ),
                                           ),
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            12,
-                                            10,
-                                            10,
-                                            10,
-                                          ),
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: <Widget>[
-                                              Icon(
-                                                Icons.warning_amber_rounded,
-                                                color: Colors.orange.shade600,
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: <Widget>[
-                                                    Text(
-                                                      task.title,
-                                                      style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        fontSize: 14,
-                                                      ),
-                                                    ),
-                                                    if (task
-                                                        .tips
-                                                        .isNotEmpty) ...<
-                                                      Widget
-                                                    >[
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        task.tips,
-                                                        style: TextStyle(
-                                                          color: Colors
-                                                              .grey
-                                                              .shade700,
-                                                          fontSize: 12,
-                                                          height: 1.4,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ],
+                                          subtitle: task.tips.isEmpty
+                                              ? null
+                                              : Text(
+                                                  task.tips,
+                                                  style: TextStyle(
+                                                    color: checked
+                                                        ? Colors.grey.shade400
+                                                        : Colors.grey.shade600,
+                                                    decoration: checked
+                                                        ? TextDecoration
+                                                              .lineThrough
+                                                        : TextDecoration.none,
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
-                                          ),
                                         ),
                                       ),
                                     ),
                                   );
-                                }
-
-                                return _buildDismissiblePrepItem(
-                                  task: task,
-                                  setModalState: setModalState,
-                                  localTasks: localTasks,
-                                  localDone: localDone,
-                                  provider: provider,
-                                  module: module,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: <BoxShadow>[
-                                          BoxShadow(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.04,
-                                            ),
-                                            blurRadius: 10,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: CheckboxListTile(
-                                        value: checked,
-                                        onChanged: (bool? value) {
-                                          final bool next = value == true;
-                                          provider.togglePrepTask(
-                                            task.key,
-                                            next,
-                                          );
-                                          setModalState(() {
-                                            localDone[task.key] = next;
-                                          });
-                                        },
-                                        controlAffinity:
-                                            ListTileControlAffinity.leading,
-                                        title: Text(
-                                          task.title,
-                                          style: TextStyle(
-                                            color: checked
-                                                ? Colors.grey.shade500
-                                                : Colors.grey.shade900,
-                                            decoration: checked
-                                                ? TextDecoration.lineThrough
-                                                : TextDecoration.none,
-                                          ),
+                                },
+                              ),
+                            ),
+                            Container(
+                              margin: const EdgeInsets.only(top: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Row(
+                                children: <Widget>[
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: customController,
+                                      textInputAction: TextInputAction.done,
+                                      onSubmitted: (_) => submitCustomTask(),
+                                      decoration: const InputDecoration(
+                                        hintText: '添加新的备忘事项...',
+                                        hintStyle: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.black38,
                                         ),
-                                        subtitle: task.tips.isEmpty
-                                            ? null
-                                            : Text(
-                                                task.tips,
-                                                style: TextStyle(
-                                                  color: checked
-                                                      ? Colors.grey.shade400
-                                                      : Colors.grey.shade600,
-                                                  decoration: checked
-                                                      ? TextDecoration
-                                                            .lineThrough
-                                                      : TextDecoration.none,
-                                                ),
-                                              ),
+                                        border: InputBorder.none,
                                       ),
                                     ),
                                   ),
-                                );
-                              },
+                                  InkWell(
+                                    onTap: submitCustomTask,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.indigo,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1442,6 +1478,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       },
     );
     customController.dispose();
+    listScrollController.dispose();
   }
 
   List<_PrepTask> _extractPrepTasks(
