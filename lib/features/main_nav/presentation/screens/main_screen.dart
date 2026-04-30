@@ -47,10 +47,22 @@ class _MainScreenState extends State<MainScreen> {
       useSafeArea: false,
       showDragHandle: true,
       builder: (BuildContext context) {
+        final double screenHeight = MediaQuery.of(context).size.height;
         final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
-        return FractionallySizedBox(
-          heightFactor: bottomInset > 0 ? 0.95 : 0.72,
+        final double keyboardRatio = (bottomInset / screenHeight).clamp(
+          0.0,
+          0.35,
+        );
+        final double heightFactor = (0.72 + (keyboardRatio / 0.35) * 0.23)
+            .clamp(0.72, 0.95);
+        return TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.72, end: heightFactor),
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutQuart,
           child: const AiCustomScreen(),
+          builder: (BuildContext context, double value, Widget? child) {
+            return FractionallySizedBox(heightFactor: value, child: child);
+          },
         );
       },
     );

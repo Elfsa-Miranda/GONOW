@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:amap_flutter_base/amap_flutter_base.dart' as amap_base;
@@ -39,6 +40,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   final Map<String, gmap.BitmapDescriptor> _googleMarkerCache =
       <String, gmap.BitmapDescriptor>{};
   final Map<String, amap.BitmapDescriptor> _amapMarkerCache =
+      <String, amap.BitmapDescriptor>{};
+  final Map<String, amap.BitmapDescriptor> _amapDirectionCache =
       <String, amap.BitmapDescriptor>{};
 
   @override
@@ -340,7 +343,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     required ActivityItem? next,
   }) {
     final Set<gmap.Polyline> lines = <gmap.Polyline>{};
-    if (state == TripState.preparing) {
+    if (state == TripState.preparing && _selectedDayIndex != 0) {
       for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
         if (_selectedDayIndex != 0 && _selectedDayIndex != dayIndex + 1) {
           continue;
@@ -434,6 +437,34 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           },
         ),
       );
+    }
+    if (state == TripState.preparing) {
+      for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
+        if (_selectedDayIndex != 0 && _selectedDayIndex != dayIndex + 1) {
+          continue;
+        }
+        final List<ActivityItem> activities = dayRoutes[dayIndex].activities;
+        if (activities.length < 2) continue;
+        for (int i = 0; i < activities.length - 1; i++) {
+          final ActivityItem from = activities[i];
+          final ActivityItem to = activities[i + 1];
+          final String cacheKey = 'd${dayIndex + 1}_${i + 1}_${i + 2}';
+          final amap.BitmapDescriptor? icon = _amapDirectionCache[cacheKey];
+          if (icon == null) continue;
+          final amap_base.LatLng midpoint = _calculateMidpointAmap(
+            amap_base.LatLng(from.lat, from.lng),
+            amap_base.LatLng(to.lat, to.lng),
+          );
+          markers.add(
+            amap.Marker(
+              position: midpoint,
+              icon: icon,
+              anchor: const Offset(0.5, 0.5),
+              zIndex: 10,
+            ),
+          );
+        }
+      }
     }
 
     final Set<amap.Polyline> polylines = _buildAmapPolylines(
@@ -582,6 +613,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   String _buildMarkerPlanKey(List<_DayRoute> dayRoutes) {
     final StringBuffer buffer = StringBuffer();
+    buffer.write('sd$_selectedDayIndex;');
     for (int d = 0; d < dayRoutes.length; d++) {
       final _DayRoute route = dayRoutes[d];
       buffer.write(
@@ -609,6 +641,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       _isMapLoading = true;
       _googleMarkerCache.clear();
       _amapMarkerCache.clear();
+      _amapDirectionCache.clear();
     });
     final List<_VisibleActivity> allVisible = _collectVisibleActivities(
       dayRoutes,
@@ -627,6 +660,37 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         // ignore failed marker icon and continue
       }
     }
+    final List<Future<void>> arrowFutures = <Future<void>>[];
+    if (_selectedDayIndex != 0) {
+      for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
+        if (_selectedDayIndex != dayIndex + 1) continue;
+        final _DayRoute route = dayRoutes[dayIndex];
+        if (route.activities.length < 2) continue;
+        for (int i = 0; i < route.activities.length - 1; i++) {
+          final ActivityItem from = route.activities[i];
+          final ActivityItem to = route.activities[i + 1];
+          final String cacheKey = 'd${dayIndex + 1}_${i + 1}_${i + 2}';
+          final amap_base.LatLng start = amap_base.LatLng(from.lat, from.lng);
+          final amap_base.LatLng end = amap_base.LatLng(to.lat, to.lng);
+          final double bearing = _calculateBearingAmap(start, end);
+          arrowFutures.add(() async {
+            try {
+              final Uint8List bytes = await _createArrowMarkerBytes(
+                bearing,
+                route.themeColor,
+              );
+              if (!mounted) return;
+              _amapDirectionCache[cacheKey] = amap.BitmapDescriptor.fromBytes(
+                bytes,
+              );
+            } catch (_) {
+              // ignore failed arrow generation for single segment
+            }
+          }());
+        }
+      }
+    }
+    await Future.wait(arrowFutures);
     if (!mounted) return;
     setState(() {
       _isMapLoading = false;
@@ -670,6 +734,70 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     );
     final ByteData? data = await img.toByteData(format: ui.ImageByteFormat.png);
     return data!.buffer.asUint8List();
+  }
+
+  amap_base.LatLng _calculateMidpointAmap(
+    amap_base.LatLng p1,
+    amap_base.LatLng p2,
+  ) {
+    return amap_base.LatLng(
+      (p1.latitude + p2.latitude) / 2,
+      (p1.longitude + p2.longitude) / 2,
+    );
+  }
+
+  double _calculateBearingAmap(amap_base.LatLng start, amap_base.LatLng end) {
+    final double lat1 = start.latitude * math.pi / 180.0;
+    final double lon1 = start.longitude * math.pi / 180.0;
+    final double lat2 = end.latitude * math.pi / 180.0;
+    final double lon2 = end.longitude * math.pi / 180.0;
+    final double dLon = lon2 - lon1;
+    final double y = math.sin(dLon) * math.cos(lat2);
+    final double x =
+        math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+    final double brng = math.atan2(y, x);
+    return (brng * 180.0 / math.pi + 360.0) % 360.0;
+  }
+
+  Future<Uint8List> _createArrowMarkerBytes(
+    double bearing,
+    Color routeColor,
+  ) async {
+    const double size = 48.0;
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(recorder);
+
+    canvas.translate(size / 2, size / 2);
+    canvas.rotate(bearing * math.pi / 180.0);
+    canvas.translate(-size / 2, -size / 2);
+
+    final Paint strokePaint = Paint()
+      ..color = routeColor.withValues(alpha: 0.8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0
+      ..strokeJoin = StrokeJoin.round;
+    final Paint fillPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final Path path = Path();
+    path.moveTo(size / 2, size * 0.15);
+    path.lineTo(size * 0.85, size * 0.75);
+    path.lineTo(size / 2, size * 0.60);
+    path.lineTo(size * 0.15, size * 0.75);
+    path.close();
+
+    canvas.drawPath(path, strokePaint);
+    canvas.drawPath(path, fillPaint);
+
+    final ui.Image image = await recorder.endRecording().toImage(
+      size.toInt(),
+      size.toInt(),
+    );
+    final ByteData? byteData = await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    return byteData!.buffer.asUint8List();
   }
 
   Future<void> _focusSelectedRoute(List<_DayRoute> routes) async {
@@ -882,6 +1010,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   Dismissible _buildDismissiblePrepItem({
     required _PrepTask task,
     required Widget child,
+    required VoidCallback onBeforeDelete,
     required void Function(void Function()) setModalState,
     required List<_PrepTask> localTasks,
     required Map<String, bool> localDone,
@@ -911,6 +1040,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             );
           },
         );
+        if (ok == true) {
+          onBeforeDelete();
+        }
         return ok == true;
       },
       background: Container(
@@ -924,6 +1056,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         child: const Icon(Icons.delete_sweep, color: Colors.white),
       ),
       onDismissed: (DismissDirection direction) async {
+        onBeforeDelete();
         setModalState(() {
           localTasks.removeWhere((_PrepTask t) => t.key == task.key);
           localDone.remove(task.key);
@@ -1130,6 +1263,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     final List<_PrepTask> localTasks = List<_PrepTask>.from(module.tasks);
     final TextEditingController customController = TextEditingController();
     final ScrollController listScrollController = ScrollController();
+    final FocusNode customInputFocusNode = FocusNode();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1262,6 +1396,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                                     if (isPitfallMode) {
                                       return _buildDismissiblePrepItem(
                                         task: task,
+                                        onBeforeDelete: () {
+                                          customInputFocusNode.unfocus();
+                                          FocusScope.of(context).unfocus();
+                                        },
                                         setModalState: setModalState,
                                         localTasks: localTasks,
                                         localDone: localDone,
@@ -1357,6 +1495,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
                                     return _buildDismissiblePrepItem(
                                       task: task,
+                                      onBeforeDelete: () {
+                                        customInputFocusNode.unfocus();
+                                        FocusScope.of(context).unfocus();
+                                      },
                                       setModalState: setModalState,
                                       localTasks: localTasks,
                                       localDone: localDone,
@@ -1446,6 +1588,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                                     Expanded(
                                       child: TextField(
                                         controller: customController,
+                                        focusNode: customInputFocusNode,
                                         textInputAction: TextInputAction.done,
                                         onSubmitted: (_) => submitCustomTask(),
                                         decoration: const InputDecoration(
@@ -1489,6 +1632,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       },
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      customInputFocusNode.dispose();
       customController.dispose();
       listScrollController.dispose();
     });
