@@ -290,8 +290,11 @@ JSON 格式必须为：
       return;
     }
     if (!mounted) return;
-    context.read<MainNavProvider>().goToItineraryTab();
+    final MainNavProvider nav = context.read<MainNavProvider>();
     Navigator.of(context).pop(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      nav.goToItineraryTab();
+    });
   }
 
   void _scrollToBottom() {
@@ -309,7 +312,7 @@ JSON 格式必须为：
 
   @override
   Widget build(BuildContext context) {
-    final MainNavProvider navProvider = context.watch<MainNavProvider>();
+    final MainNavProvider navProvider = context.read<MainNavProvider>();
     final String? pending = navProvider.pendingAiPrompt?.trim();
     if (navProvider.shouldAutoSendAi &&
         pending != null &&
@@ -319,55 +322,20 @@ JSON 格式必须为：
       _hintPrompt = pending;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        navProvider.clearAiPendingState();
-        setState(() {});
+        context.read<MainNavProvider>().clearAiPendingState();
       });
     }
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        titleSpacing: 16,
-        title: Row(
-          children: <Widget>[
-            Container(
-              width: 32,
-              height: 32,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: <Color>[Color(0xFF4F6DFF), Color(0xFF7A57FF)],
-                ),
-              ),
-              child: const Icon(
-                Icons.auto_awesome,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'AI 智能管家',
-              style: TextStyle(
-                color: Colors.grey.shade800,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-      body: SafeArea(
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Material(
+      color: Colors.grey.shade50,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
         child: Column(
+          mainAxisSize: MainAxisSize.max,
           children: <Widget>[
+            _buildHeader(),
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
@@ -400,6 +368,47 @@ JSON 格式必须为：
             _buildInputBar(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(8, 4, 16, 12),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: <Color>[Color(0xFF4F6DFF), Color(0xFF7A57FF)],
+              ),
+            ),
+            child: const Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'AI 智能管家',
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.black54),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ],
       ),
     );
   }
@@ -583,8 +592,9 @@ JSON 格式必须为：
       );
     }
     return MarkdownBody(
+      key: ValueKey<String>('md_${text.hashCode}'),
       data: text,
-      selectable: true,
+      selectable: false,
       styleSheet: MarkdownStyleSheet(
         p: TextStyle(fontSize: 14, color: Colors.grey.shade800, height: 1.5),
         h3: TextStyle(

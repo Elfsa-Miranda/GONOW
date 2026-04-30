@@ -44,23 +44,17 @@ class _MainScreenState extends State<MainScreen> {
     final bool? shouldOpenItinerary = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
+      useSafeArea: false,
       showDragHandle: true,
       builder: (BuildContext context) {
-        return AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: const FractionallySizedBox(
-            heightFactor: 0.72,
-            child: AiCustomScreen(),
-          ),
+        final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return FractionallySizedBox(
+          heightFactor: bottomInset > 0 ? 0.95 : 0.72,
+          child: const AiCustomScreen(),
         );
       },
     );
-    if (shouldOpenItinerary == true) {
+    if (shouldOpenItinerary == true && mounted) {
       context.read<MainNavProvider>().goToItineraryTab();
     }
   }
