@@ -11,9 +11,10 @@
         android:label="gonow"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- 高德地图 Android SDK Key 配置（仅用于底图渲染） -->
         <meta-data
             android:name="com.amap.api.v2.apikey"
-            android:value="【请将这段文字替换为你申请的 Android 高德 Key】" />
+            android:value="26b888fed18379b5a6d476bf6ee4b7d7" />
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="【请将这段文字替换为你申请的 Google Maps API Key】" />

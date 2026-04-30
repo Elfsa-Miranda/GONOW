@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' as ui;
+
+import 'package:http/http.dart' as http;
 
 import 'package:amap_flutter_base/amap_flutter_base.dart' as amap_base;
 import 'package:amap_flutter_map/amap_flutter_map.dart' as amap;
@@ -9,6 +12,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:gonow/core/constants/amap_config.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
 import 'package:provider/provider.dart';
@@ -28,6 +32,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   _MapSource _mapSource = _MapSource.amap;
   Position? _currentPosition;
   StreamSubscription<Position>? _positionSub;
+  final ScrollController _scrollController = ScrollController();
   gmap.GoogleMapController? _googleController;
   amap.AMapController? _aMapController;
   late final AnimationController _pulseController;
@@ -36,12 +41,31 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   ActivityItem? _selectedActivity;
   bool _isMapLoading = true;
   String _markerCachePlanKey = '__pending__';
+  String? _focusedTimelineKey;
   late final List<Map<String, dynamic>> _mockTimeline;
+  final Map<String, bool> _timelineArrivedOverride = <String, bool>{};
+  final GlobalKey _timelineListTopKey = GlobalKey();
+  final Map<String, GlobalKey> _timelineItemKeys = <String, GlobalKey>{};
+  final Map<String, Map<String, dynamic>> _timelineItemByKey =
+      <String, Map<String, dynamic>>{};
 
   final Map<String, gmap.BitmapDescriptor> _googleMarkerCache =
       <String, gmap.BitmapDescriptor>{};
   final Map<String, amap.BitmapDescriptor> _amapMarkerCache =
       <String, amap.BitmapDescriptor>{};
+
+  // 高德真实路网缓存：key = "lat1,lng1|lat2,lng2"
+  final Map<String, List<amap_base.LatLng>> _routeCache =
+      <String, List<amap_base.LatLng>>{};
+  final Map<String, _RouteFetchResult> _routeResultCache =
+      <String, _RouteFetchResult>{};
+  final Set<String> _routeFallbackKeys = <String>{};
+  final Map<int, amap.BitmapDescriptor> _amapArrowTextureByDay =
+      <int, amap.BitmapDescriptor>{};
+  final Map<String, Map<String, dynamic>> _timelineTransitOverride =
+      <String, Map<String, dynamic>>{};
+  String _routeSyncPlanKey = '__pending__';
+  List<String> _selectedActivityImages = <String>[];
 
   @override
   void initState() {
@@ -137,11 +161,86 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       duration: const Duration(milliseconds: 1300),
     )..repeat(reverse: true);
     _initLocation();
+    _loadAmapArrowTexture();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _triggerRouteSyncFromProvider();
+    });
+  }
+
+  void _triggerRouteSyncFromProvider() {
+    if (!mounted) return;
+    final ItineraryProvider provider = context.read<ItineraryProvider>();
+    final ItineraryModel? model =
+        provider.activeItinerary ?? provider.currentItinerary;
+    if (model == null) {
+      debugPrint('🚨 严重警告：当前无行程数据，无法触发 _fetchAllRoutesAndSync');
+      return;
+    }
+    // ignore: unawaited_futures
+    _fetchAllRoutesAndSync(model);
+  }
+
+  Future<void> _loadAmapArrowTexture() async {
+    try {
+      // 预热常见天数的纹理缓存；其余天数按需懒加载。
+      for (int day = 1; day <= 7; day++) {
+        final Uint8List bytes = await _createArrowTextureBytes(Colors.white);
+        _amapArrowTextureByDay[day] = amap.BitmapDescriptor.fromBytes(bytes);
+      }
+      if (mounted) setState(() {});
+    } catch (_) {
+      _amapArrowTextureByDay.clear();
+    }
+  }
+
+  Future<void> _ensureArrowTextureForDay(int day) async {
+    if (_amapArrowTextureByDay.containsKey(day)) return;
+    try {
+      final Uint8List bytes = await _createArrowTextureBytes(Colors.white);
+      _amapArrowTextureByDay[day] = amap.BitmapDescriptor.fromBytes(bytes);
+    } catch (_) {
+      // ignore and fallback to color polyline only
+    }
+  }
+
+  Future<Uint8List> _createArrowTextureBytes(Color tint) async {
+    // 若你希望替换成设计稿纹理：
+    // 1) 在 assets 放置 arrow_texture.png（透明底）
+    // 2) 在 pubspec.yaml 声明后可改为 fromAssetImage 加载
+    const double width = 28;
+    const double height = 72;
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(recorder);
+
+    final Paint arrowPaint = Paint()
+      ..color = tint.withValues(alpha: 0.95)
+      ..style = PaintingStyle.fill;
+
+    // 高德纹理按 Y 轴向上拉伸，这里明确绘制“朝上(↑)”箭头。
+    Path chevron(double y) => Path()
+      ..moveTo(14, y)
+      ..lineTo(6, y + 10)
+      ..lineTo(9, y + 14)
+      ..lineTo(14, y + 8)
+      ..lineTo(19, y + 14)
+      ..lineTo(22, y + 10)
+      ..close();
+    canvas.drawPath(chevron(8), arrowPaint);
+    canvas.drawPath(chevron(34), arrowPaint);
+    canvas.drawPath(chevron(60), arrowPaint);
+
+    final ui.Image img = await recorder.endRecording().toImage(
+      width.toInt(),
+      height.toInt(),
+    );
+    final ByteData? data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return data!.buffer.asUint8List();
   }
 
   @override
   void dispose() {
     _positionSub?.cancel();
+    _scrollController.dispose();
     _googleController?.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -206,25 +305,41 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         if (_selectedDayIndex > dayRoutes.length) {
           _selectedDayIndex = 0;
         }
-        _maybeInitMarkers(dayRoutes);
+        _maybeInitMarkers(model, dayRoutes);
 
         return Scaffold(
           backgroundColor: Colors.white,
-          body: CustomScrollView(
-            slivers: <Widget>[
-              SliverToBoxAdapter(
-                child: _buildMapSection(
-                  model: model,
-                  state: state,
-                  dayRoutes: dayRoutes,
-                ),
+          // NestedScrollView 将地图固定在 header SliverArea；
+          // 当用户点击地图 Marker 触发列表跳转时，只有 body 内的列表
+          // 发生内部滚动，地图 header 不受影响，彻底消灭"地图被顶飞"Bug。
+          body: NestedScrollView(
+            controller: _scrollController,
+            headerSliverBuilder: (BuildContext ctx, bool innerBoxIsScrolled) =>
+                <Widget>[
+                  SliverToBoxAdapter(
+                    child: _buildMapSection(
+                      model: model,
+                      state: state,
+                      dayRoutes: dayRoutes,
+                    ),
+                  ),
+                ],
+            body: NotificationListener<ScrollUpdateNotification>(
+              // 用事件通知代替 addListener，驱动"列表滚→地图动镜"
+              onNotification: (ScrollUpdateNotification _) {
+                _syncMapWithVisibleTimelineItem();
+                return false;
+              },
+              child: CustomScrollView(
+                slivers: <Widget>[
+                  if (state == TripState.preparing)
+                    ..._buildPreparingSlivers(model, provider, dayRoutes)
+                  else
+                    ..._buildTravelingSlivers(model, provider, dayRoutes),
+                  const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
+                ],
               ),
-              if (state == TripState.preparing)
-                ..._buildPreparingSlivers(model, provider, dayRoutes)
-              else
-                ..._buildTravelingSlivers(model, provider),
-              const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
-            ],
+            ),
           ),
         );
       },
@@ -324,6 +439,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             Container(
               color: Colors.white,
               child: DefaultTabController(
+                key: ValueKey<String>(
+                  'prepare-tabs-${_selectedDayIndex}_${dayRoutes.length}',
+                ),
                 initialIndex: _selectedDayIndex,
                 length: dayRoutes.length + 1,
                 child: TabBar(
@@ -332,8 +450,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   indicatorColor: selectedTabColor,
                   unselectedLabelColor: Colors.grey.shade600,
                   onTap: (int index) {
-                    setState(() => _selectedDayIndex = index);
-                    _focusSelectedRoute(dayRoutes);
+                    _selectDayFilter(index, dayRoutes: dayRoutes);
                   },
                   tabs: <Widget>[
                     const Tab(text: '全览'),
@@ -360,10 +477,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         : _collectVisibleActivities(dayRoutes, state);
     final Set<gmap.Marker> markers = <gmap.Marker>{};
     if (state == TripState.traveling) {
-      final List<Map<String, dynamic>> points = _mockTimelineMapPoints();
+      final List<Map<String, dynamic>> points = _timelineMapItems(model, state);
       for (int i = 0; i < points.length; i++) {
         final Map<String, dynamic> point = points[i];
-        final String cacheKey = 'mock_m${i + 1}';
+        final String timelineKey = _timelineItemKey(point);
+        final String cacheKey =
+            '${timelineKey}_${_isTimelineItemArrived(point) ? 'arrived' : 'active'}';
         final gmap.BitmapDescriptor? customIcon = _googleMarkerCache[cacheKey];
         if (customIcon == null) continue;
         markers.add(
@@ -378,6 +497,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
               title: point['title'] as String? ?? '',
               snippet: point['duration'] as String? ?? '',
             ),
+            onTap: () => _focusTimelineMapItem(point, i),
           ),
         );
       }
@@ -405,6 +525,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     }
 
     final Set<gmap.Polyline> lines = _buildGooglePolylines(
+      model: model,
       dayRoutes: dayRoutes,
       state: state,
       next: next,
@@ -446,12 +567,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Set<gmap.Polyline> _buildGooglePolylines({
+    required ItineraryModel model,
     required List<_DayRoute> dayRoutes,
     required TripState state,
     required ActivityItem? next,
   }) {
     final Set<gmap.Polyline> lines = <gmap.Polyline>{};
     final List<gmap.LatLng> points = _orderedGoogleRoutePoints(
+      model,
       dayRoutes,
       state,
     );
@@ -521,10 +644,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         : _collectVisibleActivities(dayRoutes, state);
     final Set<amap.Marker> markers = <amap.Marker>{};
     if (state == TripState.traveling) {
-      final List<Map<String, dynamic>> points = _mockTimelineMapPoints();
+      final List<Map<String, dynamic>> points = _timelineMapItems(model, state);
       for (int i = 0; i < points.length; i++) {
         final Map<String, dynamic> point = points[i];
-        final String cacheKey = 'mock_m${i + 1}';
+        final String timelineKey = _timelineItemKey(point);
+        final String cacheKey =
+            '${timelineKey}_${_isTimelineItemArrived(point) ? 'arrived' : 'active'}';
         final amap.BitmapDescriptor? customIcon = _amapMarkerCache[cacheKey];
         if (customIcon == null) continue;
         markers.add(
@@ -534,10 +659,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
               (point['lng'] as num).toDouble(),
             ),
             icon: customIcon,
-            infoWindow: amap.InfoWindow(
-              title: point['title'] as String? ?? '',
-              snippet: point['duration'] as String? ?? '',
-            ),
+            infoWindowEnable: false,
+            onTap: (String markerId) => _focusTimelineMapItem(point, i),
           ),
         );
       }
@@ -549,12 +672,11 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           amap.Marker(
             position: amap_base.LatLng(va.activity.lat, va.activity.lng),
             icon: customIcon,
-            infoWindow: amap.InfoWindow(
-              title: va.activity.title,
-              snippet:
-                  '${va.activity.recommendedDuration} · ${va.activity.aiHighlight}',
-            ),
+            infoWindowEnable: false,
             onTap: (String markerId) {
+              _selectedActivityImages = va.activity.imageUrl.trim().isEmpty
+                  ? <String>[]
+                  : <String>[va.activity.imageUrl];
               setState(() => _selectedActivity = va.activity);
               _focusOnActivity(va.activity);
             },
@@ -563,6 +685,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       }
     }
     final Set<amap.Polyline> polylines = _buildAmapPolylines(
+      model: model,
       dayRoutes: dayRoutes,
       state: state,
       next: next,
@@ -590,8 +713,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           ),
           // 如原生配置异常，请在此填入你自己的高德 Key 作为兜底。
           apiKey: const amap_base.AMapApiKey(
-            androidKey: '请替换为你的Android高德Key',
-            iosKey: '请替换为你的iOS高德Key',
+            androidKey: AMapConfig.androidKey,
+            iosKey: AMapConfig.iosKey,
           ),
           initialCameraPosition: amap.CameraPosition(target: center, zoom: 12),
           onMapCreated: (amap.AMapController c) {
@@ -624,65 +747,211 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Set<amap.Polyline> _buildAmapPolylines({
+    required ItineraryModel model,
     required List<_DayRoute> dayRoutes,
     required TripState state,
     required ActivityItem? next,
   }) {
     final Set<amap.Polyline> lines = <amap.Polyline>{};
-    final List<amap_base.LatLng> points = _orderedAmapRoutePoints(
-      dayRoutes,
-      state,
-    );
-    if (points.length >= 2) {
-      lines.add(amap.Polyline(points: points, color: Colors.white, width: 10));
-      lines.add(amap.Polyline(points: points, color: Colors.indigo, width: 6));
+
+    void addRouteSegments(
+      List<amap_base.LatLng> points,
+      Color color, {
+      required int day,
+    }) {
+      if (points.length < 2) return;
+      final amap.BitmapDescriptor? dayTexture = _amapArrowTextureByDay[day];
+      for (int i = 0; i < points.length - 1; i++) {
+        final amap_base.LatLng from = points[i];
+        final amap_base.LatLng to = points[i + 1];
+        final String segKey =
+            '${from.latitude},${from.longitude}'
+            '|${to.latitude},${to.longitude}';
+        final List<amap_base.LatLng>? segPoints = _routeCache[segKey];
+        if (segPoints == null) {
+          continue;
+        }
+
+        lines.add(
+          amap.Polyline(points: segPoints, color: Colors.white, width: 14),
+        );
+        lines.add(amap.Polyline(points: segPoints, color: color, width: 9.2));
+        lines.add(
+          amap.Polyline(
+            points: segPoints,
+            color: color,
+            width: 9.2,
+            customTexture: dayTexture,
+          ),
+        );
+      }
+    }
+
+    if (state == TripState.traveling) {
+      final Map<int, List<Map<String, dynamic>>> activitiesByDay =
+          <int, List<Map<String, dynamic>>>{};
+      for (final Map<String, dynamic> item in _timelineMapItems(model, state)) {
+        final int day = (item['day'] as num?)?.toInt() ?? 1;
+        activitiesByDay
+            .putIfAbsent(day, () => <Map<String, dynamic>>[])
+            .add(item);
+      }
+      for (final MapEntry<int, List<Map<String, dynamic>>> entry
+          in activitiesByDay.entries) {
+        final List<Map<String, dynamic>> activities = entry.value;
+        for (int i = 0; i < activities.length - 1; i++) {
+          final Map<String, dynamic> origin = activities[i];
+          final Map<String, dynamic> dest = activities[i + 1];
+          final List<amap_base.LatLng> routePoints = _routePointsFromTransit(
+            origin,
+            dest,
+          );
+          if (routePoints.length < 2) continue;
+          lines.add(
+            amap.Polyline(points: routePoints, color: Colors.white, width: 14),
+          );
+          lines.add(
+            amap.Polyline(
+              points: routePoints,
+              color: _getRouteColor(entry.key),
+              width: 9.2,
+            ),
+          );
+          lines.add(
+            amap.Polyline(
+              points: routePoints,
+              color: _getRouteColor(entry.key),
+              width: 9.2,
+              customTexture: _amapArrowTextureByDay[entry.key],
+            ),
+          );
+        }
+      }
+    } else if (dayRoutes.isNotEmpty) {
+      final Iterable<MapEntry<int, _DayRoute>> visibleRoutes =
+          _selectedDayIndex == 0
+          ? dayRoutes.asMap().entries
+          : dayRoutes.asMap().entries.where(
+              (MapEntry<int, _DayRoute> entry) =>
+                  entry.key + 1 == _selectedDayIndex,
+            );
+      for (final MapEntry<int, _DayRoute> entry in visibleRoutes) {
+        final List<amap_base.LatLng> points = entry.value.activities
+            .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
+            .map((ActivityItem a) => amap_base.LatLng(a.lat, a.lng))
+            .toList(growable: false);
+        addRouteSegments(
+          points,
+          _getRouteColor(entry.key + 1),
+          day: entry.key + 1,
+        );
+      }
     } else if (next != null && _currentPosition != null) {
+      // 当前位置 → 下一个待游玩景点的兜底导航线
+      final amap_base.LatLng curPos = amap_base.LatLng(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+      );
+      final amap_base.LatLng nextPos = amap_base.LatLng(next.lat, next.lng);
+      final String segKey =
+          '${curPos.latitude},${curPos.longitude}'
+          '|${nextPos.latitude},${nextPos.longitude}';
+      final List<amap_base.LatLng>? segPoints = _routeCache[segKey];
+      if (segPoints == null) {
+        return lines;
+      }
+      lines.add(
+        amap.Polyline(points: segPoints, color: Colors.white, width: 14),
+      );
       lines.add(
         amap.Polyline(
-          points: <amap_base.LatLng>[
-            amap_base.LatLng(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
-            ),
-            amap_base.LatLng(next.lat, next.lng),
-          ],
-          color: Colors.white,
-          width: 10,
+          points: segPoints,
+          color: _getRouteColor(_selectedDayIndex),
+          width: 9.2,
         ),
       );
       lines.add(
         amap.Polyline(
-          points: <amap_base.LatLng>[
-            amap_base.LatLng(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
-            ),
-            amap_base.LatLng(next.lat, next.lng),
-          ],
-          color: Colors.indigo,
-          width: 6,
+          points: segPoints,
+          color: _getRouteColor(_selectedDayIndex),
+          width: 9.2,
+          customTexture: _amapArrowTextureByDay[_selectedDayIndex],
         ),
       );
     }
     return lines;
   }
 
-  List<Map<String, dynamic>> _mockTimelineMapPoints() {
-    return _mockTimeline
+  List<amap_base.LatLng> _routePointsFromTransit(
+    Map<String, dynamic> origin,
+    Map<String, dynamic> dest,
+  ) {
+    final Object? raw =
+        (origin['transit'] as Map<String, dynamic>?)?['routePoints'];
+    final List<amap_base.LatLng> parsed = <amap_base.LatLng>[];
+    if (raw is List) {
+      for (final Object? item in raw) {
+        if (item is amap_base.LatLng) {
+          parsed.add(item);
+        } else if (item is Map) {
+          final double? lat = (item['lat'] as num?)?.toDouble();
+          final double? lng = (item['lng'] as num?)?.toDouble();
+          if (lat != null && lng != null) {
+            parsed.add(amap_base.LatLng(lat, lng));
+          }
+        }
+      }
+    }
+    final String originTitle = origin['title']?.toString() ?? '起点';
+    final String destTitle = dest['title']?.toString() ?? '终点';
+    if (parsed.length >= 2) {
+      debugPrint(
+        '✅ 成功加载真实路线 [$originTitle -> $destTitle]，共 ${parsed.length} 个拐点',
+      );
+      return parsed;
+    }
+    final double? oLat = (origin['lat'] as num?)?.toDouble();
+    final double? oLng = (origin['lng'] as num?)?.toDouble();
+    final double? dLat = (dest['lat'] as num?)?.toDouble();
+    final double? dLng = (dest['lng'] as num?)?.toDouble();
+    if (oLat == null || oLng == null || dLat == null || dLng == null) {
+      debugPrint('🚨 严重警告：[$originTitle -> $destTitle] 缺少有效经纬度，无法构建路线');
+      return <amap_base.LatLng>[];
+    }
+    debugPrint(
+      '🚨 严重警告：[$originTitle -> $destTitle] 缺少真实轨迹 routePoints！已被迫触发直线兜底！请检查 _fetchAllRoutesAndSync 是否执行成功！',
+    );
+    return <amap_base.LatLng>[
+      amap_base.LatLng(oLat, oLng),
+      amap_base.LatLng(dLat, dLng),
+    ];
+  }
+
+  List<Map<String, dynamic>> _timelineMapItems(
+    ItineraryModel model,
+    TripState state,
+  ) {
+    final List<Map<String, dynamic>> source = state == TripState.traveling
+        ? _buildTravelingTimelineData(model)
+        : _mockTimeline;
+    return source
         .where((Map<String, dynamic> item) {
           final double? lat = (item['lat'] as num?)?.toDouble();
           final double? lng = (item['lng'] as num?)?.toDouble();
-          return lat != null && lng != null;
+          if (lat == null || lng == null) return false;
+          if (_selectedDayIndex == 0) return true;
+          return ((item['day'] as num?)?.toInt() ?? 1) == _selectedDayIndex;
         })
         .toList(growable: false);
   }
 
   List<gmap.LatLng> _orderedGoogleRoutePoints(
+    ItineraryModel model,
     List<_DayRoute> dayRoutes,
     TripState state,
   ) {
     if (state == TripState.traveling) {
-      return _mockTimelineMapPoints()
+      return _timelineMapItems(model, state)
           .map(
             (Map<String, dynamic> item) => gmap.LatLng(
               (item['lat'] as num).toDouble(),
@@ -696,28 +965,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         : dayRoutes[_selectedDayIndex - 1].activities;
     return activities
         .map((ActivityItem a) => gmap.LatLng(a.lat, a.lng))
-        .toList(growable: false);
-  }
-
-  List<amap_base.LatLng> _orderedAmapRoutePoints(
-    List<_DayRoute> dayRoutes,
-    TripState state,
-  ) {
-    if (state == TripState.traveling) {
-      return _mockTimelineMapPoints()
-          .map(
-            (Map<String, dynamic> item) => amap_base.LatLng(
-              (item['lat'] as num).toDouble(),
-              (item['lng'] as num).toDouble(),
-            ),
-          )
-          .toList(growable: false);
-    }
-    final Iterable<ActivityItem> activities = _selectedDayIndex == 0
-        ? dayRoutes.expand((_DayRoute route) => route.activities)
-        : dayRoutes[_selectedDayIndex - 1].activities;
-    return activities
-        .map((ActivityItem a) => amap_base.LatLng(a.lat, a.lng))
         .toList(growable: false);
   }
 
@@ -750,7 +997,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     return result;
   }
 
-  String _buildMarkerPlanKey(List<_DayRoute> dayRoutes) {
+  String _buildMarkerPlanKey(ItineraryModel model, List<_DayRoute> dayRoutes) {
     final StringBuffer buffer = StringBuffer();
     for (int d = 0; d < dayRoutes.length; d++) {
       final _DayRoute route = dayRoutes[d];
@@ -761,19 +1008,50 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         buffer.write('${activity.id}:${activity.lat},${activity.lng}|');
       }
     }
+    for (final Map<String, dynamic> item in _buildTravelingTimelineData(
+      model,
+    )) {
+      buffer.write(
+        't:${_timelineItemKey(item)}:${item['day']}:${item['lat']},${item['lng']}:${_isTimelineItemArrived(item)}|',
+      );
+    }
     return buffer.toString();
   }
 
-  void _maybeInitMarkers(List<_DayRoute> dayRoutes) {
-    final String nextKey = _buildMarkerPlanKey(dayRoutes);
+  void _maybeInitMarkers(ItineraryModel model, List<_DayRoute> dayRoutes) {
+    final String nextKey = _buildMarkerPlanKey(model, dayRoutes);
     if (nextKey == _markerCachePlanKey) return;
     _markerCachePlanKey = nextKey;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initMarkers(dayRoutes);
+      _initMarkers(model, dayRoutes);
     });
+    _maybeSyncRoutes(model);
   }
 
-  Future<void> _initMarkers(List<_DayRoute> dayRoutes) async {
+  String _buildRouteSyncPlanKey(ItineraryModel model) {
+    final List<Map<String, dynamic>> items = _buildTravelingTimelineData(model);
+    final StringBuffer b = StringBuffer();
+    for (int i = 0; i < items.length; i++) {
+      final Map<String, dynamic> it = items[i];
+      b.write(
+        '${_timelineItemKey(it)}:${it['day']}:${it['lat']},${it['lng']}|',
+      );
+    }
+    return b.toString();
+  }
+
+  void _maybeSyncRoutes(ItineraryModel model) {
+    final String nextKey = _buildRouteSyncPlanKey(model);
+    if (nextKey == _routeSyncPlanKey) return;
+    _routeSyncPlanKey = nextKey;
+    // ignore: unawaited_futures
+    _fetchAllRoutesAndSync(model);
+  }
+
+  Future<void> _initMarkers(
+    ItineraryModel model,
+    List<_DayRoute> dayRoutes,
+  ) async {
     if (!mounted) return;
     setState(() {
       _isMapLoading = true;
@@ -784,49 +1062,91 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       dayRoutes,
       TripState.preparing,
     );
+    final Map<String, gmap.BitmapDescriptor> nextGoogleMarkerCache =
+        <String, gmap.BitmapDescriptor>{};
+    final Map<String, amap.BitmapDescriptor> nextAmapMarkerCache =
+        <String, amap.BitmapDescriptor>{};
+    final List<Future<void>> markerTasks = <Future<void>>[];
+
     for (final _VisibleActivity va in allVisible) {
-      try {
-        final gmap.BitmapDescriptor googleIcon = await _createNumberedMarker(
-          va.order,
-          va.color,
-        );
-        final Uint8List bytes = await _createNumberedMarkerBytes(
-          va.order,
-          va.color,
-        );
-        if (!mounted) return;
-        _googleMarkerCache[va.key] = googleIcon;
-        _amapMarkerCache[va.key] = amap.BitmapDescriptor.fromBytes(bytes);
-      } catch (_) {
-        // ignore failed marker icon and continue
-      }
+      markerTasks.add(() async {
+        try {
+          final gmap.BitmapDescriptor googleIcon = await _createNumberedMarker(
+            va.order,
+            va.color,
+          );
+          final Uint8List bytes = await _createNumberedMarkerBytes(
+            va.order,
+            va.color,
+          );
+          nextGoogleMarkerCache[va.key] = googleIcon;
+          nextAmapMarkerCache[va.key] = amap.BitmapDescriptor.fromBytes(bytes);
+        } catch (_) {
+          // ignore failed marker icon and continue
+        }
+      }());
     }
-    for (int i = 0; i < _mockTimeline.length; i++) {
-      final Map<String, dynamic> item = _mockTimeline[i];
+    final List<Map<String, dynamic>> timelineItems =
+        _buildTravelingTimelineData(model);
+    final Set<int> usedDays = <int>{
+      ...timelineItems.map(
+        (Map<String, dynamic> item) => (item['day'] as num?)?.toInt() ?? 1,
+      ),
+      ...dayRoutes.asMap().keys.map((int idx) => idx + 1),
+    };
+    for (final int day in usedDays) {
+      markerTasks.add(_ensureArrowTextureForDay(day));
+    }
+    for (int i = 0; i < timelineItems.length; i++) {
+      final Map<String, dynamic> item = timelineItems[i];
       final double? lat = (item['lat'] as num?)?.toDouble();
       final double? lng = (item['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
-      final String cacheKey = 'mock_m${i + 1}';
-      try {
-        final gmap.BitmapDescriptor googleIcon = await _createNumberedMarker(
-          i + 1,
-          Colors.indigo,
-        );
-        final Uint8List bytes = await _createNumberedMarkerBytes(
-          i + 1,
-          Colors.indigo,
-        );
-        if (!mounted) return;
-        _googleMarkerCache[cacheKey] = googleIcon;
-        _amapMarkerCache[cacheKey] = amap.BitmapDescriptor.fromBytes(bytes);
-      } catch (_) {
-        // ignore failed marker icon and continue
-      }
+      final String cacheKey = _timelineItemKey(item);
+      final int order = _globalDayOrderAt(timelineItems, i);
+      final int day = (item['day'] as num?)?.toInt() ?? 1;
+      final Color markerColor = _getRouteColor(day);
+      markerTasks.add(() async {
+        try {
+          final gmap.BitmapDescriptor googleIcon = await _createNumberedMarker(
+            order,
+            markerColor,
+          );
+          final Uint8List bytes = await _createNumberedMarkerBytes(
+            order,
+            markerColor,
+          );
+          final gmap.BitmapDescriptor arrivedGoogleIcon =
+              await _createNumberedMarker(order, Colors.grey.shade400);
+          final Uint8List arrivedBytes = await _createNumberedMarkerBytes(
+            order,
+            Colors.grey.shade400,
+          );
+          nextGoogleMarkerCache['${cacheKey}_active'] = googleIcon;
+          nextAmapMarkerCache['${cacheKey}_active'] =
+              amap.BitmapDescriptor.fromBytes(bytes);
+          nextGoogleMarkerCache['${cacheKey}_arrived'] = arrivedGoogleIcon;
+          nextAmapMarkerCache['${cacheKey}_arrived'] =
+              amap.BitmapDescriptor.fromBytes(arrivedBytes);
+        } catch (_) {
+          // ignore failed marker icon and continue
+        }
+      }());
     }
+    await Future.wait(markerTasks);
     if (!mounted) return;
     setState(() {
+      _googleMarkerCache
+        ..clear()
+        ..addAll(nextGoogleMarkerCache);
+      _amapMarkerCache
+        ..clear()
+        ..addAll(nextAmapMarkerCache);
       _isMapLoading = false;
     });
+    // 所有 Marker 已就绪后，后台异步预取真实路网（渐进式更新折线）
+    // ignore: unawaited_futures
+    _initRoutes(timelineItems, dayRoutes);
   }
 
   Future<Uint8List> _createNumberedMarkerBytes(
@@ -892,6 +1212,28 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     await _focusPoints(target);
   }
 
+  void _selectDayFilter(int index, {required List<_DayRoute> dayRoutes}) {
+    setState(() {
+      _selectedDayIndex = index;
+      _selectedActivity = null;
+      _focusedTimelineKey = null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusSelectedRoute(dayRoutes);
+      final BuildContext? topContext = _timelineListTopKey.currentContext;
+      if (topContext != null) {
+        Scrollable.ensureVisible(
+          topContext,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: 0,
+        );
+      }
+    });
+  }
+
   Future<void> _focusOnActivity(ActivityItem activity) async {
     await _googleController?.animateCamera(
       gmap.CameraUpdate.newLatLngZoom(
@@ -946,16 +1288,314 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     );
   }
 
+  // ─── 高德真实路网 ────────────────────────────────────────────────
+  // 调用高德步行 / 驾车路径规划 API，返回沿路真实拐点数组。
+  // 结果写入 _routeCache，后续直接复用，无需重复网络请求。
+  // 若 API 不可达或无结果，只记录失败状态，渲染层不会用直线冒充路线。
+  //
+  // ⚠️ Key 说明：本文件已在 AMapWidget.apiKey 注入了硬编码兜底 Key，
+  //    生产环境请同步在 AndroidManifest / Info.plist 原生层填入真实 Key；
+  //    否则高德底图与 Direction API 都可能无法加载。
+  Future<_RouteFetchResult> _fetchRoute(
+    amap_base.LatLng origin,
+    amap_base.LatLng dest,
+    String? preferredMode,
+  ) async {
+    final String cacheKey =
+        '${origin.latitude},${origin.longitude}'
+        '|${dest.latitude},${dest.longitude}';
+    if (_routeResultCache.containsKey(cacheKey)) {
+      final _RouteFetchResult cached = _routeResultCache[cacheKey]!;
+      return _RouteFetchResult(
+        points: cached.points,
+        distanceMeters: cached.distanceMeters,
+        durationSeconds: cached.durationSeconds,
+        routeMode: cached.routeMode.isNotEmpty
+            ? cached.routeMode
+            : (preferredMode ?? ''),
+      );
+    }
+    if (_routeCache.containsKey(cacheKey)) {
+      return _RouteFetchResult(
+        points: _routeCache[cacheKey]!,
+        routeMode: preferredMode ?? '',
+      );
+    }
+
+    // 这里是高德 Direction HTTP 请求，必须使用 Web 服务 Key，严禁使用 SDK Key。
+    const String amapWebKey = AMapConfig.webApiKey;
+    // 短距离优先步行，长距离优先驾车，避免“全是步行”不合理。
+    final double dist = Geolocator.distanceBetween(
+      origin.latitude,
+      origin.longitude,
+      dest.latitude,
+      dest.longitude,
+    );
+    final String mode = switch (preferredMode) {
+      'walk' => dist < 2600 ? 'walking' : 'driving',
+      'car' || 'metro' => 'driving',
+      _ => dist < 1800 ? 'walking' : 'driving',
+    };
+
+    Future<_RouteFetchResult?> requestByMode(String requestMode) async {
+      final Uri uri = Uri.parse(
+        'https://restapi.amap.com/v3/direction/$requestMode'
+        '?key=$amapWebKey'
+        '&origin=${origin.longitude},${origin.latitude}'
+        '&destination=${dest.longitude},${dest.latitude}',
+      );
+      try {
+        final http.Response response = await http
+            .get(uri)
+            .timeout(const Duration(seconds: 8));
+        if (response.statusCode != 200) return null;
+        final Map<String, dynamic> data =
+            jsonDecode(response.body) as Map<String, dynamic>;
+        if (data['status'] != '1') {
+          debugPrint(
+            '高德算路失败($requestMode): info=${data['info']} infocode=${data['infocode']}',
+          );
+          return null;
+        }
+        final List<dynamic> paths =
+            ((data['route'] as Map<String, dynamic>)['paths'] as List<dynamic>?) ??
+            <dynamic>[];
+        if (paths.isEmpty) return null;
+        final Map<String, dynamic> path =
+            paths.first as Map<String, dynamic>? ?? <String, dynamic>{};
+        final List<dynamic> steps = (path['steps'] as List<dynamic>?) ?? <dynamic>[];
+        final List<amap_base.LatLng> points = <amap_base.LatLng>[];
+        for (final Object? step in steps) {
+          final String polyline =
+              (step as Map<String, dynamic>)['polyline'] as String? ?? '';
+          for (final String coord in polyline.split(';')) {
+            final List<String> parts = coord.split(',');
+            if (parts.length == 2) {
+              final double? lng = double.tryParse(parts[0]);
+              final double? lat = double.tryParse(parts[1]);
+              if (lat != null && lng != null) {
+                points.add(amap_base.LatLng(lat, lng));
+              }
+            }
+          }
+        }
+        if (points.isEmpty) return null;
+        final int distanceMeters = int.tryParse(path['distance'].toString()) ?? 0;
+        final int durationSeconds = int.tryParse(path['duration'].toString()) ?? 0;
+        return _RouteFetchResult(
+          points: points,
+          distanceMeters: distanceMeters,
+          durationSeconds: durationSeconds,
+          routeMode: requestMode,
+        );
+      } catch (e) {
+        debugPrint('请求路段失败($requestMode): $e');
+        return null;
+      }
+    }
+
+    _RouteFetchResult? result = await requestByMode(mode);
+    if (result == null) {
+      final String fallbackMode = mode == 'walking' ? 'driving' : 'walking';
+      result = await requestByMode(fallbackMode);
+    }
+    if (result != null) {
+      _routeFallbackKeys.remove(cacheKey);
+      _routeCache[cacheKey] = result.points;
+      _routeResultCache[cacheKey] = result;
+      return result;
+    }
+
+    // API 失败：保留失败标记，渲染层会跳过该段，避免出现飞线。
+    final List<amap_base.LatLng> fallback = <amap_base.LatLng>[origin, dest];
+    final int fallbackDistance = Geolocator.distanceBetween(
+      origin.latitude,
+      origin.longitude,
+      dest.latitude,
+      dest.longitude,
+    ).round();
+    final int fallbackDuration = mode == 'walking'
+        ? (fallbackDistance / 1.2)
+              .round() // 约 4.3 km/h
+        : (fallbackDistance / 8.3).round(); // 约 30 km/h
+    _routeFallbackKeys.add(cacheKey);
+    _routeCache[cacheKey] = fallback;
+    final _RouteFetchResult fallbackResult = _RouteFetchResult(
+      points: fallback,
+      distanceMeters: fallbackDistance,
+      durationSeconds: fallbackDuration,
+      routeMode: mode,
+    );
+    _routeResultCache[cacheKey] = fallbackResult;
+    return fallbackResult;
+  }
+
+  // 批量预取所有相邻活动之间的路径，后台异步执行不阻塞地图渲染。
+  // 每段路径拿到后立刻 setState 触发折线更新，实现"渐进式真实路网"效果。
+  Future<void> _initRoutes(
+    List<Map<String, dynamic>> timelineItems,
+    List<_DayRoute> dayRoutes,
+  ) async {
+    // ① 行程中（traveling）模式：按 Day 分组预取，严禁跨天连接成飞线
+    final Map<int, List<Map<String, dynamic>>> timelineByDay =
+        <int, List<Map<String, dynamic>>>{};
+    for (final Map<String, dynamic> item in timelineItems) {
+      final int day = (item['day'] as num?)?.toInt() ?? 1;
+      timelineByDay.putIfAbsent(day, () => <Map<String, dynamic>>[]).add(item);
+    }
+    for (final List<Map<String, dynamic>> items in timelineByDay.values) {
+      for (int i = 0; i < items.length - 1; i++) {
+        final double? lat1 = (items[i]['lat'] as num?)?.toDouble();
+        final double? lng1 = (items[i]['lng'] as num?)?.toDouble();
+        final double? lat2 = (items[i + 1]['lat'] as num?)?.toDouble();
+        final double? lng2 = (items[i + 1]['lng'] as num?)?.toDouble();
+        if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) {
+          continue;
+        }
+        final _RouteFetchResult routeResult = await _fetchRoute(
+          amap_base.LatLng(lat1, lng1),
+          amap_base.LatLng(lat2, lng2),
+          (items[i]['transit'] as Map<String, dynamic>?)?['mode']?.toString(),
+        );
+        if (!mounted) return;
+        final Map<String, dynamic>? transit =
+            items[i]['transit'] as Map<String, dynamic>?;
+        final Map<String, dynamic> writableTransit =
+            transit ??
+            <String, dynamic>{
+              'mode': routeResult.routeMode == 'walking' ? 'walk' : 'car',
+              'text': '',
+              'distance': '',
+            };
+        if (transit == null) {
+          items[i]['transit'] = writableTransit;
+        }
+        {
+          final int distanceMeters = routeResult.distanceMeters > 0
+              ? routeResult.distanceMeters
+              : Geolocator.distanceBetween(lat1, lng1, lat2, lng2).round();
+          final int durationMinutes = routeResult.durationSeconds > 0
+              ? (routeResult.durationSeconds / 60).ceil()
+              : (distanceMeters /
+                        (writableTransit['mode'] == 'walk' ? 72 : 500))
+                    .ceil();
+          final String distanceText = distanceMeters > 1000
+              ? '${(distanceMeters / 1000).toStringAsFixed(1)}公里'
+              : '$distanceMeters米';
+          final String modeLabel = writableTransit['mode'] == 'walk'
+              ? '步行'
+              : '驾车';
+          final String itemKey = _timelineItemKey(items[i]);
+          setState(() {
+            writableTransit['distance'] = distanceText;
+            writableTransit['text'] = '$modeLabel约$durationMinutes分钟';
+            writableTransit['routePoints'] = routeResult.points;
+            _timelineTransitOverride[itemKey] = Map<String, dynamic>.from(
+              writableTransit,
+            );
+          });
+        }
+        setState(() {}); // 每拿到一段即时刷新折线
+      }
+    }
+
+    // ② 行前（preparing）模式：按 DayRoute 内部顺序预取
+    for (final _DayRoute route in dayRoutes) {
+      for (int i = 0; i < route.activities.length - 1; i++) {
+        final ActivityItem a = route.activities[i];
+        final ActivityItem b = route.activities[i + 1];
+        if (a.lat == 0 || a.lng == 0 || b.lat == 0 || b.lng == 0) continue;
+        await _fetchRoute(
+          amap_base.LatLng(a.lat, a.lng),
+          amap_base.LatLng(b.lat, b.lng),
+          _transportModeFromText(a.transportInfo),
+        );
+        if (!mounted) return;
+        setState(() {});
+      }
+    }
+  }
+
+  // 全量同步：遍历所有相邻景点段，逐段请求高德并回写 transit。
+  Future<void> _fetchAllRoutesAndSync(ItineraryModel model) async {
+    final List<Map<String, dynamic>> planItems = _buildTravelingTimelineData(
+      model,
+    );
+    final Map<int, List<Map<String, dynamic>>> planDays =
+        <int, List<Map<String, dynamic>>>{};
+    for (final Map<String, dynamic> item in planItems) {
+      final int day = (item['day'] as num?)?.toInt() ?? 1;
+      planDays.putIfAbsent(day, () => <Map<String, dynamic>>[]).add(item);
+    }
+
+    for (final List<Map<String, dynamic>> activities in planDays.values) {
+      for (int i = 0; i < activities.length - 1; i++) {
+        final Map<String, dynamic> origin = activities[i];
+        final Map<String, dynamic> dest = activities[i + 1];
+        final String originTitle = origin['title']?.toString() ?? '起点';
+        final String destTitle = dest['title']?.toString() ?? '终点';
+        final double? olat = (origin['lat'] as num?)?.toDouble();
+        final double? olng = (origin['lng'] as num?)?.toDouble();
+        final double? dlat = (dest['lat'] as num?)?.toDouble();
+        final double? dlng = (dest['lng'] as num?)?.toDouble();
+        if (olat == null || olng == null || dlat == null || dlng == null) {
+          continue;
+        }
+
+        _RouteFetchResult result;
+        try {
+          result = await _fetchRoute(
+            amap_base.LatLng(olat, olng),
+            amap_base.LatLng(dlat, dlng),
+            (origin['transit'] as Map<String, dynamic>?)?['mode']?.toString(),
+          );
+        } catch (e) {
+          debugPrint('请求路段 $originTitle 到 $destTitle 失败: $e');
+          continue;
+        }
+        if (!mounted) return;
+
+        final int distanceMeters = result.distanceMeters > 0
+            ? result.distanceMeters
+            : Geolocator.distanceBetween(olat, olng, dlat, dlng).round();
+        final int durationSeconds = result.durationSeconds > 0
+            ? result.durationSeconds
+            : (distanceMeters / (distanceMeters > 2000 ? 8.3 : 1.2)).round();
+        final int durationMinutes = (durationSeconds / 60).ceil();
+        final String distanceText = distanceMeters > 1000
+            ? '${(distanceMeters / 1000).toStringAsFixed(1)}公里'
+            : '$distanceMeters米';
+        final String mode = distanceMeters > 2000 ? 'car' : 'walk';
+        final String modeText = mode == 'car' ? '驾车' : '步行';
+        final String itemKey = _timelineItemKey(origin);
+
+        setState(() {
+          origin['transit'] = <String, dynamic>{
+            'mode': mode,
+            'distance': distanceText,
+            'text': '$modeText约$durationMinutes分钟',
+            'routePoints': result.points,
+          };
+          // 核心写入：确保真实轨迹坐标绑定到 origin.transit.routePoints
+          origin['transit']['routePoints'] = result.points;
+          _timelineTransitOverride[itemKey] = Map<String, dynamic>.from(
+            origin['transit'] as Map<String, dynamic>,
+          );
+        });
+      }
+    }
+  }
+
   Widget _buildMapInfoOverlay() {
     final ActivityItem? selected = _selectedActivity;
-    return IgnorePointer(
-      ignoring: selected == null,
-      child: AnimatedPositioned(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        left: 16,
-        right: 16,
-        bottom: selected == null ? -130 : 30,
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      left: 16,
+      right: 16,
+      bottom: selected == null ? -130 : 30,
+      child: IgnorePointer(
+        ignoring: selected == null,
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 180),
           opacity: selected == null ? 0 : 1,
@@ -968,6 +1608,13 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Widget _buildMapInfoCard(ActivityItem activity) {
+    const String fallbackImage =
+        'https://images.unsplash.com/photo-1488085061387-422e29b40080?auto=format&fit=crop&w=300&q=80';
+    final String imgUrl = _selectedActivityImages.isNotEmpty
+        ? _selectedActivityImages.first
+        : (activity.imageUrl.trim().isNotEmpty
+              ? activity.imageUrl.trim()
+              : fallbackImage);
     return Container(
       height: 90,
       padding: const EdgeInsets.all(12),
@@ -986,18 +1633,32 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         children: <Widget>[
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: CachedNetworkImage(
-              imageUrl: activity.imageUrl,
-              width: 66,
-              height: 66,
-              fit: BoxFit.cover,
-              errorWidget: (BuildContext c, String u, Object e) => Container(
-                width: 66,
-                height: 66,
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.image, color: Colors.grey),
-              ),
-            ),
+            child: imgUrl.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: imgUrl,
+                    width: 66,
+                    height: 66,
+                    fit: BoxFit.cover,
+                    errorWidget: (BuildContext c, String u, Object e) =>
+                        Container(
+                          width: 66,
+                          height: 66,
+                          color: Colors.grey.shade200,
+                          child: const Icon(
+                            Icons.image_not_supported,
+                            color: Colors.grey,
+                          ),
+                        ),
+                  )
+                : Container(
+                    width: 66,
+                    height: 66,
+                    color: Colors.grey.shade200,
+                    child: const Icon(
+                      Icons.image_not_supported,
+                      color: Colors.grey,
+                    ),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1081,6 +1742,30 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSafeNetworkThumb(String rawUrl, {double height = 80}) {
+    final String imgUrl = rawUrl.trim();
+    if (imgUrl.isEmpty) {
+      return Container(
+        height: height,
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_not_supported, color: Colors.grey),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: imgUrl,
+      height: height,
+      fit: BoxFit.cover,
+      errorWidget: (BuildContext context, String url, Object error) =>
+          Container(
+            height: height,
+            color: Colors.grey.shade200,
+            alignment: Alignment.center,
+            child: const Icon(Icons.image_not_supported, color: Colors.grey),
+          ),
     );
   }
 
@@ -1820,6 +2505,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   List<Widget> _buildTravelingSlivers(
     ItineraryModel model,
     ItineraryProvider provider,
+    List<_DayRoute> dayRoutes,
   ) {
     final int keep = model.hashCode ^ provider.hashCode;
     if (keep == -1) {
@@ -1828,6 +2514,16 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     final List<Map<String, dynamic>> timelineData = _buildTravelingTimelineData(
       model,
     );
+    _timelineItemByKey
+      ..clear()
+      ..addEntries(
+        timelineData.map(
+          (Map<String, dynamic> item) => MapEntry<String, Map<String, dynamic>>(
+            _timelineItemKey(item),
+            item,
+          ),
+        ),
+      );
     final int maxDay = timelineData.fold<int>(0, (
       int previous,
       Map<String, dynamic> item,
@@ -1847,51 +2543,55 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                     item['day'] == effectiveSelectedDay,
               )
               .toList(growable: false);
+    final Color selectedDayColor = _getRouteColor(effectiveSelectedDay);
     return <Widget>[
       SliverToBoxAdapter(
-        child: Container(
-          height: 44,
-          margin: const EdgeInsets.only(bottom: 16, top: 8),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: maxDay + 1,
-            itemBuilder: (BuildContext context, int index) {
-              final bool isSelected = effectiveSelectedDay == index;
-              final String label = index == 0 ? "全览" : "Day $index";
-              return GestureDetector(
-                onTap: () => setState(() => _selectedDayIndex = index),
-                child: Container(
-                  margin: const EdgeInsets.only(right: 10),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Colors.indigo.shade600
-                        : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
+        child: KeyedSubtree(
+          key: _timelineListTopKey,
+          child: Container(
+            height: 44,
+            margin: const EdgeInsets.only(bottom: 16, top: 8),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: maxDay + 1,
+              itemBuilder: (BuildContext context, int index) {
+                final bool isSelected = effectiveSelectedDay == index;
+                final String label = index == 0 ? "全览" : "Day $index";
+                return GestureDetector(
+                  onTap: () => _selectDayFilter(index, dayRoutes: dayRoutes),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
                       color: isSelected
-                          ? Colors.transparent
-                          : Colors.grey.shade200,
+                          ? selectedDayColor
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: isSelected
+                            ? Colors.transparent
+                            : Colors.grey.shade200,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : Colors.grey.shade600,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey.shade600,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -1943,7 +2643,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                 ),
                 if (!isLast && transit != null) ...<Widget>[
                   const SizedBox(height: 2),
-                  _buildTransitCard(transit),
+                  _buildTransitCard(
+                    transit: transit,
+                    destination: filteredTimeline[index + 1],
+                  ),
                 ],
               ],
             ),
@@ -2005,7 +2708,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
               (activity['id']?.toString().trim().isNotEmpty ?? false)
               ? activity['id'].toString()
               : 'd${dayNumber}_a${activityIndex + 1}';
-          result.add(<String, dynamic>{
+          final Map<String, dynamic> item = <String, dynamic>{
             'id': result.length + 1,
             'activityId': activityId,
             'day': dayNumber,
@@ -2028,7 +2731,17 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             ),
             'isArrived': model.arrivedActivityIds.contains(activityId),
             'transit': _timelineTransit(activity, activityIndex, activities),
-          });
+          };
+          final String key = _timelineItemKey(item);
+          final Map<String, dynamic>? overrideTransit =
+              _timelineTransitOverride[key];
+          if (overrideTransit != null && item['transit'] is Map) {
+            item['transit'] = <String, dynamic>{
+              ...(item['transit'] as Map<String, dynamic>),
+              ...overrideTransit,
+            };
+          }
+          result.add(item);
         }
       }
       if (result.isNotEmpty) return result;
@@ -2044,7 +2757,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         activityIndex++
       ) {
         final ActivityItem activity = day.activities[activityIndex];
-        result.add(<String, dynamic>{
+        final Map<String, dynamic> item = <String, dynamic>{
           'id': result.length + 1,
           'activityId': activity.id,
           'day': dayIndex + 1,
@@ -2068,7 +2781,17 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   'text': activity.transportInfo,
                   'distance': '',
                 },
-        });
+        };
+        final String key = _timelineItemKey(item);
+        final Map<String, dynamic>? overrideTransit =
+            _timelineTransitOverride[key];
+        if (overrideTransit != null && item['transit'] is Map) {
+          item['transit'] = <String, dynamic>{
+            ...(item['transit'] as Map<String, dynamic>),
+            ...overrideTransit,
+          };
+        }
+        result.add(item);
       }
     }
     return result.isEmpty ? _mockTimeline : result;
@@ -2133,22 +2856,39 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     return 'walk';
   }
 
+  Color _routeColorForDay(int day) {
+    if (day <= 0) return Colors.indigo.shade600;
+    final List<Color> palette = <Color>[
+      Colors.indigo.shade600,
+      Colors.teal.shade600,
+      Colors.deepOrange.shade500,
+      Colors.purple.shade500,
+      Colors.blue.shade600,
+    ];
+    return palette[(day - 1) % palette.length];
+  }
+
+  Color _getRouteColor(int dayIndex) => _routeColorForDay(dayIndex);
+
   Widget _buildTimelineItemCard({
     required Map<String, dynamic> item,
     required bool isFirst,
     required bool isLast,
     required int dayOrder,
   }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        _buildTimelineRail(
-          isFirst: isFirst,
-          isLast: isLast,
-          dayOrder: dayOrder,
-        ),
-        Expanded(child: _buildMainCard(item)),
-      ],
+    return KeyedSubtree(
+      key: _timelineItemGlobalKey(item),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _buildTimelineRail(
+            isFirst: isFirst,
+            isLast: isLast,
+            dayOrder: dayOrder,
+          ),
+          Expanded(child: _buildMainCard(item)),
+        ],
+      ),
     );
   }
 
@@ -2162,6 +2902,110 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       }
     }
     return order;
+  }
+
+  int _globalDayOrderAt(List<Map<String, dynamic>> items, int index) {
+    final int day = (items[index]['day'] as num?)?.toInt() ?? 1;
+    int order = 0;
+    for (int i = 0; i <= index; i++) {
+      final int currentDay = (items[i]['day'] as num?)?.toInt() ?? 1;
+      if (currentDay == day) order++;
+    }
+    return order;
+  }
+
+  String _timelineItemKey(Map<String, dynamic> item) {
+    final String id = item['activityId']?.toString() ?? item['id'].toString();
+    return 'timeline_${item['day'] ?? 1}_$id';
+  }
+
+  GlobalKey _timelineItemGlobalKey(Map<String, dynamic> item) {
+    final String key = _timelineItemKey(item);
+    return _timelineItemKeys.putIfAbsent(key, GlobalKey.new);
+  }
+
+  bool _isTimelineItemArrived(Map<String, dynamic> item) {
+    final String key = _timelineItemKey(item);
+    return _timelineArrivedOverride[key] ??
+        ((item['isArrived'] as bool?) ?? false);
+  }
+
+  Future<void> _focusTimelineMapItem(
+    Map<String, dynamic> item,
+    int index,
+  ) async {
+    final double? lat = (item['lat'] as num?)?.toDouble();
+    final double? lng = (item['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return;
+    _selectedActivityImages =
+        ((item['images'] as List<dynamic>?) ?? <dynamic>[])
+            .map((dynamic e) => e.toString())
+            .where((String e) => e.trim().isNotEmpty)
+            .toList(growable: false);
+    final ActivityItem activity = _activityFromTimelineItem(item);
+    setState(() => _selectedActivity = activity);
+    _aMapController?.moveCamera(
+      amap.CameraUpdate.newLatLngZoom(amap_base.LatLng(lat, lng), 14),
+    );
+    _googleController?.animateCamera(
+      gmap.CameraUpdate.newLatLngZoom(gmap.LatLng(lat, lng), 14),
+    );
+    final BuildContext? context = _timelineItemGlobalKey(item).currentContext;
+    if (context != null) {
+      await Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOutCubic,
+        alignment: 0.35,
+      );
+    }
+  }
+
+  ActivityItem _activityFromTimelineItem(Map<String, dynamic> item) {
+    final List<dynamic> images =
+        (item['images'] as List<dynamic>?) ?? <dynamic>[];
+    return ActivityItem(
+      id: _timelineItemKey(item),
+      time: item['scheduledTime']?.toString() ?? '09:00',
+      title: item['title']?.toString() ?? '未命名活动',
+      type: 'scenic',
+      lat: (item['lat'] as num?)?.toDouble() ?? 0,
+      lng: (item['lng'] as num?)?.toDouble() ?? 0,
+      imageUrl: images.isNotEmpty ? images.first.toString() : '',
+      transportInfo: ((item['transit'] as Map?)?['text'] ?? '').toString(),
+      recommendedDuration: item['duration']?.toString() ?? '',
+      aiHighlight: item['tag']?.toString() ?? '',
+    );
+  }
+
+  void _syncMapWithVisibleTimelineItem() {
+    if (_mapSource != _MapSource.amap || _timelineItemByKey.isEmpty) return;
+    Map<String, dynamic>? target;
+    double bestDistance = double.infinity;
+    for (final Map<String, dynamic> item in _timelineItemByKey.values) {
+      final BuildContext? itemContext =
+          _timelineItemKeys[_timelineItemKey(item)]?.currentContext;
+      if (itemContext == null) continue;
+      final RenderObject? renderObject = itemContext.findRenderObject();
+      if (renderObject is! RenderBox) continue;
+      final Offset offset = renderObject.localToGlobal(Offset.zero);
+      final double distance =
+          (offset.dy - MediaQuery.of(context).size.height * 0.48).abs();
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        target = item;
+      }
+    }
+    if (target == null) return;
+    final String key = _timelineItemKey(target);
+    if (_focusedTimelineKey == key) return;
+    _focusedTimelineKey = key;
+    final double? lat = (target['lat'] as num?)?.toDouble();
+    final double? lng = (target['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return;
+    _aMapController?.moveCamera(
+      amap.CameraUpdate.newLatLngZoom(amap_base.LatLng(lat, lng), 14),
+    );
   }
 
   Widget _buildTimelineRail({
@@ -2207,7 +3051,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Widget _buildMainCard(Map<String, dynamic> item) {
-    final bool isArrived = item['isArrived'] ?? false;
+    final bool isArrived = _isTimelineItemArrived(item);
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 300),
@@ -2255,7 +3099,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
                       HapticFeedback.mediumImpact();
-                      setState(() => item['isArrived'] = !isArrived);
+                      setState(() {
+                        item['isArrived'] = !isArrived;
+                        _timelineArrivedOverride[_timelineItemKey(item)] =
+                            !isArrived;
+                        _markerCachePlanKey = '__dirty__';
+                      });
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -2275,7 +3124,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           Icon(
-                            isArrived ? Icons.check : Icons.location_on_outlined,
+                            isArrived
+                                ? Icons.check
+                                : Icons.location_on_outlined,
                             size: 12,
                             color: isArrived
                                 ? Colors.green.shade600
@@ -2332,10 +3183,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   Expanded(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: item['images'][0],
-                        height: 80,
-                        fit: BoxFit.cover,
+                      child: _buildSafeNetworkThumb(
+                        item['images'][0].toString(),
                       ),
                     ),
                   ),
@@ -2343,10 +3192,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   Expanded(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: item['images'][1],
-                        height: 80,
-                        fit: BoxFit.cover,
+                      child: _buildSafeNetworkThumb(
+                        item['images'][1].toString(),
                       ),
                     ),
                   ),
@@ -2371,7 +3218,13 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     );
   }
 
-  Widget _buildTransitCard(Map<String, dynamic> transit) {
+  Widget _buildTransitCard({
+    required Map<String, dynamic> transit,
+    required Map<String, dynamic> destination,
+  }) {
+    final double? lat = (destination['lat'] as num?)?.toDouble();
+    final double? lng = (destination['lng'] as num?)?.toDouble();
+    final String name = destination['title']?.toString() ?? '目的地';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -2429,18 +3282,32 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   const SizedBox(width: 12),
                   Container(width: 1, height: 12, color: Colors.grey.shade300),
                   const SizedBox(width: 12),
-                  const Icon(
-                    Icons.map_outlined,
-                    size: 14,
-                    color: Colors.indigo,
-                  ),
-                  const SizedBox(width: 4),
-                  const Text(
-                    "路线",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.indigo,
-                      fontWeight: FontWeight.bold,
+                  InkWell(
+                    onTap: (lat != null && lng != null)
+                        ? () => _launchNavigationTo(
+                            lat: lat,
+                            lng: lng,
+                            name: name,
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Row(
+                      children: const <Widget>[
+                        Icon(
+                          Icons.map_outlined,
+                          size: 14,
+                          color: Colors.indigo,
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          "路线",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.indigo,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -2466,6 +3333,33 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     await launchUrl(googleUri, mode: LaunchMode.externalApplication);
   }
 
+  Future<void> _launchNavigationTo({
+    required double lat,
+    required double lng,
+    required String name,
+  }) async {
+    final Uri amapUri = Uri.parse(
+      'androidamap://navi?sourceApplication=GoNow&lat=$lat&lon=$lng&dev=0&style=2',
+    );
+    final Uri appleMapUri = Uri.parse(
+      'http://maps.apple.com/?daddr=$lat,$lng&dirflg=d',
+    );
+    final Uri webUri = Uri.parse(
+      'https://uri.amap.com/navigation?to=$lng,$lat,${Uri.encodeComponent(name)}&mode=car',
+    );
+    try {
+      if (await canLaunchUrl(amapUri)) {
+        await launchUrl(amapUri, mode: LaunchMode.externalApplication);
+      } else if (await canLaunchUrl(appleMapUri)) {
+        await launchUrl(appleMapUri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('导航拉起失败: $e');
+    }
+  }
+
   ActivityItem? _nextPendingActivity(ItineraryModel model) {
     for (final DayPlan d in model.days) {
       for (final ActivityItem a in d.activities) {
@@ -2474,6 +3368,20 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     }
     return null;
   }
+}
+
+class _RouteFetchResult {
+  const _RouteFetchResult({
+    required this.points,
+    this.distanceMeters = 0,
+    this.durationSeconds = 0,
+    this.routeMode = '',
+  });
+
+  final List<amap_base.LatLng> points;
+  final int distanceMeters;
+  final int durationSeconds;
+  final String routeMode;
 }
 
 class _VisibleActivity {
@@ -2542,41 +3450,45 @@ class _SafeTravelImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const String fallbackUrl =
-        'https://images.unsplash.com/photo-1488085061387-422e29b40080?auto=format&fit=crop&w=1200&q=80';
+    final String imgUrl = imageUrl.trim();
+    final Uri? uri = Uri.tryParse(imgUrl);
+    final bool hasValidHttpHost =
+        uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+    if (!hasValidHttpHost) {
+      return _buildImageFallback();
+    }
     return CachedNetworkImage(
-      imageUrl: imageUrl.trim().isEmpty ? fallbackUrl : imageUrl,
+      imageUrl: imgUrl,
       fit: BoxFit.cover,
       placeholder: (BuildContext context, String url) =>
           Container(color: const Color(0xFFE7EDF8)),
       errorWidget: (BuildContext context, String url, Object error) =>
-          CachedNetworkImage(
-            imageUrl: fallbackUrl,
-            fit: BoxFit.cover,
-            placeholder: (BuildContext context, String url) =>
-                Container(color: const Color(0xFFE7EDF8)),
-            errorWidget: (BuildContext context, String url, Object error) =>
-                Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[Color(0xFF0A2A57), Color(0xFF1E4B88)],
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    cityWatermark.isEmpty ? 'TRAVEL' : cityWatermark,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-          ),
+          _buildImageFallback(),
+    );
+  }
+
+  Widget _buildImageFallback() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFF0A2A57), Color(0xFF1E4B88)],
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        cityWatermark.isEmpty ? 'TRAVEL' : cityWatermark,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 26,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
     );
   }
 }
