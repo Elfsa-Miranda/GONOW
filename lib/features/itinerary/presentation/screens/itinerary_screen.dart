@@ -29,7 +29,7 @@ class ItineraryScreen extends StatefulWidget {
 
 class _ItineraryScreenState extends State<ItineraryScreen>
     with SingleTickerProviderStateMixin {
-  _MapSource _mapSource = _MapSource.amap;
+  final _MapSource _mapSource = _MapSource.amap;
   Position? _currentPosition;
   StreamSubscription<Position>? _positionSub;
   final ScrollController _scrollController = ScrollController();
@@ -41,6 +41,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   ActivityItem? _selectedActivity;
   bool _isMapLoading = true;
   String _markerCachePlanKey = '__pending__';
+  bool _isMapCollapsed = false;
+  bool _allowAutoFitOnMapCreate = true;
   String? _focusedTimelineKey;
   late final List<Map<String, dynamic>> _mockTimeline;
   final Map<String, bool> _timelineArrivedOverride = <String, bool>{};
@@ -302,6 +304,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
         final TripState state = provider.getTripState();
         final List<_DayRoute> dayRoutes = _buildDayRoutes(model);
+        final double mapViewportHeight = MediaQuery.of(context).size.height * 0.3;
         if (_selectedDayIndex > dayRoutes.length) {
           _selectedDayIndex = 0;
         }
@@ -309,44 +312,154 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
         return Scaffold(
           backgroundColor: Colors.white,
-          // NestedScrollView 将地图固定在 header SliverArea；
-          // 当用户点击地图 Marker 触发列表跳转时，只有 body 内的列表
-          // 发生内部滚动，地图 header 不受影响，彻底消灭"地图被顶飞"Bug。
-          body: NestedScrollView(
-            controller: _scrollController,
-            headerSliverBuilder: (BuildContext ctx, bool innerBoxIsScrolled) =>
-                <Widget>[
-                  SliverToBoxAdapter(
-                    child: _buildMapSection(
-                      model: model,
-                      state: state,
-                      dayRoutes: dayRoutes,
+          // 分屏结构：地图固定可见，列表独立滚动，避免跳转时地图被顶出视野。
+          body: Column(
+            children: <Widget>[
+              Container(
+                color: Colors.white,
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  MediaQuery.of(context).padding.top + 10,
+                  16,
+                  10,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            model.title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              height: 1.4,
+                              color: Colors.grey.shade900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            state == TripState.preparing ? '预算三千版 · 行前准备' : '预算三千版 · 行中伴游',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-            body: NotificationListener<ScrollUpdateNotification>(
-              // 用事件通知代替 addListener，驱动"列表滚→地图动镜"
-              onNotification: (ScrollUpdateNotification _) {
-                _syncMapWithVisibleTimelineItem();
-                return false;
-              },
-              child: CustomScrollView(
-                slivers: <Widget>[
-                  if (state == TripState.preparing)
-                    ..._buildPreparingSlivers(model, provider, dayRoutes)
-                  else
-                    ..._buildTravelingSlivers(model, provider, dayRoutes),
-                  const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
-                ],
+                    const SizedBox(width: 12),
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _isMapCollapsed = !_isMapCollapsed;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.shade50,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.indigo.shade100),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              _isMapCollapsed
+                                  ? Icons.map_outlined
+                                  : Icons.unfold_less_rounded,
+                              size: 16,
+                              color: Colors.indigo.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _isMapCollapsed ? '展开地图' : '收起地图',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.indigo.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              Expanded(
+                child: NotificationListener<ScrollUpdateNotification>(
+                  onNotification: (ScrollUpdateNotification _) {
+                    _syncMapWithVisibleTimelineItem();
+                    return false;
+                  },
+                  child: CustomScrollView(
+                    controller: _scrollController,
+                    slivers: <Widget>[
+                      SliverToBoxAdapter(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          height: _isMapCollapsed
+                              ? 0.0
+                              : mapViewportHeight,
+                          margin: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: _isMapCollapsed ? 0 : 12,
+                          ),
+                          clipBehavior: Clip.hardEdge,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: SizedBox(
+                              height: mapViewportHeight,
+                              child: _buildMapOnlyWidget(
+                                model: model,
+                                state: state,
+                                dayRoutes: dayRoutes,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          child: _buildDayTabBar(
+                            model: model,
+                            state: state,
+                            dayRoutes: dayRoutes,
+                          ),
+                        ),
+                      ),
+                      if (state == TripState.preparing)
+                        ..._buildPreparingSlivers(model, provider, dayRoutes)
+                      else
+                        ..._buildTravelingSlivers(model, provider, dayRoutes),
+                      const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _buildMapSection({
+  Widget _buildMapOnlyWidget({
     required ItineraryModel model,
     required TripState state,
     required List<_DayRoute> dayRoutes,
@@ -356,111 +469,130 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
         .toList(growable: false);
     final ActivityItem? next = _nextPendingActivity(model);
-    final Color selectedTabColor = _selectedDayIndex == 0
-        ? Colors.black87
-        : dayRoutes[_selectedDayIndex - 1].themeColor;
-
-    final Widget map = _isMapLoading
+    return _isMapLoading
         ? Container(
             color: const Color(0xFFF4F6FB),
             alignment: Alignment.center,
             child: const CircularProgressIndicator(strokeWidth: 2.4),
           )
-        : (_mapSource == _MapSource.amap
-              ? _buildAmap(
+        : (_mapSource == _MapSource.google
+              ? _buildGoogleMap(
                   model: model,
                   state: state,
                   dayRoutes: dayRoutes,
                   allActivities: allActivities,
                   next: next,
                 )
-              : _buildGoogleMap(
+              : _buildAmap(
                   model: model,
                   state: state,
                   dayRoutes: dayRoutes,
                   allActivities: allActivities,
                   next: next,
                 ));
+  }
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        children: <Widget>[
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    '${model.title} · ${state == TripState.preparing ? "行前准备" : "行中伴游"}',
-                    style: TextStyle(
-                      color: Colors.grey.shade800,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
+  Widget _buildDayTabBar({
+    required ItineraryModel model,
+    required TripState state,
+    required List<_DayRoute> dayRoutes,
+  }) {
+    if (state == TripState.preparing) {
+      final int count = dayRoutes.length;
+      final int selected = _selectedDayIndex > count ? 0 : _selectedDayIndex;
+      final Color selectedColor = selected == 0
+          ? Colors.black87
+          : dayRoutes[selected - 1].themeColor;
+      return Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          itemCount: count + 1,
+          itemBuilder: (BuildContext context, int index) {
+            final bool isSelected = selected == index;
+            final String label = index == 0 ? '全览' : 'Day $index';
+            return GestureDetector(
+              onTap: () => _selectDayFilter(index, dayRoutes: dayRoutes),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected ? selectedColor : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected
+                        ? Colors.transparent
+                        : Colors.grey.shade200,
                   ),
                 ),
-                DropdownButton<_MapSource>(
-                  value: _mapSource,
-                  underline: const SizedBox.shrink(),
-                  items: const <DropdownMenuItem<_MapSource>>[
-                    DropdownMenuItem(
-                      value: _MapSource.amap,
-                      child: Text('高德地图'),
-                    ),
-                    DropdownMenuItem(
-                      value: _MapSource.google,
-                      child: Text('Google Maps'),
-                    ),
-                  ],
-                  onChanged: (_MapSource? value) {
-                    if (value == null) return;
-                    setState(() => _mapSource = value);
-                    _focusSelectedRoute(dayRoutes);
-                  },
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 260, child: map),
-          if (state == TripState.preparing)
-            Container(
-              color: Colors.white,
-              child: DefaultTabController(
-                key: ValueKey<String>(
-                  'prepare-tabs-${_selectedDayIndex}_${dayRoutes.length}',
-                ),
-                initialIndex: _selectedDayIndex,
-                length: dayRoutes.length + 1,
-                child: TabBar(
-                  isScrollable: true,
-                  labelColor: selectedTabColor,
-                  indicatorColor: selectedTabColor,
-                  unselectedLabelColor: Colors.grey.shade600,
-                  onTap: (int index) {
-                    _selectDayFilter(index, dayRoutes: dayRoutes);
-                  },
-                  tabs: <Widget>[
-                    const Tab(text: '全览'),
-                    for (int i = 0; i < dayRoutes.length; i++)
-                      Tab(text: '第${i + 1}天'),
-                  ],
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey.shade600,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
               ),
-            ),
-        ],
+            );
+          },
+        ),
+      );
+    }
+    final List<Map<String, dynamic>> timelineData = _buildTravelingTimelineData(
+      model,
+    );
+    final int maxDay = timelineData.fold<int>(0, (
+      int previous,
+      Map<String, dynamic> item,
+    ) {
+      final int day = (item['day'] as num?)?.toInt() ?? 1;
+      return day > previous ? day : previous;
+    });
+    final int selected = _selectedDayIndex > maxDay ? 0 : _selectedDayIndex;
+    final Color selectedDayColor = _getRouteColor(selected);
+    return KeyedSubtree(
+      key: _timelineListTopKey,
+      child: SizedBox(
+        height: 44,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: maxDay + 1,
+          itemBuilder: (BuildContext context, int index) {
+            final bool isSelected = selected == index;
+            final String label = index == 0 ? '全览' : 'Day $index';
+            return GestureDetector(
+              onTap: () => _selectDayFilter(index, dayRoutes: dayRoutes),
+              child: Container(
+                margin: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected ? selectedDayColor : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isSelected
+                        ? Colors.transparent
+                        : Colors.grey.shade200,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey.shade600,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -479,25 +611,26 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     if (state == TripState.traveling) {
       final List<Map<String, dynamic>> points = _timelineMapItems(model, state);
       for (int i = 0; i < points.length; i++) {
-        final Map<String, dynamic> point = points[i];
-        final String timelineKey = _timelineItemKey(point);
+        final Map<String, dynamic> currentActivity = points[i];
+        final int currentActIdx = i;
+        final String timelineKey = _timelineItemKey(currentActivity);
         final String cacheKey =
-            '${timelineKey}_${_isTimelineItemArrived(point) ? 'arrived' : 'active'}';
+            '${timelineKey}_${_isTimelineItemArrived(currentActivity) ? 'arrived' : 'active'}';
         final gmap.BitmapDescriptor? customIcon = _googleMarkerCache[cacheKey];
         if (customIcon == null) continue;
         markers.add(
           gmap.Marker(
             markerId: gmap.MarkerId(cacheKey),
             position: gmap.LatLng(
-              (point['lat'] as num).toDouble(),
-              (point['lng'] as num).toDouble(),
+              (currentActivity['lat'] as num).toDouble(),
+              (currentActivity['lng'] as num).toDouble(),
             ),
             icon: customIcon,
             infoWindow: gmap.InfoWindow(
-              title: point['title'] as String? ?? '',
-              snippet: point['duration'] as String? ?? '',
+              title: currentActivity['title'] as String? ?? '',
+              snippet: currentActivity['duration'] as String? ?? '',
             ),
-            onTap: () => _focusTimelineMapItem(point, i),
+            onTap: () => _focusTimelineMapItem(currentActivity, currentActIdx),
           ),
         );
       }
@@ -543,7 +676,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           initialCameraPosition: gmap.CameraPosition(target: center, zoom: 12),
           onMapCreated: (gmap.GoogleMapController c) {
             _googleController = c;
-            if (state == TripState.preparing) {
+            if (_allowAutoFitOnMapCreate) {
+              _allowAutoFitOnMapCreate = false;
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 _focusSelectedRoute(dayRoutes);
               });
@@ -646,21 +780,23 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     if (state == TripState.traveling) {
       final List<Map<String, dynamic>> points = _timelineMapItems(model, state);
       for (int i = 0; i < points.length; i++) {
-        final Map<String, dynamic> point = points[i];
-        final String timelineKey = _timelineItemKey(point);
+        final Map<String, dynamic> currentActivity = points[i];
+        final int currentActIdx = i;
+        final String timelineKey = _timelineItemKey(currentActivity);
         final String cacheKey =
-            '${timelineKey}_${_isTimelineItemArrived(point) ? 'arrived' : 'active'}';
+            '${timelineKey}_${_isTimelineItemArrived(currentActivity) ? 'arrived' : 'active'}';
         final amap.BitmapDescriptor? customIcon = _amapMarkerCache[cacheKey];
         if (customIcon == null) continue;
         markers.add(
           amap.Marker(
             position: amap_base.LatLng(
-              (point['lat'] as num).toDouble(),
-              (point['lng'] as num).toDouble(),
+              (currentActivity['lat'] as num).toDouble(),
+              (currentActivity['lng'] as num).toDouble(),
             ),
             icon: customIcon,
             infoWindowEnable: false,
-            onTap: (String markerId) => _focusTimelineMapItem(point, i),
+            onTap: (String markerId) =>
+                _focusTimelineMapItem(currentActivity, currentActIdx),
           ),
         );
       }
@@ -719,7 +855,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           initialCameraPosition: amap.CameraPosition(target: center, zoom: 12),
           onMapCreated: (amap.AMapController c) {
             _aMapController = c;
-            if (state == TripState.preparing) {
+            if (_allowAutoFitOnMapCreate) {
+              _allowAutoFitOnMapCreate = false;
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 _focusSelectedRoute(dayRoutes);
               });
@@ -1012,7 +1149,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       model,
     )) {
       buffer.write(
-        't:${_timelineItemKey(item)}:${item['day']}:${item['lat']},${item['lng']}:${_isTimelineItemArrived(item)}|',
+        't:${_timelineItemKey(item)}:${item['day']}:${item['lat']},${item['lng']}|',
       );
     }
     return buffer.toString();
@@ -1217,6 +1354,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       _selectedDayIndex = index;
       _selectedActivity = null;
       _focusedTimelineKey = null;
+      _allowAutoFitOnMapCreate = false;
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2029,6 +2167,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder:
@@ -2073,15 +2212,22 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   padding: EdgeInsets.only(
                     bottom: MediaQuery.of(context).viewInsets.bottom,
                   ),
-                  child: SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.78,
-                    child: Container(
+                  child: Container(
+                    height: MediaQuery.of(context).size.height * 0.75,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
                       color: Colors.grey.shade50,
-                      child: SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                          child: Column(
-                            children: <Widget>[
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(28),
+                        topRight: Radius.circular(28),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                        child: Column(
+                          children: <Widget>[
                               Container(
                                 width: 40,
                                 height: 4,
@@ -2382,8 +2528,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
                         ),
                       ),
                     ),
@@ -2543,58 +2688,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                     item['day'] == effectiveSelectedDay,
               )
               .toList(growable: false);
-    final Color selectedDayColor = _getRouteColor(effectiveSelectedDay);
     return <Widget>[
-      SliverToBoxAdapter(
-        child: KeyedSubtree(
-          key: _timelineListTopKey,
-          child: Container(
-            height: 44,
-            margin: const EdgeInsets.only(bottom: 16, top: 8),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: maxDay + 1,
-              itemBuilder: (BuildContext context, int index) {
-                final bool isSelected = effectiveSelectedDay == index;
-                final String label = index == 0 ? "全览" : "Day $index";
-                return GestureDetector(
-                  onTap: () => _selectDayFilter(index, dayRoutes: dayRoutes),
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 10),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? selectedDayColor
-                          : Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: isSelected
-                            ? Colors.transparent
-                            : Colors.grey.shade200,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.grey.shade600,
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
       SliverList(
         delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
           final Map<String, dynamic> item = filteredTimeline[index];
@@ -2950,15 +3044,18 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     _googleController?.animateCamera(
       gmap.CameraUpdate.newLatLngZoom(gmap.LatLng(lat, lng), 14),
     );
-    final BuildContext? context = _timelineItemGlobalKey(item).currentContext;
-    if (context != null) {
-      await Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeOutCubic,
-        alignment: 0.35,
-      );
-    }
+    await _scrollToActivity(item);
+  }
+
+  Future<void> _scrollToActivity(Map<String, dynamic> activity) async {
+    final BuildContext? itemContext = _timelineItemGlobalKey(activity).currentContext;
+    if (itemContext == null) return;
+    await Scrollable.ensureVisible(
+      itemContext,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
   }
 
   ActivityItem _activityFromTimelineItem(Map<String, dynamic> item) {
@@ -3103,7 +3200,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                         item['isArrived'] = !isArrived;
                         _timelineArrivedOverride[_timelineItemKey(item)] =
                             !isArrived;
-                        _markerCachePlanKey = '__dirty__';
                       });
                     },
                     child: Container(
@@ -3471,22 +3567,16 @@ class _SafeTravelImage extends StatelessWidget {
 
   Widget _buildImageFallback() {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFF0A2A57), Color(0xFF1E4B88)],
-        ),
-      ),
+      color: const Color(0xFFE7EDF8),
       alignment: Alignment.center,
       child: Text(
         cityWatermark.isEmpty ? 'TRAVEL' : cityWatermark,
         textAlign: TextAlign.center,
         style: const TextStyle(
-          color: Colors.white70,
-          fontSize: 26,
+          color: Color(0xFF64748B),
+          fontSize: 22,
           fontWeight: FontWeight.bold,
-          letterSpacing: 1.5,
+          letterSpacing: 1.2,
         ),
       ),
     );
