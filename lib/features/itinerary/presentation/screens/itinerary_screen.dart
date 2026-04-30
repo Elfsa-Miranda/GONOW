@@ -304,7 +304,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
         final TripState state = provider.getTripState();
         final List<_DayRoute> dayRoutes = _buildDayRoutes(model);
-        final double mapViewportHeight = MediaQuery.of(context).size.height * 0.3;
         if (_selectedDayIndex > dayRoutes.length) {
           _selectedDayIndex = 0;
         }
@@ -395,6 +394,41 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   ],
                 ),
               ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                height: _isMapCollapsed
+                    ? 0.0
+                    : MediaQuery.of(context).size.height * 0.3,
+                margin: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: _isMapCollapsed ? 0 : 12,
+                ),
+                clipBehavior: Clip.hardEdge,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.3,
+                    child: _buildMapOnlyWidget(
+                      model: model,
+                      state: state,
+                      dayRoutes: dayRoutes,
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: _buildDayTabBar(
+                  model: model,
+                  state: state,
+                  dayRoutes: dayRoutes,
+                ),
+              ),
               Expanded(
                 child: NotificationListener<ScrollUpdateNotification>(
                   onNotification: (ScrollUpdateNotification _) {
@@ -404,45 +438,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   child: CustomScrollView(
                     controller: _scrollController,
                     slivers: <Widget>[
-                      SliverToBoxAdapter(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          height: _isMapCollapsed
-                              ? 0.0
-                              : mapViewportHeight,
-                          margin: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: _isMapCollapsed ? 0 : 12,
-                          ),
-                          clipBehavior: Clip.hardEdge,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: SingleChildScrollView(
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: SizedBox(
-                              height: mapViewportHeight,
-                              child: _buildMapOnlyWidget(
-                                model: model,
-                                state: state,
-                                dayRoutes: dayRoutes,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                          child: _buildDayTabBar(
-                            model: model,
-                            state: state,
-                            dayRoutes: dayRoutes,
-                          ),
-                        ),
-                      ),
                       if (state == TripState.preparing)
                         ..._buildPreparingSlivers(model, provider, dayRoutes)
                       else
@@ -1349,6 +1344,62 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     await _focusPoints(target);
   }
 
+  List<amap_base.LatLng> _pointsForSelectedDay(List<_DayRoute> routes) {
+    if (routes.isEmpty) return <amap_base.LatLng>[];
+    final Iterable<ActivityItem> target = _selectedDayIndex == 0
+        ? routes.expand((_DayRoute route) => route.activities)
+        : routes[_selectedDayIndex - 1].activities;
+    return target
+        .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
+        .map((ActivityItem a) => amap_base.LatLng(a.lat, a.lng))
+        .toList(growable: false);
+  }
+
+  void _fitMapToBounds(List<amap_base.LatLng> points) {
+    if (points.isEmpty) return;
+    if (points.length == 1) {
+      final amap_base.LatLng p = points.first;
+      _googleController?.animateCamera(
+        gmap.CameraUpdate.newLatLngZoom(gmap.LatLng(p.latitude, p.longitude), 14),
+      );
+      _aMapController?.moveCamera(
+        amap.CameraUpdate.newLatLngZoom(
+          amap_base.LatLng(p.latitude, p.longitude),
+          14,
+        ),
+      );
+      return;
+    }
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+    for (final amap_base.LatLng p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    _googleController?.animateCamera(
+      gmap.CameraUpdate.newLatLngBounds(
+        gmap.LatLngBounds(
+          southwest: gmap.LatLng(minLat, minLng),
+          northeast: gmap.LatLng(maxLat, maxLng),
+        ),
+        50,
+      ),
+    );
+    _aMapController?.moveCamera(
+      amap.CameraUpdate.newLatLngBounds(
+        amap_base.LatLngBounds(
+          southwest: amap_base.LatLng(minLat, minLng),
+          northeast: amap_base.LatLng(maxLat, maxLng),
+        ),
+        50,
+      ),
+    );
+  }
+
   void _selectDayFilter(int index, {required List<_DayRoute> dayRoutes}) {
     setState(() {
       _selectedDayIndex = index;
@@ -1359,16 +1410,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _focusSelectedRoute(dayRoutes);
-      final BuildContext? topContext = _timelineListTopKey.currentContext;
-      if (topContext != null) {
-        Scrollable.ensureVisible(
-          topContext,
-          duration: const Duration(milliseconds: 260),
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 320),
           curve: Curves.easeOutCubic,
-          alignment: 0,
         );
       }
+      _fitMapToBounds(_pointsForSelectedDay(dayRoutes));
     });
   }
 
