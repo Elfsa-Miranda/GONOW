@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:amap_flutter_base/amap_flutter_base.dart' as amap_base;
@@ -41,8 +40,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       <String, gmap.BitmapDescriptor>{};
   final Map<String, amap.BitmapDescriptor> _amapMarkerCache =
       <String, amap.BitmapDescriptor>{};
-  final Map<String, amap.BitmapDescriptor> _amapDirectionCache =
-      <String, amap.BitmapDescriptor>{};
+  final Map<int, amap.BitmapDescriptor> _amapRouteTextureCache =
+      <int, amap.BitmapDescriptor>{};
 
   @override
   void initState() {
@@ -438,35 +437,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         ),
       );
     }
-    if (state == TripState.preparing) {
-      for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
-        if (_selectedDayIndex != 0 && _selectedDayIndex != dayIndex + 1) {
-          continue;
-        }
-        final List<ActivityItem> activities = dayRoutes[dayIndex].activities;
-        if (activities.length < 2) continue;
-        for (int i = 0; i < activities.length - 1; i++) {
-          final ActivityItem from = activities[i];
-          final ActivityItem to = activities[i + 1];
-          final String cacheKey = 'd${dayIndex + 1}_${i + 1}_${i + 2}';
-          final amap.BitmapDescriptor? icon = _amapDirectionCache[cacheKey];
-          if (icon == null) continue;
-          final amap_base.LatLng midpoint = _calculateMidpointAmap(
-            amap_base.LatLng(from.lat, from.lng),
-            amap_base.LatLng(to.lat, to.lng),
-          );
-          markers.add(
-            amap.Marker(
-              position: midpoint,
-              icon: icon,
-              anchor: const Offset(0.5, 0.5),
-              zIndex: 10,
-            ),
-          );
-        }
-      }
-    }
-
     final Set<amap.Polyline> polylines = _buildAmapPolylines(
       dayRoutes: dayRoutes,
       state: state,
@@ -541,6 +511,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         }
         final _DayRoute route = dayRoutes[dayIndex];
         if (route.activities.length < 2) continue;
+        final bool isSpecificDaySelected =
+            _selectedDayIndex != 0 && _selectedDayIndex == dayIndex + 1;
         final List<amap_base.LatLng> points = route.activities
             .map((ActivityItem a) => amap_base.LatLng(a.lat, a.lng))
             .toList(growable: false);
@@ -548,7 +520,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           amap.Polyline(points: points, color: Colors.white, width: 10),
         );
         lines.add(
-          amap.Polyline(points: points, color: route.themeColor, width: 6),
+          amap.Polyline(
+            points: points,
+            color: route.themeColor,
+            width: isSpecificDaySelected ? 10 : 6,
+            customTexture: isSpecificDaySelected
+                ? _amapRouteTextureCache[dayIndex]
+                : null,
+          ),
         );
       }
     } else if (next != null && _currentPosition != null) {
@@ -613,7 +592,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   String _buildMarkerPlanKey(List<_DayRoute> dayRoutes) {
     final StringBuffer buffer = StringBuffer();
-    buffer.write('sd$_selectedDayIndex;');
     for (int d = 0; d < dayRoutes.length; d++) {
       final _DayRoute route = dayRoutes[d];
       buffer.write(
@@ -641,7 +619,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       _isMapLoading = true;
       _googleMarkerCache.clear();
       _amapMarkerCache.clear();
-      _amapDirectionCache.clear();
+      _amapRouteTextureCache.clear();
     });
     final List<_VisibleActivity> allVisible = _collectVisibleActivities(
       dayRoutes,
@@ -660,37 +638,23 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         // ignore failed marker icon and continue
       }
     }
-    final List<Future<void>> arrowFutures = <Future<void>>[];
-    if (_selectedDayIndex != 0) {
-      for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
-        if (_selectedDayIndex != dayIndex + 1) continue;
-        final _DayRoute route = dayRoutes[dayIndex];
-        if (route.activities.length < 2) continue;
-        for (int i = 0; i < route.activities.length - 1; i++) {
-          final ActivityItem from = route.activities[i];
-          final ActivityItem to = route.activities[i + 1];
-          final String cacheKey = 'd${dayIndex + 1}_${i + 1}_${i + 2}';
-          final amap_base.LatLng start = amap_base.LatLng(from.lat, from.lng);
-          final amap_base.LatLng end = amap_base.LatLng(to.lat, to.lng);
-          final double bearing = _calculateBearingAmap(start, end);
-          arrowFutures.add(() async {
-            try {
-              final Uint8List bytes = await _createArrowMarkerBytes(
-                bearing,
-                route.themeColor,
-              );
-              if (!mounted) return;
-              _amapDirectionCache[cacheKey] = amap.BitmapDescriptor.fromBytes(
-                bytes,
-              );
-            } catch (_) {
-              // ignore failed arrow generation for single segment
-            }
-          }());
+    final List<Future<void>> textureFutures = <Future<void>>[];
+    for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
+      final _DayRoute route = dayRoutes[dayIndex];
+      if (route.activities.length < 2) continue;
+      textureFutures.add(() async {
+        try {
+          final amap.BitmapDescriptor texture = await _createRouteTextureBytes(
+            route.themeColor,
+          );
+          if (!mounted) return;
+          _amapRouteTextureCache[dayIndex] = texture;
+        } catch (_) {
+          // ignore failed texture generation for single day
         }
-      }
+      }());
     }
-    await Future.wait(arrowFutures);
+    await Future.wait(textureFutures);
     if (!mounted) return;
     setState(() {
       _isMapLoading = false;
@@ -736,68 +700,43 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     return data!.buffer.asUint8List();
   }
 
-  amap_base.LatLng _calculateMidpointAmap(
-    amap_base.LatLng p1,
-    amap_base.LatLng p2,
-  ) {
-    return amap_base.LatLng(
-      (p1.latitude + p2.latitude) / 2,
-      (p1.longitude + p2.longitude) / 2,
-    );
-  }
-
-  double _calculateBearingAmap(amap_base.LatLng start, amap_base.LatLng end) {
-    final double lat1 = start.latitude * math.pi / 180.0;
-    final double lon1 = start.longitude * math.pi / 180.0;
-    final double lat2 = end.latitude * math.pi / 180.0;
-    final double lon2 = end.longitude * math.pi / 180.0;
-    final double dLon = lon2 - lon1;
-    final double y = math.sin(dLon) * math.cos(lat2);
-    final double x =
-        math.cos(lat1) * math.sin(lat2) -
-        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
-    final double brng = math.atan2(y, x);
-    return (brng * 180.0 / math.pi + 360.0) % 360.0;
-  }
-
-  Future<Uint8List> _createArrowMarkerBytes(
-    double bearing,
+  Future<amap.BitmapDescriptor> _createRouteTextureBytes(
     Color routeColor,
   ) async {
-    const double size = 48.0;
+    const double width = 32.0;
+    const double height = 128.0;
     final ui.PictureRecorder recorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(recorder);
 
-    canvas.translate(size / 2, size / 2);
-    canvas.rotate(bearing * math.pi / 180.0);
-    canvas.translate(-size / 2, -size / 2);
+    final Paint linePaint = Paint()
+      ..color = routeColor
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(
+      Rect.fromLTWH(width * 0.2, 0, width * 0.6, height),
+      linePaint,
+    );
 
-    final Paint strokePaint = Paint()
-      ..color = routeColor.withValues(alpha: 0.8)
+    final Paint arrowPaint = Paint()
+      ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    final Paint fillPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    final Path path = Path();
-    path.moveTo(size / 2, size * 0.15);
-    path.lineTo(size * 0.85, size * 0.75);
-    path.lineTo(size / 2, size * 0.60);
-    path.lineTo(size * 0.15, size * 0.75);
-    path.close();
 
-    canvas.drawPath(path, strokePaint);
-    canvas.drawPath(path, fillPaint);
+    final Path path = Path();
+    path.moveTo(width * 0.2, height * 0.6);
+    path.lineTo(width * 0.5, height * 0.4);
+    path.lineTo(width * 0.8, height * 0.6);
+    canvas.drawPath(path, arrowPaint);
 
     final ui.Image image = await recorder.endRecording().toImage(
-      size.toInt(),
-      size.toInt(),
+      width.toInt(),
+      height.toInt(),
     );
     final ByteData? byteData = await image.toByteData(
       format: ui.ImageByteFormat.png,
     );
-    return byteData!.buffer.asUint8List();
+    return amap.BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
   }
 
   Future<void> _focusSelectedRoute(List<_DayRoute> routes) async {
