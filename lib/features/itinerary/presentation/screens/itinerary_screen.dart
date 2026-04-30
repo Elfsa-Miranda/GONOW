@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
@@ -35,17 +36,102 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   ActivityItem? _selectedActivity;
   bool _isMapLoading = true;
   String _markerCachePlanKey = '__pending__';
+  late final List<Map<String, dynamic>> _mockTimeline;
 
   final Map<String, gmap.BitmapDescriptor> _googleMarkerCache =
       <String, gmap.BitmapDescriptor>{};
   final Map<String, amap.BitmapDescriptor> _amapMarkerCache =
       <String, amap.BitmapDescriptor>{};
-  final Map<int, amap.BitmapDescriptor> _amapRouteTextureCache =
-      <int, amap.BitmapDescriptor>{};
 
   @override
   void initState() {
     super.initState();
+    _mockTimeline = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'id': 1,
+        'day': 1,
+        'scheduledTime': '07:30',
+        'title': '比雷埃夫斯港',
+        'openTime': '全天开放',
+        'duration': '预计游玩 7.5 小时',
+        'tag': '交通枢纽 · 乘船出海',
+        'images': <String>[
+          'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=400',
+          'https://images.unsplash.com/photo-1517154421773-0529f29ea451?w=400',
+        ],
+        'strategy': '建议提前半小时到达港口换取纸质船票。',
+        'lat': 37.9421,
+        'lng': 23.6465,
+        'isArrived': false,
+        'transit': <String, dynamic>{
+          'mode': 'walk',
+          'text': '步行约10分钟',
+          'distance': '232.2公里',
+        },
+      },
+      <String, dynamic>{
+        'id': 2,
+        'day': 1,
+        'scheduledTime': '15:00',
+        'title': '费拉镇漫步',
+        'openTime': '全天开放',
+        'duration': '预计游玩 3 小时',
+        'tag': '绝美日落 · 悬崖小镇',
+        'images': <String>[
+          'https://images.unsplash.com/photo-1518002171953-a080ee817e1f?w=400',
+          'https://images.unsplash.com/photo-1553603227-2368a5eb7774?w=400',
+        ],
+        'strategy': '沿着悬崖步道走，可以找到很多出片的蓝顶教堂。',
+        'lat': 36.4213,
+        'lng': 25.4298,
+        'isArrived': false,
+        'transit': <String, dynamic>{
+          'mode': 'car',
+          'text': '驾车约26分钟',
+          'distance': '18.4公里',
+        },
+      },
+      <String, dynamic>{
+        'id': 3,
+        'day': 2,
+        'scheduledTime': '09:20',
+        'title': '伊亚观景台',
+        'openTime': '全天开放',
+        'duration': '预计游玩 2.5 小时',
+        'tag': '蓝顶教堂 · 经典机位',
+        'images': <String>[
+          'https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=400',
+          'https://images.unsplash.com/photo-1613395877344-13d4a8e0d49e?w=400',
+        ],
+        'strategy': '建议上午先去高处机位，逆光更柔和，游客也更少。',
+        'lat': 36.4618,
+        'lng': 25.3753,
+        'isArrived': false,
+        'transit': <String, dynamic>{
+          'mode': 'walk',
+          'text': '步行约12分钟',
+          'distance': '760米',
+        },
+      },
+      <String, dynamic>{
+        'id': 4,
+        'day': 2,
+        'scheduledTime': '13:30',
+        'title': '阿莫迪湾午餐',
+        'openTime': '11:00-22:00 开放',
+        'duration': '预计游玩 1.5 小时',
+        'tag': '海湾餐厅 · 慢节奏休闲',
+        'images': <String>[
+          'https://images.unsplash.com/photo-1481833761820-0509d3217039?w=400',
+          'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400',
+        ],
+        'strategy': '建议提前线上订位靠海窗边，餐后可沿海港慢行消食。',
+        'lat': 36.3932,
+        'lng': 25.4615,
+        'isArrived': false,
+        'transit': null,
+      },
+    ];
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1300),
@@ -269,30 +355,53 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     required List<ActivityItem> allActivities,
     required ActivityItem? next,
   }) {
-    final List<_VisibleActivity> visible = _collectVisibleActivities(
-      dayRoutes,
-      state,
-    );
+    final List<_VisibleActivity> visible = state == TripState.traveling
+        ? <_VisibleActivity>[]
+        : _collectVisibleActivities(dayRoutes, state);
     final Set<gmap.Marker> markers = <gmap.Marker>{};
-    for (final _VisibleActivity va in visible) {
-      final gmap.BitmapDescriptor? customIcon = _googleMarkerCache[va.key];
-      if (customIcon == null) continue;
-      markers.add(
-        gmap.Marker(
-          markerId: gmap.MarkerId(va.key),
-          position: gmap.LatLng(va.activity.lat, va.activity.lng),
-          icon: customIcon,
-          infoWindow: gmap.InfoWindow(
-            title: va.activity.title,
-            snippet:
-                '${va.activity.recommendedDuration} · ${va.activity.aiHighlight}',
+    if (state == TripState.traveling) {
+      final List<Map<String, dynamic>> points = _mockTimelineMapPoints();
+      for (int i = 0; i < points.length; i++) {
+        final Map<String, dynamic> point = points[i];
+        final String cacheKey = 'mock_m${i + 1}';
+        final gmap.BitmapDescriptor? customIcon = _googleMarkerCache[cacheKey];
+        if (customIcon == null) continue;
+        markers.add(
+          gmap.Marker(
+            markerId: gmap.MarkerId(cacheKey),
+            position: gmap.LatLng(
+              (point['lat'] as num).toDouble(),
+              (point['lng'] as num).toDouble(),
+            ),
+            icon: customIcon,
+            infoWindow: gmap.InfoWindow(
+              title: point['title'] as String? ?? '',
+              snippet: point['duration'] as String? ?? '',
+            ),
           ),
-          onTap: () {
-            setState(() => _selectedActivity = va.activity);
-            _focusOnActivity(va.activity);
-          },
-        ),
-      );
+        );
+      }
+    } else {
+      for (final _VisibleActivity va in visible) {
+        final gmap.BitmapDescriptor? customIcon = _googleMarkerCache[va.key];
+        if (customIcon == null) continue;
+        markers.add(
+          gmap.Marker(
+            markerId: gmap.MarkerId(va.key),
+            position: gmap.LatLng(va.activity.lat, va.activity.lng),
+            icon: customIcon,
+            infoWindow: gmap.InfoWindow(
+              title: va.activity.title,
+              snippet:
+                  '${va.activity.recommendedDuration} · ${va.activity.aiHighlight}',
+            ),
+            onTap: () {
+              setState(() => _selectedActivity = va.activity);
+              _focusOnActivity(va.activity);
+            },
+          ),
+        );
+      }
     }
 
     final Set<gmap.Polyline> lines = _buildGooglePolylines(
@@ -342,39 +451,33 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     required ActivityItem? next,
   }) {
     final Set<gmap.Polyline> lines = <gmap.Polyline>{};
-    if (state == TripState.preparing && _selectedDayIndex != 0) {
-      for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
-        if (_selectedDayIndex != 0 && _selectedDayIndex != dayIndex + 1) {
-          continue;
-        }
-        final _DayRoute route = dayRoutes[dayIndex];
-        if (route.activities.length < 2) continue;
-        final List<gmap.LatLng> points = route.activities
-            .map((ActivityItem a) => gmap.LatLng(a.lat, a.lng))
-            .toList(growable: false);
-        lines.add(
-          gmap.Polyline(
-            polylineId: gmap.PolylineId('border_$dayIndex'),
-            points: points,
-            color: Colors.white,
-            width: 10,
-            zIndex: 1,
-          ),
-        );
-        lines.add(
-          gmap.Polyline(
-            polylineId: gmap.PolylineId('core_$dayIndex'),
-            points: points,
-            color: route.themeColor,
-            width: 6,
-            zIndex: 2,
-          ),
-        );
-      }
+    final List<gmap.LatLng> points = _orderedGoogleRoutePoints(
+      dayRoutes,
+      state,
+    );
+    if (points.length >= 2) {
+      lines.add(
+        gmap.Polyline(
+          polylineId: const gmap.PolylineId('route_border'),
+          points: points,
+          color: Colors.white,
+          width: 10,
+          zIndex: 1,
+        ),
+      );
+      lines.add(
+        gmap.Polyline(
+          polylineId: const gmap.PolylineId('route_core'),
+          points: points,
+          color: Colors.indigo,
+          width: 6,
+          zIndex: 2,
+        ),
+      );
     } else if (next != null && _currentPosition != null) {
       lines.add(
         gmap.Polyline(
-          polylineId: const gmap.PolylineId('travel_border'),
+          polylineId: const gmap.PolylineId('fallback_border'),
           points: <gmap.LatLng>[
             gmap.LatLng(
               _currentPosition!.latitude,
@@ -389,7 +492,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       );
       lines.add(
         gmap.Polyline(
-          polylineId: const gmap.PolylineId('travel_core'),
+          polylineId: const gmap.PolylineId('fallback_core'),
           points: <gmap.LatLng>[
             gmap.LatLng(
               _currentPosition!.latitude,
@@ -397,7 +500,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             ),
             gmap.LatLng(next.lat, next.lng),
           ],
-          color: Colors.blueAccent,
+          color: Colors.indigo,
           width: 6,
           zIndex: 2,
         ),
@@ -413,29 +516,51 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     required List<ActivityItem> allActivities,
     required ActivityItem? next,
   }) {
-    final List<_VisibleActivity> visible = _collectVisibleActivities(
-      dayRoutes,
-      state,
-    );
+    final List<_VisibleActivity> visible = state == TripState.traveling
+        ? <_VisibleActivity>[]
+        : _collectVisibleActivities(dayRoutes, state);
     final Set<amap.Marker> markers = <amap.Marker>{};
-    for (final _VisibleActivity va in visible) {
-      final amap.BitmapDescriptor? customIcon = _amapMarkerCache[va.key];
-      if (customIcon == null) continue;
-      markers.add(
-        amap.Marker(
-          position: amap_base.LatLng(va.activity.lat, va.activity.lng),
-          icon: customIcon,
-          infoWindow: amap.InfoWindow(
-            title: va.activity.title,
-            snippet:
-                '${va.activity.recommendedDuration} · ${va.activity.aiHighlight}',
+    if (state == TripState.traveling) {
+      final List<Map<String, dynamic>> points = _mockTimelineMapPoints();
+      for (int i = 0; i < points.length; i++) {
+        final Map<String, dynamic> point = points[i];
+        final String cacheKey = 'mock_m${i + 1}';
+        final amap.BitmapDescriptor? customIcon = _amapMarkerCache[cacheKey];
+        if (customIcon == null) continue;
+        markers.add(
+          amap.Marker(
+            position: amap_base.LatLng(
+              (point['lat'] as num).toDouble(),
+              (point['lng'] as num).toDouble(),
+            ),
+            icon: customIcon,
+            infoWindow: amap.InfoWindow(
+              title: point['title'] as String? ?? '',
+              snippet: point['duration'] as String? ?? '',
+            ),
           ),
-          onTap: (String markerId) {
-            setState(() => _selectedActivity = va.activity);
-            _focusOnActivity(va.activity);
-          },
-        ),
-      );
+        );
+      }
+    } else {
+      for (final _VisibleActivity va in visible) {
+        final amap.BitmapDescriptor? customIcon = _amapMarkerCache[va.key];
+        if (customIcon == null) continue;
+        markers.add(
+          amap.Marker(
+            position: amap_base.LatLng(va.activity.lat, va.activity.lng),
+            icon: customIcon,
+            infoWindow: amap.InfoWindow(
+              title: va.activity.title,
+              snippet:
+                  '${va.activity.recommendedDuration} · ${va.activity.aiHighlight}',
+            ),
+            onTap: (String markerId) {
+              setState(() => _selectedActivity = va.activity);
+              _focusOnActivity(va.activity);
+            },
+          ),
+        );
+      }
     }
     final Set<amap.Polyline> polylines = _buildAmapPolylines(
       dayRoutes: dayRoutes,
@@ -504,32 +629,13 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     required ActivityItem? next,
   }) {
     final Set<amap.Polyline> lines = <amap.Polyline>{};
-    if (state == TripState.preparing) {
-      for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
-        if (_selectedDayIndex != 0 && _selectedDayIndex != dayIndex + 1) {
-          continue;
-        }
-        final _DayRoute route = dayRoutes[dayIndex];
-        if (route.activities.length < 2) continue;
-        final bool isSpecificDaySelected =
-            _selectedDayIndex != 0 && _selectedDayIndex == dayIndex + 1;
-        final List<amap_base.LatLng> points = route.activities
-            .map((ActivityItem a) => amap_base.LatLng(a.lat, a.lng))
-            .toList(growable: false);
-        lines.add(
-          amap.Polyline(points: points, color: Colors.white, width: 10),
-        );
-        lines.add(
-          amap.Polyline(
-            points: points,
-            color: route.themeColor,
-            width: isSpecificDaySelected ? 10 : 6,
-            customTexture: isSpecificDaySelected
-                ? _amapRouteTextureCache[dayIndex]
-                : null,
-          ),
-        );
-      }
+    final List<amap_base.LatLng> points = _orderedAmapRoutePoints(
+      dayRoutes,
+      state,
+    );
+    if (points.length >= 2) {
+      lines.add(amap.Polyline(points: points, color: Colors.white, width: 10));
+      lines.add(amap.Polyline(points: points, color: Colors.indigo, width: 6));
     } else if (next != null && _currentPosition != null) {
       lines.add(
         amap.Polyline(
@@ -553,12 +659,66 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             ),
             amap_base.LatLng(next.lat, next.lng),
           ],
-          color: Colors.blueAccent,
+          color: Colors.indigo,
           width: 6,
         ),
       );
     }
     return lines;
+  }
+
+  List<Map<String, dynamic>> _mockTimelineMapPoints() {
+    return _mockTimeline
+        .where((Map<String, dynamic> item) {
+          final double? lat = (item['lat'] as num?)?.toDouble();
+          final double? lng = (item['lng'] as num?)?.toDouble();
+          return lat != null && lng != null;
+        })
+        .toList(growable: false);
+  }
+
+  List<gmap.LatLng> _orderedGoogleRoutePoints(
+    List<_DayRoute> dayRoutes,
+    TripState state,
+  ) {
+    if (state == TripState.traveling) {
+      return _mockTimelineMapPoints()
+          .map(
+            (Map<String, dynamic> item) => gmap.LatLng(
+              (item['lat'] as num).toDouble(),
+              (item['lng'] as num).toDouble(),
+            ),
+          )
+          .toList(growable: false);
+    }
+    final Iterable<ActivityItem> activities = _selectedDayIndex == 0
+        ? dayRoutes.expand((_DayRoute route) => route.activities)
+        : dayRoutes[_selectedDayIndex - 1].activities;
+    return activities
+        .map((ActivityItem a) => gmap.LatLng(a.lat, a.lng))
+        .toList(growable: false);
+  }
+
+  List<amap_base.LatLng> _orderedAmapRoutePoints(
+    List<_DayRoute> dayRoutes,
+    TripState state,
+  ) {
+    if (state == TripState.traveling) {
+      return _mockTimelineMapPoints()
+          .map(
+            (Map<String, dynamic> item) => amap_base.LatLng(
+              (item['lat'] as num).toDouble(),
+              (item['lng'] as num).toDouble(),
+            ),
+          )
+          .toList(growable: false);
+    }
+    final Iterable<ActivityItem> activities = _selectedDayIndex == 0
+        ? dayRoutes.expand((_DayRoute route) => route.activities)
+        : dayRoutes[_selectedDayIndex - 1].activities;
+    return activities
+        .map((ActivityItem a) => amap_base.LatLng(a.lat, a.lng))
+        .toList(growable: false);
   }
 
   List<_VisibleActivity> _collectVisibleActivities(
@@ -619,7 +779,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       _isMapLoading = true;
       _googleMarkerCache.clear();
       _amapMarkerCache.clear();
-      _amapRouteTextureCache.clear();
     });
     final List<_VisibleActivity> allVisible = _collectVisibleActivities(
       dayRoutes,
@@ -627,44 +786,56 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     );
     for (final _VisibleActivity va in allVisible) {
       try {
-        final Uint8List bytes = await _createCustomMarkerBytes(
+        final gmap.BitmapDescriptor googleIcon = await _createNumberedMarker(
+          va.order,
+          va.color,
+        );
+        final Uint8List bytes = await _createNumberedMarkerBytes(
           va.order,
           va.color,
         );
         if (!mounted) return;
-        _googleMarkerCache[va.key] = gmap.BitmapDescriptor.bytes(bytes);
+        _googleMarkerCache[va.key] = googleIcon;
         _amapMarkerCache[va.key] = amap.BitmapDescriptor.fromBytes(bytes);
       } catch (_) {
         // ignore failed marker icon and continue
       }
     }
-    final List<Future<void>> textureFutures = <Future<void>>[];
-    for (int dayIndex = 0; dayIndex < dayRoutes.length; dayIndex++) {
-      final _DayRoute route = dayRoutes[dayIndex];
-      if (route.activities.length < 2) continue;
-      textureFutures.add(() async {
-        try {
-          final amap.BitmapDescriptor texture = await _createRouteTextureBytes(
-            route.themeColor,
-          );
-          if (!mounted) return;
-          _amapRouteTextureCache[dayIndex] = texture;
-        } catch (_) {
-          // ignore failed texture generation for single day
-        }
-      }());
+    for (int i = 0; i < _mockTimeline.length; i++) {
+      final Map<String, dynamic> item = _mockTimeline[i];
+      final double? lat = (item['lat'] as num?)?.toDouble();
+      final double? lng = (item['lng'] as num?)?.toDouble();
+      if (lat == null || lng == null) continue;
+      final String cacheKey = 'mock_m${i + 1}';
+      try {
+        final gmap.BitmapDescriptor googleIcon = await _createNumberedMarker(
+          i + 1,
+          Colors.indigo,
+        );
+        final Uint8List bytes = await _createNumberedMarkerBytes(
+          i + 1,
+          Colors.indigo,
+        );
+        if (!mounted) return;
+        _googleMarkerCache[cacheKey] = googleIcon;
+        _amapMarkerCache[cacheKey] = amap.BitmapDescriptor.fromBytes(bytes);
+      } catch (_) {
+        // ignore failed marker icon and continue
+      }
     }
-    await Future.wait(textureFutures);
     if (!mounted) return;
     setState(() {
       _isMapLoading = false;
     });
   }
 
-  Future<Uint8List> _createCustomMarkerBytes(int number, Color bgColor) async {
+  Future<Uint8List> _createNumberedMarkerBytes(
+    int number,
+    Color bgColor,
+  ) async {
     final ui.PictureRecorder recorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(recorder);
-    const double size = 100;
+    const double size = 80.0;
 
     final Paint borderPaint = Paint()
       ..color = Colors.white
@@ -674,14 +845,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     final Paint bgPaint = Paint()
       ..color = bgColor
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 8, bgPaint);
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 6, bgPaint);
 
     final TextPainter painter = TextPainter(
       textDirection: TextDirection.ltr,
       text: TextSpan(
         text: number.toString(),
         style: const TextStyle(
-          fontSize: 45,
+          fontSize: 36,
           color: Colors.white,
           fontWeight: FontWeight.bold,
         ),
@@ -700,43 +871,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     return data!.buffer.asUint8List();
   }
 
-  Future<amap.BitmapDescriptor> _createRouteTextureBytes(
-    Color routeColor,
+  Future<gmap.BitmapDescriptor> _createNumberedMarker(
+    int number,
+    Color bgColor,
   ) async {
-    const double width = 32.0;
-    const double height = 128.0;
-    final ui.PictureRecorder recorder = ui.PictureRecorder();
-    final Canvas canvas = Canvas(recorder);
-
-    final Paint linePaint = Paint()
-      ..color = routeColor
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(
-      Rect.fromLTWH(width * 0.2, 0, width * 0.6, height),
-      linePaint,
-    );
-
-    final Paint arrowPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final Path path = Path();
-    path.moveTo(width * 0.2, height * 0.6);
-    path.lineTo(width * 0.5, height * 0.4);
-    path.lineTo(width * 0.8, height * 0.6);
-    canvas.drawPath(path, arrowPaint);
-
-    final ui.Image image = await recorder.endRecording().toImage(
-      width.toInt(),
-      height.toInt(),
-    );
-    final ByteData? byteData = await image.toByteData(
-      format: ui.ImageByteFormat.png,
-    );
-    return amap.BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
+    final Uint8List bytes = await _createNumberedMarkerBytes(number, bgColor);
+    return gmap.BitmapDescriptor.bytes(bytes);
   }
 
   Future<void> _focusSelectedRoute(List<_DayRoute> routes) async {
@@ -900,9 +1040,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  activity.aiHighlight.isEmpty
-                      ? 'AI 推荐打卡点'
-                      : activity.aiHighlight,
+                  activity.aiHighlight.isEmpty ? '行程亮点' : activity.aiHighlight,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 10),
@@ -1683,165 +1821,634 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     ItineraryModel model,
     ItineraryProvider provider,
   ) {
-    final List<_TimelineNode> nodes = _flatten(model);
-    final String? currentId = _currentActivityId(model, nodes);
+    final int keep = model.hashCode ^ provider.hashCode;
+    if (keep == -1) {
+      return <Widget>[];
+    }
+    final List<Map<String, dynamic>> timelineData = _buildTravelingTimelineData(
+      model,
+    );
+    final int maxDay = timelineData.fold<int>(0, (
+      int previous,
+      Map<String, dynamic> item,
+    ) {
+      final int day = (item['day'] as num?)?.toInt() ?? 1;
+      return day > previous ? day : previous;
+    });
+    final int effectiveSelectedDay = _selectedDayIndex > maxDay
+        ? 0
+        : _selectedDayIndex;
+    final List<Map<String, dynamic>> filteredTimeline =
+        effectiveSelectedDay == 0
+        ? timelineData
+        : timelineData
+              .where(
+                (Map<String, dynamic> item) =>
+                    item['day'] == effectiveSelectedDay,
+              )
+              .toList(growable: false);
     return <Widget>[
+      SliverToBoxAdapter(
+        child: Container(
+          height: 44,
+          margin: const EdgeInsets.only(bottom: 16, top: 8),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: maxDay + 1,
+            itemBuilder: (BuildContext context, int index) {
+              final bool isSelected = effectiveSelectedDay == index;
+              final String label = index == 0 ? "全览" : "Day $index";
+              return GestureDetector(
+                onTap: () => setState(() => _selectedDayIndex = index),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.indigo.shade600
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: isSelected
+                          ? Colors.transparent
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey.shade600,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
       SliverList(
         delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
-          final _TimelineNode node = nodes[index];
-          final bool arrived = model.arrivedActivityIds.contains(
-            node.activity.id,
-          );
-          final bool isCurrent = node.activity.id == currentId && !arrived;
-          return Column(
-            children: <Widget>[
-              _buildTimelineCard(
-                model: model,
-                node: node,
-                arrived: arrived,
-                isCurrent: isCurrent,
-                onArrived: () => provider.markActivityArrived(node.activity.id),
-              ),
-              if (index < nodes.length - 1)
-                _buildTransportStrip(
-                  nodes[index].activity.transportInfo,
-                  nodes[index + 1].activity,
+          final Map<String, dynamic> item = filteredTimeline[index];
+          final bool isLast = index == filteredTimeline.length - 1;
+          final Map<String, dynamic>? transit =
+              item['transit'] as Map<String, dynamic>?;
+          final int currentDay = (item['day'] as num?)?.toInt() ?? 1;
+          final int? previousDay = index > 0
+              ? (filteredTimeline[index - 1]['day'] as num?)?.toInt()
+              : null;
+          final bool showDayHeader =
+              effectiveSelectedDay == 0 &&
+              (index == 0 || previousDay == null || previousDay != currentDay);
+          return Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (showDayHeader) ...<Widget>[
+                  SizedBox(height: index == 0 ? 2 : 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.indigo.shade50,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Day $currentDay · ${_formatTripDate(model.startDate, currentDay)}',
+                      style: TextStyle(
+                        color: Colors.indigo.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                _buildTimelineItemCard(
+                  item: item,
+                  isFirst: index == 0,
+                  isLast: isLast && transit == null,
+                  dayOrder: _dayOrderAt(filteredTimeline, index),
                 ),
-            ],
+                if (!isLast && transit != null) ...<Widget>[
+                  const SizedBox(height: 2),
+                  _buildTransitCard(transit),
+                ],
+              ],
+            ),
           );
-        }, childCount: nodes.length),
+        }, childCount: filteredTimeline.length),
       ),
     ];
   }
 
-  Widget _buildTimelineCard({
-    required ItineraryModel model,
-    required _TimelineNode node,
-    required bool arrived,
-    required bool isCurrent,
-    required VoidCallback onArrived,
+  String _formatTripDate(DateTime tripStartDate, int dayNumber) {
+    final DateTime date = DateTime(
+      tripStartDate.year,
+      tripStartDate.month,
+      tripStartDate.day,
+    ).add(Duration(days: dayNumber - 1));
+    const List<String> weekdays = <String>[
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+    ];
+    final String weekday = weekdays[date.weekday - 1];
+    return '${date.month}/${date.day} $weekday';
+  }
+
+  List<Map<String, dynamic>> _buildTravelingTimelineData(ItineraryModel model) {
+    final List<dynamic> rawDays =
+        (model.planData['days'] as List<dynamic>?) ??
+        (model.planData['daily_schedules'] as List<dynamic>?) ??
+        <dynamic>[];
+    if (rawDays.isNotEmpty) {
+      final List<Map<String, dynamic>> result = <Map<String, dynamic>>[];
+      for (int dayIndex = 0; dayIndex < rawDays.length; dayIndex++) {
+        final Object? rawDay = rawDays[dayIndex];
+        if (rawDay is! Map) continue;
+        final Map<String, dynamic> day = Map<String, dynamic>.from(rawDay);
+        final int dayNumber =
+            (day['day_index'] as num?)?.toInt() ??
+            (day['day'] as num?)?.toInt() ??
+            dayIndex + 1;
+        final List<dynamic> activities =
+            (day['activities'] as List<dynamic>?) ??
+            (day['items'] as List<dynamic>?) ??
+            <dynamic>[];
+        for (
+          int activityIndex = 0;
+          activityIndex < activities.length;
+          activityIndex++
+        ) {
+          final Object? rawActivity = activities[activityIndex];
+          if (rawActivity is! Map) continue;
+          final Map<String, dynamic> activity = Map<String, dynamic>.from(
+            rawActivity,
+          );
+          final String activityId =
+              (activity['id']?.toString().trim().isNotEmpty ?? false)
+              ? activity['id'].toString()
+              : 'd${dayNumber}_a${activityIndex + 1}';
+          result.add(<String, dynamic>{
+            'id': result.length + 1,
+            'activityId': activityId,
+            'day': dayNumber,
+            'scheduledTime': _stringValue(activity['time'], '09:00'),
+            'title': _stringValue(activity['title'], '未命名活动'),
+            'openTime': _stringValue(
+              activity['openTime'] ?? activity['open_time'],
+              '时间未知',
+            ),
+            'duration': _formatDuration(
+              activity['recommended_duration'] ??
+                  activity['recommendedDuration'],
+            ),
+            'tag': _stringValue(activity['tag'], '行程亮点'),
+            'images': _timelineImages(activity),
+            'strategy': _stringValue(activity['strategy'], ''),
+            'lat': _toNullableDouble(activity['lat'] ?? activity['latitude']),
+            'lng': _toNullableDouble(
+              activity['lng'] ?? activity['lon'] ?? activity['longitude'],
+            ),
+            'isArrived': model.arrivedActivityIds.contains(activityId),
+            'transit': _timelineTransit(activity, activityIndex, activities),
+          });
+        }
+      }
+      if (result.isNotEmpty) return result;
+    }
+
+    if (model.days.isEmpty) return _mockTimeline;
+    final List<Map<String, dynamic>> result = <Map<String, dynamic>>[];
+    for (int dayIndex = 0; dayIndex < model.days.length; dayIndex++) {
+      final DayPlan day = model.days[dayIndex];
+      for (
+        int activityIndex = 0;
+        activityIndex < day.activities.length;
+        activityIndex++
+      ) {
+        final ActivityItem activity = day.activities[activityIndex];
+        result.add(<String, dynamic>{
+          'id': result.length + 1,
+          'activityId': activity.id,
+          'day': dayIndex + 1,
+          'scheduledTime': activity.time,
+          'title': activity.title,
+          'openTime': activity.time.isEmpty ? '时间未知' : '${activity.time} 开放',
+          'duration': _formatDuration(activity.recommendedDuration),
+          'tag': activity.aiHighlight.isEmpty ? '行程亮点' : activity.aiHighlight,
+          'images': <String>[
+            activity.imageUrl,
+            'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400',
+          ],
+          'strategy': activity.aiHighlight,
+          'lat': activity.lat,
+          'lng': activity.lng,
+          'isArrived': model.arrivedActivityIds.contains(activity.id),
+          'transit': activityIndex == day.activities.length - 1
+              ? null
+              : <String, dynamic>{
+                  'mode': _transportModeFromText(activity.transportInfo),
+                  'text': activity.transportInfo,
+                  'distance': '',
+                },
+        });
+      }
+    }
+    return result.isEmpty ? _mockTimeline : result;
+  }
+
+  String _stringValue(Object? value, String fallback) {
+    final String text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _formatDuration(Object? value) {
+    final String text = _stringValue(value, '时长未知');
+    if (text == '时长未知' || text.startsWith('预计游玩')) return text;
+    return '预计游玩 $text';
+  }
+
+  double? _toNullableDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  List<String> _timelineImages(Map<String, dynamic> activity) {
+    final Object? rawImages = activity['images'];
+    if (rawImages is List && rawImages.isNotEmpty) {
+      return rawImages.map((Object? item) => item.toString()).take(2).toList();
+    }
+    final String imageUrl = _stringValue(
+      activity['imageUrl'] ?? activity['image_url'],
+      '',
+    );
+    return <String>[
+      imageUrl,
+      'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400',
+    ];
+  }
+
+  Map<String, dynamic>? _timelineTransit(
+    Map<String, dynamic> activity,
+    int activityIndex,
+    List<dynamic> activities,
+  ) {
+    final Object? rawTransit = activity['transit'];
+    if (rawTransit is Map) return Map<String, dynamic>.from(rawTransit);
+    if (activityIndex == activities.length - 1) return null;
+    final String text = _stringValue(
+      activity['transport_info'] ?? activity['transportInfo'],
+      '步行约10分钟',
+    );
+    return <String, dynamic>{
+      'mode': _transportModeFromText(text),
+      'text': text,
+      'distance': '',
+    };
+  }
+
+  String _transportModeFromText(String transportInfo) {
+    if (transportInfo.contains('打车') ||
+        transportInfo.contains('驾车') ||
+        transportInfo.contains('car')) {
+      return 'car';
+    }
+    return 'walk';
+  }
+
+  Widget _buildTimelineItemCard({
+    required Map<String, dynamic> item,
+    required bool isFirst,
+    required bool isLast,
+    required int dayOrder,
   }) {
-    final ActivityItem activity = node.activity;
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (BuildContext context, Widget? child) {
-        final double pulse = 1 + (_pulseController.value * 0.04);
-        return Transform.scale(
-          scale: isCurrent ? pulse : 1,
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: arrived ? Colors.grey.shade100 : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isCurrent ? Colors.blueAccent : Colors.grey.shade200,
-                width: isCurrent ? 1.6 : 1,
-              ),
-              boxShadow: isCurrent
-                  ? <BoxShadow>[
-                      BoxShadow(
-                        color: Colors.blueAccent.withValues(alpha: 0.25),
-                        blurRadius: 18,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        '${activity.time} · ${activity.title}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: arrived ? Colors.grey : Colors.black87,
-                        ),
-                      ),
-                    ),
-                    if (arrived)
-                      const Chip(label: Text('✅ 已到达'))
-                    else
-                      TextButton(
-                        onPressed: onArrived,
-                        child: const Text('🚩 我已到达'),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 170,
-                  width: double.infinity,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: _SafeTravelImage(
-                      imageUrl: activity.imageUrl,
-                      cityWatermark: model.title,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: <Widget>[
-                    _tag(activity.recommendedDuration),
-                    _tag(activity.aiHighlight),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _buildTimelineRail(
+          isFirst: isFirst,
+          isLast: isLast,
+          dayOrder: dayOrder,
+        ),
+        Expanded(child: _buildMainCard(item)),
+      ],
     );
   }
 
-  Widget _buildTransportStrip(String transportInfo, ActivityItem next) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 2),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F7FF),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
+  int _dayOrderAt(List<Map<String, dynamic>> items, int index) {
+    final int day = (items[index]['day'] as num?)?.toInt() ?? 1;
+    int order = 0;
+    for (int i = 0; i <= index; i++) {
+      final int currentDay = (items[i]['day'] as num?)?.toInt() ?? 1;
+      if (currentDay == day) {
+        order++;
+      }
+    }
+    return order;
+  }
+
+  Widget _buildTimelineRail({
+    required bool isFirst,
+    required bool isLast,
+    required int dayOrder,
+  }) {
+    return SizedBox(
+      width: 34,
+      child: Column(
         children: <Widget>[
-          Expanded(
+          Container(
+            width: 2,
+            height: 16,
+            color: isFirst ? Colors.transparent : const Color(0xFFE2E8F0),
+          ),
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.indigo.shade500,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            alignment: Alignment.center,
             child: Text(
-              '🚗 $transportInfo',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              '$dayOrder',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-          OutlinedButton(
-            onPressed: () => _launchNavigation(next),
-            child: const Text('一键导航'),
+          Container(
+            width: 2,
+            height: isLast ? 22 : 190,
+            color: isLast ? Colors.transparent : const Color(0xFFE2E8F0),
           ),
         ],
       ),
     );
   }
 
-  Widget _tag(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF3FF),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF3E5ED8),
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
+  Widget _buildMainCard(Map<String, dynamic> item) {
+    final bool isArrived = item['isArrived'] ?? false;
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 300),
+      opacity: isArrived ? 0.65 : 1.0,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade100, width: 1.5),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    "${item['scheduledTime']} · ${item['title']}",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.indigo.shade800,
+                    ),
+                    softWrap: true,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TweenAnimationBuilder<double>(
+                  key: ValueKey<bool>(isArrived),
+                  tween: Tween<double>(begin: 0.92, end: 1),
+                  duration: const Duration(milliseconds: 170),
+                  curve: Curves.easeOutBack,
+                  builder: (BuildContext context, double scale, Widget? child) {
+                    return Transform.scale(scale: scale, child: child);
+                  },
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      setState(() => item['isArrived'] = !isArrived);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isArrived ? Colors.green.shade50 : Colors.white,
+                        border: Border.all(
+                          color: isArrived
+                              ? Colors.green.shade200
+                              : Colors.grey.shade300,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(
+                            isArrived ? Icons.check : Icons.location_on_outlined,
+                            size: 12,
+                            color: isArrived
+                                ? Colors.green.shade600
+                                : Colors.grey.shade600,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isArrived ? "已到达" : "标记到达",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isArrived
+                                  ? Colors.green.shade600
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "${item['openTime'] ?? '时间未知'} | ${item['duration'] ?? '时长未知'}",
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (item['tag'] != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  item['tag'],
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.orange.shade700,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (item['images'] != null && (item['images'] as List).length >= 2)
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CachedNetworkImage(
+                        imageUrl: item['images'][0],
+                        height: 80,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CachedNetworkImage(
+                        imageUrl: item['images'][1],
+                        height: 80,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            if (item['strategy'] != null &&
+                item['strategy'].toString().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  item['strategy'],
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTransitCard(Map<String, dynamic> transit) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 34,
+          child: Center(
+            child: Container(
+              width: 2,
+              height: 44,
+              color: const Color(0xFFE2E8F0),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              margin: const EdgeInsets.only(left: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.grey.shade200),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    transit['mode'] == 'car'
+                        ? Icons.directions_car
+                        : Icons.directions_walk,
+                    size: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      "${transit['text']} · ${transit['distance']}",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(width: 1, height: 12, color: Colors.grey.shade300),
+                  const SizedBox(width: 12),
+                  const Icon(
+                    Icons.map_outlined,
+                    size: 14,
+                    color: Colors.indigo,
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    "路线",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.indigo,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1866,58 +2473,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       }
     }
     return null;
-  }
-
-  String? _currentActivityId(ItineraryModel model, List<_TimelineNode> nodes) {
-    if (model.days.isEmpty || nodes.isEmpty) return null;
-    final int targetDay = DateTime.now()
-        .difference(
-          DateTime(
-            model.startDate.year,
-            model.startDate.month,
-            model.startDate.day,
-          ),
-        )
-        .inDays
-        .clamp(0, model.days.length - 1);
-    final List<_TimelineNode> todayNodes = nodes
-        .where((_TimelineNode node) => node.dayIndex == targetDay)
-        .toList(growable: false);
-    final DateTime now = DateTime.now();
-    for (final _TimelineNode node in todayNodes) {
-      if (model.arrivedActivityIds.contains(node.activity.id)) continue;
-      final DateTime? slot = _parseTime(node.activity.time, now);
-      if (slot == null) return node.activity.id;
-      final Duration delta = now.difference(slot).abs();
-      if (delta.inMinutes <= 100) return node.activity.id;
-    }
-    return _nextPendingActivity(model)?.id;
-  }
-
-  DateTime? _parseTime(String raw, DateTime base) {
-    final List<String> parts = raw.split(':');
-    if (parts.length != 2) return null;
-    final int? h = int.tryParse(parts[0]);
-    final int? m = int.tryParse(parts[1]);
-    if (h == null || m == null) return null;
-    return DateTime(base.year, base.month, base.day, h, m);
-  }
-
-  List<_TimelineNode> _flatten(ItineraryModel model) {
-    final List<_TimelineNode> nodes = <_TimelineNode>[];
-    for (int d = 0; d < model.days.length; d++) {
-      final DayPlan day = model.days[d];
-      for (int i = 0; i < day.activities.length; i++) {
-        nodes.add(
-          _TimelineNode(
-            dayIndex: d,
-            activityIndex: i,
-            activity: day.activities[i],
-          ),
-        );
-      }
-    }
-    return nodes;
   }
 }
 
@@ -1977,18 +2532,6 @@ class _DayRoute {
   final String dayTitle;
   final Color themeColor;
   final List<ActivityItem> activities;
-}
-
-class _TimelineNode {
-  const _TimelineNode({
-    required this.dayIndex,
-    required this.activityIndex,
-    required this.activity,
-  });
-
-  final int dayIndex;
-  final int activityIndex;
-  final ActivityItem activity;
 }
 
 class _SafeTravelImage extends StatelessWidget {

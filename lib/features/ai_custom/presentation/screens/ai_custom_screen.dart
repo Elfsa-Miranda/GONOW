@@ -115,15 +115,44 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
 在第一部分的自然语言完全结束后，必须在整个回复的最末尾附上一个严格的 JSON 代码块（必须用 ```json 和 ``` 包裹）。JSON中不仅要包含每日行程（需提供经纬度），还要静默包含行李、避坑等行前准备数据。
 JSON 格式必须为：
 ```json
-{"title": "行程标题","estimated_budget_per_person": "3500元","days": [{"dayTitle": "Day 1 标题","activities": [{"time": "10:00","title": "景点名","type": "scenic","lat": 39.9, "lng": 116.4}]}],"pre_trip_prep": {"bookings": [{"item": "故宫门票","tips": "提前7天"}],"luggage": [],"pitfalls": []}}
+{
+  "title": "行程标题",
+  "estimated_budget_per_person": "3500元",
+  "days": [
+    {
+      "dayTitle": "Day 1 标题",
+      "activities": [
+        {
+          "time": "10:00",
+          "title": "景点名",
+          "type": "scenic",
+          "openTime": "09:00-18:00 开放", 
+          "recommended_duration": "2.5小时",
+          "tag": "历史人文 · 必打卡", 
+          "strategy": "游玩攻略：建议先去核心展区，避开下午人流高峰。",
+          "lat": 39.9, 
+          "lng": 116.4
+        }
+      ]
+    }
+  ],
+  "pre_trip_prep": {
+    "bookings": [{"item": "故宫门票", "tips": "提前7天"}],
+    "luggage": [],
+    "pitfalls": []
+  }
+}
 ```
 
 【极度重要】：在生成 activities 的时间安排和建议游玩时长 (recommended_duration) 时，绝对不允许偷懒全部写 '1小时'！你必须根据景点的真实客观属性进行合理预估。例如：
-- 大型博物馆/主题乐园：建议 3-4 小时或半天。
-- 知名自然风光/爬山：建议 2-4 小时。
-- 特色餐厅/老字号就餐：建议 1.5-2 小时。
-- 打卡地/夜市逛街：建议 1-2 小时。
-请确保时间轴的安排合理且符合真实人类游玩体力！''',
+
+大型博物馆/主题乐园：建议 3-4 小时或半天。
+
+知名自然风光/爬山：建议 2-4 小时。
+
+特色餐厅/老字号就餐：建议 1.5-2 小时。
+
+打卡地/夜市逛街：建议 1-2 小时。 请确保时间轴的安排合理且符合真实人类游玩体力！''',
             },
             ...history,
             <String, String>{'role': 'user', 'content': '请为我规划：$userText'},
