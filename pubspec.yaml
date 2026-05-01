@@ -47,6 +47,7 @@ dependencies:
   geolocator: ^14.0.2
   url_launcher: ^6.3.2
   amap_flutter_base: ^3.0.0
+  image_picker: ^1.2.2
 
 dev_dependencies:
   flutter_test:

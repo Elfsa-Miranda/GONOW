@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -272,6 +273,14 @@ class ItineraryProvider extends ChangeNotifier {
   ItineraryModel? get currentItinerary => _currentItinerary;
   ItineraryModel? get activeItinerary => _activeItinerary;
 
+  bool _isValidUuid(String id) {
+    final RegExp uuidRegex = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    return uuidRegex.hasMatch(id);
+  }
+
   TripState getTripState([DateTime? now]) {
     final ItineraryModel? model = _activeItinerary ?? _currentItinerary;
     if (model == null) return TripState.preparing;
@@ -297,7 +306,7 @@ class ItineraryProvider extends ChangeNotifier {
       }
       final Object? decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        _currentItinerary = ItineraryModel.fromJson(decoded);
+        _currentItinerary = sanitizeItineraryImages(ItineraryModel.fromJson(decoded));
         _activeItinerary = _currentItinerary;
       } else {
         _currentItinerary = null;
@@ -322,14 +331,16 @@ class ItineraryProvider extends ChangeNotifier {
           .limit(1);
       if (rows.isNotEmpty && rows.first is Map<String, dynamic>) {
         final Map<String, dynamic> map = rows.first as Map<String, dynamic>;
-        final ItineraryModel model = ItineraryModel.fromJson(<String, dynamic>{
+        final ItineraryModel model = sanitizeItineraryImages(
+          ItineraryModel.fromJson(<String, dynamic>{
           'id': map['id'],
           'title': map['title'],
           'start_date': map['start_date'],
           'end_date': map['end_date'],
           'plan_data': map['plan_data'],
           'created_at': map['created_at'],
-        });
+          }),
+        );
         _currentItinerary = model;
         _activeItinerary = model;
         await _saveToLocal(model);
@@ -373,6 +384,305 @@ class ItineraryProvider extends ChangeNotifier {
       } catch (_) {
         // keep memory state even when persistence fails
       }
+    }
+  }
+
+  ItineraryModel sanitizeItineraryImages(ItineraryModel model) {
+    Map<String, dynamic> sanitizeActivityMap(Map<String, dynamic> activity) {
+      final Map<String, dynamic> next = Map<String, dynamic>.from(activity);
+      final List<dynamic> imagesRaw =
+          (next['images'] as List<dynamic>?) ?? <dynamic>[];
+      final List<dynamic> cleaned = imagesRaw
+          .map((dynamic e) => e.toString().trim())
+          .where((String e) => e.isNotEmpty)
+          .toList(growable: true);
+      if (cleaned.length > 1) {
+        cleaned.removeAt(0);
+      }
+      next['images'] = cleaned;
+      if (cleaned.isNotEmpty) {
+        next['imageUrl'] = cleaned.first.toString();
+        next['image_url'] = cleaned.first.toString();
+      }
+      return next;
+    }
+
+    final Map<String, dynamic> planData = Map<String, dynamic>.from(model.planData);
+    bool changed = false;
+
+    if (planData['days'] is List) {
+      final List<dynamic> days = List<dynamic>.from(planData['days'] as List);
+      for (int i = 0; i < days.length; i++) {
+        final dynamic rawDay = days[i];
+        if (rawDay is! Map) continue;
+        final Map<String, dynamic> day = Map<String, dynamic>.from(rawDay);
+        final List<dynamic> activities = List<dynamic>.from(
+          (day['activities'] as List<dynamic>?) ?? <dynamic>[],
+        );
+        for (int j = 0; j < activities.length; j++) {
+          final dynamic rawActivity = activities[j];
+          if (rawActivity is! Map) continue;
+          activities[j] = sanitizeActivityMap(
+            Map<String, dynamic>.from(rawActivity),
+          );
+          changed = true;
+        }
+        day['activities'] = activities;
+        days[i] = day;
+      }
+      planData['days'] = days;
+    }
+
+    if (planData['daily_schedules'] is List) {
+      final List<dynamic> days = List<dynamic>.from(
+        planData['daily_schedules'] as List,
+      );
+      for (int i = 0; i < days.length; i++) {
+        final dynamic rawDay = days[i];
+        if (rawDay is! Map) continue;
+        final Map<String, dynamic> day = Map<String, dynamic>.from(rawDay);
+        final List<dynamic> activities = List<dynamic>.from(
+          (day['activities'] as List<dynamic>?) ?? <dynamic>[],
+        );
+        for (int j = 0; j < activities.length; j++) {
+          final dynamic rawActivity = activities[j];
+          if (rawActivity is! Map) continue;
+          activities[j] = sanitizeActivityMap(
+            Map<String, dynamic>.from(rawActivity),
+          );
+          changed = true;
+        }
+        day['activities'] = activities;
+        days[i] = day;
+      }
+      planData['daily_schedules'] = days;
+    }
+
+    if (!changed) return model;
+    final Map<String, dynamic> json = model.toJson();
+    json['planData'] = planData;
+    return ItineraryModel.fromJson(json);
+  }
+
+  Future<void> updateActivityImages({
+    required String activityId,
+    required List<String> images,
+  }) async {
+    final ItineraryModel? model = _activeItinerary ?? _currentItinerary;
+    if (model == null) return;
+    final List<String> cleaned = images
+        .map((String e) => e.trim())
+        .where((String e) => e.isNotEmpty)
+        .toList(growable: false);
+    final Map<String, dynamic> planData = Map<String, dynamic>.from(model.planData);
+
+    void updateDayActivities(String key) {
+      final dynamic rawDays = planData[key];
+      if (rawDays is! List) return;
+      final List<dynamic> days = List<dynamic>.from(rawDays);
+      for (int i = 0; i < days.length; i++) {
+        final dynamic rawDay = days[i];
+        if (rawDay is! Map) continue;
+        final Map<String, dynamic> day = Map<String, dynamic>.from(rawDay);
+        final List<dynamic> activities = List<dynamic>.from(
+          (day['activities'] as List<dynamic>?) ?? <dynamic>[],
+        );
+        for (int j = 0; j < activities.length; j++) {
+          final dynamic rawActivity = activities[j];
+          if (rawActivity is! Map) continue;
+          final Map<String, dynamic> activity = Map<String, dynamic>.from(
+            rawActivity,
+          );
+          final String currentId = activity['id']?.toString() ?? '';
+          if (currentId != activityId) continue;
+          activity['images'] = cleaned;
+          final String first = cleaned.isNotEmpty ? cleaned.first : '';
+          activity['imageUrl'] = first;
+          activity['image_url'] = first;
+          activities[j] = activity;
+        }
+        day['activities'] = activities;
+        days[i] = day;
+      }
+      planData[key] = days;
+    }
+
+    updateDayActivities('days');
+    updateDayActivities('daily_schedules');
+
+    final Map<String, dynamic> json = model.toJson();
+    json['planData'] = planData;
+    final ItineraryModel updated = ItineraryModel.fromJson(json);
+    await saveItinerary(updated);
+  }
+
+  Future<bool> uploadAndSyncPhoto({
+    required int dayIndex,
+    required int activityIndex,
+    required String filePath,
+    required String itineraryId,
+    required String activityTitle,
+  }) async {
+    try {
+      final String? userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('用户未登录，无法上传');
+        return false;
+      }
+
+      final String fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final String storagePath = 'itineraries/$userId/$fileName';
+      await Supabase.instance.client.storage
+          .from('itinerary_photos')
+          .upload(storagePath, File(filePath));
+      final String publicUrl = Supabase.instance.client.storage
+          .from('itinerary_photos')
+          .getPublicUrl(storagePath);
+
+      final RegExp uuidRegex = RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        caseSensitive: false,
+      );
+      if (uuidRegex.hasMatch(itineraryId)) {
+        await Supabase.instance.client.from('activity_photos').insert(<String, dynamic>{
+          'user_id': userId,
+          'itinerary_id': itineraryId,
+          'activity_title': activityTitle,
+          'image_url': publicUrl,
+          'storage_path': storagePath,
+        });
+      }
+
+      if (_activeItinerary != null) {
+        final List<dynamic> dayList =
+            _activeItinerary!.planData['days'] as List<dynamic>;
+        final List<dynamic> activityList =
+            dayList[dayIndex]['activities'] as List<dynamic>;
+        final Map<String, dynamic> currentActivity =
+            activityList[activityIndex] as Map<String, dynamic>;
+
+        List<String> imagesToSave = <String>[];
+        if (currentActivity['images'] != null &&
+            currentActivity['images'] is List) {
+          imagesToSave = List<String>.from(
+            (currentActivity['images'] as List<dynamic>).map(
+              (dynamic e) => e.toString(),
+            ),
+          );
+        }
+
+        final String oldImageUrl =
+            (currentActivity['imageUrl'] ?? '').toString().trim();
+        if (imagesToSave.isEmpty && oldImageUrl.isNotEmpty) {
+          imagesToSave.add(oldImageUrl);
+        }
+
+        imagesToSave.add(publicUrl);
+        currentActivity['images'] = imagesToSave;
+
+        if (imagesToSave.isNotEmpty) {
+          currentActivity['imageUrl'] = imagesToSave.first;
+        }
+
+        await saveItinerary(_activeItinerary!);
+        notifyListeners();
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('上传照片失败: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteAndSyncPhoto({
+    required int dayIndex,
+    required int activityIndex,
+    required String targetUrl,
+    required String itineraryId,
+    required String activityTitle,
+  }) async {
+    try {
+      final ItineraryModel? current = _activeItinerary ?? _currentItinerary;
+      if (current == null) return false;
+
+      final Map<String, dynamic> planData = Map<String, dynamic>.from(current.planData);
+      final List<dynamic> targetDays = List<dynamic>.from(
+        (planData['days'] as List<dynamic>?) ??
+            (planData['daily_schedules'] as List<dynamic>?) ??
+            <dynamic>[],
+      );
+      if (dayIndex < 0 ||
+          dayIndex >= targetDays.length ||
+          targetDays[dayIndex] is! Map<String, dynamic>) {
+        return false;
+      }
+      final Map<String, dynamic> targetDay = Map<String, dynamic>.from(
+        targetDays[dayIndex] as Map,
+      );
+      final List<dynamic> targetActivities = List<dynamic>.from(
+        (targetDay['activities'] as List<dynamic>?) ?? <dynamic>[],
+      );
+      if (activityIndex < 0 ||
+          activityIndex >= targetActivities.length ||
+          targetActivities[activityIndex] is! Map<String, dynamic>) {
+        return false;
+      }
+      final Map<String, dynamic> targetActivity = Map<String, dynamic>.from(
+        targetActivities[activityIndex] as Map,
+      );
+
+      List<String> currentImages = <String>[];
+      if (targetActivity['images'] != null && targetActivity['images'] is List) {
+        currentImages = List<String>.from(
+          (targetActivity['images'] as List<dynamic>).map(
+            (dynamic e) => e.toString(),
+          ),
+        );
+      }
+      currentImages.remove(targetUrl);
+      targetActivity['images'] = List<dynamic>.from(currentImages);
+      if (currentImages.isNotEmpty) {
+        targetActivity['imageUrl'] = currentImages.first;
+        targetActivity['image_url'] = currentImages.first;
+      } else {
+        targetActivity['imageUrl'] = '';
+        targetActivity['image_url'] = '';
+      }
+
+      targetActivities[activityIndex] = targetActivity;
+      targetDay['activities'] = targetActivities;
+      targetDays[dayIndex] = targetDay;
+      if (planData['days'] is List) {
+        planData['days'] = targetDays;
+      }
+      if (planData['daily_schedules'] is List) {
+        planData['daily_schedules'] = targetDays;
+      }
+
+      final ItineraryModel updated = current.copyWith(planData: planData);
+      _activeItinerary = updated;
+      _currentItinerary = updated;
+      await saveItinerary(updated);
+      notifyListeners();
+      if (_isValidUuid(itineraryId)) {
+        try {
+          await Supabase.instance.client
+              .from('activity_photos')
+              .delete()
+              .eq('image_url', targetUrl);
+        } catch (e) {
+          debugPrint('Supabase 删除异常: $e');
+        }
+      } else {
+        debugPrint(
+          '⚠️ 注意: itineraryId 无效 ($itineraryId)，跳过 activity_photos 删除，仅执行本地状态清理。',
+        );
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Delete failed: $e');
+      return false;
     }
   }
 

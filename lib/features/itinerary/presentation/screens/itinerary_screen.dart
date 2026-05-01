@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:amap_flutter_base/amap_flutter_base.dart' as amap_base;
 import 'package:amap_flutter_map/amap_flutter_map.dart' as amap;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:gonow/core/constants/amap_config.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -68,6 +70,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       <String, Map<String, dynamic>>{};
   String _routeSyncPlanKey = '__pending__';
   List<String> _selectedActivityImages = <String>[];
+  int? _uploadingDayIdx;
+  int? _uploadingActIdx;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -2741,6 +2746,11 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       SliverList(
         delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
           final Map<String, dynamic> item = filteredTimeline[index];
+          final int currentDayIndex =
+              (item['dayIndex'] as num?)?.toInt() ??
+              (((item['day'] as num?)?.toInt() ?? 1) - 1);
+          final int currentActivityIndex =
+              (item['activityIndex'] as num?)?.toInt() ?? 0;
           final bool isLast = index == filteredTimeline.length - 1;
           final Map<String, dynamic>? transit =
               item['transit'] as Map<String, dynamic>?;
@@ -2780,6 +2790,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                 ],
                 _buildTimelineItemCard(
                   item: item,
+                  dayIndex: currentDayIndex,
+                  activityIndex: currentActivityIndex,
                   isFirst: index == 0,
                   isLast: isLast && transit == null,
                   dayOrder: _dayOrderAt(filteredTimeline, index),
@@ -2855,6 +2867,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             'id': result.length + 1,
             'activityId': activityId,
             'day': dayNumber,
+            'dayIndex': dayIndex,
+            'activityIndex': activityIndex,
             'scheduledTime': _stringValue(activity['time'], '09:00'),
             'title': _stringValue(activity['title'], '未命名活动'),
             'openTime': _stringValue(
@@ -2904,6 +2918,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           'id': result.length + 1,
           'activityId': activity.id,
           'day': dayIndex + 1,
+          'dayIndex': dayIndex,
+          'activityIndex': activityIndex,
           'scheduledTime': activity.time,
           'title': activity.title,
           'openTime': activity.time.isEmpty ? '时间未知' : '${activity.time} 开放',
@@ -3015,6 +3031,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   Widget _buildTimelineItemCard({
     required Map<String, dynamic> item,
+    required int dayIndex,
+    required int activityIndex,
     required bool isFirst,
     required bool isLast,
     required int dayOrder,
@@ -3029,7 +3047,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             isLast: isLast,
             dayOrder: dayOrder,
           ),
-          Expanded(child: _buildMainCard(item)),
+          Expanded(child: _buildMainCard(item, dayIndex, activityIndex)),
         ],
       ),
     );
@@ -3196,7 +3214,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     );
   }
 
-  Widget _buildMainCard(Map<String, dynamic> item) {
+  Widget _buildMainCard(Map<String, dynamic> item, int dayIndex, int activityIndex) {
     final bool isArrived = _isTimelineItemArrived(item);
 
     return AnimatedOpacity(
@@ -3322,28 +3340,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                 ),
               ),
             const SizedBox(height: 12),
-            if (item['images'] != null && (item['images'] as List).length >= 2)
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: _buildSafeNetworkThumb(
-                        item['images'][0].toString(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: _buildSafeNetworkThumb(
-                        item['images'][1].toString(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            _buildPhotoGallery(item, dayIndex, activityIndex),
             if (item['strategy'] != null &&
                 item['strategy'].toString().isNotEmpty)
               Padding(
@@ -3462,6 +3459,202 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         ),
       ],
     );
+  }
+
+  Widget _buildPhotoGallery(Map<String, dynamic> activity, int dayIdx, int actIdx) {
+    final List<dynamic> rawImages = (activity['images'] as List<dynamic>?) ?? <dynamic>[];
+    final List<String> images = rawImages
+        .map((dynamic e) => e.toString().trim())
+        .where((String e) => e.isNotEmpty)
+        .toList(growable: true);
+    final String legacyImageUrl = activity['imageUrl']?.toString().trim() ?? '';
+    if (images.isEmpty && legacyImageUrl.isNotEmpty) {
+      images.add(legacyImageUrl);
+    }
+    final bool isThisUploading = _uploadingDayIdx == dayIdx && _uploadingActIdx == actIdx;
+
+    return SizedBox(
+      height: 100,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: images.length + 1,
+        itemBuilder: (BuildContext context, int index) {
+          if (index < images.length) {
+            return _buildImageItem(
+              imageUrl: images[index],
+              onDelete: () => _handleDeletePhoto(dayIdx, actIdx, images[index], activity),
+            );
+          }
+          return _buildAddPhotoButton(
+            isUploading: isThisUploading,
+            onTap: () => _pickAndUploadImage(
+              dayIdx,
+              actIdx,
+              activity['title']?.toString() ?? '未命名景点',
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _handleDeletePhoto(
+    int dayIdx,
+    int actIdx,
+    String targetUrl,
+    Map<String, dynamic> activity,
+  ) async {
+    final bool? confirm = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => CupertinoAlertDialog(
+        title: const Text('删除照片'),
+        content: const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text('确定要删除这张照片吗？操作不可撤销。'),
+        ),
+        actions: <Widget>[
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    final ItineraryProvider provider = context.read<ItineraryProvider>();
+    final String itineraryId =
+        provider.activeItinerary?.remoteId ??
+        provider.currentItinerary?.remoteId ??
+        '';
+    final bool ok = await provider.deleteAndSyncPhoto(
+      dayIndex: dayIdx,
+      activityIndex: actIdx,
+      targetUrl: targetUrl,
+      itineraryId: itineraryId,
+      activityTitle: activity['title']?.toString() ?? '',
+    );
+    if (!ok) {
+      debugPrint('删除失败: $targetUrl');
+    }
+  }
+
+  Widget _buildImageItem({
+    required String imageUrl,
+    required VoidCallback onDelete,
+  }) {
+    return Container(
+      width: 100,
+      margin: const EdgeInsets.only(right: 10),
+      child: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: _buildSafeNetworkThumb(imageUrl, height: 100),
+            ),
+          ),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: InkWell(
+              onTap: onDelete,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddPhotoButton({
+    required bool isUploading,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: isUploading ? null : onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 100,
+        margin: const EdgeInsets.only(right: 10),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: CustomPaint(
+          painter: _DashedBorderPainter(
+            color: Colors.grey.shade400,
+            radius: 12,
+          ),
+          child: Center(
+            child: isUploading
+                ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.indigo.shade500,
+                    ),
+                  )
+                : Icon(
+                    Icons.add_a_photo_outlined,
+                    size: 22,
+                    color: Colors.indigo.shade500,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadImage(
+    int dayIdx,
+    int actIdx,
+    String activityTitle,
+  ) async {
+    final XFile? picked = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _uploadingDayIdx = dayIdx;
+      _uploadingActIdx = actIdx;
+    });
+    final ItineraryProvider provider = context.read<ItineraryProvider>();
+    final String itineraryId =
+        provider.activeItinerary?.remoteId ??
+        provider.currentItinerary?.remoteId ??
+        '';
+    final bool ok = await provider.uploadAndSyncPhoto(
+      dayIndex: dayIdx,
+      activityIndex: actIdx,
+      filePath: picked.path,
+      itineraryId: itineraryId,
+      activityTitle: activityTitle,
+    );
+    if (!ok) {
+      debugPrint('上传失败: $activityTitle');
+    }
+    if (!mounted) return;
+    setState(() {
+      _uploadingDayIdx = null;
+      _uploadingActIdx = null;
+    });
   }
 
   Future<void> _launchNavigation(ActivityItem target) async {
@@ -3585,6 +3778,41 @@ class _DayRoute {
   final String dayTitle;
   final Color themeColor;
   final List<ActivityItem> activities;
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  _DashedBorderPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final RRect rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    final Path path = Path()..addRRect(rrect);
+    final Paint paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    const double dash = 6;
+    const double gap = 4;
+    for (final ui.PathMetric metric in path.computeMetrics()) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final double next = distance + dash;
+        canvas.drawPath(metric.extractPath(distance, next), paint);
+        distance = next + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.radius != radius;
+  }
 }
 
 class _SafeTravelImage extends StatelessWidget {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gonow/core/providers/travel_provider.dart';
+import 'package:gonow/features/auth/data/auth_provider.dart';
+import 'package:gonow/features/auth/presentation/auth_screen.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:provider/provider.dart';
@@ -35,6 +37,9 @@ Future<void> main() async {
             return provider;
           },
         ),
+        ChangeNotifierProvider<AuthProvider>(
+          create: (_) => AuthProvider(),
+        ),
       ],
       child: const GoNowApp(),
     ),
@@ -50,7 +55,33 @@ class GoNowApp extends StatelessWidget {
       title: 'GoNow',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const MainScreen(),
+      home: const AuthGate(),
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthState>(
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (BuildContext context, AsyncSnapshot<AuthState> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          );
+        }
+        final Session? session = snapshot.data?.session;
+        if (session != null) {
+          return const MainScreen();
+        }
+        return const AuthScreen();
+      },
     );
   }
 }
