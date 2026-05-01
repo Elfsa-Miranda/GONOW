@@ -2974,17 +2974,31 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   List<String> _timelineImages(Map<String, dynamic> activity) {
     final Object? rawImages = activity['images'];
+    
+    // 🐛 DEBUG: 打印原始数据
+    debugPrint('🔍 _timelineImages 处理: ${activity['title']} - rawImages类型=${rawImages.runtimeType}');
+    
     if (rawImages is List && rawImages.isNotEmpty) {
-      return rawImages.map((Object? item) => item.toString()).take(2).toList();
+      // ✅ 移除 .take(2) 限制，返回所有照片
+      final List<String> result = rawImages
+          .map((Object? item) => item.toString().trim())
+          .where((String url) => url.isNotEmpty)
+          .toList();
+      debugPrint('  ✅ 返回 ${result.length} 张照片');
+      return result;
     }
     final String imageUrl = _stringValue(
       activity['imageUrl'] ?? activity['image_url'],
       '',
     );
-    return <String>[
-      imageUrl,
-      'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400',
-    ];
+    // 如果没有 images 数组，返回 imageUrl（如果存在）
+    if (imageUrl.isNotEmpty) {
+      debugPrint('  ✅ 返回 imageUrl: $imageUrl');
+      return <String>[imageUrl];
+    }
+    // 如果都没有，返回空数组
+    debugPrint('  ⚠️ 无照片数据');
+    return <String>[];
   }
 
   Map<String, dynamic>? _timelineTransit(
@@ -3462,30 +3476,46 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Widget _buildPhotoGallery(Map<String, dynamic> activity, int dayIdx, int actIdx) {
+    // 1️⃣ 提取并清洗 images 数组
     final List<dynamic> rawImages = (activity['images'] as List<dynamic>?) ?? <dynamic>[];
     final List<String> images = rawImages
         .map((dynamic e) => e.toString().trim())
         .where((String e) => e.isNotEmpty)
         .toList(growable: true);
-    final String legacyImageUrl = activity['imageUrl']?.toString().trim() ?? '';
+
+    // 2️⃣ 【关键】抢救首图：如果 images 为空，检查 imageUrl
+    final String legacyImageUrl = (activity['imageUrl'] ?? activity['image_url'] ?? '').toString().trim();
     if (images.isEmpty && legacyImageUrl.isNotEmpty) {
       images.add(legacyImageUrl);
+    } else if (images.isNotEmpty && legacyImageUrl.isNotEmpty && !images.contains(legacyImageUrl)) {
+      // 如果 images 有数据但不包含 imageUrl，补充到开头
+      images.insert(0, legacyImageUrl);
     }
+
+    // 🐛 DEBUG: 打印画廊接收到的照片数量
+    debugPrint('📸 画廊渲染 Day${dayIdx + 1} Activity${actIdx + 1}: ${activity['title']} - 照片数=${images.length}');
+    for (int i = 0; i < images.length; i++) {
+      debugPrint('  [$i] ${images[i].substring(0, images[i].length > 60 ? 60 : images[i].length)}...');
+    }
+
     final bool isThisUploading = _uploadingDayIdx == dayIdx && _uploadingActIdx == actIdx;
 
+    // 3️⃣ 【红线 3】彻底重写横向画廊：固定高度 + 原生 ListView
     return SizedBox(
       height: 100,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        itemCount: images.length + 1,
+        itemCount: images.length + 1, // 图片数量 + 1 个添加按钮
         itemBuilder: (BuildContext context, int index) {
           if (index < images.length) {
+            // 渲染图片项（带删除按钮）
             return _buildImageItem(
               imageUrl: images[index],
               onDelete: () => _handleDeletePhoto(dayIdx, actIdx, images[index], activity),
             );
           }
+          // 渲染添加按钮
           return _buildAddPhotoButton(
             isUploading: isThisUploading,
             onTap: () => _pickAndUploadImage(

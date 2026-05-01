@@ -553,44 +553,100 @@ class ItineraryProvider extends ChangeNotifier {
         });
       }
 
-      if (_activeItinerary != null) {
-        final List<dynamic> dayList =
-            _activeItinerary!.planData['days'] as List<dynamic>;
-        final List<dynamic> activityList =
-            dayList[dayIndex]['activities'] as List<dynamic>;
-        final Map<String, dynamic> currentActivity =
-            activityList[activityIndex] as Map<String, dynamic>;
+      // 🔧 红线 2：彻底重写图片追加逻辑，防止首图丢失
+      final ItineraryModel? current = _activeItinerary ?? _currentItinerary;
+      if (current == null) return false;
 
-        List<String> imagesToSave = <String>[];
-        if (currentActivity['images'] != null &&
-            currentActivity['images'] is List) {
-          imagesToSave = List<String>.from(
-            (currentActivity['images'] as List<dynamic>).map(
-              (dynamic e) => e.toString(),
-            ),
-          );
-        }
+      // 1️⃣ 深拷贝整个 planData，防止污染原始引用
+      final Map<String, dynamic> planData = Map<String, dynamic>.from(current.planData);
+      final List<dynamic> targetDays = List<dynamic>.from(
+        (planData['days'] as List<dynamic>?) ??
+            (planData['daily_schedules'] as List<dynamic>?) ??
+            <dynamic>[],
+      );
 
-        final String oldImageUrl =
-            (currentActivity['imageUrl'] ?? '').toString().trim();
-        if (imagesToSave.isEmpty && oldImageUrl.isNotEmpty) {
-          imagesToSave.add(oldImageUrl);
-        }
-
-        imagesToSave.add(publicUrl);
-        currentActivity['images'] = imagesToSave;
-
-        if (imagesToSave.isNotEmpty) {
-          currentActivity['imageUrl'] = imagesToSave.first;
-        }
-
-        await saveItinerary(_activeItinerary!);
-        notifyListeners();
+      // 2️⃣ 边界检查：确保索引有效
+      if (dayIndex < 0 ||
+          dayIndex >= targetDays.length ||
+          targetDays[dayIndex] is! Map<String, dynamic>) {
+        debugPrint('❌ 索引越界：dayIndex=$dayIndex, 总天数=${targetDays.length}');
+        return false;
       }
 
+      final Map<String, dynamic> targetDay = Map<String, dynamic>.from(
+        targetDays[dayIndex] as Map,
+      );
+      final List<dynamic> targetActivities = List<dynamic>.from(
+        (targetDay['activities'] as List<dynamic>?) ?? <dynamic>[],
+      );
+
+      if (activityIndex < 0 ||
+          activityIndex >= targetActivities.length ||
+          targetActivities[activityIndex] is! Map<String, dynamic>) {
+        debugPrint('❌ 索引越界：activityIndex=$activityIndex, 总活动=${targetActivities.length}');
+        return false;
+      }
+
+      final Map<String, dynamic> targetActivity = Map<String, dynamic>.from(
+        targetActivities[activityIndex] as Map,
+      );
+
+      // 3️⃣ 深拷贝现有 images 数组
+      List<String> imagesToSave = <String>[];
+      if (targetActivity['images'] != null && targetActivity['images'] is List) {
+        imagesToSave = List<String>.from(
+          (targetActivity['images'] as List<dynamic>).map(
+            (dynamic e) => e.toString().trim(),
+          ).where((String e) => e.isNotEmpty),
+        );
+      }
+
+      // 4️⃣ 【关键】抢救首图：如果 images 为空，检查 imageUrl 并保留
+      final String oldImageUrl =
+          (targetActivity['imageUrl'] ?? targetActivity['image_url'] ?? '').toString().trim();
+      if (imagesToSave.isEmpty && oldImageUrl.isNotEmpty) {
+        debugPrint('✅ 抢救首图：$oldImageUrl');
+        imagesToSave.add(oldImageUrl);
+      } else if (imagesToSave.isNotEmpty && oldImageUrl.isNotEmpty && !imagesToSave.contains(oldImageUrl)) {
+        // 如果 images 已有数据，但不包含 imageUrl，也要保留（插入到开头）
+        debugPrint('✅ 补充首图到数组开头：$oldImageUrl');
+        imagesToSave.insert(0, oldImageUrl);
+      }
+
+      // 5️⃣ 追加新上传的照片
+      imagesToSave.add(publicUrl);
+      debugPrint('✅ 追加新照片：$publicUrl，当前总数=${imagesToSave.length}');
+
+      // 6️⃣ 反向同步：更新 images 数组和 imageUrl 封面
+      targetActivity['images'] = List<dynamic>.from(imagesToSave);
+      if (imagesToSave.isNotEmpty) {
+        targetActivity['imageUrl'] = imagesToSave.first;
+        targetActivity['image_url'] = imagesToSave.first;
+      }
+
+      // 7️⃣ 回写到数据结构
+      targetActivities[activityIndex] = targetActivity;
+      targetDay['activities'] = targetActivities;
+      targetDays[dayIndex] = targetDay;
+
+      if (planData['days'] is List) {
+        planData['days'] = targetDays;
+      }
+      if (planData['daily_schedules'] is List) {
+        planData['daily_schedules'] = targetDays;
+      }
+
+      // 8️⃣ 持久化并通知
+      final ItineraryModel updated = current.copyWith(planData: planData);
+      _activeItinerary = updated;
+      _currentItinerary = updated;
+      await saveItinerary(updated);
+      notifyListeners();
+
+      debugPrint('✅ 照片上传成功：Day${dayIndex + 1} Activity${activityIndex + 1}');
       return true;
     } catch (e) {
-      debugPrint('上传照片失败: $e');
+      debugPrint('❌ 上传照片失败: $e');
       return false;
     }
   }
@@ -606,41 +662,56 @@ class ItineraryProvider extends ChangeNotifier {
       final ItineraryModel? current = _activeItinerary ?? _currentItinerary;
       if (current == null) return false;
 
+      // 1️⃣ 深拷贝整个 planData
       final Map<String, dynamic> planData = Map<String, dynamic>.from(current.planData);
       final List<dynamic> targetDays = List<dynamic>.from(
         (planData['days'] as List<dynamic>?) ??
             (planData['daily_schedules'] as List<dynamic>?) ??
             <dynamic>[],
       );
+
+      // 2️⃣ 边界检查
       if (dayIndex < 0 ||
           dayIndex >= targetDays.length ||
           targetDays[dayIndex] is! Map<String, dynamic>) {
+        debugPrint('❌ 删除失败：dayIndex=$dayIndex 越界');
         return false;
       }
+
       final Map<String, dynamic> targetDay = Map<String, dynamic>.from(
         targetDays[dayIndex] as Map,
       );
       final List<dynamic> targetActivities = List<dynamic>.from(
         (targetDay['activities'] as List<dynamic>?) ?? <dynamic>[],
       );
+
       if (activityIndex < 0 ||
           activityIndex >= targetActivities.length ||
           targetActivities[activityIndex] is! Map<String, dynamic>) {
+        debugPrint('❌ 删除失败：activityIndex=$activityIndex 越界');
         return false;
       }
+
       final Map<String, dynamic> targetActivity = Map<String, dynamic>.from(
         targetActivities[activityIndex] as Map,
       );
 
+      // 3️⃣ 深拷贝 images 数组并删除目标 URL
       List<String> currentImages = <String>[];
       if (targetActivity['images'] != null && targetActivity['images'] is List) {
         currentImages = List<String>.from(
           (targetActivity['images'] as List<dynamic>).map(
-            (dynamic e) => e.toString(),
-          ),
+            (dynamic e) => e.toString().trim(),
+          ).where((String e) => e.isNotEmpty),
         );
       }
+
+      final int beforeCount = currentImages.length;
       currentImages.remove(targetUrl);
+      final int afterCount = currentImages.length;
+      debugPrint('✅ 删除照片：$targetUrl，删除前=$beforeCount，删除后=$afterCount');
+
+      // 4️⃣ 更新 images 数组和首图
       targetActivity['images'] = List<dynamic>.from(currentImages);
       if (currentImages.isNotEmpty) {
         targetActivity['imageUrl'] = currentImages.first;
@@ -650,9 +721,11 @@ class ItineraryProvider extends ChangeNotifier {
         targetActivity['image_url'] = '';
       }
 
+      // 5️⃣ 回写数据结构
       targetActivities[activityIndex] = targetActivity;
       targetDay['activities'] = targetActivities;
       targetDays[dayIndex] = targetDay;
+
       if (planData['days'] is List) {
         planData['days'] = targetDays;
       }
@@ -660,28 +733,33 @@ class ItineraryProvider extends ChangeNotifier {
         planData['daily_schedules'] = targetDays;
       }
 
+      // 6️⃣ 持久化并通知
       final ItineraryModel updated = current.copyWith(planData: planData);
       _activeItinerary = updated;
       _currentItinerary = updated;
       await saveItinerary(updated);
       notifyListeners();
+
+      // 7️⃣ 删除 Supabase 记录
       if (_isValidUuid(itineraryId)) {
         try {
           await Supabase.instance.client
               .from('activity_photos')
               .delete()
               .eq('image_url', targetUrl);
+          debugPrint('✅ Supabase 照片记录已删除');
         } catch (e) {
-          debugPrint('Supabase 删除异常: $e');
+          debugPrint('⚠️ Supabase 删除异常: $e');
         }
       } else {
         debugPrint(
-          '⚠️ 注意: itineraryId 无效 ($itineraryId)，跳过 activity_photos 删除，仅执行本地状态清理。',
+          '⚠️ itineraryId 无效 ($itineraryId)，跳过 Supabase 删除',
         );
       }
+
       return true;
     } catch (e) {
-      debugPrint('Delete failed: $e');
+      debugPrint('❌ 删除照片失败: $e');
       return false;
     }
   }
