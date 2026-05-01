@@ -307,7 +307,13 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           );
         }
 
-        final TripState state = provider.getTripState();
+        // 使用用户手动选择的模式，而不是自动计算的 TripState
+        final TripMode currentMode = provider.currentMode;
+        // 将 TripMode 转换为 TripState 以兼容现有逻辑
+        final TripState effectiveState = currentMode == TripMode.planning 
+            ? TripState.preparing 
+            : TripState.traveling;
+        
         final List<_DayRoute> dayRoutes = _buildDayRoutes(model);
         if (_selectedDayIndex > dayRoutes.length) {
           _selectedDayIndex = 0;
@@ -319,82 +325,79 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           // 分屏结构：地图固定可见，列表独立滚动，避免跳转时地图被顶出视野。
           body: Column(
             children: <Widget>[
-              Container(
-                color: Colors.white,
+              Padding(
                 padding: EdgeInsets.fromLTRB(
                   16,
                   MediaQuery.of(context).padding.top + 10,
                   16,
                   10,
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
+                    // 第一行：让标题独占一行，自由换行，彻底展示完整！
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
                             model.title,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              height: 1.4,
-                              color: Colors.grey.shade900,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              height: 1.3,
                             ),
+                            softWrap: true,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            state == TripState.preparing ? '预算三千版 · 行前准备' : '预算三千版 · 行中伴游',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          _isMapCollapsed = !_isMapCollapsed;
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.indigo.shade50,
+                    const SizedBox(height: 12),
+                    // 第二行：放置恢复了样式的切换胶囊 和 收起地图按钮
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: <Widget>[
+                        _buildMiniModeToggle(context),
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _isMapCollapsed = !_isMapCollapsed;
+                            });
+                          },
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.indigo.shade100),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              _isMapCollapsed
-                                  ? Icons.map_outlined
-                                  : Icons.unfold_less_rounded,
-                              size: 16,
-                              color: Colors.indigo.shade600,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _isMapCollapsed ? '展开地图' : '收起地图',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.indigo.shade700,
-                              ),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo.shade50,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.indigo.shade100),
                             ),
-                          ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(
+                                  _isMapCollapsed
+                                      ? Icons.map_outlined
+                                      : Icons.unfold_less_rounded,
+                                  size: 16,
+                                  color: Colors.indigo.shade600,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _isMapCollapsed ? '展开地图' : '收起地图',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.indigo.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -420,7 +423,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                     height: MediaQuery.of(context).size.height * 0.3,
                     child: _buildMapOnlyWidget(
                       model: model,
-                      state: state,
+                      state: effectiveState,
                       dayRoutes: dayRoutes,
                     ),
                   ),
@@ -430,7 +433,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: _buildDayTabBar(
                   model: model,
-                  state: state,
+                  state: effectiveState,
                   dayRoutes: dayRoutes,
                 ),
               ),
@@ -443,7 +446,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   child: CustomScrollView(
                     controller: _scrollController,
                     slivers: <Widget>[
-                      if (state == TripState.preparing)
+                      if (effectiveState == TripState.preparing)
                         ..._buildPreparingSlivers(model, provider, dayRoutes)
                       else
                         ..._buildTravelingSlivers(model, provider, dayRoutes),
@@ -685,6 +688,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           },
           markers: markers,
           polylines: lines,
+          // 行程中模式：开启定位；规划模式：关闭定位，允许自由缩放总览全局
           myLocationEnabled: state == TripState.traveling,
           myLocationButtonEnabled: true,
           zoomControlsEnabled: false,
@@ -864,9 +868,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           },
           markers: markers,
           polylines: polylines,
+          // 行程中模式：开启蓝点定位与视角跟随；规划模式：关闭跟随，允许自由缩放总览全局
           myLocationStyleOptions: state == TripState.traveling
               ? amap.MyLocationStyleOptions(true)
-              : null,
+              : amap.MyLocationStyleOptions(false),
           onTap: (amap_base.LatLng latLng) {
             if (_selectedActivity != null) {
               setState(() => _selectedActivity = null);
@@ -925,6 +930,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     }
 
     if (state == TripState.traveling) {
+      // 【行程中模式】：使用真实的弯曲轨迹
       final Map<int, List<Map<String, dynamic>>> activitiesByDay =
           <int, List<Map<String, dynamic>>>{};
       for (final Map<String, dynamic> item in _timelineMapItems(model, state)) {
@@ -944,6 +950,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             dest,
           );
           if (routePoints.length < 2) continue;
+          
+          // 行程中模式：使用真实弯曲轨迹（保持原有逻辑）
           lines.add(
             amap.Polyline(points: routePoints, color: Colors.white, width: 14),
           );
@@ -965,6 +973,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         }
       }
     } else if (dayRoutes.isNotEmpty) {
+      // 【规划模式】：强制使用两点直连飞线
       final Iterable<MapEntry<int, _DayRoute>> visibleRoutes =
           _selectedDayIndex == 0
           ? dayRoutes.asMap().entries
@@ -973,15 +982,52 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   entry.key + 1 == _selectedDayIndex,
             );
       for (final MapEntry<int, _DayRoute> entry in visibleRoutes) {
-        final List<amap_base.LatLng> points = entry.value.activities
+        final List<ActivityItem> validActivities = entry.value.activities
             .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
-            .map((ActivityItem a) => amap_base.LatLng(a.lat, a.lng))
             .toList(growable: false);
-        addRouteSegments(
-          points,
-          _getRouteColor(entry.key + 1),
-          day: entry.key + 1,
-        );
+        
+        // 遍历相邻活动，生成两点直连飞线
+        for (int i = 0; i < validActivities.length - 1; i++) {
+          final ActivityItem origin = validActivities[i];
+          final ActivityItem dest = validActivities[i + 1];
+          
+          // 规划模式：强制使用两点直连飞线（不使用真实路网）
+          final List<amap_base.LatLng> straightLinePoints = <amap_base.LatLng>[
+            amap_base.LatLng(origin.lat, origin.lng),
+            amap_base.LatLng(dest.lat, dest.lng),
+          ];
+          
+          final Color dayColor = _getRouteColor(entry.key + 1);
+          final amap.BitmapDescriptor? dayTexture = _amapArrowTextureByDay[entry.key + 1];
+          
+          // 底层白边（保持原有样式）
+          lines.add(
+            amap.Polyline(
+              points: straightLinePoints,
+              color: Colors.white,
+              width: 14,
+            ),
+          );
+          
+          // 表层彩色线（保持原有样式）
+          lines.add(
+            amap.Polyline(
+              points: straightLinePoints,
+              color: dayColor,
+              width: 9.2,
+            ),
+          );
+          
+          // 带箭头纹理的彩色线（保持原有样式）
+          lines.add(
+            amap.Polyline(
+              points: straightLinePoints,
+              color: dayColor,
+              width: 9.2,
+              customTexture: dayTexture,
+            ),
+          );
+        }
       }
     } else if (next != null && _currentPosition != null) {
       // 当前位置 → 下一个待游玩景点的兜底导航线
@@ -1937,6 +1983,137 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     );
   }
 
+  // 迷你版模式切换胶囊 - 放置在顶栏（完整恢复精美样式）
+  Widget _buildMiniModeToggle(BuildContext context) {
+    final ItineraryProvider provider = Provider.of<ItineraryProvider>(context);
+    final bool isTraveling = provider.currentMode == TripMode.traveling;
+    
+    return Container(
+      width: 160,
+      height: 36,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100, // 浅灰底色
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Stack(
+        children: <Widget>[
+          // 滑动的白色高光背景
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            left: isTraveling ? 80 : 2,
+            top: 2,
+            bottom: 2,
+            width: 76,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 文字层
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => provider.toggleTripMode(TripMode.planning),
+                  child: Center(
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: !isTraveling ? FontWeight.bold : FontWeight.w500,
+                        color: !isTraveling ? Colors.indigo.shade600 : Colors.grey.shade500,
+                      ),
+                      child: const Text('规划'),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => provider.toggleTripMode(TripMode.traveling),
+                  child: Center(
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isTraveling ? FontWeight.bold : FontWeight.w500,
+                        color: isTraveling ? Colors.indigo.shade600 : Colors.grey.shade500,
+                      ),
+                      child: const Text('行程中'),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 紧凑型 Day 标题组件
+  Widget _buildCompactDayHeader(int dayIndex, String dateString, Color dayColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: dayColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: dayColor.withValues(alpha: 0.3)),
+            ),
+            child: Text(
+              'DAY ${dayIndex + 1}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: dayColor,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            dateString,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 获取 Day 颜色（确保双模式一致）
+  Color getDayColor(int dayIndex) {
+    final List<Color> colors = <Color>[
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.red,
+    ];
+    return colors[dayIndex % colors.length];
+  }
+
   Widget _buildSafeNetworkThumb(String rawUrl, {double height = 80}) {
     final String imgUrl = rawUrl.trim();
     if (imgUrl.isEmpty) {
@@ -2768,23 +2945,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
               children: <Widget>[
                 if (showDayHeader) ...<Widget>[
                   SizedBox(height: index == 0 ? 2 : 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade50,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'Day $currentDay · ${_formatTripDate(model.startDate, currentDay)}',
-                      style: TextStyle(
-                        color: Colors.indigo.shade700,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                  _buildCompactDayHeader(
+                    currentDay - 1,
+                    _formatTripDate(model.startDate, currentDay),
+                    getDayColor(currentDay - 1),
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -3031,14 +3195,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   Color _routeColorForDay(int day) {
     if (day <= 0) return Colors.indigo.shade600;
-    final List<Color> palette = <Color>[
-      Colors.indigo.shade600,
-      Colors.teal.shade600,
-      Colors.deepOrange.shade500,
-      Colors.purple.shade500,
-      Colors.blue.shade600,
-    ];
-    return palette[(day - 1) % palette.length];
+    // 使用统一的 getDayColor 确保双模式颜色一致
+    return getDayColor(day - 1);
   }
 
   Color _getRouteColor(int dayIndex) => _routeColorForDay(dayIndex);

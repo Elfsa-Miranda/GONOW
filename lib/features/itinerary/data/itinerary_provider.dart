@@ -2,10 +2,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum TripState { preparing, traveling }
+
+// 双模式枚举：行程前（规划）vs 行程中（旅行）
+enum TripMode {
+  planning,  // 行程前 (规划模式)
+  traveling  // 行程中 (旅行模式)
+}
 
 DateTime _toDayStart(DateTime value) =>
     DateTime(value.year, value.month, value.day);
@@ -272,6 +279,18 @@ class ItineraryProvider extends ChangeNotifier {
 
   ItineraryModel? get currentItinerary => _currentItinerary;
   ItineraryModel? get activeItinerary => _activeItinerary;
+
+  // 双模式状态管理
+  TripMode _currentMode = TripMode.planning;
+  TripMode get currentMode => _currentMode;
+
+  void toggleTripMode(TripMode mode) {
+    if (_currentMode != mode) {
+      _currentMode = mode;
+      HapticFeedback.lightImpact(); // 震动反馈
+      notifyListeners();
+    }
+  }
 
   bool _isValidUuid(String id) {
     final RegExp uuidRegex = RegExp(
