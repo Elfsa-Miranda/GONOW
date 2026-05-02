@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 enum DiaryCreateMode { itinerary, retro }
@@ -51,16 +52,10 @@ class _DiaryConfigSheetBody extends StatefulWidget {
   State<_DiaryConfigSheetBody> createState() => _DiaryConfigSheetBodyState();
 }
 
-class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
-    with SingleTickerProviderStateMixin {
+class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody> {
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _retroLocationController =
       TextEditingController();
-
-  late final TabController _tabController = TabController(
-    length: 2,
-    vsync: this,
-  );
   final List<Map<String, String>> _tripOptions = const <Map<String, String>>[
     <String, String>{'id': 'trip_beijing', 'title': '北京 5 天亲子行'},
     <String, String>{'id': 'trip_hangzhou', 'title': '杭州 3 天慢游'},
@@ -82,12 +77,12 @@ class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
   String _selectedStyle = '🍃 文艺清新';
   String _selectedTripId = 'trip_beijing';
   final List<String> _pickedImagePaths = <String>[];
+  int _selectedModeIndex = 0;
   bool _submitting = false;
 
   @override
   void dispose() {
     _retroLocationController.dispose();
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -105,7 +100,7 @@ class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
   }
 
   Future<void> _submit() async {
-    final bool isRetro = _tabController.index == 1;
+    final bool isRetro = _selectedModeIndex == 1;
     if (isRetro && _retroLocationController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先填写你去哪儿了')),
@@ -130,7 +125,7 @@ class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       child: Material(
         color: Colors.white,
         child: SafeArea(
@@ -140,100 +135,115 @@ class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
             child: Column(
               children: <Widget>[
                 Container(
-                  width: 44,
-                  height: 5,
-                  margin: const EdgeInsets.only(top: 10, bottom: 14),
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE0E3E8),
-                    borderRadius: BorderRadius.circular(999),
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: DecoratedBox(
+                  child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF2F4F8),
-                      borderRadius: BorderRadius.circular(14),
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: TabBar(
-                      controller: _tabController,
-                      indicator: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const <BoxShadow>[
-                          BoxShadow(
-                            color: Color(0x14000000),
-                            blurRadius: 8,
-                            offset: Offset(0, 2),
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _buildModeTab(
+                            label: '关联已有行程',
+                            selected: _selectedModeIndex == 0,
+                            onTap: () {
+                              if (_selectedModeIndex == 0) return;
+                              HapticFeedback.lightImpact();
+                              setState(() => _selectedModeIndex = 0);
+                            },
                           ),
-                        ],
-                      ),
-                      labelColor: const Color(0xFF111827),
-                      unselectedLabelColor: const Color(0xFF6B7280),
-                      labelStyle: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      tabs: const <Widget>[
-                        Tab(text: '关联已有行程'),
-                        Tab(text: '补录往期精彩'),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _buildModeTab(
+                            label: '补录往期精彩',
+                            selected: _selectedModeIndex == 1,
+                            onTap: () {
+                              if (_selectedModeIndex == 1) return;
+                              HapticFeedback.lightImpact();
+                              setState(() => _selectedModeIndex = 1);
+                            },
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: <Widget>[
-                      _buildItineraryMode(),
-                      _buildRetroMode(),
-                    ],
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: _selectedModeIndex == 0
+                        ? _buildItineraryMode(
+                            key: const ValueKey<String>('itinerary_mode'),
+                          )
+                        : _buildRetroMode(
+                            key: const ValueKey<String>('retro_mode'),
+                          ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: <Color>[Color(0xFF8E2DE2), Color(0xFF4A00E0)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: const <BoxShadow>[
-                          BoxShadow(
-                            color: Color(0x443F51B5),
-                            blurRadius: 18,
-                            offset: Offset(0, 8),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: <Color>[
+                              Colors.indigo.shade500,
+                              Colors.purple.shade500,
+                            ],
                           ),
-                        ],
-                      ),
-                      child: TextButton(
-                        onPressed: _submitting ? null : _submit,
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: Colors.indigo.withValues(alpha: 0.3),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
-                        child: _submitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.4,
-                                  color: Colors.white,
+                        child: TextButton(
+                          onPressed: _submitting ? null : _submit,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  '✨ AI 一键生成手账',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                              )
-                            : const Text(
-                                '✨ AI 一键生成手账',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                        ),
                       ),
                     ),
                   ),
@@ -246,35 +256,94 @@ class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
     );
   }
 
-  Widget _buildItineraryMode() {
+  Widget _buildModeTab({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        height: 42,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: selected
+              ? <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.indigo.shade700 : Colors.grey.shade500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItineraryMode({Key? key}) {
     return ListView(
+      key: key,
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
       children: <Widget>[
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFDDE3EE)),
-            color: const Color(0xFFF7F9FC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+            color: Colors.grey.shade50,
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _selectedTripId,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded),
-              borderRadius: BorderRadius.circular(14),
-              items: _tripOptions
-                  .map(
-                    (Map<String, String> option) => DropdownMenuItem<String>(
-                      value: option['id'],
-                      child: Text(option['title'] ?? ''),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: (String? value) {
-                if (value == null) return;
-                setState(() => _selectedTripId = value);
-              },
-            ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.map_rounded,
+                  size: 18,
+                  color: Colors.indigo.shade500,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedTripId,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                    borderRadius: BorderRadius.circular(14),
+                    items: _tripOptions
+                        .map(
+                          (Map<String, String> option) => DropdownMenuItem<String>(
+                            value: option['id'],
+                            child: Text(option['title'] ?? ''),
+                          ),
+                        )
+                        .toList(growable: false),
+                    onChanged: (String? value) {
+                      if (value == null) return;
+                      setState(() => _selectedTripId = value);
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -283,8 +352,9 @@ class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
     );
   }
 
-  Widget _buildRetroMode() {
+  Widget _buildRetroMode({Key? key}) {
     return ListView(
+      key: key,
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
       children: <Widget>[
         SizedBox(
@@ -388,30 +458,46 @@ class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody>
         crossAxisCount: 2,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 2.7,
+        childAspectRatio: 1.95,
       ),
       itemBuilder: (BuildContext context, int index) {
         final _StyleItem style = _styleItems[index];
         final bool selected = style.label == _selectedStyle;
+        final String emoji = style.label.split(' ').first;
+        final String label = style.label.replaceFirst('$emoji ', '');
         return GestureDetector(
-          onTap: () => setState(() => _selectedStyle = style.label),
-          child: Container(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            setState(() => _selectedStyle = style.label);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: selected ? style.color.withValues(alpha: 0.12) : const Color(0xFFF4F6F8),
-              borderRadius: BorderRadius.circular(12),
+              color: selected ? Colors.indigo.shade50 : Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: selected ? style.color : const Color(0xFFE1E6ED),
+                color: selected ? Colors.indigo.shade400 : Colors.transparent,
                 width: selected ? 1.5 : 1,
               ),
             ),
-            child: Text(
-              style.label,
-              style: TextStyle(
-                fontSize: 13,
-                color: selected ? const Color(0xFF111827) : const Color(0xFF4B5563),
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(emoji, style: const TextStyle(fontSize: 24)),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: selected
+                        ? const Color(0xFF111827)
+                        : const Color(0xFF4B5563),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
         );

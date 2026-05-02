@@ -2,16 +2,35 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:gonow/features/diary/data/diary_provider.dart';
 import 'package:gonow/features/diary/presentation/screens/diary_detail_screen.dart';
 import 'package:gonow/features/diary/presentation/widgets/diary_config_sheet.dart';
 import 'package:provider/provider.dart';
 
-class DiaryCenterScreen extends StatelessWidget {
+class DiaryCenterScreen extends StatefulWidget {
   const DiaryCenterScreen({super.key});
 
+  @override
+  State<DiaryCenterScreen> createState() => _DiaryCenterScreenState();
+}
+
+class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
+  bool _pageVisible = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_pageVisible) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _pageVisible = true);
+    });
+  }
+
   Future<void> _onCreateDiary(BuildContext context) async {
+    HapticFeedback.lightImpact();
     final DiaryConfigResult? config = await showDiaryConfigSheet(context);
     if (config == null || !context.mounted) return;
     showDialog<void>(
@@ -193,69 +212,95 @@ class DiaryCenterScreen extends StatelessWidget {
       ),
     ];
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
-      body: CustomScrollView(
-        slivers: <Widget>[
-          SliverAppBar(
-            pinned: true,
-            expandedHeight: 156,
-            backgroundColor: const Color(0xFFF8F9FB).withValues(alpha: 0.85),
-            surfaceTintColor: Colors.transparent,
-            flexibleSpace: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: FlexibleSpaceBar(
-                  titlePadding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                  title: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      const Text(
-                        '✨ 你的数字旅行日记',
-                        style: TextStyle(
-                          fontSize: 23,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black87,
-                          letterSpacing: -0.5,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.visible,
+      backgroundColor: const Color(0xFFF7F8FA),
+      body: AnimatedOpacity(
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        opacity: _pageVisible ? 1 : 0,
+        child: CustomScrollView(
+          slivers: <Widget>[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 16,
+                  left: 20,
+                  right: 20,
+                  bottom: 16,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      '✨ 你的数字旅行日记',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black87,
+                        letterSpacing: -0.5,
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: <Widget>[
-                          Container(
-                            width: 3,
-                            height: 12,
-                            margin: const EdgeInsets.only(right: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.indigo.shade300,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
+                      maxLines: 1,
+                      overflow: TextOverflow.visible,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: <Widget>[
+                        Container(
+                          width: 3,
+                          height: 12,
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.indigo.shade300,
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          Expanded(
-                            child: Text(
-                              '草稿 ${provider.drafts.length} · 我的手账 ${provider.myDiaries.length} · 社区精选 ${provider.communityDiaries.length}',
+                        ),
+                        Expanded(
+                          child: RichText(
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            text: TextSpan(
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 12,
                                 color: Colors.grey.shade500,
                                 fontWeight: FontWeight.w500,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              children: <InlineSpan>[
+                                const TextSpan(text: '累计记录了 '),
+                                TextSpan(
+                                  text:
+                                      '${provider.myDiaries.length + provider.drafts.length}',
+                                  style: TextStyle(
+                                    color: Colors.indigo.shade500,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const TextSpan(text: ' 段 · 草稿 '),
+                                TextSpan(
+                                  text: '${provider.drafts.length}',
+                                  style: TextStyle(
+                                    color: Colors.indigo.shade500,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const TextSpan(text: ' · 社区精选 '),
+                                TextSpan(
+                                  text: '${provider.communityDiaries.length}',
+                                  style: TextStyle(
+                                    color: Colors.indigo.shade500,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
+            SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
             sliver: SliverMasonryGrid.count(
               crossAxisCount: 2,
               mainAxisSpacing: 12,
@@ -263,33 +308,44 @@ class DiaryCenterScreen extends StatelessWidget {
               childCount: display.length + 1,
               itemBuilder: (BuildContext context, int index) {
                 if (index == 0) {
-                  return _DraftEntryCard(
-                    draftCount: provider.drafts.length,
-                    onTap: () => _openDraftBox(context, provider.drafts),
+                  return _StaggerReveal(
+                    index: index,
+                    enabled: false,
+                    child: _DraftEntryCard(
+                      draftCount: provider.drafts.length,
+                      onTap: () => _openDraftBox(context, provider.drafts),
+                    ),
                   );
                 }
                 final DiaryModel diary = display[index - 1];
-                return _DiaryCard(diary: diary);
+                return _StaggerReveal(
+                  index: index,
+                  enabled: false,
+                  child: _DiaryCard(diary: diary),
+                );
               },
             ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 24),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).padding.bottom + 24,
+        ),
         child: SizedBox(
           width: MediaQuery.of(context).size.width - 48,
           height: 56,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: const <BoxShadow>[
+              color: const Color(0xFF111111),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: <BoxShadow>[
                 BoxShadow(
-                  color: Color(0x47000000),
-                  blurRadius: 24,
-                  offset: Offset(0, 12),
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
@@ -301,9 +357,34 @@ class DiaryCenterScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              child: const Text(
-                '➕ 制作新手账',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: <Color>[
+                          Colors.indigo.shade500,
+                          Colors.purple.shade500,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.add, size: 16, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    '制作新手账',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -323,23 +404,25 @@ class _DraftEntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
         height: 180,
         decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFFBBC2CF),
-            width: 2,
-            style: BorderStyle.solid,
-          ),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: CustomPaint(
           painter: _DashedBorderPainter(
             color: const Color(0xFF9EA6B5),
-            borderRadius: 16,
-            strokeWidth: 2,
+            borderRadius: 20,
+            strokeWidth: 1.6,
             dashLength: 6,
             gapLength: 4,
           ),
@@ -347,10 +430,19 @@ class _DraftEntryCard extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Icon(
-                  Icons.edit_outlined,
-                  size: 28,
-                  color: Colors.indigo.shade400,
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.edit_document,
+                    size: 24,
+                    color: Colors.indigo.shade400,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -403,10 +495,10 @@ class _DiaryCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: <BoxShadow>[
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -419,7 +511,7 @@ class _DiaryCard extends StatelessWidget {
               children: <Widget>[
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(12),
+                    top: Radius.circular(20),
                   ),
                   child: CachedNetworkImage(
                     imageUrl: diary.coverImageUrl,
@@ -477,7 +569,7 @@ class _DiaryCard extends StatelessWidget {
               ],
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -593,5 +685,22 @@ class _DashedBorderPainter extends CustomPainter {
         oldDelegate.strokeWidth != strokeWidth ||
         oldDelegate.dashLength != dashLength ||
         oldDelegate.gapLength != gapLength;
+  }
+}
+
+class _StaggerReveal extends StatelessWidget {
+  const _StaggerReveal({
+    required this.index,
+    required this.enabled,
+    required this.child,
+  });
+
+  final int index;
+  final bool enabled;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return child;
   }
 }
