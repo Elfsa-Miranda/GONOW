@@ -18,13 +18,21 @@ class OotdScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black87, size: 20),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: CustomScrollView(
         slivers: <Widget>[
           _buildOotdHeader(),
           _buildMainShowcase(),
           _buildInspirationHeader(),
           _buildInspirationGrid(),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
         ],
       ),
     );
@@ -32,50 +40,47 @@ class OotdScreen extends StatelessWidget {
 
   Widget _buildOotdHeader() {
     return SliverToBoxAdapter(
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          child: Row(
-            children: <Widget>[
-              Text(
-                'OOTD 试衣间',
-                style: TextStyle(
-                  color: Colors.grey.shade800,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Row(
+          children: <Widget>[
+            Text(
+              'OOTD 试衣间',
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
               ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.pink.shade50,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Icon(
-                      Icons.checkroom_outlined,
-                      size: 16,
+            ),
+            const Spacer(),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.pink.shade50,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    Icons.checkroom_outlined,
+                    size: 16,
+                    color: Colors.pink.shade400,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '我的衣橱',
+                    style: TextStyle(
                       color: Colors.pink.shade400,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '我的衣橱',
-                      style: TextStyle(
-                        color: Colors.pink.shade400,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

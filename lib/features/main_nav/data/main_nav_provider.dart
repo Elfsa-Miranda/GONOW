@@ -23,8 +23,13 @@ class MainNavProvider extends ChangeNotifier {
     setTab(1);
   }
 
-  void goToOotdTab() {
+  void goToDiaryTab() {
     setTab(2);
+  }
+
+  @Deprecated('OOTD 已降级为二级页，请改用 goToDiaryTab')
+  void goToOotdTab() {
+    goToDiaryTab();
   }
 
   void requestOpenAiSheet({

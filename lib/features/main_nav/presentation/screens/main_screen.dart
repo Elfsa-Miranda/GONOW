@@ -3,9 +3,9 @@ import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../../ai_custom/presentation/screens/ai_custom_screen.dart';
+import '../../../diary/presentation/screens/diary_center_screen.dart';
 import '../../../discover/presentation/screens/discover_screen.dart';
 import '../../../itinerary/presentation/screens/itinerary_screen.dart';
-import '../../../ootd/presentation/screens/ootd_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import '../widgets/custom_bottom_bar.dart';
 import '../widgets/custom_fab.dart';
@@ -23,7 +23,7 @@ class _MainScreenState extends State<MainScreen> {
   late final List<Widget> _pages = <Widget>[
     const DiscoverScreen(),
     const ItineraryScreen(),
-    const OotdScreen(),
+    const DiaryCenterScreen(),
     const ProfileScreen(),
   ];
 
@@ -44,7 +44,7 @@ class _MainScreenState extends State<MainScreen> {
     return switch (index) {
       0 => '发现页',
       1 => '行程页',
-      2 => 'OOTD页',
+      2 => '手账页',
       3 => '我的页',
       _ => '底部导航栏',
     };

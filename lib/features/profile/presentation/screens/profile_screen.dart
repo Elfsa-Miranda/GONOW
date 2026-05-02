@@ -1,7 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
+import 'package:gonow/features/ootd/presentation/screens/ootd_screen.dart';
+import 'package:provider/provider.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -260,7 +261,23 @@ class ProfileScreen extends StatelessWidget {
         delegate: SliverChildBuilderDelegate(
           (BuildContext context, int index) {
             final _AssetItem item = _assets[index];
-            return _AssetCard(item: item);
+            return _AssetCard(
+              item: item,
+              onTap: () {
+                if (item.title == '我的衣橱') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const OotdScreen(),
+                    ),
+                  );
+                  return;
+                }
+                if (item.title == '旅行手账') {
+                  context.read<MainNavProvider>().setTab(2);
+                }
+              },
+            );
           },
           childCount: _assets.length,
         ),
@@ -270,93 +287,97 @@ class ProfileScreen extends StatelessWidget {
 }
 
 class _AssetCard extends StatelessWidget {
-  const _AssetCard({required this.item});
+  const _AssetCard({required this.item, required this.onTap});
 
   final _AssetItem item;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade100),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: item.iconBackground,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    item.icon,
-                    size: 20,
-                    color: item.iconColor,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2E2E2E),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-          ),
-          if (item.showAiTag)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: const Text(
-                  '✨ AI生成',
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
+          ],
+        ),
+        child: Stack(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: item.iconBackground,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      item.icon,
+                      size: 20,
+                      color: item.iconColor,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E2E2E),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    item.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (item.showAiTag)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    '✨ AI生成',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

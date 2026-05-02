@@ -42,10 +42,10 @@ class CustomBottomBar extends StatelessWidget {
           const SizedBox(width: 72),
           Expanded(
             child: _BottomBarItem(
-              label: 'OOTD',
+              label: '手账',
               selected: currentIndex == 2,
-              selectedIcon: Icons.checkroom,
-              unselectedIcon: Icons.checkroom_outlined,
+              selectedIcon: Icons.menu_book_rounded,
+              unselectedIcon: Icons.photo_album_outlined,
               onTap: () => onDestinationSelected(2),
             ),
           ),
