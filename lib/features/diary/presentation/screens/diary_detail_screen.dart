@@ -872,6 +872,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         title: '编辑引言',
         controller: _quoteController,
         maxLines: 6,
+        showAiCopilot: true,
       ),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -1674,8 +1675,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
             ),
             if (_isEditing)
               Positioned(
-                right: 18,
-                bottom: 96,
+                right: 16,
+                bottom: 44,
                 child: AnimatedBuilder(
                   animation: _pulseController,
                   builder: (BuildContext context, Widget? child) {
@@ -1827,6 +1828,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     required String title,
     required TextEditingController controller,
     int maxLines = 1,
+    bool showAiCopilot = false,
   }) async {
     _sheetInputController
       ..text = _realOrEmpty(controller.text)
@@ -1879,16 +1881,54 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                         horizontal: 16,
                         vertical: 8,
                       ),
-                      child: TextField(
-                        controller: _sheetInputController,
-                        maxLines: null,
-                        keyboardType: TextInputType.multiline,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          hintText: '请输入内容...',
-                          hintStyle: TextStyle(color: Colors.grey.shade400),
-                        ),
-                      ),
+                      child: showAiCopilot
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Expanded(
+                                  child: TextField(
+                                    controller: _sheetInputController,
+                                    maxLines: null,
+                                    keyboardType: TextInputType.multiline,
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      hintText: '请输入内容...',
+                                      hintStyle: TextStyle(
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.auto_awesome,
+                                    color: Colors.indigo,
+                                    size: 20,
+                                  ),
+                                  tooltip: 'AI一键润色',
+                                  onPressed: () async {
+                                    await _openAiCopilotPanel();
+                                    if (!mounted) return;
+                                    _sheetInputController.text =
+                                        _realOrEmpty(controller.text);
+                                    _sheetInputController.selection =
+                                        TextSelection.collapsed(
+                                      offset: _sheetInputController.text.length,
+                                    );
+                                  },
+                                ),
+                              ],
+                            )
+                          : TextField(
+                              controller: _sheetInputController,
+                              maxLines: null,
+                              keyboardType: TextInputType.multiline,
+                              decoration: InputDecoration(
+                                border: InputBorder.none,
+                                hintText: '请输入内容...',
+                                hintStyle: TextStyle(color: Colors.grey.shade400),
+                              ),
+                            ),
                     ),
                   ),
                 ),
