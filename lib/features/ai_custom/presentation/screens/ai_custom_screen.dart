@@ -38,6 +38,7 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
   String? _hintPrompt;
+  bool _showAllHistory = false;
   http.Client? _activeClient;
   int _requestSeq = 0;
   int? _activeRequestId;
@@ -249,6 +250,120 @@ $currentPlanJson
       }
     } catch (e) {
       debugPrint('🚨 加载历史记录彻底失败: $e');
+    }
+  }
+
+  Future<void> _clearChatHistory() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      builder: (BuildContext context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_sweep_rounded,
+                  color: Colors.red.shade400,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '清空聊天记录',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '清空后当前对话将无法找回。\n(已导入“我的行程”中的计划不受影响)',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.black54,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        backgroundColor: Colors.grey.shade100,
+                      ),
+                      child: const Text(
+                        '取消',
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        backgroundColor: Colors.red.shade400,
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        '确定清空',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted || confirm != true) return;
+
+    setState(() {
+      _messages = <ChatMessage>[_messages.first];
+      _showAllHistory = false;
+    });
+
+    final String? userId = _supabase.auth.currentUser?.id;
+    if (userId != null) {
+      _supabase
+          .from('ai_chat_messages')
+          .delete()
+          .eq('user_id', userId)
+          .catchError((Object _) {});
     }
   }
 
@@ -596,6 +711,15 @@ $currentPlanJson
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final bool isGlobalLoading = context.watch<MainNavProvider>().isAiPlanning;
+    const int displayThreshold = 5;
+    final bool hasHiddenHistory =
+        _messages.length > displayThreshold && !_showAllHistory;
+    final List<ChatMessage> renderMessages = hasHiddenHistory
+        ? <ChatMessage>[
+            _messages.first,
+            ..._messages.sublist(_messages.length - (displayThreshold - 1)),
+          ]
+        : _messages;
 
     return Material(
       color: Colors.grey.shade50,
@@ -608,13 +732,25 @@ $currentPlanJson
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
+                cacheExtent: 99999,
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                itemCount: _messages.length + (isGlobalLoading ? 1 : 0),
+                itemCount:
+                    renderMessages.length +
+                    (isGlobalLoading ? 1 : 0) +
+                    (hasHiddenHistory ? 1 : 0),
                 itemBuilder: (BuildContext context, int index) {
-                  if (isGlobalLoading && index == _messages.length) {
+                  if (isGlobalLoading &&
+                      index ==
+                          renderMessages.length + (hasHiddenHistory ? 1 : 0)) {
                     return _buildLoadingBubble();
                   }
-                  final ChatMessage message = _messages[index];
+                  if (hasHiddenHistory && index == 1) {
+                    return _buildExpandButton();
+                  }
+                  final int msgIndex = hasHiddenHistory && index > 1
+                      ? index - 1
+                      : index;
+                  final ChatMessage message = renderMessages[msgIndex];
                   if (message.role == 'system') {
                     return _buildSystemHint(message.text);
                   }
@@ -674,10 +810,65 @@ $currentPlanJson
             ),
           ),
           IconButton(
+            icon: const Icon(
+              Icons.cleaning_services_rounded,
+              color: Colors.black54,
+              size: 20,
+            ),
+            tooltip: '清空对话',
+            onPressed: _clearChatHistory,
+          ),
+          IconButton(
             icon: const Icon(Icons.close, color: Colors.black54),
             onPressed: () => Navigator.of(context).maybePop(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildExpandButton() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16.0),
+        child: TextButton.icon(
+          onPressed: () {
+            final double previousOffset = _scrollController.offset;
+            final double previousMaxScroll =
+                _scrollController.position.maxScrollExtent;
+
+            setState(() {
+              _showAllHistory = true;
+            });
+
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !_scrollController.hasClients) return;
+              final double currentMaxScroll =
+                  _scrollController.position.maxScrollExtent;
+              final double delta = currentMaxScroll - previousMaxScroll;
+
+              if (delta > 0) {
+                _scrollController.jumpTo(previousOffset + delta);
+              }
+            });
+          },
+          icon: const Icon(Icons.history, size: 16, color: Colors.indigo),
+          label: const Text(
+            '⏳ 查看更早的聊天记录',
+            style: TextStyle(
+              color: Colors.indigo,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          style: TextButton.styleFrom(
+            backgroundColor: Colors.indigo.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
       ),
     );
   }
