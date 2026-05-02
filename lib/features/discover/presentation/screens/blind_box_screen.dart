@@ -193,7 +193,7 @@ class _BlindBoxScreenState extends State<BlindBoxScreen>
     }
   }
 
-// 极度鲁棒的数据提取（完全匹配你的 CityModel 强类型）
+  // 极度鲁棒的数据提取（完全匹配你的 CityModel 强类型）
   Map<String, dynamic> _mapCurrentData(TravelProvider provider) {
     if (widget.isInternational) {
       final country = provider.internationalCountries[_currentIndex];
@@ -201,7 +201,10 @@ class _BlindBoxScreenState extends State<BlindBoxScreen>
         'name': '${country['flag_emoji'] ?? '🌍'} ${country['name'] ?? ''}',
         'imageUrl': country['image_url']?.toString() ?? '',
         'subtitle': '🌍 环球旅行，精选热门目的地',
-        'tags': ['🌍 ${country['continent'] ?? '全球'}', ...List<String>.from(country['tags'] ?? [])],
+        'tags': [
+          '🌍 ${country['continent'] ?? '全球'}',
+          ...List<String>.from(country['tags'] ?? []),
+        ],
       };
     } else {
       final city = provider.cities[_currentIndex];
@@ -214,6 +217,7 @@ class _BlindBoxScreenState extends State<BlindBoxScreen>
       };
     }
   }
+
   void _generatePlan(Map<String, dynamic> data) {
     final String prompt =
         '我刚刚抽中了旅行盲盒：${data['name']}！请帮我规划一趟完美的旅行攻略。游玩时长：$_finalDaysText。请你根据这个时长和城市的特色，为我定制每日的详细路线，并包含必吃美食和防坑指南。';
@@ -221,7 +225,7 @@ class _BlindBoxScreenState extends State<BlindBoxScreen>
       context,
       listen: false,
     );
-    navProvider.triggerAiPlanning(prompt);
+    navProvider.triggerAiPlanning(prompt, source: '旅行盲盒', autoSend: true);
     if (mounted) {
       Navigator.of(context).pop();
     }

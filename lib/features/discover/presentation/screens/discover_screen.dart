@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -74,7 +74,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       context,
       listen: false,
     );
-    navProvider.triggerAiPlanning(lockedHint);
+    navProvider.triggerAiPlanning(lockedHint, source: '发现页搜索', autoSend: false);
   }
 
   @override

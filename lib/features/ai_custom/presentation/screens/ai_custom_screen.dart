@@ -6,32 +6,163 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class ChatMessage {
+  final String role;
+  final String text;
+  final Map<String, dynamic>? itineraryData;
+  final bool isError;
+
+  const ChatMessage({
+    required this.role,
+    required this.text,
+    this.itineraryData,
+    this.isError = false,
+  });
+}
 
 class AiCustomScreen extends StatefulWidget {
-  const AiCustomScreen({super.key});
+  final String source;
+  final String? initialPrompt;
+
+  const AiCustomScreen({super.key, this.source = '底部导航栏', this.initialPrompt});
 
   @override
   State<AiCustomScreen> createState() => _AiCustomScreenState();
 }
 
 class _AiCustomScreenState extends State<AiCustomScreen> {
+  final SupabaseClient _supabase = Supabase.instance.client;
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
-  bool _isLoading = false;
   String? _hintPrompt;
-  String? _lastConsumedPrompt;
   http.Client? _activeClient;
   int _requestSeq = 0;
   int? _activeRequestId;
-  final List<Map<String, dynamic>> _messages = <Map<String, dynamic>>[
-    <String, dynamic>{
-      'role': 'ai',
-      'text':
+  List<ChatMessage> _messages = <ChatMessage>[
+    const ChatMessage(
+      role: 'ai',
+      text:
           '👋 你好！我是你的专属智能旅游管家。\n\n请告诉我你的**目的地**、**游玩天数**和**大致预算**（例如：*“去大理玩 4天，预算 3000”*），我来为你量身定制专属行程！\n\n💡 你也可以补充偏好（如亲子、拍照、美食、慢节奏），我会一起考虑。',
-      'isError': false,
-    },
+      isError: false,
+    ),
   ];
+
+  // 组装系统提示词的方法 (支持传入当前行程 JSON)
+  String _buildSystemPrompt(String? currentPlanJson, String source) {
+    // 1. 【原封不动】你原本的完美基础 Prompt
+    final String basePrompt = '''你是一个温暖、专业的智能旅游管家。当用户提出需求时，请按照以下两个部分严格输出：
+
+【第一部分：回复给用户看的文本】
+
+请用亲切的自然语言回答，并用 Markdown 格式排出详细的每日行程（包含景点和美食）。如果用户询问旅游常识（如防高反、签证），请先用自然、亲切的语言详细解答。在文本的最后，无需展示任何计算过程，只需要直接加上『💰 人均预估费用：约 XXXX 元』即可。
+
+注：不要在文本里罗列繁琐的避坑指南和行李清单！
+
+【第二部分：留给系统的隐藏 JSON】
+
+在第一部分的自然语言完全结束后，必须在整个回复的最末尾附上一个严格的 JSON 代码块（必须用 ```json 和 ``` 包裹）。JSON中不仅要包含每日行程（需提供经纬度），还要静默包含行李、避坑等行前准备数据。
+
+JSON 格式必须为：
+
+```json
+
+{
+
+  "title": "行程标题",
+
+  "estimated_budget_per_person": "3500元",
+
+  "days": [
+
+    {
+
+      "dayTitle": "Day 1 标题",
+
+      "activities": [
+
+        {
+
+          "time": "10:00",
+
+          "title": "景点名",
+
+          "type": "scenic",
+
+          "openTime": "09:00-18:00 开放",
+
+          "recommended_duration": "2.5小时",
+
+          "tag": "历史人文 · 必打卡",
+
+          "strategy": "游玩攻略：建议先去核心展区，避开下午人流高峰。",
+
+          "lat": 39.9,
+
+          "lng": 116.4
+
+        }
+
+      ]
+
+    }
+
+  ],
+
+  "pre_trip_prep": {
+
+    "bookings": [{"item": "故宫门票", "tips": "提前7天"}],
+
+    "luggage": [],
+
+    "pitfalls": []
+
+  }
+
+}
+
+```
+
+【极度重要】：在生成 activities 的时间安排和建议游玩时长 (recommended_duration) 时，绝对不允许偷懒全部写 '1小时'！你必须根据景点的真实客观属性进行合理预估。例如：
+
+大型博物馆/主题乐园：建议 3-4 小时或半天。
+
+知名自然风光/爬山：建议 2-4 小时。
+
+特色餐厅/老字号就餐：建议 1.5-2 小时。
+
+打卡地/夜市逛街：建议 1-2 小时。 请确保时间轴的安排合理且符合真实人类游玩体力！''';
+
+    String extensionPrompt = '\n\n========== 【当前场景感知与专属指令】 ==========\n';
+    extensionPrompt += '用户当前是从【$source】页面呼出你的。\n';
+
+    if (currentPlanJson != null && currentPlanJson.isNotEmpty) {
+      extensionPrompt +=
+          '''
+以下是用户当前的完整行程草案(JSON格式)：
+
+$currentPlanJson
+
+请遵循以下额外规则：
+1. 【微调修改】：如果用户要求修改当前行程，请基于现有数据精准修改，并输出修改后的完整 JSON。
+2. 🚨【变卦处理】：如果用户提出**完全改变目的地**，请彻底抛弃上述旧数据，直接为新目的地生成全新 JSON！
+3. 【闲聊防呆】：如果用户仅闲聊且不需要改行程，只输出文字回复，切勿输出 JSON 代码块！
+''';
+    } else {
+      extensionPrompt += '用户目前还没有创建任何行程，请尽情发挥创意为他从零规划，并输出 JSON 数据。';
+    }
+    return basePrompt + extensionPrompt;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bootstrapChat();
+    });
+  }
 
   @override
   void dispose() {
@@ -41,38 +172,138 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
     super.dispose();
   }
 
+  Future<void> _bootstrapChat() async {
+    await loadChatHistory();
+    _forceScrollToBottom();
+
+    if (!mounted) return;
+    final MainNavProvider navProvider = context.read<MainNavProvider>();
+    final String? pending = navProvider.pendingAiPrompt?.trim();
+    final String hintPrompt = pending != null && pending.isNotEmpty
+        ? pending
+        : '带父母去北京玩五天经典路线';
+    setState(() {
+      _hintPrompt = hintPrompt;
+    });
+
+    if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
+      if (navProvider.shouldAutoSendAi) {
+        navProvider.shouldAutoSendAi = false;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !context.read<MainNavProvider>().isAiPlanning) {
+            _sendMessage();
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> loadChatHistory() async {
+    final String? userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final List<Map<String, dynamic>> response = await _supabase
+          .from('ai_chat_messages')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: true);
+
+      if (response.isNotEmpty) {
+        final List<ChatMessage> history = <ChatMessage>[];
+        for (final Map<String, dynamic> row in response) {
+          Map<String, dynamic>? parsedItinerary;
+          if (row['itinerary_data'] != null) {
+            try {
+              if (row['itinerary_data'] is String) {
+                final Object? decoded = jsonDecode(
+                  row['itinerary_data'] as String,
+                );
+                if (decoded is Map<String, dynamic>) {
+                  parsedItinerary = decoded;
+                }
+              } else if (row['itinerary_data'] is Map) {
+                parsedItinerary = Map<String, dynamic>.from(
+                  row['itinerary_data'] as Map<dynamic, dynamic>,
+                );
+              }
+            } catch (e) {
+              debugPrint('🚨 单条历史 itinerary_data 解析失败: $e');
+            }
+          }
+          history.add(
+            ChatMessage(
+              role: row['role'] as String? ?? 'user',
+              text: row['content'] as String? ?? '',
+              itineraryData: parsedItinerary,
+            ),
+          );
+        }
+        if (mounted) {
+          setState(() {
+            _messages = <ChatMessage>[_messages.first, ...history];
+          });
+          _forceScrollToBottom();
+        }
+      }
+    } catch (e) {
+      debugPrint('🚨 加载历史记录彻底失败: $e');
+    }
+  }
+
   Future<void> _sendMessage() async {
-    final String raw = _textController.text.trim();
-    final String userText = raw.isNotEmpty ? raw : (_hintPrompt ?? '').trim();
-    if (userText.isEmpty || _isLoading) {
-      return;
+    String text = _textController.text.trim();
+
+    if (text.isEmpty) {
+      if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
+        text = widget.initialPrompt!;
+      } else if (_hintPrompt != null && _hintPrompt!.isNotEmpty) {
+        text = _hintPrompt!;
+      } else {
+        text = '帮我规划一次旅行';
+      }
     }
 
+    if (context.read<MainNavProvider>().isAiPlanning) return;
+
+    final String userText = text;
     FocusScope.of(context).unfocus();
+    _textController.clear();
+    final MainNavProvider navProvider = context.read<MainNavProvider>();
+    navProvider.setAiPlanning(true);
     setState(() {
-      _messages.add(<String, dynamic>{
-        'role': 'user',
-        'text': userText,
-        'isError': false,
-      });
-      _textController.clear();
-      _isLoading = true;
+      _messages.add(ChatMessage(role: 'user', text: userText));
     });
     _scrollToBottom();
     final int requestId = ++_requestSeq;
     _activeRequestId = requestId;
+    final String? userId = _supabase.auth.currentUser?.id;
+    if (userId != null) {
+      _supabase
+          .from('ai_chat_messages')
+          .insert(<String, dynamic>{
+            'user_id': userId,
+            'role': 'user',
+            'content': userText,
+          })
+          .then((_) => debugPrint('✅ 用户消息云端备份'))
+          .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
+    }
 
     const String apiKey = 'sk-a442065c813f4f4eaf584218f8955b6e';
     final String normalizedApiKey = apiKey.trim();
     if (normalizedApiKey.isEmpty) {
       setState(() {
-        _messages.add(<String, dynamic>{
-          'role': 'ai',
-          'text': '检测到 API Key 为空，请先在代码中配置有效的 DeepSeek Key。',
-          'isError': true,
-        });
-        _isLoading = false;
+        _messages.add(
+          const ChatMessage(
+            role: 'ai',
+            text: '检测到 API Key 为空，请先在代码中配置有效的 DeepSeek Key。',
+            isError: true,
+          ),
+        );
       });
+      navProvider.setAiPlanning(false);
       _scrollToBottom();
       return;
     }
@@ -82,18 +313,23 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
       final http.Client client = http.Client();
       _activeClient = client;
       final List<Map<String, String>> history = _messages
-          .where(
-            (Map<String, dynamic> msg) =>
-                msg['role'] == 'user' || msg['role'] == 'ai',
-          )
+          .where((ChatMessage msg) => msg.role == 'user' || msg.role == 'ai')
           .take(8)
           .map(
-            (Map<String, dynamic> msg) => <String, String>{
-              'role': msg['role'] == 'user' ? 'user' : 'assistant',
-              'content': (msg['text'] ?? '').toString(),
+            (ChatMessage msg) => <String, String>{
+              'role': msg.role == 'user' ? 'user' : 'assistant',
+              'content': msg.text,
             },
           )
           .toList(growable: false);
+      final ItineraryProvider itineraryProvider = context
+          .read<ItineraryProvider>();
+      final Map<String, dynamic>? currentPlanData =
+          itineraryProvider.activeItinerary?.planData ??
+          itineraryProvider.currentItinerary?.planData;
+      final String? currentPlanJson = currentPlanData != null
+          ? jsonEncode(currentPlanData)
+          : null;
       final http.Response response = await client.post(
         url,
         headers: <String, String>{
@@ -105,57 +341,10 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
           'messages': <Map<String, String>>[
             <String, String>{
               'role': 'system',
-              'content': '''你是一个温暖、专业的智能旅游管家。当用户提出需求时，请按照以下两个部分严格输出：
-
-【第一部分：回复给用户看的文本】
-请用亲切的自然语言回答，并用 Markdown 格式排出详细的每日行程（包含景点和美食）。如果用户询问旅游常识（如防高反、签证），请先用自然、亲切的语言详细解答。在文本的最后，无需展示任何计算过程，只需要直接加上『💰 人均预估费用：约 XXXX 元』即可。
-注：不要在文本里罗列繁琐的避坑指南和行李清单！
-
-【第二部分：留给系统的隐藏 JSON】
-在第一部分的自然语言完全结束后，必须在整个回复的最末尾附上一个严格的 JSON 代码块（必须用 ```json 和 ``` 包裹）。JSON中不仅要包含每日行程（需提供经纬度），还要静默包含行李、避坑等行前准备数据。
-JSON 格式必须为：
-```json
-{
-  "title": "行程标题",
-  "estimated_budget_per_person": "3500元",
-  "days": [
-    {
-      "dayTitle": "Day 1 标题",
-      "activities": [
-        {
-          "time": "10:00",
-          "title": "景点名",
-          "type": "scenic",
-          "openTime": "09:00-18:00 开放", 
-          "recommended_duration": "2.5小时",
-          "tag": "历史人文 · 必打卡", 
-          "strategy": "游玩攻略：建议先去核心展区，避开下午人流高峰。",
-          "lat": 39.9, 
-          "lng": 116.4
-        }
-      ]
-    }
-  ],
-  "pre_trip_prep": {
-    "bookings": [{"item": "故宫门票", "tips": "提前7天"}],
-    "luggage": [],
-    "pitfalls": []
-  }
-}
-```
-
-【极度重要】：在生成 activities 的时间安排和建议游玩时长 (recommended_duration) 时，绝对不允许偷懒全部写 '1小时'！你必须根据景点的真实客观属性进行合理预估。例如：
-
-大型博物馆/主题乐园：建议 3-4 小时或半天。
-
-知名自然风光/爬山：建议 2-4 小时。
-
-特色餐厅/老字号就餐：建议 1.5-2 小时。
-
-打卡地/夜市逛街：建议 1-2 小时。 请确保时间轴的安排合理且符合真实人类游玩体力！''',
+              'content': _buildSystemPrompt(currentPlanJson, widget.source),
             },
             ...history,
-            <String, String>{'role': 'user', 'content': '请为我规划：$userText'},
+            <String, String>{'role': 'user', 'content': userText},
           ],
         }),
       );
@@ -189,44 +378,64 @@ JSON 格式必须为：
             if (jsonString.isNotEmpty) {
               try {
                 final Object? parsed = jsonDecode(jsonString);
-                if (parsed is Map<String, dynamic>) {
-                  parsedItinerary = parsed;
+                if (parsed is Map) {
+                  parsedItinerary = Map<String, dynamic>.from(parsed);
                 }
               } catch (e) {
                 debugPrint('JSON 解析失败: $e');
               }
             }
           }
-          setState(() {
-            _messages.add(<String, dynamic>{
-              'role': 'ai',
-              'text': chatText.trim().isEmpty
-                  ? '我已经准备好继续帮你优化路线。'
-                  : chatText.trim(),
-              'itineraryData': parsedItinerary,
-              'isError': false,
+          final String finalChatText = chatText.trim().isEmpty
+              ? '我已经准备好继续帮你优化路线。'
+              : chatText.trim();
+          if (mounted) {
+            setState(() {
+              _messages.add(
+                ChatMessage(
+                  role: 'ai',
+                  text: finalChatText,
+                  itineraryData: parsedItinerary,
+                ),
+              );
             });
-          });
+          }
+          if (userId != null) {
+            _supabase
+                .from('ai_chat_messages')
+                .insert(<String, dynamic>{
+                  'user_id': userId,
+                  'role': 'ai',
+                  'content': finalChatText,
+                  'itinerary_data': parsedItinerary,
+                })
+                .then((_) => debugPrint('✅ AI消息云端备份'))
+                .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
+          }
         } else {
-          setState(() {
-            _messages.add(<String, dynamic>{
-              'role': 'ai',
-              'text': '抱歉，暂时没有拿到有效回复，请稍后再试。',
-              'isError': false,
+          if (mounted) {
+            setState(() {
+              _messages.add(
+                const ChatMessage(role: 'ai', text: '抱歉，暂时没有拿到有效回复，请稍后再试。'),
+              );
             });
-          });
+          }
         }
       } else {
         final String err =
             'HTTP ${response.statusCode}: ${response.reasonPhrase ?? 'unknown'}';
         final String shortErr = err.length > 20 ? err.substring(0, 20) : err;
-        setState(() {
-          _messages.add(<String, dynamic>{
-            'role': 'ai',
-            'text': '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
-            'isError': true,
+        if (mounted) {
+          setState(() {
+            _messages.add(
+              ChatMessage(
+                role: 'ai',
+                text: '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
+                isError: true,
+              ),
+            );
           });
-        });
+        }
       }
     } catch (e) {
       if (_activeRequestId != requestId) {
@@ -234,34 +443,40 @@ JSON 格式必须为：
       }
       final String err = e.toString();
       final String shortErr = err.length > 20 ? err.substring(0, 20) : err;
-      setState(() {
-        _messages.add(<String, dynamic>{
-          'role': 'ai',
-          'text': '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
-          'isError': true,
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            ChatMessage(
+              role: 'ai',
+              text: '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
+              isError: true,
+            ),
+          );
         });
-      });
+      }
     } finally {
-      if (_activeRequestId == requestId && mounted) {
+      if (_activeRequestId == requestId) {
         _activeRequestId = null;
         _activeClient?.close();
         _activeClient = null;
-        setState(() {
-          _isLoading = false;
-        });
-        _scrollToBottom();
+        if (mounted) {
+          setState(() {});
+          _scrollToBottom();
+        }
+        navProvider.setAiPlanning(false);
       }
     }
   }
 
   Future<void> _cancelRequest() async {
-    if (!_isLoading) return;
+    final MainNavProvider navProvider = context.read<MainNavProvider>();
+    if (!navProvider.isAiPlanning) return;
     _activeRequestId = null;
     _activeClient?.close();
     _activeClient = null;
+    navProvider.setAiPlanning(false);
     setState(() {
-      _isLoading = false;
-      _messages.add(<String, dynamic>{'role': 'system', 'text': '已中止行程生成'});
+      _messages.add(const ChatMessage(role: 'system', text: '已中止行程生成'));
     });
     _scrollToBottom();
   }
@@ -311,10 +526,9 @@ JSON 格式必须为：
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _messages.add(<String, dynamic>{
-          'role': 'system',
-          'text': '行程导入失败，请让 AI 重新生成一次',
-        });
+        _messages.add(
+          const ChatMessage(role: 'system', text: '行程导入失败，请让 AI 重新生成一次'),
+        );
       });
       return;
     }
@@ -328,7 +542,7 @@ JSON 格式必须为：
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) {
+      if (!mounted || !_scrollController.hasClients) {
         return;
       }
       _scrollController.animateTo(
@@ -336,26 +550,52 @@ JSON 格式必须为：
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted || !_scrollController.hasClients) {
+          return;
+        }
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      });
+    });
+  }
+
+  void _forceScrollToBottom() {
+    void jumpToBottom() {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    }
+
+    void animateToBottom() {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+
+    Future<void>.delayed(const Duration(milliseconds: 50), () {
+      jumpToBottom();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      animateToBottom();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 800), () {
+      animateToBottom();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 1400), () {
+      animateToBottom();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final MainNavProvider navProvider = context.read<MainNavProvider>();
-    final String? pending = navProvider.pendingAiPrompt?.trim();
-    if (navProvider.shouldAutoSendAi &&
-        pending != null &&
-        pending.isNotEmpty &&
-        pending != _lastConsumedPrompt) {
-      _lastConsumedPrompt = pending;
-      _hintPrompt = pending;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        context.read<MainNavProvider>().clearAiPendingState();
-      });
-    }
-
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bool isGlobalLoading = context.watch<MainNavProvider>().isAiPlanning;
 
     return Material(
       color: Colors.grey.shade50,
@@ -369,23 +609,23 @@ JSON 格式必须为：
               child: ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                itemCount: _messages.length + (_isLoading ? 1 : 0),
+                itemCount: _messages.length + (isGlobalLoading ? 1 : 0),
                 itemBuilder: (BuildContext context, int index) {
-                  if (_isLoading && index == _messages.length) {
+                  if (isGlobalLoading && index == _messages.length) {
                     return _buildLoadingBubble();
                   }
-                  final Map<String, dynamic> message = _messages[index];
-                  if (message['role'] == 'system') {
-                    return _buildSystemHint(message['text'] as String? ?? '');
+                  final ChatMessage message = _messages[index];
+                  if (message.role == 'system') {
+                    return _buildSystemHint(message.text);
                   }
-                  final bool isUser = message['role'] == 'user';
-                  final bool isError = message['isError'] == true;
-                  final String text = message['text'] as String? ?? '';
+                  final bool isUser = message.role == 'user';
+                  final bool isError = message.isError;
+                  final String text = message.text;
                   if (isUser) {
                     return _buildUserBubble(text);
                   }
                   final Map<String, dynamic>? itineraryData =
-                      message['itineraryData'] as Map<String, dynamic>?;
+                      message.itineraryData;
                   return _buildAiBubble(
                     text,
                     isError: isError,
@@ -445,21 +685,57 @@ JSON 格式必须为：
   Widget _buildUserBubble(String text) {
     return Align(
       alignment: Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12, left: 56),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.indigo.shade600,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-            bottomLeft: Radius.circular(16),
-            bottomRight: Radius.circular(4),
-          ),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(color: Colors.white, height: 1.4),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12, left: 24),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: <Widget>[
+            IconButton(
+              icon: Icon(
+                Icons.edit_note_rounded,
+                color: Colors.grey.shade400,
+                size: 22,
+              ),
+              tooltip: '重新编辑',
+              onPressed: () {
+                _textController.text = text;
+                FocusScope.of(context).requestFocus(_inputFocusNode);
+              },
+            ),
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade600,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(4),
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: Colors.indigo.withValues(alpha: 0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  text,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -557,12 +833,16 @@ JSON 格式必须为：
             Flexible(
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
+                  horizontal: 16,
+                  vertical: 12,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.04),
@@ -573,21 +853,41 @@ JSON 格式必须为：
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        'AI 管家正在极速检索，为你定制完美行程...',
-                        style: TextStyle(
-                          color: Colors.indigo.shade500,
-                          height: 1.35,
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.indigo,
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'AI 管家正在极速规划行程...',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.indigo.shade600,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '💡 您可以退出此页面浏览其他内容，\n生成完成后会自动保存在这里。',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade500,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -679,7 +979,7 @@ JSON 格式必须为：
               color: Colors.transparent,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
-                child: _isLoading
+                child: context.watch<MainNavProvider>().isAiPlanning
                     ? InkWell(
                         key: const ValueKey<String>('stop'),
                         onTap: _cancelRequest,

@@ -40,7 +40,25 @@ class _MainScreenState extends State<MainScreen> {
     provider.requestOpenAiSheet();
   }
 
+  String _sourceLabelForIndex(int index) {
+    return switch (index) {
+      0 => '发现页',
+      1 => '行程页',
+      2 => 'OOTD页',
+      3 => '我的页',
+      _ => '底部导航栏',
+    };
+  }
+
   Future<void> _showAiCustomSheet() async {
+    final MainNavProvider provider = context.read<MainNavProvider>();
+    final String? pendingPrompt = provider.pendingAiPrompt?.trim();
+    final String? initialPrompt =
+        pendingPrompt != null && pendingPrompt.isNotEmpty
+        ? pendingPrompt
+        : null;
+    final String source =
+        provider.pendingAiSource ?? _sourceLabelForIndex(provider.currentIndex);
     final bool? shouldOpenItinerary = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -59,7 +77,7 @@ class _MainScreenState extends State<MainScreen> {
           tween: Tween<double>(begin: 0.72, end: heightFactor),
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutQuart,
-          child: const AiCustomScreen(),
+          child: AiCustomScreen(source: source, initialPrompt: initialPrompt),
           builder: (BuildContext context, double value, Widget? child) {
             return FractionallySizedBox(heightFactor: value, child: child);
           },
