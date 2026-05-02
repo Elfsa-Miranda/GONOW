@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:gonow/features/common/presentation/widgets/full_screen_photo_gallery.dart';
 import 'package:gonow/features/diary/data/diary_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -225,26 +227,95 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   }
 
   Future<void> _addPhoto(int nodeIndex) async {
-    final List<XFile> images = await _imagePicker.pickMultiImage(
-      imageQuality: 88,
-      maxWidth: 1800,
+    if (!mounted) return;
+    FocusScope.of(context).unfocus();
+
+    if (nodeIndex < 0 || nodeIndex >= _nodes.length) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('💡 提示：在相册中长按图片即可进行多选'),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
-    if (images.isEmpty) return;
+
+    List<XFile> picked = <XFile>[];
+    try {
+      picked = await _imagePicker.pickMultiImage(
+        imageQuality: 88,
+        maxWidth: 1800,
+      );
+    } catch (e, st) {
+      debugPrint('pickMultiImage failed: $e\n$st');
+      try {
+        final XFile? one = await _imagePicker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 88,
+          maxWidth: 1800,
+        );
+        if (one != null) picked = <XFile>[one];
+      } catch (e2, st2) {
+        debugPrint('pickImage fallback failed: $e2\n$st2');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法打开相册，请检查系统权限或稍后重试')),
+          );
+        }
+        return;
+      }
+    }
+
+    if (picked.isEmpty) return;
+
     final _TimelineNode node = _nodes[nodeIndex];
-    final List<dynamic> days = (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+    final List<dynamic> days =
+        (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+    if (node.dIdx < 0 || node.dIdx >= days.length) return;
     final Map<String, dynamic> day = days[node.dIdx] as Map<String, dynamic>;
     final List<dynamic> activities = day['activities'] as List<dynamic>;
-    final Map<String, dynamic> item = activities[node.aIdx] as Map<String, dynamic>;
-    final List<String> photos = ((item['photos'] as List<dynamic>?) ?? <dynamic>[])
+    if (node.aIdx < 0 || node.aIdx >= activities.length) return;
+    final Map<String, dynamic> item =
+        activities[node.aIdx] as Map<String, dynamic>;
+
+    final List<String> existing = ((item['photos'] as List<dynamic>?) ?? <dynamic>[])
         .map((dynamic e) => e.toString())
         .where((String e) => e.isNotEmpty)
         .toList(growable: true);
+
+    final List<String> newPaths = <String>[];
+    for (final XFile x in picked) {
+      final String p = x.path.trim();
+      if (p.isNotEmpty) newPaths.add(p);
+    }
+    if (newPaths.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              kIsWeb
+                  ? '未能读取所选图片，请重试或换用其它浏览器'
+                  : '未能读取所选图片路径，请重试',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
     setState(() {
-      photos.addAll(images.map((XFile e) => e.path).where((String e) => e.isNotEmpty));
-      item['photos'] = photos;
+      existing.addAll(newPaths);
+      item['photos'] = existing;
       _refreshFromEditableData();
       _contentVersion++;
     });
+
+    if (mounted && newPaths.length > 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已添加 ${newPaths.length} 张图片')),
+      );
+    }
   }
 
   Future<void> _confirmDeleteActivity(_TimelineNode node) async {
@@ -1490,12 +1561,25 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                                     child: Stack(
                                                       fit: StackFit.expand,
                                                       children: <Widget>[
-                                                        _buildNodeImage(url),
+                                                        GestureDetector(
+                                                          behavior:
+                                                              HitTestBehavior.opaque,
+                                                          onTap: () =>
+                                                              _showFullScreenGallery(
+                                                            context,
+                                                            node.photos,
+                                                            photoIndex,
+                                                          ),
+                                                          child: _buildNodeImage(url),
+                                                        ),
                                                         if (_isEditing)
                                                           Positioned(
                                                             top: 4,
                                                             right: 4,
                                                             child: GestureDetector(
+                                                              behavior:
+                                                                  HitTestBehavior
+                                                                      .opaque,
                                                               onTap: () => _deletePhoto(
                                                                 index,
                                                                 photoIndex,
@@ -1803,12 +1887,47 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     );
   }
 
+  /// 全屏横向滑动 + 双指缩放查看节点照片。
+  void _showFullScreenGallery(
+    BuildContext context,
+    List<String> photos,
+    int initialIndex,
+  ) {
+    showFullScreenPhotoGallery(
+      context,
+      photos,
+      initialIndex,
+      imageBuilder: _buildNodeImage,
+    );
+  }
+
   Widget _buildNodeImage(String pathOrUrl) {
-    if (!pathOrUrl.startsWith('http://') && !pathOrUrl.startsWith('https://')) {
+    final String p = pathOrUrl.trim();
+    if (p.startsWith('http://') || p.startsWith('https://')) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.file(
-          File(pathOrUrl),
+        child: CachedNetworkImage(
+          imageUrl: p,
+          fit: BoxFit.cover,
+          errorWidget: (_, _, _) => const _DarkImageFallback(),
+        ),
+      );
+    }
+    if (p.startsWith('blob:')) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          p,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => const _DarkImageFallback(),
+        ),
+      );
+    }
+    if (kIsWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          p,
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => const _DarkImageFallback(),
         ),
@@ -1816,10 +1935,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: CachedNetworkImage(
-        imageUrl: pathOrUrl,
+      child: Image.file(
+        File(p),
         fit: BoxFit.cover,
-        errorWidget: (_, _, _) => const _DarkImageFallback(),
+        errorBuilder: (_, _, _) => const _DarkImageFallback(),
       ),
     );
   }

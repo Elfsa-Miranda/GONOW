@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:http/http.dart' as http;
@@ -14,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:gonow/core/constants/amap_config.dart';
+import 'package:gonow/features/common/presentation/widgets/full_screen_photo_gallery.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
 import 'package:image_picker/image_picker.dart';
@@ -2130,12 +2132,49 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       fit: BoxFit.cover,
       errorWidget: (BuildContext context, String url, Object error) =>
           Container(
-            height: height,
-            color: Colors.grey.shade200,
-            alignment: Alignment.center,
-            child: const Icon(Icons.image_not_supported, color: Colors.grey),
-          ),
+        height: height,
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_not_supported, color: Colors.grey),
+      ),
     );
+  }
+
+  /// 行程景点照片全屏查看（与手账图库共用交互，大图 contain 展示）。
+  Widget _buildItineraryGalleryPageImage(String rawUrl) {
+    final String u = rawUrl.trim();
+    if (u.isEmpty) {
+      return const Icon(Icons.image_not_supported, color: Colors.white54, size: 56);
+    }
+    if (u.startsWith('http://') || u.startsWith('https://')) {
+      return CachedNetworkImage(
+        imageUrl: u,
+        fit: BoxFit.contain,
+        placeholder: (BuildContext context, String url) => const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white54,
+            ),
+          ),
+        ),
+        errorWidget:
+            (BuildContext context, String url, Object error) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white54,
+                  size: 56,
+                ),
+      );
+    }
+    if (u.startsWith('blob:')) {
+      return Image.network(u, fit: BoxFit.contain);
+    }
+    if (kIsWeb) {
+      return Image.network(u, fit: BoxFit.contain);
+    }
+    return Image.file(File(u), fit: BoxFit.contain);
   }
 
   Dismissible _buildDismissiblePrepItem({
@@ -3669,8 +3708,11 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           if (index < images.length) {
             // 渲染图片项（带删除按钮）
             return _buildImageItem(
+              allUrls: images,
+              imageIndex: index,
               imageUrl: images[index],
-              onDelete: () => _handleDeletePhoto(dayIdx, actIdx, images[index], activity),
+              onDelete: () =>
+                  _handleDeletePhoto(dayIdx, actIdx, images[index], activity),
             );
           }
           // 渲染添加按钮
@@ -3733,6 +3775,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Widget _buildImageItem({
+    required List<String> allUrls,
+    required int imageIndex,
     required String imageUrl,
     required VoidCallback onDelete,
   }) {
@@ -3742,9 +3786,18 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       child: Stack(
         children: <Widget>[
           Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _buildSafeNetworkThumb(imageUrl, height: 100),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showFullScreenPhotoGallery(
+                context,
+                allUrls,
+                imageIndex,
+                imageBuilder: _buildItineraryGalleryPageImage,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: _buildSafeNetworkThumb(imageUrl, height: 100),
+              ),
             ),
           ),
           Positioned(
@@ -3814,35 +3867,97 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     int actIdx,
     String activityTitle,
   ) async {
-    final XFile? picked = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 88,
+    if (!mounted) return;
+    FocusScope.of(context).unfocus();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('💡 提示：在相册中长按图片即可进行多选'),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
-    if (picked == null || !mounted) return;
+
+    List<XFile> picked = <XFile>[];
+    try {
+      picked = await _imagePicker.pickMultiImage(
+        imageQuality: 88,
+        maxWidth: 1800,
+      );
+    } catch (e, st) {
+      debugPrint('pickMultiImage failed: $e\n$st');
+      try {
+        final XFile? one = await _imagePicker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 88,
+          maxWidth: 1800,
+        );
+        if (one != null) picked = <XFile>[one];
+      } catch (e2, st2) {
+        debugPrint('pickImage fallback failed: $e2\n$st2');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法打开相册，请稍后重试')),
+          );
+        }
+        return;
+      }
+    }
+
+    if (picked.isEmpty || !mounted) return;
+
+    final List<String> paths = picked
+        .map((XFile x) => x.path.trim())
+        .where((String p) => p.isNotEmpty)
+        .toList();
+    if (paths.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未能读取所选图片')),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _uploadingDayIdx = dayIdx;
       _uploadingActIdx = actIdx;
     });
+
     final ItineraryProvider provider = context.read<ItineraryProvider>();
     final String itineraryId =
         provider.activeItinerary?.remoteId ??
         provider.currentItinerary?.remoteId ??
         '';
-    final bool ok = await provider.uploadAndSyncPhoto(
-      dayIndex: dayIdx,
-      activityIndex: actIdx,
-      filePath: picked.path,
-      itineraryId: itineraryId,
-      activityTitle: activityTitle,
-    );
-    if (!ok) {
-      debugPrint('上传失败: $activityTitle');
+
+    int okCount = 0;
+    for (final String filePath in paths) {
+      if (!mounted) break;
+      final bool ok = await provider.uploadAndSyncPhoto(
+        dayIndex: dayIdx,
+        activityIndex: actIdx,
+        filePath: filePath,
+        itineraryId: itineraryId,
+        activityTitle: activityTitle,
+      );
+      if (ok) okCount++;
     }
+
     if (!mounted) return;
     setState(() {
       _uploadingDayIdx = null;
       _uploadingActIdx = null;
     });
+
+    if (okCount == 0) {
+      debugPrint('上传失败: $activityTitle');
+      return;
+    }
+    if (mounted && paths.length > 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已上传 $okCount 张图片')),
+      );
+    }
   }
 
   Future<void> _launchNavigation(ActivityItem target) async {
