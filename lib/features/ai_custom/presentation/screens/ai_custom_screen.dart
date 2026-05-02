@@ -51,6 +51,9 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
     ),
   ];
 
+  // 常量控制最大保留条数
+  static const int _maxHistoryCount = 50;
+
   // 组装系统提示词的方法 (支持传入当前行程 JSON)
   String _buildSystemPrompt(String? currentPlanJson, String source) {
     // 1. 【原封不动】你原本的完美基础 Prompt
@@ -250,6 +253,44 @@ $currentPlanJson
       }
     } catch (e) {
       debugPrint('🚨 加载历史记录彻底失败: $e');
+    }
+
+    // 💡 在加载完成并上屏后，顺手在后台扔一个清理任务
+    _pruneOldMessages(); // 注意：这里故意不加 await，让它异步静默执行
+  }
+
+  Future<void> _pruneOldMessages() async {
+    final String? userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      // 1. 获取该用户按时间降序（最新到最老）的记录 id 列表
+      final List<Map<String, dynamic>> response = await _supabase
+          .from('ai_chat_messages')
+          .select('id')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      final List<dynamic> records = response;
+
+      // 2. 如果记录数超过阈值，执行清理
+      if (records.length > _maxHistoryCount) {
+        // 截取需要被删除的旧记录 id
+        final List<dynamic> idsToDelete = records
+            .sublist(_maxHistoryCount)
+            .map((dynamic row) => row['id'])
+            .toList();
+
+        // 3. 批量删除最老的记录
+        await _supabase
+            .from('ai_chat_messages')
+            .delete()
+            .inFilter('id', idsToDelete);
+
+        debugPrint('🧹 数据库减负成功：已清理 ${idsToDelete.length} 条过期对话');
+      }
+    } catch (e) {
+      debugPrint('🚨 数据库静默清理失败: $e');
     }
   }
 
