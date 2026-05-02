@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gonow/core/providers/travel_provider.dart';
 import 'package:gonow/features/auth/data/auth_provider.dart';
 import 'package:gonow/features/auth/presentation/auth_screen.dart';
+import 'package:gonow/features/diary/data/diary_provider.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:provider/provider.dart';
@@ -39,6 +40,9 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(),
+        ),
+        ChangeNotifierProvider<DiaryProvider>(
+          create: (_) => DiaryProvider(),
         ),
       ],
       child: const GoNowApp(),
