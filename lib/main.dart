@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:gonow/core/providers/travel_provider.dart';
 import 'package:gonow/features/auth/data/auth_provider.dart';
 import 'package:gonow/features/auth/presentation/auth_screen.dart';
@@ -59,6 +60,15 @@ class GoNowApp extends StatelessWidget {
       title: 'GoNow',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const <Locale>[
+        Locale('zh', 'CN'),
+        Locale('en', 'US'),
+      ],
       home: const AuthGate(),
     );
   }

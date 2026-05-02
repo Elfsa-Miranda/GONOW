@@ -101,6 +101,16 @@ class DiaryProvider extends ChangeNotifier {
   static const String _myDiariesKey = 'diary_my_diaries_json';
   static const String _communityKey = 'diary_community_diaries_json';
   static const String _tableName = 'travel_diaries';
+  static const Set<String> _placeholderTexts = <String>{
+    '未命名景点',
+    '这段旅程还没有补充描述',
+    '新增景点待补充描述',
+    '新增景点待补充描述...',
+    '新的记录点',
+    '记录这一天的精彩瞬间',
+    '这一天，我们在路上...',
+    '新的一天开始了...',
+  };
 
   final List<DiaryModel> drafts = <DiaryModel>[];
   final List<DiaryModel> myDiaries = <DiaryModel>[];
@@ -155,6 +165,7 @@ class DiaryProvider extends ChangeNotifier {
       final List<DiaryModel> all = rows
           .whereType<Map<String, dynamic>>()
           .map(DiaryModel.fromJson)
+          .map(_sanitizeDiaryModel)
           .toList(growable: false);
       drafts
         ..clear()
@@ -172,11 +183,12 @@ class DiaryProvider extends ChangeNotifier {
   }
 
   Future<void> saveDiary(DiaryModel diary) async {
-    _upsertLocalInMemory(diary);
+    final DiaryModel sanitized = _sanitizeDiaryModel(diary);
+    _upsertLocalInMemory(sanitized);
     notifyListeners();
     await _persistLocal();
     try {
-      await _client.from(_tableName).upsert(diary.toSupabaseJson());
+      await _client.from(_tableName).upsert(sanitized.toSupabaseJson());
     } catch (_) {
       // 已在本地持久化，不阻断用户流程。
     }
@@ -202,7 +214,67 @@ class DiaryProvider extends ChangeNotifier {
     return parsed
         .whereType<Map<String, dynamic>>()
         .map(DiaryModel.fromJson)
+        .map(_sanitizeDiaryModel)
         .toList();
+  }
+
+  String _sanitizeText(dynamic value) {
+    final String text = (value ?? '').toString().trim();
+    if (text.isEmpty || _placeholderTexts.contains(text)) return '';
+    return text;
+  }
+
+  Map<String, dynamic> _sanitizeDayMap(Map<String, dynamic> day) {
+    final Map<String, dynamic> out = Map<String, dynamic>.from(day);
+    if (out.containsKey('summary')) {
+      out['summary'] = _sanitizeText(out['summary']);
+    }
+    if (out.containsKey('title')) {
+      out['title'] = _sanitizeText(out['title']);
+    }
+    if (out.containsKey('description')) {
+      out['description'] = _sanitizeText(out['description']);
+    }
+    if (out.containsKey('time')) {
+      out['time'] = (out['time'] ?? '').toString().trim();
+    }
+
+    final List<dynamic> rawActivities =
+        (out['activities'] as List<dynamic>?) ?? <dynamic>[];
+    out['activities'] = rawActivities.map((dynamic activityRaw) {
+      final Map<String, dynamic> activity =
+          Map<String, dynamic>.from(activityRaw as Map? ?? <String, dynamic>{});
+      activity['title'] = _sanitizeText(activity['title']);
+      activity['description'] = _sanitizeText(activity['description']);
+      activity['time'] = (activity['time'] ?? '').toString().trim();
+      return activity;
+    }).toList(growable: false);
+    return out;
+  }
+
+  Map<String, dynamic> _sanitizeDiaryData(Map<String, dynamic> data) {
+    final Map<String, dynamic> out = Map<String, dynamic>.from(data);
+    if (out.containsKey('summary')) {
+      out['summary'] = _sanitizeText(out['summary']);
+    }
+    if (out.containsKey('quote')) {
+      out['quote'] = _sanitizeText(out['quote']);
+    }
+    final List<dynamic> rawDays = (out['days'] as List<dynamic>?) ?? <dynamic>[];
+    out['days'] = rawDays
+        .map(
+          (dynamic dayRaw) =>
+              _sanitizeDayMap(Map<String, dynamic>.from(dayRaw as Map? ?? <String, dynamic>{})),
+        )
+        .toList(growable: false);
+    return out;
+  }
+
+  DiaryModel _sanitizeDiaryModel(DiaryModel diary) {
+    return diary.copyWith(
+      title: _sanitizeText(diary.title),
+      diaryData: _sanitizeDiaryData(diary.diaryData),
+    );
   }
 
   void _upsertLocalInMemory(DiaryModel diary) {
