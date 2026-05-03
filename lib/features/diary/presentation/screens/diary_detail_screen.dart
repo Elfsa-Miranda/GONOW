@@ -328,7 +328,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
               Expanded(
                 child: TextFormField(
                   key: ValueKey<String>(
-                    'desc_lazy_${node.dIdx}_${node.aIdx}',
+                    'desc_lazy_${node.dIdx}_${node.aIdx}_${item['ai_version'] ?? _editableData['global_ai_version'] ?? 0}',
                   ),
                   initialValue: realDesc,
                   maxLines: null,
@@ -526,7 +526,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                               Expanded(
                                 child: TextFormField(
                                   key: ValueKey<String>(
-                                    'desc_${node.dIdx}_${node.aIdx}',
+                                    'desc_${node.dIdx}_${node.aIdx}_${item['ai_version'] ?? _editableData['global_ai_version'] ?? 0}',
                                   ),
                                   initialValue: realDesc,
                                   maxLines: null,
@@ -1339,9 +1339,11 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
 
   void _handleAiTextUpdate(String targetKey, String newText) {
     setState(() {
+      final int timestamp = DateTime.now().millisecondsSinceEpoch;
       if (targetKey == 'quote') {
         _quoteController.text = newText;
         _editableData['quote'] = newText;
+        _editableData['quote_ai_version'] = timestamp;
       } else if (targetKey.startsWith('desc_')) {
         final List<String> parts = targetKey.split('_');
         if (parts.length == 3) {
@@ -1363,6 +1365,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                 final Map<String, dynamic> act =
                     activities[aIdx] as Map<String, dynamic>;
                 act['description'] = newText;
+                // AI 润色时间戳：强制该输入框销毁重建以显示新文字
+                act['ai_version'] = timestamp;
               }
             }
           }
@@ -1379,6 +1383,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         Map<String, dynamic>.from(newDiaryData),
       );
       _quoteController.text = (_editableData['quote'] ?? '').toString();
+      // 全局重构时注入全局时间戳，强制所有输入框刷新
+      _editableData['global_ai_version'] = DateTime.now().millisecondsSinceEpoch;
       _refreshFromEditableData();
       _contentVersion++;
     });
@@ -1389,20 +1395,42 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     required String originalText,
   }) {
     FocusScope.of(context).unfocus();
+    // 用 then() 在面板完全关闭后，由父级 Scaffold 的 context 显示 SnackBar，
+    // 彻底避免 BottomSheet Overlay 与父级 Overlay 在同一帧共存导致 GlobalKey 重复。
+    String? _pendingMessage;
+    bool _pendingIsError = false;
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext sheetContext) {
         return _DiaryAiCopilotBottomSheet(
-          fullDiaryData: _editableData,
+          getDiaryData: () => _editableData,
           targetKey: targetKey,
           originalText: originalText,
           onTextUpdate: _handleAiTextUpdate,
           onStructureUpdate: _handleAiStructureUpdate,
+          onComplete: (String message, {bool isError = false}) {
+            _pendingMessage = message;
+            _pendingIsError = isError;
+          },
         );
       },
-    );
+    ).then((_) {
+      // BottomSheet が完全に閉じた後に SnackBar を表示
+      // この時点では BottomSheet の Overlay は確実に破棄済み
+      final String? msg = _pendingMessage;
+      if (msg != null && msg.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_pendingIsError ? msg : '✨ $msg'),
+            backgroundColor:
+                _pendingIsError ? Colors.red.shade400 : null,
+          ),
+        );
+      }
+    });
   }
 
   Widget _editableWrap({
@@ -1672,7 +1700,9 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                         children: <Widget>[
                           Expanded(
                             child: TextFormField(
-                              key: const ValueKey<String>('quote_input_key'),
+                              key: ValueKey<String>(
+                                'quote_input_key_${_editableData['quote_ai_version'] ?? _editableData['global_ai_version'] ?? 0}',
+                              ),
                               initialValue: quoteText,
                               maxLines: null,
                               style: TextStyle(
@@ -2989,18 +3019,22 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
 
 class _DiaryAiCopilotBottomSheet extends StatefulWidget {
   const _DiaryAiCopilotBottomSheet({
-    required this.fullDiaryData,
+    required this.getDiaryData,
     required this.targetKey,
     required this.originalText,
     required this.onTextUpdate,
     required this.onStructureUpdate,
+    required this.onComplete,
   });
 
-  final Map<String, dynamic> fullDiaryData;
+  final Map<String, dynamic> Function() getDiaryData;
   final String targetKey;
   final String originalText;
   final void Function(String targetKey, String newText) onTextUpdate;
   final void Function(Map<String, dynamic> newDiaryData) onStructureUpdate;
+  /// 操作完成后回调父级显示 SnackBar，避免在 BottomSheet 的 context 里
+  /// 调用 showSnackBar 再立刻 pop，导致 Overlay GlobalKey 重复红屏。
+  final void Function(String message, {bool isError}) onComplete;
 
   @override
   State<_DiaryAiCopilotBottomSheet> createState() =>
@@ -3043,18 +3077,42 @@ class _DiaryAiCopilotBottomSheetState extends State<_DiaryAiCopilotBottomSheet> 
   }
 
   Map<String, dynamic> _decodeAiResultJson(String rawContent) {
-    final String stripped = _stripMarkdownJsonFence(rawContent);
-    if (stripped.isEmpty) {
+    String content = rawContent.trim();
+
+    // 1. Markdown コードブロック除去
+    if (content.contains('```json')) {
+      content = content.split('```json')[1].split('```')[0].trim();
+    } else if (content.contains('```')) {
+      final List<String> parts = content.split('```');
+      if (parts.length >= 2) {
+        content = parts[1].trim();
+        if (content.startsWith('json')) {
+          content = content.substring(4).trim();
+        }
+      }
+    }
+
+    // 2. 先頭の { から末尾の } を切り出す（余分なテキストが前後にある場合）
+    final int start = content.indexOf('{');
+    final int end = content.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      content = content.substring(start, end + 1);
+    }
+
+    if (content.isEmpty) {
       throw FormatException('模型返回内容为空');
     }
-    final Object? decoded = jsonDecode(stripped);
+
+    debugPrint('_decodeAiResultJson 解析内容: $content');
+
+    final Object? decoded = jsonDecode(content);
     if (decoded is Map<String, dynamic>) {
       return decoded;
     }
     if (decoded is Map) {
       return Map<String, dynamic>.from(decoded);
     }
-    throw FormatException('模型返回不是 JSON 对象');
+    throw FormatException('模型返回不是 JSON 对象: ${decoded.runtimeType}');
   }
 
   Future<void> _submitRequest() async {
@@ -3063,6 +3121,9 @@ class _DiaryAiCopilotBottomSheetState extends State<_DiaryAiCopilotBottomSheet> 
 
     FocusScope.of(context).unfocus();
     setState(() => _isProcessing = true);
+
+    // 每次发送时获取最新数据（避免 final 快照导致数据过期）
+    final Map<String, dynamic> currentDiaryData = widget.getDiaryData();
 
     // 基于焦点的动态场景说明（供模型路由）
     String contextAnalysis = '用户正在通过伴创面板与手账交互。';
@@ -3075,7 +3136,7 @@ class _DiaryAiCopilotBottomSheetState extends State<_DiaryAiCopilotBottomSheet> 
         final int? aIdx = int.tryParse(parts[2]);
         if (dIdx != null && aIdx != null) {
           try {
-            final Object? daysRaw = widget.fullDiaryData['days'];
+            final Object? daysRaw = currentDiaryData['days'];
             if (daysRaw is List<dynamic> &&
                 dIdx >= 0 &&
                 dIdx < daysRaw.length) {
@@ -3098,8 +3159,7 @@ class _DiaryAiCopilotBottomSheetState extends State<_DiaryAiCopilotBottomSheet> 
           } catch (_) {
             contextAnalysis = '用户正在编辑具体景点的文案。';
           }
-          if (contextAnalysis ==
-              '用户正在通过伴创面板与手账交互。') {
+          if (contextAnalysis == '用户正在通过伴创面板与手账交互。') {
             contextAnalysis = '用户正在编辑具体景点的文案。';
           }
         } else {
@@ -3114,42 +3174,42 @@ class _DiaryAiCopilotBottomSheetState extends State<_DiaryAiCopilotBottomSheet> 
     }
 
     final String originalForPrompt =
-        widget.originalText.trim().isEmpty ? '无内容' : widget.originalText;
-    final String diaryJson = jsonEncode(widget.fullDiaryData);
+        widget.originalText.trim().isEmpty ? '（无原稿，请直接生成）' : widget.originalText;
+    final String diaryJson = jsonEncode(currentDiaryData);
 
+    // ── System：角色定义 + 数据上下文 + 路由规则 + 输出格式（不含用户指令）──
     final String systemPrompt = '''
-你是一个顶级的旅行手账专属伴创 AI。你的任务是根据用户的需求，精准修改或生成手账数据。
+你是一个顶级的旅行手账专属伴创 AI。请严格按照下方规则处理用户请求，并只输出合法的 JSON。
 
-【当前手账的完整JSON大纲】：
+【手账完整数据】：
 $diaryJson
 
-【用户当前的编辑场景】（极其重要）：
+【当前编辑焦点】：
 - $contextAnalysis
-- 焦点处原稿内容 (originalText): $originalForPrompt
+- 焦点原稿内容：$originalForPrompt
 
-用户发出的指令："$prompt"
+【意图路由规则】
+▶ 意图 A —— 局部文案润色 / 补充百科（如：优化文案、写生动点、补充历史背景）
+  action_type = "update_text"
+  updated_text = 改写后的完整纯文本（必须有内容，禁止为空）
+  updated_diary_data = null
 
-【智能路由与执行规则】
-你需要分析用户的指令，判断他属于以下哪种意图，并严格返回下方定义的 JSON 格式：
+▶ 意图 B —— 行程结构修改 / 新增打卡点（如：加景点、删某天、新增安排）
+  action_type = "update_structure"
+  updated_text = ""
+  updated_diary_data = 修改后的完整手账 JSON 对象（非 null）
 
-意图 A: 【局部文案润色/补充百科】 (如：一键优化、写生动点、补充点历史背景)
-👉 规则：你只需要专注修改原稿内容，结合景点背景生成最精彩的文案。将 action_type 设为 "update_text"，并将改写后的纯文本放入 updated_text 字段。
+▶ 意图 C —— 纯聊天 / 旅游问答（用户没有修改手账的意图）
+  action_type = "chat"
+  updated_text = ""
+  updated_diary_data = null
 
-意图 B: 【行程结构修改/新增打卡点】 (如：第一天加个火锅店、把第二天行程删掉、新增一天的安排)
-👉 规则：你不需要拘泥于原稿！请统观整个手账 JSON 结构，在合适的天数(days)和时间间隙中，插入或修改节点(activity)对象。必须自动顺延上下文的时间！将 action_type 设为 "update_structure"，并将修改后的【完整手账JSON对象】放入 updated_diary_data 字段。
-
-意图 C: 【纯粹聊天/旅游问答】 (如：这里天气怎么样？需要带外套吗？)
-👉 规则：如果用户明显不是要修改手账内容，只是提问。将 action_type 设为 "chat"，在 reply_msg 给出亲切回答即可。
-
-【强制输出格式】（绝对只输出合法的 JSON，不要包裹 Markdown 代码块，不要输出废话）：
-{
-  "action_type": "update_text" 或 "update_structure" 或 "chat",
-  "reply_msg": "无论哪种意图，请在这里给用户一句亲切的管家式回复（如：好的，已经为您润色好了/已为您插好了景点）",
-  "updated_text": "意图A时填入最终的高质量纯文本，否则为空字符串",
-  "updated_diary_data": null
-}
-说明：意图 B 时 updated_diary_data 必须为完整手账 JSON 对象；意图 A、C 时 updated_diary_data 必须为 JSON null。
+【输出格式（唯一合法格式，禁止任何 Markdown、禁止任何额外文字）】：
+{"action_type":"<必须是 update_text / update_structure / chat 三者之一>","reply_msg":"<亲切的管家式回复>","updated_text":"<意图A时为改写后文本，其余为空字符串>","updated_diary_data":<意图B时为完整手账JSON对象，其余为null>}
 ''';
+
+    // ── User：只包含用户的原始指令，不重复上下文 ──
+    final String userMessage = prompt;
 
     try {
       final http.Response response = await http
@@ -3163,14 +3223,16 @@ $diaryJson
               'model': AiConfig.deepseekModel,
               'messages': <Map<String, String>>[
                 <String, String>{'role': 'system', 'content': systemPrompt},
-                <String, String>{'role': 'user', 'content': prompt},
+                <String, String>{'role': 'user', 'content': userMessage},
               ],
-              'response_format': <String, String>{'type': 'json_object'},
+              // ⚠️ 不传 response_format：DeepSeek 部分模型不支持该参数，
+              // 会静默返回非 JSON 内容导致解析失败；改由 prompt 约束输出格式。
             }),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 60));
 
       if (response.statusCode != 200) {
+        debugPrint('API Error body: ${utf8.decode(response.bodyBytes)}');
         throw Exception('API Error: ${response.statusCode}');
       }
 
@@ -3191,15 +3253,20 @@ $diaryJson
 
       final Map<String, dynamic> result = _decodeAiResultJson(contentStr);
 
+      // ── デバッグ：APIの実際の返り値を全て出力 ──
+      debugPrint('===== AI 管家 响应 DEBUG =====');
+      debugPrint('HTTP status: ${response.statusCode}');
+      debugPrint('raw content: $contentStr');
+      debugPrint('action_type: ${result['action_type']}');
+      debugPrint('updated_text: ${result['updated_text']}');
+      debugPrint('reply_msg: ${result['reply_msg']}');
+      debugPrint('updated_diary_data is null: ${result['updated_diary_data'] == null}');
+      debugPrint('==============================');
+
       if (!mounted) return;
 
       final String replyMsg =
           (result['reply_msg'] ?? '操作已完成。').toString().trim();
-      if (replyMsg.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✨ $replyMsg')),
-        );
-      }
 
       final String actionType =
           (result['action_type'] ?? '').toString().trim();
@@ -3207,31 +3274,43 @@ $diaryJson
       final String updatedText =
           (result['updated_text'] ?? '').toString().trim();
 
+      // 先执行数据回调写入
       if (actionType == 'update_structure' && struct != null) {
         if (struct is Map<String, dynamic>) {
           widget.onStructureUpdate(struct);
         } else if (struct is Map) {
           widget.onStructureUpdate(Map<String, dynamic>.from(struct));
         }
-      } else if (actionType == 'update_text' &&
-          updatedText.isNotEmpty) {
+      } else if (actionType == 'update_text' && updatedText.isNotEmpty) {
         widget.onTextUpdate(widget.targetKey, updatedText);
+      } else {
+        debugPrint('⚠️ AI 管家未触发更新: actionType="$actionType", updatedText长度=${updatedText.length}');
       }
 
+      // 先关闭面板，再通过父级 context 显示 SnackBar
+      // 避免在 BottomSheet Overlay 的 context 里同帧调用 showSnackBar + pop
+      // 导致 _OverlayEntryWidgetState GlobalKey 重复红屏
       if (mounted) {
         Navigator.of(context).pop();
       }
+      if (replyMsg.isNotEmpty) {
+        widget.onComplete(replyMsg, isError: false);
+      }
     } catch (e, st) {
       debugPrint('伴创失败: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('管家网络连接异常，请重试')),
-        );
+      String errMsg = '管家网络连接异常，请重试';
+      if (e.toString().contains('TimeoutException') ||
+          e.toString().contains('timeout')) {
+        errMsg = '请求超时，手账数据较多，请再试一次';
+      } else if (e is FormatException) {
+        errMsg = '管家返回格式异常，请再试一次';
+        debugPrint('JSON 解析失败原始内容已在上方打印');
       }
-    } finally {
+      // 错误时不关闭面板，让用户可以重试
       if (mounted) {
         setState(() => _isProcessing = false);
       }
+      widget.onComplete(errMsg, isError: true);
     }
   }
 
