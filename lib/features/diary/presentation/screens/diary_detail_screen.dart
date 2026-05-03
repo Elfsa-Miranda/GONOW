@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -39,6 +40,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   late bool _isEditing = widget.startEditing;
   bool _publishToCommunity = false;
   int _contentVersion = 0;
+  String _snapshotDataStr = '';
+  String _snapshotTitle = '';
 
   late final AnimationController _pulseController;
 
@@ -52,6 +55,9 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     _titleController.text = _diary.title;
     _quoteController.text = (_diary.diaryData['quote'] ?? '').toString();
     _publishToCommunity = _diary.isPublic;
+    if (_isEditing) {
+      _captureEditSnapshot();
+    }
   }
 
   @override
@@ -277,6 +283,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     );
     await provider.saveDiary(updated);
     _diary = updated;
+    _captureEditSnapshot();
   }
 
   static const Duration _editSnackDuration = Duration(milliseconds: 1500);
@@ -306,10 +313,33 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     ScaffoldMessenger.of(context).showSnackBar(_editSnackBar(message));
   }
 
-  Future<void> _onPressBack() async {
+  void _captureEditSnapshot() {
+    _snapshotTitle = _titleController.text.trim();
+    _snapshotDataStr = jsonEncode(_editableData);
+  }
+
+  /// 脏数据检测：仅在确有改动时才需要返回确认弹窗。
+  bool _hasUnsavedChanges() {
+    if (_titleController.text.trim() != _snapshotTitle) {
+      return true;
+    }
+
+    if (jsonEncode(_editableData) != _snapshotDataStr) {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<bool> _onPressBack() async {
     if (!_isEditing) {
       if (mounted) Navigator.of(context).pop();
-      return;
+      return true;
+    }
+
+    if (!_hasUnsavedChanges()) {
+      if (mounted) Navigator.of(context).pop();
+      return true;
     }
 
     final bool? shouldSave = await showDialog<bool>(
@@ -341,17 +371,19 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       ),
     );
 
-    if (shouldSave == null) return;
+    if (shouldSave == null) return false;
 
     if (shouldSave) {
       await _persist(asDraft: _diary.isDraft);
-      if (!mounted) return;
+      if (!mounted) return false;
 
       _showEditSnackBar('✅ 改动已保存');
       Navigator.of(context).pop();
+      return true;
     } else {
-      if (!mounted) return;
+      if (!mounted) return false;
       Navigator.of(context).pop();
+      return true;
     }
   }
 
@@ -366,7 +398,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       return;
     }
 
-    setState(() => _isEditing = true);
+    setState(() {
+      _captureEditSnapshot();
+      _isEditing = true;
+    });
   }
 
   Future<void> _deletePhoto(int nodeIndex, int photoIndex) async {
@@ -1160,7 +1195,9 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                               top: MediaQuery.of(context).padding.top + 8,
                               left: 8,
                               child: IconButton(
-                                onPressed: _onPressBack,
+                                onPressed: () async {
+                                  await _onPressBack();
+                                },
                                 icon: const Icon(
                                   Icons.arrow_back_ios_new_rounded,
                                   color: Colors.white,
@@ -1983,6 +2020,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                             (_diary.diaryData['quote'] ?? '').toString();
                         _publishToCommunity = _diary.isPublic;
                         _refreshFromEditableData();
+                        _captureEditSnapshot();
                         _contentVersion++;
                         _isEditing = false;
                       });
