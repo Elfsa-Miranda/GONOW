@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -14,6 +16,62 @@ class DiaryCenterScreen extends StatefulWidget {
 
   @override
   State<DiaryCenterScreen> createState() => _DiaryCenterScreenState();
+}
+
+/// 手账瀑布流封面：网络 URL 与本地文件路径（补录草稿）混合渲染。
+Widget _buildSmartDiaryCoverImage(String url, double height) {
+  if (url.isEmpty) {
+    return SizedBox(
+      width: double.infinity,
+      height: height,
+      child: Container(
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: const Icon(Icons.image, color: Colors.grey),
+      ),
+    );
+  }
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: height,
+      errorWidget: (BuildContext context, String imageUrl, Object error) =>
+          SizedBox(
+        width: double.infinity,
+        height: height,
+        child: const _ImageErrorFallback(),
+      ),
+    );
+  }
+  if (kIsWeb) {
+    return SizedBox(
+      width: double.infinity,
+      height: height,
+      child: Container(
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.image_not_supported_outlined,
+          color: Colors.grey,
+        ),
+      ),
+    );
+  }
+  return Image.file(
+    File(url),
+    fit: BoxFit.cover,
+    width: double.infinity,
+    height: height,
+    errorBuilder:
+        (BuildContext context, Object error, StackTrace? stackTrace) =>
+            SizedBox(
+      width: double.infinity,
+      height: height,
+      child: const _ImageErrorFallback(),
+    ),
+  );
 }
 
 class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
@@ -31,90 +89,7 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
 
   Future<void> _onCreateDiary(BuildContext context) async {
     HapticFeedback.lightImpact();
-    final DiaryConfigResult? config = await showDiaryConfigSheet(context);
-    if (config == null || !context.mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return const Center(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.black87,
-              borderRadius: BorderRadius.all(Radius.circular(14)),
-            ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: Colors.white,
-                    ),
-                  ),
-                  SizedBox(width: 10),
-                  Text(
-                    'AI 正在编排你的手账...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!context.mounted) return;
-    Navigator.of(context).pop();
-    final DiaryModel generated = DiaryModel(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      title: config.mode == DiaryCreateMode.itinerary
-          ? 'AI 旅行手账 · ${config.styleType}'
-          : '${config.locationText} · 回忆手账',
-      coverImageUrl:
-          'https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=1200&q=80',
-      authorName: '旅行者_Leo',
-      isDraft: true,
-      isPublic: false,
-      styleType: config.styleType,
-      diaryData: <String, dynamic>{
-        'dateLabel': DateTime.now().toIso8601String().substring(0, 10),
-        'likes': 0,
-        'quote': '把走过的路写成句子，未来翻开仍会发光。',
-        'summary': 'AI 已根据你的选择生成首版手账，进入编辑态可继续润色。',
-        'days': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'day': 1,
-            'title': config.mode == DiaryCreateMode.itinerary
-                ? '从行程自动提炼的第一天'
-                : config.locationText,
-            'description': '继续在编辑态补充细节、图片和旅行感受。',
-            'photos': config.imagePaths,
-            'lat': 39.9042,
-            'lng': 116.4074,
-          },
-        ],
-      },
-    );
-    if (!context.mounted) return;
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => DiaryDetailScreen(
-          initialDiary: generated,
-          startEditing: true,
-        ),
-      ),
-    );
+    await showDiaryConfigSheet(context);
   }
 
   Future<void> _openDraftBox(
@@ -203,15 +178,12 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final DiaryProvider provider = context.watch<DiaryProvider>();
-    final List<DiaryModel> display = <DiaryModel>[
-      ...provider.myDiaries,
-      ...provider.communityDiaries.where(
-        (DiaryModel diary) =>
-            !provider.myDiaries.any((DiaryModel mine) => mine.id == diary.id),
-      ),
-    ];
-    return Scaffold(
+    return Consumer<DiaryProvider>(
+      builder: (BuildContext context, DiaryProvider diaryProvider, Widget? _) {
+        final List<DiaryModel> myDiaries = diaryProvider.myDiaries;
+        final int draftsCount = diaryProvider.drafts.length;
+        final bool showEmpty = myDiaries.isEmpty && draftsCount == 0;
+        return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
       body: AnimatedOpacity(
         duration: const Duration(milliseconds: 120),
@@ -267,7 +239,7 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
                                 const TextSpan(text: '累计记录了 '),
                                 TextSpan(
                                   text:
-                                      '${provider.myDiaries.length + provider.drafts.length}',
+                                      '${myDiaries.length + draftsCount}',
                                   style: TextStyle(
                                     color: Colors.indigo.shade500,
                                     fontWeight: FontWeight.w700,
@@ -275,7 +247,7 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
                                 ),
                                 const TextSpan(text: ' 段 · 草稿 '),
                                 TextSpan(
-                                  text: '${provider.drafts.length}',
+                                  text: '$draftsCount',
                                   style: TextStyle(
                                     color: Colors.indigo.shade500,
                                     fontWeight: FontWeight.w700,
@@ -283,7 +255,7 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
                                 ),
                                 const TextSpan(text: ' · 社区精选 '),
                                 TextSpan(
-                                  text: '${provider.communityDiaries.length}',
+                                  text: '${diaryProvider.communityDiaries.length}',
                                   style: TextStyle(
                                     color: Colors.indigo.shade500,
                                     fontWeight: FontWeight.w700,
@@ -301,30 +273,37 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
             ),
             SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-            sliver: SliverMasonryGrid.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childCount: display.length + 1,
-              itemBuilder: (BuildContext context, int index) {
-                if (index == 0) {
-                  return _StaggerReveal(
-                    index: index,
-                    enabled: false,
-                    child: _DraftEntryCard(
-                      draftCount: provider.drafts.length,
-                      onTap: () => _openDraftBox(context, provider.drafts),
+            sliver: showEmpty
+                ? SliverToBoxAdapter(
+                    child: _DiaryEmptyState(
+                      onCreate: () => _onCreateDiary(context),
                     ),
-                  );
-                }
-                final DiaryModel diary = display[index - 1];
-                return _StaggerReveal(
-                  index: index,
-                  enabled: false,
-                  child: _DiaryCard(diary: diary),
-                );
-              },
-            ),
+                  )
+                : SliverMasonryGrid.count(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childCount: myDiaries.length + 1,
+                    itemBuilder: (BuildContext context, int index) {
+                      if (index == 0) {
+                        return _StaggerReveal(
+                          index: index,
+                          enabled: false,
+                          child: _DraftEntryCard(
+                            draftCount: draftsCount,
+                            onTap: () =>
+                                _openDraftBox(context, diaryProvider.drafts),
+                          ),
+                        );
+                      }
+                      final DiaryModel diary = myDiaries[index - 1];
+                      return _StaggerReveal(
+                        index: index,
+                        enabled: false,
+                        child: _DiaryCard(diary: diary),
+                      );
+                    },
+                  ),
             ),
           ],
         ),
@@ -391,6 +370,8 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
         ),
       ),
     );
+      },
+    );
   }
 }
 
@@ -455,7 +436,7 @@ class _DraftEntryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$draftCount 条未发布',
+                  '$draftCount 篇待完成',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF6B7280),
@@ -479,9 +460,11 @@ class _DiaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final int likes = (diary.diaryData['likes'] as num?)?.toInt() ?? 0;
-    final String dateLabel = (diary.diaryData['dateLabel'] ?? '2026.01.01')
-        .toString()
-        .replaceAll('-', '.');
+    final String dateLabel = diary.createdAt != null
+        ? '${diary.createdAt!.year.toString().padLeft(4, '0')}.${diary.createdAt!.month.toString().padLeft(2, '0')}.${diary.createdAt!.day.toString().padLeft(2, '0')}'
+        : (diary.diaryData['dateLabel'] ?? '2026.01.01')
+            .toString()
+            .replaceAll('-', '.');
     return GestureDetector(
       onTap: () async {
         await Navigator.push<void>(
@@ -558,12 +541,9 @@ class _DiaryCard extends StatelessWidget {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(20),
                   ),
-                  child: CachedNetworkImage(
-                    imageUrl: diary.coverImageUrl,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: 140 + (diary.id.codeUnitAt(0) % 2) * 40,
-                    errorWidget: (_, _, _) => const _ImageErrorFallback(),
+                  child: _buildSmartDiaryCoverImage(
+                    diary.coverImageUrl,
+                    140 + (diary.id.codeUnitAt(0) % 2) * 40,
                   ),
                 ),
                 Positioned(
@@ -652,6 +632,66 @@ class _DiaryCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DiaryEmptyState extends StatelessWidget {
+  const _DiaryEmptyState({required this.onCreate});
+
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 26),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE6EBF3)),
+      ),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F4FF),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.auto_stories_outlined,
+              size: 32,
+              color: Color(0xFF5B6DF6),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '还没有记录任何回忆',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '快点击下方按钮制作吧~',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextButton(
+            onPressed: onCreate,
+            child: const Text('立即创建'),
+          ),
+        ],
       ),
     );
   }

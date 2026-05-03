@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:gonow/core/constants/ai_config.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -173,6 +176,9 @@ class DiaryProvider extends ChangeNotifier {
   bool get isReady => _ready;
 
   SupabaseClient get _client => Supabase.instance.client;
+  static const String _aiEndpoint = AiConfig.deepseekEndpoint;
+  static const String _aiModel = AiConfig.deepseekModel;
+  static const String _aiApiKey = AiConfig.deepseekApiKey;
 
   Future<void> _hydrate() async {
     await _loadFromLocal();
@@ -325,6 +331,271 @@ class DiaryProvider extends ChangeNotifier {
       await _persistLocal();
       return false;
     }
+  }
+
+  // ==========================================
+  // 核心：调用大模型真实生成手账 JSON
+  // ==========================================
+  Future<Map<String, dynamic>?> generateDiaryFromAI({
+    required String destination,
+    required String style,
+    String? daysHint,
+    Map<String, dynamic>? existingPlanData,
+    /// 补录往期精彩子模式：`lazy` 懒人照片池，`detailed` 精细日记（仅无 `existingPlanData` 时生效）
+    String? subRecordMode,
+    int? customPhotoCount,
+  }) async {
+    if (_aiApiKey.trim().isEmpty) {
+      debugPrint('手账 AI 生成失败: API Key 为空');
+      return null;
+    }
+
+    String systemPrompt = '';
+    if (existingPlanData != null) {
+      systemPrompt = '''
+你是一个顶级的旅行手账排版与文案大师。用户刚刚结束了一趟旅行，以下是他们真实的行程数据（包含天数、景点、时间等）：
+${jsonEncode(existingPlanData)}
+
+请严格基于上述真实行程，以【$style】的心情风格，为每个景点撰写绝美的手账文案（description 字段）。
+【极度重要】：
+1. 必须完全保留原有的天数（days）、活动（activities）、标题（title）和时间（time）。绝对不允许删减景点或篡改原有结构！
+2. 你的任务仅仅是根据【$style】风格，为每个 activities 补充大约60-100字的高质量游记description。
+3. 必须返回纯正的 JSON 字符串（可以用```json包裹），严禁输出废话！
+''';
+    } else if ((subRecordMode ?? '').trim() == 'lazy') {
+      systemPrompt = '''
+你是一个感性的旅行散文家。用户批量上传了关于【$destination】的照片，希望生成一篇情绪感极强的手账。
+【极其重要】：必须严格输出单一的合法 JSON 对象；不要输出 JSON 以外的任何说明文字；禁止使用 Markdown 代码块（不要出现三个反引号）。
+绝对不要按时间线（Day 1、Day 2）展开；days 数组只允许 1 个元素，且该元素的 activities 只允许 1 个元素。
+JSON 格式严格如下（请直接输出此结构，勿加前后缀）：
+{
+  "title": "根据【$destination】提炼的诗意标题，不超过10个字",
+  "quote": "一段极具氛围感的引言散文",
+  "dateLabel": "YYYY-MM-DD",
+  "days": [
+    {
+      "dayTitle": "旅途掠影",
+      "activities": [
+        {
+          "is_lazy_pool": true,
+          "title": "记忆碎片",
+          "description": "一段约200字的感性散文，不写具体时间点，侧重风景与情绪，风格【$style】"
+        }
+      ]
+    }
+  ]
+}
+''';
+    } else {
+      systemPrompt = '''
+你是一个专业的旅行手账排版大师。用户手动输入了他记得的行程细节；下一条 user 消息中的全文即用户记叙（变量名为 destination 字段承载的同一正文）。
+【绝对红线】：
+1. 先概括出一个绝美的顶层 title（不超过14字），绝对禁止照抄用户原话或整段粘贴；
+2. 活动节点必须严格来自用户提及的地点/行程，禁止无中生有编造用户没去过的景点；用户只写2个点就只排2条 activities；
+3. 禁止用空洞模板凑景点；time 可合理推断，须与叙事顺序一致；
+4. 用【$style】风格润色每条 description（约80-120字）；quote 要点题且不要复述 title。
+5. 粗时间线索（若有）：${daysHint ?? '无'}，仅可辅助填写 dateLabel，不得据此编造未出现的行程点。
+
+【极其重要】：只输出一个合法 JSON 对象；禁止使用 Markdown 代码块（不要三个反引号）；不要任何前言或尾注。
+JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）：
+{
+  "title": "AI概括的唯美标题",
+  "quote": "风格化引言",
+  "dateLabel": "YYYY-MM-DD",
+  "days": [
+    {
+      "dayTitle": "AI提炼的当天主题",
+      "activities": [
+        {
+          "time": "合理预估时间",
+          "title": "景点名",
+          "description": "润色后的游记文案"
+        }
+      ]
+    }
+  ]
+}
+''';
+    }
+
+    try {
+      String userContent = '请帮我生成手账！';
+      if (existingPlanData == null) {
+        if ((subRecordMode ?? '').trim() == 'lazy') {
+          userContent =
+              '【输出要求】从第一个 { 到最后一个 } 仅输出合法 JSON，禁止 Markdown。用户已选约 ${customPhotoCount ?? 0} 张本地照片（不要在 JSON 中写文件路径）。目的地/情绪线索：$destination';
+        } else {
+          userContent =
+              '以下为用户的行程记叙全文，请严格据此生成 JSON，禁止添加未出现的景点：\n\n$destination';
+        }
+      }
+
+      final http.Response response = await http
+          .post(
+            Uri.parse(_aiEndpoint),
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_aiApiKey',
+            },
+            body: jsonEncode(<String, dynamic>{
+              'model': _aiModel,
+              'messages': <Map<String, String>>[
+                <String, String>{'role': 'system', 'content': systemPrompt},
+                <String, String>{'role': 'user', 'content': userContent},
+              ],
+            }),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (response.statusCode != 200) {
+        debugPrint('手账 AI 生成失败: HTTP ${response.statusCode}');
+        return null;
+      }
+      final Map<String, dynamic> data =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final String content =
+          (((data['choices'] as List?)?.first as Map?)?['message'] as Map?)?['content']
+                  ?.toString() ??
+              '';
+      if (content.isEmpty) return null;
+      final String jsonString = _extractJsonPayload(content);
+      final Object? parsed = jsonDecode(jsonString);
+      if (parsed is Map<String, dynamic>) {
+        if (existingPlanData == null &&
+            (subRecordMode ?? '').trim() == 'lazy') {
+          return _postProcessLazyDiaryJson(parsed);
+        }
+        return parsed;
+      }
+    } catch (e) {
+      debugPrint('手账 AI 生成失败: $e');
+    }
+    return null;
+  }
+
+  /// 补录 `subRecordMode == lazy`：字段对齐，并强制补齐 `is_lazy_pool`（模型偶发漏标）。
+  Map<String, dynamic> _postProcessLazyDiaryJson(Map<String, dynamic> raw) {
+    final Map<String, dynamic> out = Map<String, dynamic>.from(raw);
+    final String aiQuote = (out['aiQuote'] ?? '').toString().trim();
+    final String quote = (out['quote'] ?? '').toString().trim();
+    if (aiQuote.isNotEmpty && quote.isEmpty) {
+      out['quote'] = aiQuote;
+    }
+    final Object? dl = out['dateLabel'];
+    if (dl == null || dl.toString().trim().isEmpty) {
+      out['dateLabel'] = DateTime.now().toIso8601String().split('T').first;
+    }
+    _coerceLazyPoolFlagsInDiaryJson(out);
+    return out;
+  }
+
+  void _coerceLazyPoolFlagsInDiaryJson(Map<String, dynamic> data) {
+    final Object? daysRaw = data['days'];
+    if (daysRaw is! List<dynamic>) return;
+    for (final Object? d in daysRaw) {
+      if (d is! Map<String, dynamic>) continue;
+      final Object? actsRaw = d['activities'];
+      if (actsRaw is! List<dynamic>) continue;
+      for (int i = 0; i < actsRaw.length; i++) {
+        final Object? a = actsRaw[i];
+        if (a is! Map<String, dynamic>) continue;
+        final String t = (a['title'] ?? '').toString();
+        final String flag = a['is_lazy_pool']?.toString().toLowerCase() ?? '';
+        if (a['is_lazy_pool'] == true ||
+            flag == 'true' ||
+            flag == '1' ||
+            t.contains('记忆碎片')) {
+          a['is_lazy_pool'] = true;
+        }
+      }
+    }
+  }
+
+  Future<String?> polishDiaryTextWithAI({
+    required String sourceText,
+    required String style,
+  }) async {
+    if (_aiApiKey.trim().isEmpty) {
+      debugPrint('AI 润色失败: API Key 为空');
+      return null;
+    }
+    try {
+      final http.Response response = await http
+          .post(
+            Uri.parse(_aiEndpoint),
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_aiApiKey',
+            },
+            body: jsonEncode(<String, dynamic>{
+              'model': _aiModel,
+              'messages': <Map<String, String>>[
+                <String, String>{
+                  'role': 'system',
+                  'content': '你是旅行文案润色专家。请只返回润色后的文本，不要解释。',
+                },
+                <String, String>{
+                  'role': 'user',
+                  'content': '请用$style风格润色这段旅行文字：$sourceText',
+                },
+              ],
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) return null;
+      final Map<String, dynamic> data =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final String content =
+          (((data['choices'] as List?)?.first as Map?)?['message'] as Map?)?['content']
+                  ?.toString()
+                  .trim() ??
+              '';
+      if (content.isEmpty) return null;
+      return _stripMarkdownFence(content).trim();
+    } catch (e) {
+      debugPrint('AI 润色失败: $e');
+      return null;
+    }
+  }
+
+  Future<String?> uploadDiaryCoverImage(String filePath) async {
+    try {
+      final String? userId = _client.auth.currentUser?.id;
+      if (userId == null || filePath.trim().isEmpty) return null;
+      final String ext = filePath.contains('.')
+          ? filePath.split('.').last.toLowerCase()
+          : 'jpg';
+      final String fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final String storagePath = 'diaries/$userId/covers/$fileName';
+      const List<String> buckets = <String>['diary_photos', 'itinerary_photos'];
+
+      for (final String bucket in buckets) {
+        try {
+          await _client.storage.from(bucket).upload(storagePath, File(filePath));
+          return _client.storage.from(bucket).getPublicUrl(storagePath);
+        } catch (_) {
+          // Try next candidate bucket.
+        }
+      }
+    } catch (e) {
+      debugPrint('上传手账封面失败: $e');
+    }
+    return null;
+  }
+
+  String _extractJsonPayload(String content) {
+    final String stripped = _stripMarkdownFence(content).trim();
+    return stripped;
+  }
+
+  String _stripMarkdownFence(String text) {
+    String out = text.trim();
+    if (out.contains('```json')) {
+      out = out.split('```json')[1].split('```')[0];
+    } else if (out.contains('```')) {
+      out = out.split('```')[1].split('```')[0];
+    }
+    return out;
   }
 
   /// 先请求云端删除；失败仅记日志，仍做本地乐观清理（与模板一致）。

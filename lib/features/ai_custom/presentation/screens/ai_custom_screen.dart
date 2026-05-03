@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:gonow/core/constants/ai_config.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:flutter/material.dart';
@@ -447,7 +448,7 @@ $currentPlanJson
           .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
     }
 
-    const String apiKey = 'sk-a442065c813f4f4eaf584218f8955b6e';
+    const String apiKey = AiConfig.deepseekApiKey;
     final String normalizedApiKey = apiKey.trim();
     if (normalizedApiKey.isEmpty) {
       setState(() {
@@ -463,7 +464,7 @@ $currentPlanJson
       _scrollToBottom();
       return;
     }
-    final Uri url = Uri.parse('https://api.deepseek.com/chat/completions');
+    final Uri url = Uri.parse(AiConfig.deepseekEndpoint);
 
     try {
       final http.Client client = http.Client();
@@ -493,7 +494,7 @@ $currentPlanJson
           'Authorization': 'Bearer $normalizedApiKey',
         },
         body: jsonEncode(<String, dynamic>{
-          'model': 'deepseek-chat',
+          'model': AiConfig.deepseekModel,
           'messages': <Map<String, String>>[
             <String, String>{
               'role': 'system',

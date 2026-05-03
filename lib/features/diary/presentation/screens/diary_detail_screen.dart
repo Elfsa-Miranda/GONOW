@@ -5,8 +5,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:gonow/core/constants/ai_config.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
+import 'package:gonow/core/utils/image_compress_util.dart';
 import 'package:gonow/features/common/presentation/widgets/full_screen_photo_gallery.dart';
 import 'package:gonow/features/diary/data/diary_provider.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -29,10 +34,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _quoteController = TextEditingController();
-  final TextEditingController _aiInputController = TextEditingController();
   final TextEditingController _sheetInputController = TextEditingController();
 
   late DiaryModel _diary = widget.initialDiary;
+  late String _editableCoverImageUrl = widget.initialDiary.coverImageUrl;
   late Map<String, dynamic> _editableData = _normalizeEditableData(
     Map<String, dynamic>.from(widget.initialDiary.diaryData),
   );
@@ -42,8 +47,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   int _contentVersion = 0;
   String _snapshotDataStr = '';
   String _snapshotTitle = '';
+  String _snapshotCoverImageUrl = '';
 
   late final AnimationController _pulseController;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -64,9 +71,9 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   void dispose() {
     _titleController.dispose();
     _quoteController.dispose();
-    _aiInputController.dispose();
     _sheetInputController.dispose();
     _pulseController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -90,6 +97,71 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     return value;
   }
 
+  /// 兼容历史数据：`images` / `photos` / `imageUrl` / `image_url`，去重。
+  List<String> _collectActivityDisplayImages(Map<String, dynamic> item) {
+    final List<String> displayImages = <String>[];
+    if (item['images'] != null && item['images'] is List) {
+      displayImages.addAll(
+        List<String>.from(
+          (item['images'] as List<dynamic>).map((dynamic e) => e.toString().trim()),
+        ).where((String e) => e.isNotEmpty),
+      );
+    }
+    if (item['photos'] != null && item['photos'] is List) {
+      displayImages.addAll(
+        List<String>.from(
+          (item['photos'] as List<dynamic>).map((dynamic e) => e.toString().trim()),
+        ).where((String e) => e.isNotEmpty),
+      );
+    }
+    final String imageUrl =
+        (item['imageUrl'] ?? item['image_url'] ?? '').toString().trim();
+    if (displayImages.isEmpty && imageUrl.isNotEmpty) {
+      displayImages.add(imageUrl);
+    }
+    return displayImages.toSet().toList();
+  }
+
+  void _handleDeletePhoto(int dIdx, int aIdx, String urlToRemove) {
+    final List<dynamic> days =
+        (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+    if (dIdx < 0 || dIdx >= days.length) return;
+    final Map<String, dynamic> day = days[dIdx] as Map<String, dynamic>;
+    final List<dynamic> activities = day['activities'] as List<dynamic>? ?? <dynamic>[];
+    if (aIdx < 0 || aIdx >= activities.length) return;
+    final Map<String, dynamic> item =
+        activities[aIdx] as Map<String, dynamic>? ?? <String, dynamic>{};
+    final String url = urlToRemove.trim();
+    if (url.isEmpty) return;
+
+    for (final String key in <String>['photos', 'images']) {
+      final Object? raw = item[key];
+      if (raw is List<dynamic>) {
+        final List<dynamic> list = List<dynamic>.from(raw);
+        list.removeWhere((dynamic e) => e.toString().trim() == url);
+        item[key] = list;
+      }
+    }
+    if ((item['imageUrl'] ?? '').toString().trim() == url) {
+      item['imageUrl'] = '';
+    }
+    if ((item['image_url'] ?? '').toString().trim() == url) {
+      item['image_url'] = '';
+    }
+    item['photos'] = _collectActivityDisplayImages(item);
+    setState(() {
+      _refreshFromEditableData();
+      _contentVersion++;
+    });
+  }
+
+  Future<void> _pickAndUploadImage(int dIdx, int aIdx, String _) async {
+    final int nodeIndex =
+        _nodes.indexWhere((_TimelineNode n) => n.dIdx == dIdx && n.aIdx == aIdx);
+    if (nodeIndex < 0) return;
+    await _addPhoto(nodeIndex);
+  }
+
   Map<String, dynamic> _normalizeEditableData(Map<String, dynamic> data) {
     final List<dynamic> rawDays = (data['days'] as List<dynamic>?) ?? <dynamic>[];
     final List<Map<String, dynamic>> normalizedDays = <Map<String, dynamic>>[];
@@ -103,16 +175,21 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         for (final dynamic act in rawActivities) {
           final Map<String, dynamic> a =
               act as Map<String, dynamic>? ?? <String, dynamic>{};
+          final List<String> mergedPhotos = _collectActivityDisplayImages(a);
           activities.add(<String, dynamic>{
             'title': _realOrEmpty(a['title']),
             'time': (a['time'] ?? '').toString(),
             'description': _realOrEmpty(a['description']),
             'lat': (a['lat'] as num?)?.toDouble() ?? 0,
             'lng': (a['lng'] as num?)?.toDouble() ?? 0,
-            'photos': ((a['photos'] as List<dynamic>?) ?? <dynamic>[])
-                .map((dynamic e) => e.toString())
-                .where((String e) => e.isNotEmpty)
-                .toList(growable: false),
+            'photos': mergedPhotos,
+            if (_isLazyPoolActivity(a)) 'is_lazy_pool': true,
+            if (a['tag'] != null) 'tag': a['tag'],
+            if (a['recommended_duration'] != null)
+              'recommended_duration': a['recommended_duration'],
+            if (a['images'] != null) 'images': a['images'],
+            if (a['imageUrl'] != null) 'imageUrl': a['imageUrl'],
+            if (a['image_url'] != null) 'image_url': a['image_url'],
           });
         }
       } else {
@@ -128,10 +205,17 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
               .toList(growable: false),
         });
       }
-      normalizedDays.add(<String, dynamic>{
+      final Map<String, dynamic> normalizedDay = <String, dynamic>{
         'day': dayNo,
         'activities': activities,
-      });
+      };
+      if (day.containsKey('summary')) {
+        normalizedDay['summary'] = day['summary'];
+      }
+      if (day.containsKey('dayTitle')) {
+        normalizedDay['dayTitle'] = day['dayTitle'];
+      }
+      normalizedDays.add(normalizedDay);
     }
     return <String, dynamic>{
       ...data,
@@ -162,10 +246,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
             description: _realOrEmpty(item['description']),
             lat: (item['lat'] as num?)?.toDouble() ?? 0,
             lng: (item['lng'] as num?)?.toDouble() ?? 0,
-            photos: ((item['photos'] as List<dynamic>?) ?? <dynamic>[])
-                .map((dynamic e) => e.toString())
-                .where((String e) => e.isNotEmpty)
-                .toList(growable: true),
+            photos: _collectActivityDisplayImages(item),
           ),
         );
       }
@@ -184,6 +265,618 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     final Map<String, dynamic> day = days[n.dIdx] as Map<String, dynamic>;
     final List<dynamic> acts = day['activities'] as List<dynamic>;
     return acts[n.aIdx] as Map<String, dynamic>;
+  }
+
+  /// 懒人照片池：兼容字符串布尔与标题「记忆碎片」兜底。
+  bool _isLazyPoolActivity(Map<String, dynamic> item) {
+    if (item['is_lazy_pool'] == true) return true;
+    final String f = item['is_lazy_pool']?.toString().toLowerCase() ?? '';
+    if (f == 'true' || f == '1') return true;
+    return (item['title'] ?? '').toString().contains('记忆碎片');
+  }
+
+  /// 该「天」以懒人池首条活动呈现时，隐藏 DAY N 头部，避免刻板时间轴感。
+  bool _isLazyPoolDay(int dIdx) {
+    final List<dynamic>? days = _editableData['days'] as List<dynamic>?;
+    if (days == null || dIdx < 0 || dIdx >= days.length) return false;
+    final Map<String, dynamic>? day =
+        days[dIdx] as Map<String, dynamic>?;
+    final List<dynamic>? acts = day?['activities'] as List<dynamic>?;
+    if (acts == null || acts.isEmpty) return false;
+    final Map<String, dynamic>? first =
+        acts.first as Map<String, dynamic>?;
+    if (first == null) return false;
+    return _isLazyPoolActivity(first);
+  }
+
+  /// 当前手账是否为懒人池（以首日首条活动为准）。
+  bool _isLazyPoolDiaryFromEditable() {
+    return _isLazyPoolDay(0);
+  }
+
+  bool _hasLazyPoolPreviewText(Map<String, dynamic> item) {
+    final String desc = (item['description'] ?? '').toString().trim();
+    if (desc.isEmpty ||
+        desc.contains('新增景点待补充') ||
+        desc.contains('AI润色') ||
+        desc.contains('一键优化文案') ||
+        _isDummyDescriptionContent(desc)) {
+      return false;
+    }
+    return true;
+  }
+
+  /// 懒人池散文区：编辑态 TextField + 润色；预览态纯文本。
+  Widget _buildLazyPoolDescriptionArea(
+    _TimelineNode node,
+    Map<String, dynamic> item,
+  ) {
+    if (_isEditing) {
+      return Builder(
+        builder: (BuildContext context) {
+          String realDesc =
+              (item['description'] ?? '').toString().trim();
+          if (realDesc.contains('新增景点待补充') ||
+              realDesc.contains('AI润色') ||
+              realDesc.contains('一键优化文案') ||
+              _isDummyDescriptionContent(realDesc)) {
+            realDesc = '';
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: TextFormField(
+                  key: ValueKey<String>(
+                    'desc_lazy_${node.dIdx}_${node.aIdx}',
+                  ),
+                  initialValue: realDesc,
+                  maxLines: null,
+                  decoration: const InputDecoration(
+                    hintText: '写下这段回忆的散文或随笔…',
+                    hintStyle: TextStyle(
+                      color: Colors.black38,
+                      fontSize: 14,
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade800,
+                    height: 1.75,
+                  ),
+                  onChanged: (String val) {
+                    item['description'] = val;
+                    setState(() {
+                      _refreshFromEditableData();
+                      _contentVersion++;
+                    });
+                  },
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.auto_awesome,
+                  color: Colors.indigo,
+                  size: 22,
+                ),
+                onPressed: () {
+                  _openAiCopilotPanel(
+                    targetKey: 'desc_${node.dIdx}_${node.aIdx}',
+                    originalText: realDesc,
+                  );
+                },
+                tooltip: 'AI一键润色',
+              ),
+            ],
+          );
+        },
+      );
+    }
+    return Builder(
+      builder: (BuildContext context) {
+        final String desc =
+            (item['description'] ?? '').toString().trim();
+        if (!_hasLazyPoolPreviewText(item)) {
+          return const SizedBox.shrink();
+        }
+        return Text(
+          _dedupeDescriptionParagraphs(desc),
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade800,
+            height: 1.85,
+          ),
+        );
+      },
+    );
+  }
+
+  /// 标准时间轴节点白卡片（标题、时间、横向相册、描述）；外层再包 [ReorderableDelayedDragStartListener]。
+  Widget _buildStandardTimelineMainCard(
+    BuildContext context,
+    int index,
+    _TimelineNode node,
+  ) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Builder(
+            builder: (BuildContext context) {
+              final String timeStr = node.time.trim();
+              final bool isRealTime = _looksLikeTimeLabel(timeStr);
+              final String titleLine = _displayNodeTitleLine(node);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  if (isRealTime)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: _isEditing
+                          ? () => _pickAndSaveActivityTime(index)
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(
+                          timeStr,
+                          style: TextStyle(
+                            color: Colors.indigo.shade600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: _editableWrap(
+                      onTap: () => _showNodeEditDialog(
+                        index: index,
+                        title: '编辑节点标题',
+                        field: _NodeField.title,
+                        initial: node.title,
+                      ),
+                      child: Text(
+                        titleLine,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          Builder(
+            builder: (BuildContext context) {
+              final List<dynamic> days =
+                  (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+              if (node.dIdx < 0 || node.dIdx >= days.length) {
+                return const SizedBox.shrink();
+              }
+              final Map<String, dynamic> day =
+                  days[node.dIdx] as Map<String, dynamic>? ?? <String, dynamic>{};
+              final List<dynamic> activities =
+                  (day['activities'] as List<dynamic>?) ?? <dynamic>[];
+              if (node.aIdx < 0 || node.aIdx >= activities.length) {
+                return const SizedBox.shrink();
+              }
+              final Map<String, dynamic> item =
+                  activities[node.aIdx] as Map<String, dynamic>? ??
+                  <String, dynamic>{};
+              final List<String> displayImages =
+                  _collectActivityDisplayImages(item);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (displayImages.isNotEmpty || _isEditing)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12, bottom: 8),
+                      child: SizedBox(
+                        height: 160,
+                        child: _buildPhotoGallery(
+                          item,
+                          node.dIdx,
+                          node.aIdx,
+                        ),
+                      ),
+                    ),
+                  if (_isEditing)
+                    Builder(
+                      builder: (BuildContext context) {
+                        String realDesc =
+                            (item['description'] ?? '').toString().trim();
+                        if (realDesc.contains('新增景点待补充') ||
+                            realDesc.contains('AI润色') ||
+                            realDesc.contains('一键优化文案') ||
+                            _isDummyDescriptionContent(realDesc)) {
+                          realDesc = '';
+                        }
+                        return Container(
+                          margin: const EdgeInsets.only(top: 4, bottom: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.indigo.shade100,
+                              style: BorderStyle.solid,
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Expanded(
+                                child: TextFormField(
+                                  key: ValueKey<String>(
+                                    'desc_${node.dIdx}_${node.aIdx}',
+                                  ),
+                                  initialValue: realDesc,
+                                  maxLines: null,
+                                  decoration: const InputDecoration(
+                                    hintText: '新增景点待补充描述...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.black38,
+                                      fontSize: 13,
+                                    ),
+                                    contentPadding: EdgeInsets.all(12),
+                                    border: InputBorder.none,
+                                  ),
+                                  onChanged: (String val) {
+                                    item['description'] = val;
+                                    setState(() {
+                                      _refreshFromEditableData();
+                                      _contentVersion++;
+                                    });
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.auto_awesome,
+                                  color: Colors.indigo,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  _openAiCopilotPanel(
+                                    targetKey: 'desc_${node.dIdx}_${node.aIdx}',
+                                    originalText: realDesc,
+                                  );
+                                },
+                                tooltip: 'AI一键润色',
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    )
+                  else
+                    Builder(
+                      builder: (BuildContext context) {
+                        final String desc =
+                            (item['description'] ?? '').toString().trim();
+                        if (desc.isEmpty ||
+                            desc.contains('新增景点待补充') ||
+                            desc.contains('AI润色') ||
+                            desc.contains('一键优化文案') ||
+                            _isDummyDescriptionContent(desc)) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4, bottom: 4),
+                          child: Text(
+                            _dedupeDescriptionParagraphs(desc),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF475569),
+                              height: 1.5,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  const SizedBox(height: 12),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 无时间轴圆点/竖线的沉浸式懒人池：预览态 Masonry 瀑布流；编辑态 ReorderableGrid 调序；评论区长按拖整条。
+  Widget _buildLazyPoolTimelineItem(
+    BuildContext context,
+    int index,
+    _TimelineNode node,
+    Map<String, dynamic> item, {
+    required int reorderIndex,
+  }) {
+    final List<String> images = List<String>.from(
+      _collectActivityDisplayImages(item),
+    );
+    final bool showDescRail = _isEditing || _hasLazyPoolPreviewText(item);
+
+    final Widget commentArea = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.indigo.withValues(alpha: 0.08),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.format_quote_rounded,
+                color: Colors.indigo.shade200,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              if (_isEditing)
+                Text(
+                  '长按此处可拖动整个照片池',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.indigo.shade300,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildLazyPoolDescriptionArea(node, item),
+        ],
+      ),
+    );
+
+    late final Widget galleryWidget;
+    if (!_isEditing) {
+      // ── 预览态：无边框沉浸式瀑布流 ──
+      galleryWidget = MasonryGridView.count(
+        crossAxisCount: 2,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: images.length,
+        itemBuilder: (BuildContext context, int imgIndex) {
+          // 「微错落」算法：基准 160px，每张图在 ±30px 内克制偏移
+          // 奇偶列各自有一个轻微相位差，左右高度差始终 ≤ 50px，整体均衡美观
+          const List<double> _offsetPattern = <double>[0, 30, -20, 20, -30, 10];
+          final double baseHeight = 160.0;
+          final double cardHeight =
+              baseHeight + _offsetPattern[imgIndex % _offsetPattern.length];
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _showFullScreenGallery(
+              context,
+              images,
+              imgIndex,
+            ),
+            child: Container(
+              height: cardHeight,
+              // 彻底去除白底和内边距，图片直接撑满容器
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: _buildNodeImage(images[imgIndex]),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      // ── 编辑态：与预览态完全一致的瀑布流 + 删除角标 ──
+      const List<double> _editOffsetPattern = <double>[0, 30, -20, 20, -30, 10];
+      final int totalItems = images.length + 1;
+      galleryWidget = MasonryGridView.count(
+        crossAxisCount: 2,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: totalItems,
+        itemBuilder: (BuildContext context, int imgIndex) {
+          // 「添加照片」卡片
+          if (imgIndex == images.length) {
+            return GestureDetector(
+              key: ValueKey<String>('lazy_add_${node.dIdx}_${node.aIdx}'),
+              onTap: () => _pickAndUploadImage(
+                node.dIdx,
+                node.aIdx,
+                (item['title'] ?? '记忆碎片').toString(),
+              ),
+              child: Container(
+                height: 160.0,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.grey.shade300,
+                    style: BorderStyle.solid,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Icon(
+                      Icons.add_a_photo_rounded,
+                      color: Colors.grey.shade400,
+                      size: 28,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '添加照片',
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // 与预览态完全相同的高度算法
+          final double cardHeight =
+              160.0 + _editOffsetPattern[imgIndex % _editOffsetPattern.length];
+
+          return Stack(
+            key: ValueKey<String>(
+              'lazy_photo_${node.dIdx}_${node.aIdx}_${images[imgIndex]}_$imgIndex',
+            ),
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              // 照片卡片：与预览态完全一致，无白边
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showFullScreenGallery(
+                  context,
+                  images,
+                  imgIndex,
+                ),
+                child: Container(
+                  height: cardHeight,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: double.infinity,
+                      child: _buildNodeImage(images[imgIndex]),
+                    ),
+                  ),
+                ),
+              ),
+              // 删除角标（浮在图片右上角内侧）
+              Positioned(
+                top: 6,
+                right: 6,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _handleDeletePhoto(
+                    node.dIdx,
+                    node.aIdx,
+                    images[imgIndex],
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: const BoxDecoration(
+                      color: Colors.black54,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 12,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
+
+    final Widget bodyColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (images.isNotEmpty || _isEditing)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: galleryWidget,
+          ),
+        if (showDescRail)
+          _isEditing
+              ? ReorderableDelayedDragStartListener(
+                  index: reorderIndex,
+                  child: commentArea,
+                )
+              : commentArea,
+      ],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 20, right: 20, bottom: 40),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          bodyColumn,
+          if (_isEditing)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _confirmDeleteActivity(node),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.red.shade100),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(color: Colors.black12, blurRadius: 4),
+                    ],
+                  ),
+                  child: const Icon(Icons.close, size: 14, color: Colors.red),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   void _onTimelineReorder(int oldIndex, int newIndex) {
@@ -267,9 +960,11 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
 
   Future<void> _persist({required bool asDraft}) async {
     final DiaryProvider provider = context.read<DiaryProvider>();
+    final String finalQuote =
+        (_editableData['quote'] ?? _quoteController.text).toString().trim();
     final Map<String, dynamic> updatedData = <String, dynamic>{
       ..._editableData,
-      'quote': _quoteController.text.trim(),
+      'quote': finalQuote,
       'days': _editableData['days'],
       'updatedAt': DateTime.now().toIso8601String(),
     };
@@ -277,12 +972,16 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       title: _titleController.text.trim().isEmpty
           ? '未命名手账'
           : _titleController.text.trim(),
+      coverImageUrl: _editableCoverImageUrl.trim().isEmpty
+          ? _diary.coverImageUrl
+          : _editableCoverImageUrl.trim(),
       isDraft: asDraft,
       isPublic: asDraft ? false : _publishToCommunity,
       diaryData: updatedData,
     );
     await provider.saveDiary(updated);
     _diary = updated;
+    _editableCoverImageUrl = updated.coverImageUrl;
     _captureEditSnapshot();
   }
 
@@ -316,6 +1015,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   void _captureEditSnapshot() {
     _snapshotTitle = _titleController.text.trim();
     _snapshotDataStr = jsonEncode(_editableData);
+    _snapshotCoverImageUrl = _editableCoverImageUrl.trim();
   }
 
   /// 脏数据检测：仅在确有改动时才需要返回确认弹窗。
@@ -327,8 +1027,70 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     if (jsonEncode(_editableData) != _snapshotDataStr) {
       return true;
     }
+    if (_editableCoverImageUrl.trim() != _snapshotCoverImageUrl) {
+      return true;
+    }
 
     return false;
+  }
+
+  Future<void> _pickAndReplaceCover() async {
+    FocusScope.of(context).unfocus();
+    List<XFile> picked = <XFile>[];
+    try {
+      picked = await _imagePicker.pickMultiImage(limit: 1);
+    } catch (_) {
+      final XFile? single = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+      );
+      if (single != null) picked = <XFile>[single];
+    }
+    if (picked.isEmpty) return;
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('正在上传新封面...'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    final DiaryProvider provider = context.read<DiaryProvider>();
+    final String localPath = picked.first.path;
+    final String? uploadedUrl = await provider.uploadDiaryCoverImage(localPath);
+    if (!mounted) return;
+
+    setState(() {
+      _editableCoverImageUrl = (uploadedUrl ?? localPath).trim();
+      _contentVersion++;
+    });
+    _showEditSnackBar(uploadedUrl == null ? '已替换封面（本地）' : '封面已更新');
+  }
+
+  Widget _buildSmartCoverImage(String pathOrUrl) {
+    final String p = pathOrUrl.trim();
+    if (p.isEmpty) {
+      return Container(color: Colors.blueGrey.shade800);
+    }
+    if (p.startsWith('http://') || p.startsWith('https://')) {
+      return CachedNetworkImage(
+        imageUrl: p,
+        fit: BoxFit.cover,
+        errorWidget: (_, __, ___) => Container(color: Colors.blueGrey.shade800),
+      );
+    }
+    if (p.startsWith('blob:') || kIsWeb) {
+      return Image.network(
+        p,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(color: Colors.blueGrey.shade800),
+      );
+    }
+    return Image.file(
+      File(p),
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(color: Colors.blueGrey.shade800),
+    );
   }
 
   Future<bool> _onPressBack() async {
@@ -404,22 +1166,6 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     });
   }
 
-  Future<void> _deletePhoto(int nodeIndex, int photoIndex) async {
-    final _TimelineNode node = _nodes[nodeIndex];
-    final List<dynamic> days = (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
-    final Map<String, dynamic> day = days[node.dIdx] as Map<String, dynamic>;
-    final List<dynamic> activities = day['activities'] as List<dynamic>;
-    final Map<String, dynamic> item = activities[node.aIdx] as Map<String, dynamic>;
-    final List<dynamic> photos = (item['photos'] as List<dynamic>?) ?? <dynamic>[];
-    if (photoIndex < 0 || photoIndex >= photos.length) return;
-    setState(() {
-      photos.removeAt(photoIndex);
-      item['photos'] = photos;
-      _refreshFromEditableData();
-      _contentVersion++;
-    });
-  }
-
   Future<void> _addPhoto(int nodeIndex) async {
     if (!mounted) return;
     FocusScope.of(context).unfocus();
@@ -460,6 +1206,11 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
 
     if (picked.isEmpty) return;
 
+    if (!kIsWeb) {
+      picked = await ImageCompressUtil.compressImages(picked);
+    }
+    if (!mounted) return;
+
     final _TimelineNode node = _nodes[nodeIndex];
     final List<dynamic> days =
         (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
@@ -470,10 +1221,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     final Map<String, dynamic> item =
         activities[node.aIdx] as Map<String, dynamic>;
 
-    final List<String> existing = ((item['photos'] as List<dynamic>?) ?? <dynamic>[])
-        .map((dynamic e) => e.toString())
-        .where((String e) => e.isNotEmpty)
-        .toList(growable: true);
+    final List<String> existing = _collectActivityDisplayImages(item).toList(growable: true);
 
     final List<String> newPaths = <String>[];
     for (final XFile x in picked) {
@@ -589,217 +1337,72 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     );
   }
 
-  Future<void> _openAiCopilotPanel() async {
-    // 🚨 Drop keyboard focus before opening modal
+  void _handleAiTextUpdate(String targetKey, String newText) {
+    setState(() {
+      if (targetKey == 'quote') {
+        _quoteController.text = newText;
+        _editableData['quote'] = newText;
+      } else if (targetKey.startsWith('desc_')) {
+        final List<String> parts = targetKey.split('_');
+        if (parts.length == 3) {
+          final int? dIdx = int.tryParse(parts[1]);
+          final int? aIdx = int.tryParse(parts[2]);
+          if (dIdx != null && aIdx != null) {
+            final List<dynamic> days =
+                (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+            if (dIdx >= 0 &&
+                dIdx < days.length &&
+                days[dIdx] is Map<String, dynamic>) {
+              final Map<String, dynamic> day =
+                  days[dIdx] as Map<String, dynamic>;
+              final List<dynamic> activities =
+                  day['activities'] as List<dynamic>? ?? <dynamic>[];
+              if (aIdx >= 0 &&
+                  aIdx < activities.length &&
+                  activities[aIdx] is Map<String, dynamic>) {
+                final Map<String, dynamic> act =
+                    activities[aIdx] as Map<String, dynamic>;
+                act['description'] = newText;
+              }
+            }
+          }
+        }
+      }
+      _refreshFromEditableData();
+      _contentVersion++;
+    });
+  }
+
+  void _handleAiStructureUpdate(Map<String, dynamic> newDiaryData) {
+    setState(() {
+      _editableData = _normalizeEditableData(
+        Map<String, dynamic>.from(newDiaryData),
+      );
+      _quoteController.text = (_editableData['quote'] ?? '').toString();
+      _refreshFromEditableData();
+      _contentVersion++;
+    });
+  }
+
+  void _openAiCopilotPanel({
+    required String targetKey,
+    required String originalText,
+  }) {
     FocusScope.of(context).unfocus();
-    
-    _aiInputController.clear();
-    final List<String> quickActions = <String>[
-      '✨ 一键优化文案',
-      '📖 补充景点百科',
-      '🎯 提炼旅行亮点',
-      '🌦 增加天气感受',
-    ];
-    await showModalBottomSheet<void>(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return AnimatedPadding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutCubic,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.85,
-            ),
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-              child: Material(
-                color: const Color(0xFFF5F7FA),
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Container(
-                        width: 44,
-                        height: 5,
-                        margin: const EdgeInsets.only(top: 10, bottom: 14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD6DCE6),
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                      ),
-                      const Text(
-                        'AI 伴创面板',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          child: GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: quickActions.length,
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              mainAxisSpacing: 10,
-                              crossAxisSpacing: 10,
-                              childAspectRatio: 3.2,
-                            ),
-                            itemBuilder: (BuildContext context, int index) {
-                              final String action = quickActions[index];
-                              return OutlinedButton(
-                                onPressed: () async {
-                                  final String seed = action.trim();
-                                  if (seed.isEmpty) return;
-                                  final String oldQuote =
-                                      _quoteController.text.trim();
-                                  final String newQuote =
-                                      '「$seed」\n\n沿路的光影被重新排版，文字更有节奏。';
-                                  final List<dynamic> days =
-                                      (_editableData['days'] as List<dynamic>?) ??
-                                          <dynamic>[];
-                                  for (final dynamic dayItem in days) {
-                                    final Map<String, dynamic> day =
-                                        dayItem as Map<String, dynamic>;
-                                    final List<dynamic> activities =
-                                        day['activities'] as List<dynamic>? ??
-                                            <dynamic>[];
-                                    for (final dynamic actItem in activities) {
-                                      final Map<String, dynamic> act =
-                                          actItem as Map<String, dynamic>;
-                                      final String oldDesc =
-                                          (act['description'] ?? '').toString();
-                                      act['description'] =
-                                          '$oldDesc\n\nAI润色：$seed，让画面更具临场感。';
-                                    }
-                                  }
-                                  if (!mounted) return;
-                                  Navigator.of(context).pop();
-                                  setState(() {
-                                    _quoteController.text = oldQuote.isEmpty
-                                        ? newQuote
-                                        : '$oldQuote\n$newQuote';
-                                    _refreshFromEditableData();
-                                    _contentVersion++;
-                                  });
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF1F2937),
-                                  side: const BorderSide(
-                                    color: Color(0xFFD5DBE5),
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: Text(
-                                  action,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: <BoxShadow>[
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, -4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: TextField(
-                                controller: _aiInputController,
-                                decoration: const InputDecoration(
-                                  hintText: '✍️ 告诉管家你的具体想法 (如：把这段写幽默点)',
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () async {
-                                final String seed =
-                                    _aiInputController.text.trim();
-                                if (seed.isEmpty) return;
-                                final String oldQuote =
-                                    _quoteController.text.trim();
-                                final String newQuote =
-                                    '「$seed」\n\n沿路的光影被重新排版，文字更有节奏。';
-                                final List<dynamic> days =
-                                    (_editableData['days'] as List<dynamic>?) ??
-                                        <dynamic>[];
-                                for (final dynamic dayItem in days) {
-                                  final Map<String, dynamic> day =
-                                      dayItem as Map<String, dynamic>;
-                                  final List<dynamic> activities =
-                                      day['activities'] as List<dynamic>? ??
-                                          <dynamic>[];
-                                  for (final dynamic actItem in activities) {
-                                    final Map<String, dynamic> act =
-                                        actItem as Map<String, dynamic>;
-                                    final String oldDesc =
-                                        (act['description'] ?? '').toString();
-                                    act['description'] =
-                                        '$oldDesc\n\nAI润色：$seed，让画面更具临场感。';
-                                  }
-                                }
-                                _aiInputController.clear();
-                                if (!mounted) return;
-                                Navigator.of(context).pop();
-                                setState(() {
-                                  _quoteController.text = oldQuote.isEmpty
-                                      ? newQuote
-                                      : '$oldQuote\n$newQuote';
-                                  _refreshFromEditableData();
-                                  _contentVersion++;
-                                });
-                              },
-                              icon: const Icon(
-                                Icons.send_rounded,
-                                color: Color(0xFF4F46E5),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+      builder: (BuildContext sheetContext) {
+        return _DiaryAiCopilotBottomSheet(
+          fullDiaryData: _editableData,
+          targetKey: targetKey,
+          originalText: originalText,
+          onTextUpdate: _handleAiTextUpdate,
+          onStructureUpdate: _handleAiStructureUpdate,
         );
       },
     );
-    _aiInputController.clear();
   }
 
   Widget _editableWrap({
@@ -1018,14 +1621,9 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   }
 
   Widget _buildQuoteBridgeCard() {
-    return _editableWrap(
-      onTap: () => _showEditDialog(
-        title: '编辑引言',
-        controller: _quoteController,
-        maxLines: 6,
-        showAiCopilot: true,
-      ),
-      child: Container(
+    final String quoteText =
+        (_editableData['quote'] ?? _quoteController.text).toString();
+    return Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -1058,21 +1656,76 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
             // 正文下移，避免与背景装饰引号重叠
             Padding(
               padding: const EdgeInsets.only(top: 32, left: 6),
-              child: Text(
-                _quoteController.text.trim().isEmpty
-                    ? '每次出发，都是对平淡生活的一次温柔越狱。'
-                    : _quoteController.text,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade800,
-                  height: 1.6,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              child: _isEditing
+                  ? Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.indigo.shade50.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.indigo.shade100,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Expanded(
+                            child: TextFormField(
+                              key: const ValueKey<String>('quote_input_key'),
+                              initialValue: quoteText,
+                              maxLines: null,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade800,
+                                height: 1.6,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: '写一段走心的前言引语...',
+                                hintStyle: TextStyle(
+                                  color: Colors.black38,
+                                  fontSize: 13,
+                                ),
+                                contentPadding: EdgeInsets.all(12),
+                                border: InputBorder.none,
+                              ),
+                              onChanged: (String val) {
+                                _editableData['quote'] = val;
+                                _quoteController.text = val;
+                              },
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.auto_awesome,
+                              color: Colors.indigo,
+                              size: 20,
+                            ),
+                            tooltip: 'AI一键润色引言',
+                            onPressed: () => _openAiCopilotPanel(
+                              targetKey: 'quote',
+                              originalText:
+                                  _editableData['quote']?.toString() ?? '',
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Text(
+                      quoteText.trim().isNotEmpty
+                          ? quoteText.trim()
+                          : '每次出发，都是对平淡生活的一次温柔越狱。',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade800,
+                        height: 1.6,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -1119,30 +1772,6 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     controller.dispose();
   }
 
-  Future<void> _addNewDay() async {
-    final List<dynamic> days = (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
-    final int newDayNumber = days.length + 1;
-    setState(() {
-      days.add(<String, dynamic>{
-        'day': newDayNumber,
-        'summary': '新的一天开始了...',
-        'activities': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'title': '新的记录点',
-            'time': '',
-            'description': '记录这一天的精彩瞬间',
-            'lat': 0.0,
-            'lng': 0.0,
-            'photos': <String>[],
-          },
-        ],
-      });
-      _editableData['days'] = days;
-      _refreshFromEditableData();
-      _contentVersion++;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -1158,6 +1787,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         body: Stack(
           children: <Widget>[
             CustomScrollView(
+              controller: _scrollController,
               slivers: <Widget>[
                 // Hero + 引言：引言置于封面下方，不遮盖配图与标题
                 SliverToBoxAdapter(
@@ -1171,13 +1801,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                           children: <Widget>[
                             Hero(
                               tag: 'diary_cover_${_diary.id}',
-                              child: CachedNetworkImage(
-                                imageUrl: _diary.coverImageUrl,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
-                                  color: Colors.blueGrey.shade800,
-                                ),
-                              ),
+                              child: _buildSmartCoverImage(_editableCoverImageUrl),
                             ),
                             Container(
                               decoration: BoxDecoration(
@@ -1191,6 +1815,55 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                 ),
                               ),
                             ),
+                            if (_isEditing)
+                              Positioned.fill(
+                                child: GestureDetector(
+                                  onTap: _pickAndReplaceCover,
+                                  child: Container(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    child: Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(24),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(alpha: 0.5),
+                                          ),
+                                          boxShadow: <BoxShadow>[
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.1),
+                                              blurRadius: 8,
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: <Widget>[
+                                            Icon(
+                                              Icons.camera_alt,
+                                              color: Colors.white,
+                                              size: 18,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              '更换封面图',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             Positioned(
                               top: MediaQuery.of(context).padding.top + 8,
                               left: 8,
@@ -1378,17 +2051,14 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                           _nodes[index + 1].day == node.day;
                       final Map<String, dynamic> actMap =
                           _activityMapForTimelineIndex(index);
-                      return ReorderableDelayedDragStartListener(
-                        key: ObjectKey(actMap),
-                        index: index,
-                        enabled: _isEditing,
-                        child: Column(
-                          key: ValueKey<String>(
-                            'timeline_node_${node.dIdx}_${node.aIdx}',
-                          ),
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                          if (showDayHeader)
+                      final bool isLazyNode = _isLazyPoolActivity(actMap);
+                      return Column(
+                        key: ValueKey<String>(
+                          'timeline_node_${node.dIdx}_${node.aIdx}_${node.time}',
+                        ),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          if (showDayHeader && !_isLazyPoolDay(node.dIdx))
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
@@ -1458,7 +2128,16 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                             ),
                               ],
                             ),
-                          Padding(
+                          if (isLazyNode)
+                            _buildLazyPoolTimelineItem(
+                              context,
+                              index,
+                              node,
+                              actMap,
+                              reorderIndex: index,
+                            )
+                          else
+                            Padding(
                             padding: const EdgeInsets.only(bottom: 32),
                             child: Stack(
                               clipBehavior: Clip.none,
@@ -1503,316 +2182,25 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                       child: Stack(
                                         clipBehavior: Clip.none,
                                         children: <Widget>[
-                                          Container(
-                                            padding: const EdgeInsets.fromLTRB(
-                                              14,
-                                              14,
-                                              14,
-                                              14,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(16),
-                                              boxShadow: <BoxShadow>[
-                                                BoxShadow(
-                                                  color: Colors.black.withValues(alpha: 0.04),
-                                                  blurRadius: 12,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: <Widget>[
-                                                Builder(
-                                                  builder:
-                                                      (BuildContext context) {
-                                                    final String timeStr =
-                                                        node.time.trim();
-                                                    final bool isRealTime =
-                                                        _looksLikeTimeLabel(
-                                                            timeStr);
-                                                    final String titleLine =
-                                                        _displayNodeTitleLine(
-                                                            node);
-                                                    return Row(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .center,
-                                                      children: <Widget>[
-                                                        if (isRealTime)
-                                                          InkWell(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(6),
-                                                            onTap: _isEditing
-                                                                ? () =>
-                                                                    _pickAndSaveActivityTime(
-                                                                      index,
-                                                                    )
-                                                                : null,
-                                                            child: Padding(
-                                                              padding:
-                                                                  const EdgeInsets
-                                                                      .only(
-                                                                right: 8,
-                                                              ),
-                                                              child: Text(
-                                                                timeStr,
-                                                                style:
-                                                                    TextStyle(
-                                                                  color: Colors
-                                                                      .indigo
-                                                                      .shade600,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  fontSize: 14,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        Expanded(
-                                                          child: _editableWrap(
-                                                            onTap: () =>
-                                                                _showNodeEditDialog(
-                                                              index: index,
-                                                              title:
-                                                                  '编辑节点标题',
-                                                              field: _NodeField
-                                                                  .title,
-                                                              initial:
-                                                                  node.title,
-                                                            ),
-                                                            child: Text(
-                                                              titleLine,
-                                                              style:
-                                                                  const TextStyle(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                fontSize: 16,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    );
-                                                  },
-                                                ),
-                                            const SizedBox(height: 8),
-                                            if (_isEditing)
-                                              Builder(
-                                                builder: (BuildContext context) {
-                                                  String realDesc = node.description.trim();
-                                                  if (_isDummyDescriptionContent(realDesc)) {
-                                                    realDesc = '';
-                                                  }
-
-                                                  return Container(
-                                                    margin: const EdgeInsets.only(bottom: 4),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.grey.shade50,
-                                                      borderRadius: BorderRadius.circular(12),
-                                                      border: Border.all(
-                                                        color: Colors.indigo.shade100,
-                                                        style: BorderStyle.solid,
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: <Widget>[
-                                                        Expanded(
-                                                          child: TextFormField(
-                                                            key: ValueKey<String>(
-                                                              'desc_${node.dIdx}_${node.aIdx}',
-                                                            ),
-                                                            initialValue: realDesc,
-                                                            maxLines: null,
-                                                            decoration:
-                                                                const InputDecoration(
-                                                              hintText:
-                                                                  '新增景点待补充描述...',
-                                                              hintStyle: TextStyle(
-                                                                color: Colors
-                                                                    .black38,
-                                                                fontSize: 13,
-                                                              ),
-                                                              contentPadding:
-                                                                  EdgeInsets
-                                                                      .all(12),
-                                                              border:
-                                                                  InputBorder
-                                                                      .none,
-                                                            ),
-                                                            onChanged:
-                                                                (String val) {
-                                                              final List<
-                                                                      dynamic>
-                                                                  days =
-                                                                  (_editableData['days']
-                                                                          as List<
-                                                                              dynamic>?) ??
-                                                                      <dynamic>[];
-                                                              final Map<String,
-                                                                      dynamic>
-                                                                  day =
-                                                                  days[node.dIdx]
-                                                                      as Map<
-                                                                          String,
-                                                                          dynamic>;
-                                                              final List<
-                                                                      dynamic>
-                                                                  activities =
-                                                                  day['activities']
-                                                                      as List<
-                                                                          dynamic>;
-                                                              final Map<String,
-                                                                      dynamic>
-                                                                  item =
-                                                                  activities[node.aIdx]
-                                                                      as Map<
-                                                                          String,
-                                                                          dynamic>;
-
-                                                              item['description'] =
-                                                                  val;
-
-                                                              setState(() {
-                                                                _refreshFromEditableData();
-                                                                _contentVersion++;
-                                                              });
-                                                            },
-                                                          ),
-                                                        ),
-                                                        // Single AI Polish Button
-                                                        IconButton(
-                                                          icon: const Icon(
-                                                            Icons.auto_awesome,
-                                                            color: Colors.indigo,
-                                                            size: 20,
-                                                          ),
-                                                          onPressed: _openAiCopilotPanel,
-                                                          tooltip: 'AI一键润色',
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                },
-                                              )
-                                            else if (node.description.trim().isNotEmpty &&
-                                                !_isDummyDescriptionContent(node.description))
-                                              Padding(
-                                                padding: const EdgeInsets.only(bottom: 4),
-                                                child: Text(
-                                                  _dedupeDescriptionParagraphs(
-                                                    node.description,
-                                                  ),
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: Color(0xFF475569),
-                                                    height: 1.5,
-                                                  ),
-                                                ),
+                                          if (_isEditing)
+                                            ReorderableDelayedDragStartListener(
+                                              index: index,
+                                              child: _buildStandardTimelineMainCard(
+                                                context,
+                                                index,
+                                                node,
                                               ),
-                                            const SizedBox(height: 12),
-                                            SizedBox(
-                                              height: 100,
-                                              child: ListView.builder(
-                                                scrollDirection: Axis.horizontal,
-                                                physics: const BouncingScrollPhysics(),
-                                                itemCount: node.photos.length + (_isEditing ? 1 : 0),
-                                                itemBuilder: (BuildContext context, int photoIndex) {
-                                                  if (_isEditing && photoIndex == node.photos.length) {
-                                                    return GestureDetector(
-                                                      onTap: () => _addPhoto(index),
-                                                      child: Container(
-                                                        width: 75,
-                                                        margin: const EdgeInsets.only(right: 10),
-                                                        decoration: BoxDecoration(
-                                                          color: Colors.grey.shade50,
-                                                          borderRadius: BorderRadius.circular(12),
-                                                          border: Border.all(
-                                                            color: Colors.grey.shade300,
-                                                          ),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.add_a_photo_outlined,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }
-                                                  final String url = node.photos[photoIndex];
-                                                  return Container(
-                                                    width: 75,
-                                                    margin: const EdgeInsets.only(right: 10),
-                                                    clipBehavior: Clip.antiAlias,
-                                                    decoration: BoxDecoration(
-                                                      borderRadius: BorderRadius.circular(12),
-                                                    ),
-                                                    child: Stack(
-                                                      fit: StackFit.expand,
-                                                      children: <Widget>[
-                                                        GestureDetector(
-                                                          behavior:
-                                                              HitTestBehavior.opaque,
-                                                          onTap: () =>
-                                                              _showFullScreenGallery(
-                                                            context,
-                                                            node.photos,
-                                                            photoIndex,
-                                                          ),
-                                                          child: _buildNodeImage(url),
-                                                        ),
-                                                        if (_isEditing)
-                                                          Positioned(
-                                                            top: 4,
-                                                            right: 4,
-                                                            child: GestureDetector(
-                                                              behavior:
-                                                                  HitTestBehavior
-                                                                      .opaque,
-                                                              onTap: () => _deletePhoto(
-                                                                index,
-                                                                photoIndex,
-                                                              ),
-                                                              child: Container(
-                                                                padding: const EdgeInsets.all(4),
-                                                                decoration: BoxDecoration(
-                                                                  color: Colors.white,
-                                                                  shape: BoxShape.circle,
-                                                                  border: Border.all(
-                                                                    color: Colors.red.shade100,
-                                                                  ),
-                                                                  boxShadow: const <BoxShadow>[
-                                                                    BoxShadow(
-                                                                      color: Colors.black12,
-                                                                      blurRadius: 4,
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                                child: const Icon(
-                                                                  Icons.close,
-                                                                  size: 14,
-                                                                  color: Colors.red,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                },
-                                              ),
+                                            )
+                                          else
+                                            _buildStandardTimelineMainCard(
+                                              context,
+                                              index,
+                                              node,
                                             ),
-                                              ],
-                                            ),
-                                          ),
                                           if (_isEditing)
                                             Positioned(
-                                              top: 8,
-                                              right: 8,
+                                              top: 6,
+                                              right: 6,
                                               child: GestureDetector(
                                                 behavior: HitTestBehavior.opaque,
                                                 onTap: () => _confirmDeleteActivity(node),
@@ -1848,7 +2236,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                               ],
                             ),
                           ),
-                          if (_isEditing && !isLastOfDay)
+                          if (_isEditing && !isLastOfDay && !isLazyNode)
                             Padding(
                               padding: const EdgeInsets.only(
                                 left: 48,
@@ -1877,7 +2265,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                 ),
                               ),
                             ),
-                          if (_isEditing && isLastOfDay)
+                          if (_isEditing && isLastOfDay && !isLazyNode)
                             Padding(
                               padding: const EdgeInsets.only(
                                 left: 31,
@@ -1919,8 +2307,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                               ),
                             ),
                         ],
-                      ),
-                    );
+                      );
                     },
                   ),
                 ),
@@ -1928,24 +2315,94 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
                     sliver: SliverToBoxAdapter(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.add_circle, color: Colors.indigo),
-                        label: const Text(
-                          '开启新的一天',
-                          style: TextStyle(
-                            color: Colors.indigo,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.indigo.shade50,
-                          elevation: 0,
-                          minimumSize: const Size(double.infinity, 56),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        onPressed: _addNewDay,
+                      child: Builder(
+                        builder: (BuildContext context) {
+                          final bool isLazyPool =
+                              _isLazyPoolDiaryFromEditable();
+                          return ElevatedButton.icon(
+                            icon: Icon(
+                              isLazyPool
+                                  ? Icons.post_add_rounded
+                                  : Icons.add_circle,
+                              color: Colors.indigo,
+                            ),
+                            label: Text(
+                              isLazyPool
+                                  ? '开启新的照片池'
+                                  : '开启新的一天',
+                              style: const TextStyle(
+                                color: Colors.indigo,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.indigo.shade50,
+                              elevation: 0,
+                              minimumSize: const Size(double.infinity, 56),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                final List<dynamic> days =
+                                    (_editableData['days']
+                                            as List<dynamic>?) ??
+                                        <dynamic>[];
+                                if (isLazyPool) {
+                                  days.add(<String, dynamic>{
+                                    'dayTitle': '旅途掠影',
+                                    'summary': '',
+                                    'activities': <Map<String, dynamic>>[
+                                      <String, dynamic>{
+                                        'is_lazy_pool': true,
+                                        'title': '记忆碎片',
+                                        'description': '',
+                                        'time': '',
+                                        'lat': 0.0,
+                                        'lng': 0.0,
+                                        'photos': <String>[],
+                                        'images': <String>[],
+                                      },
+                                    ],
+                                  });
+                                } else {
+                                  final int newDayNumber = days.length + 1;
+                                  days.add(<String, dynamic>{
+                                    'day': newDayNumber,
+                                    'dayTitle': '新的一天',
+                                    'summary': '继续探索...',
+                                    'title': '新的开始',
+                                    'time': '',
+                                    'description': '记录新的精彩瞬间',
+                                    'activities': <dynamic>[],
+                                  });
+                                }
+                                _editableData['days'] = days;
+                                _editableData = _normalizeEditableData(
+                                  Map<String, dynamic>.from(_editableData),
+                                );
+                                _refreshFromEditableData();
+                                _contentVersion++;
+                              });
+                              Future<void>.delayed(
+                                const Duration(milliseconds: 100),
+                                () {
+                                  if (!mounted ||
+                                      !_scrollController.hasClients) {
+                                    return;
+                                  }
+                                  _scrollController.animateTo(
+                                    _scrollController.position.maxScrollExtent,
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeOut,
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -1967,7 +2424,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                   child: FloatingActionButton(
                     heroTag: 'ai_copilot_fab',
                     backgroundColor: const Color(0xFF4F46E5),
-                    onPressed: _openAiCopilotPanel,
+                    onPressed: () => _openAiCopilotPanel(
+                      targetKey: 'global',
+                      originalText: '用户请求全局修改',
+                    ),
                     child: const Icon(Icons.auto_awesome_rounded),
                   ),
                 ),
@@ -2018,6 +2478,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                         _titleController.text = _diary.title;
                         _quoteController.text =
                             (_diary.diaryData['quote'] ?? '').toString();
+                        _editableCoverImageUrl = _diary.coverImageUrl;
                         _publishToCommunity = _diary.isPublic;
                         _refreshFromEditableData();
                         _captureEditSnapshot();
@@ -2089,6 +2550,116 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   }
 
   /// 全屏横向滑动 + 双指缩放查看节点照片。
+  /// 常规节点横向照片画廊：编辑态长按拖拽重排；末尾「添加」格不包拖拽监听，不可被拖走。
+  Widget _buildPhotoGallery(Map<String, dynamic> activity, int dayIdx, int actIdx) {
+    final List<String> images = List<String>.from(_collectActivityDisplayImages(activity));
+
+    return SizedBox(
+      height: 160,
+      child: ReorderableListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        buildDefaultDragHandles: false,
+        itemCount: images.length + (_isEditing ? 1 : 0),
+        onReorder: (int oldIndex, int newIndex) {
+          if (!_isEditing) return;
+          if (oldIndex >= images.length || newIndex > images.length) return;
+          setState(() {
+            if (newIndex > oldIndex) {
+              newIndex -= 1;
+            }
+            final String movedImage = images.removeAt(oldIndex);
+            images.insert(newIndex, movedImage);
+            activity['photos'] = List<String>.from(images);
+            activity['images'] = List<String>.from(images);
+            if (images.isNotEmpty) {
+              activity['imageUrl'] = images.first;
+              activity['image_url'] = images.first;
+            } else {
+              activity['imageUrl'] = '';
+              activity['image_url'] = '';
+            }
+            _contentVersion++;
+            _refreshFromEditableData();
+          });
+        },
+        itemBuilder: (BuildContext context, int imgIndex) {
+          if (imgIndex < images.length) {
+            final Widget photoWidget = Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      width: 120,
+                      height: 160,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _showFullScreenGallery(
+                          context,
+                          images,
+                          imgIndex,
+                        ),
+                        child: _buildNodeImage(images[imgIndex]),
+                      ),
+                    ),
+                  ),
+                  if (_isEditing)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: GestureDetector(
+                        onTap: () => _handleDeletePhoto(dayIdx, actIdx, images[imgIndex]),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.close, size: 14, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+            if (_isEditing) {
+              return ReorderableDelayedDragStartListener(
+                key: ValueKey<String>('photo_${dayIdx}_${actIdx}_${imgIndex}_${images[imgIndex]}'),
+                index: imgIndex,
+                child: photoWidget,
+              );
+            }
+            return Container(
+              key: ValueKey<String>('photo_${dayIdx}_${actIdx}_${imgIndex}_${images[imgIndex]}'),
+              child: photoWidget,
+            );
+          }
+          return GestureDetector(
+            key: ValueKey<String>('add_photo_${dayIdx}_$actIdx'),
+            onTap: () => _pickAndUploadImage(
+              dayIdx,
+              actIdx,
+              (activity['title'] ?? '景点').toString(),
+            ),
+            child: Container(
+              width: 120,
+              height: 160,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: const Icon(Icons.add_a_photo_outlined, color: Colors.grey, size: 28),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _showFullScreenGallery(
     BuildContext context,
     List<String> photos,
@@ -2110,6 +2681,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         child: CachedNetworkImage(
           imageUrl: p,
           fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
           errorWidget: (_, _, _) => const _DarkImageFallback(),
         ),
       );
@@ -2120,6 +2693,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         child: Image.network(
           p,
           fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
           errorBuilder: (_, _, _) => const _DarkImageFallback(),
         ),
       );
@@ -2130,6 +2705,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         child: Image.network(
           p,
           fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
           errorBuilder: (_, _, _) => const _DarkImageFallback(),
         ),
       );
@@ -2139,6 +2716,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       child: Image.file(
         File(p),
         fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
         errorBuilder: (_, _, _) => const _DarkImageFallback(),
       ),
     );
@@ -2228,8 +2807,11 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                     size: 20,
                                   ),
                                   tooltip: 'AI一键润色',
-                                  onPressed: () async {
-                                    await _openAiCopilotPanel();
+                                  onPressed: () {
+                                    _openAiCopilotPanel(
+                                      targetKey: 'global',
+                                      originalText: '用户请求全局修改',
+                                    );
                                     if (!mounted) return;
                                     _sheetInputController.text =
                                         _realOrEmpty(controller.text);
@@ -2402,6 +2984,472 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       },
     );
     _sheetInputController.clear();
+  }
+}
+
+class _DiaryAiCopilotBottomSheet extends StatefulWidget {
+  const _DiaryAiCopilotBottomSheet({
+    required this.fullDiaryData,
+    required this.targetKey,
+    required this.originalText,
+    required this.onTextUpdate,
+    required this.onStructureUpdate,
+  });
+
+  final Map<String, dynamic> fullDiaryData;
+  final String targetKey;
+  final String originalText;
+  final void Function(String targetKey, String newText) onTextUpdate;
+  final void Function(Map<String, dynamic> newDiaryData) onStructureUpdate;
+
+  @override
+  State<_DiaryAiCopilotBottomSheet> createState() =>
+      _DiaryAiCopilotBottomSheetState();
+}
+
+class _DiaryAiCopilotBottomSheetState extends State<_DiaryAiCopilotBottomSheet> {
+  final TextEditingController _aiInputController = TextEditingController();
+  bool _isProcessing = false;
+
+  @override
+  void dispose() {
+    _aiInputController.dispose();
+    super.dispose();
+  }
+
+  void _fillShortcut(String text) {
+    setState(() {
+      _aiInputController.text = text;
+      _aiInputController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _aiInputController.text.length),
+      );
+    });
+  }
+
+  String _stripMarkdownJsonFence(String raw) {
+    String content = raw.trim();
+    if (content.contains('```json')) {
+      content = content.split('```json')[1].split('```')[0].trim();
+    } else if (content.contains('```')) {
+      final List<String> parts = content.split('```');
+      if (parts.length >= 2) {
+        content = parts[1].trim();
+        if (content.startsWith('json')) {
+          content = content.substring(4).trim();
+        }
+      }
+    }
+    return content;
+  }
+
+  Map<String, dynamic> _decodeAiResultJson(String rawContent) {
+    final String stripped = _stripMarkdownJsonFence(rawContent);
+    if (stripped.isEmpty) {
+      throw FormatException('模型返回内容为空');
+    }
+    final Object? decoded = jsonDecode(stripped);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    throw FormatException('模型返回不是 JSON 对象');
+  }
+
+  Future<void> _submitRequest() async {
+    final String prompt = _aiInputController.text.trim();
+    if (prompt.isEmpty) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isProcessing = true);
+
+    // 基于焦点的动态场景说明（供模型路由）
+    String contextAnalysis = '用户正在通过伴创面板与手账交互。';
+    if (widget.targetKey == 'quote') {
+      contextAnalysis = '用户正在编辑【手账开篇引言】。';
+    } else if (widget.targetKey.startsWith('desc_')) {
+      final List<String> parts = widget.targetKey.split('_');
+      if (parts.length == 3) {
+        final int? dIdx = int.tryParse(parts[1]);
+        final int? aIdx = int.tryParse(parts[2]);
+        if (dIdx != null && aIdx != null) {
+          try {
+            final Object? daysRaw = widget.fullDiaryData['days'];
+            if (daysRaw is List<dynamic> &&
+                dIdx >= 0 &&
+                dIdx < daysRaw.length) {
+              final Object? dayRaw = daysRaw[dIdx];
+              if (dayRaw is Map) {
+                final Object? actsRaw = dayRaw['activities'];
+                if (actsRaw is List<dynamic> &&
+                    aIdx >= 0 &&
+                    aIdx < actsRaw.length) {
+                  final Object? actRaw = actsRaw[aIdx];
+                  if (actRaw is Map) {
+                    final String spotName =
+                        (actRaw['title'] ?? '未知景点').toString();
+                    contextAnalysis =
+                        '用户正在编辑第 ${dIdx + 1} 天的景点【$spotName】的描述文案。';
+                  }
+                }
+              }
+            }
+          } catch (_) {
+            contextAnalysis = '用户正在编辑具体景点的文案。';
+          }
+          if (contextAnalysis ==
+              '用户正在通过伴创面板与手账交互。') {
+            contextAnalysis = '用户正在编辑具体景点的文案。';
+          }
+        } else {
+          contextAnalysis = '用户正在编辑具体景点的文案。';
+        }
+      } else {
+        contextAnalysis = '用户正在编辑具体景点的文案。';
+      }
+    } else if (widget.targetKey == 'global') {
+      contextAnalysis =
+          '用户正在进行【全局操作】（可能想新增某天的行程、增加打卡点，或者整体调整风格）。';
+    }
+
+    final String originalForPrompt =
+        widget.originalText.trim().isEmpty ? '无内容' : widget.originalText;
+    final String diaryJson = jsonEncode(widget.fullDiaryData);
+
+    final String systemPrompt = '''
+你是一个顶级的旅行手账专属伴创 AI。你的任务是根据用户的需求，精准修改或生成手账数据。
+
+【当前手账的完整JSON大纲】：
+$diaryJson
+
+【用户当前的编辑场景】（极其重要）：
+- $contextAnalysis
+- 焦点处原稿内容 (originalText): $originalForPrompt
+
+用户发出的指令："$prompt"
+
+【智能路由与执行规则】
+你需要分析用户的指令，判断他属于以下哪种意图，并严格返回下方定义的 JSON 格式：
+
+意图 A: 【局部文案润色/补充百科】 (如：一键优化、写生动点、补充点历史背景)
+👉 规则：你只需要专注修改原稿内容，结合景点背景生成最精彩的文案。将 action_type 设为 "update_text"，并将改写后的纯文本放入 updated_text 字段。
+
+意图 B: 【行程结构修改/新增打卡点】 (如：第一天加个火锅店、把第二天行程删掉、新增一天的安排)
+👉 规则：你不需要拘泥于原稿！请统观整个手账 JSON 结构，在合适的天数(days)和时间间隙中，插入或修改节点(activity)对象。必须自动顺延上下文的时间！将 action_type 设为 "update_structure"，并将修改后的【完整手账JSON对象】放入 updated_diary_data 字段。
+
+意图 C: 【纯粹聊天/旅游问答】 (如：这里天气怎么样？需要带外套吗？)
+👉 规则：如果用户明显不是要修改手账内容，只是提问。将 action_type 设为 "chat"，在 reply_msg 给出亲切回答即可。
+
+【强制输出格式】（绝对只输出合法的 JSON，不要包裹 Markdown 代码块，不要输出废话）：
+{
+  "action_type": "update_text" 或 "update_structure" 或 "chat",
+  "reply_msg": "无论哪种意图，请在这里给用户一句亲切的管家式回复（如：好的，已经为您润色好了/已为您插好了景点）",
+  "updated_text": "意图A时填入最终的高质量纯文本，否则为空字符串",
+  "updated_diary_data": null
+}
+说明：意图 B 时 updated_diary_data 必须为完整手账 JSON 对象；意图 A、C 时 updated_diary_data 必须为 JSON null。
+''';
+
+    try {
+      final http.Response response = await http
+          .post(
+            Uri.parse(AiConfig.deepseekEndpoint),
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${AiConfig.deepseekApiKey}',
+            },
+            body: jsonEncode(<String, Object?>{
+              'model': AiConfig.deepseekModel,
+              'messages': <Map<String, String>>[
+                <String, String>{'role': 'system', 'content': systemPrompt},
+                <String, String>{'role': 'user', 'content': prompt},
+              ],
+              'response_format': <String, String>{'type': 'json_object'},
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        throw Exception('API Error: ${response.statusCode}');
+      }
+
+      final Map<String, dynamic> data =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final List<dynamic>? choices = data['choices'] as List<dynamic>?;
+      if (choices == null || choices.isEmpty) {
+        throw Exception('Empty choices');
+      }
+      final Map<String, dynamic>? message =
+          choices.first['message'] as Map<String, dynamic>?;
+      final Object? rawContent = message?['content'];
+      final String contentStr = rawContent is String
+          ? rawContent
+          : rawContent is Map
+              ? jsonEncode(rawContent)
+              : rawContent?.toString() ?? '';
+
+      final Map<String, dynamic> result = _decodeAiResultJson(contentStr);
+
+      if (!mounted) return;
+
+      final String replyMsg =
+          (result['reply_msg'] ?? '操作已完成。').toString().trim();
+      if (replyMsg.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✨ $replyMsg')),
+        );
+      }
+
+      final String actionType =
+          (result['action_type'] ?? '').toString().trim();
+      final Object? struct = result['updated_diary_data'];
+      final String updatedText =
+          (result['updated_text'] ?? '').toString().trim();
+
+      if (actionType == 'update_structure' && struct != null) {
+        if (struct is Map<String, dynamic>) {
+          widget.onStructureUpdate(struct);
+        } else if (struct is Map) {
+          widget.onStructureUpdate(Map<String, dynamic>.from(struct));
+        }
+      } else if (actionType == 'update_text' &&
+          updatedText.isNotEmpty) {
+        widget.onTextUpdate(widget.targetKey, updatedText);
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e, st) {
+      debugPrint('伴创失败: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('管家网络连接异常，请重试')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+              child: Row(
+                children: <Widget>[
+                  const Icon(Icons.auto_awesome, color: Colors.indigo, size: 22),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'AI 伴创面板',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_isProcessing)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.indigo,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 2.8,
+                      children: <Widget>[
+                        _buildShortcutBtn(
+                          '✨ 一键优化文案',
+                          '更文艺、更感性',
+                          Colors.indigo,
+                          '帮我把这段文案润色得更有文艺感和画面感。',
+                        ),
+                        _buildShortcutBtn(
+                          '📖 补充景点百科',
+                          '增加深度内涵',
+                          Colors.purple,
+                          '帮我在这段描述中补充一些关于这里的历史背景或冷知识。',
+                        ),
+                        _buildShortcutBtn(
+                          '🎯 提炼旅行亮点',
+                          '总结高光时刻',
+                          Colors.orange,
+                          '帮我提炼这段行程的核心亮点，用活泼的语气输出。',
+                        ),
+                        _buildShortcutBtn(
+                          '🗺️ 新增打卡点',
+                          '结构化插入行程',
+                          Colors.teal,
+                          '请在第一天和第二天之间，帮我插入一个新的打卡点：[请填写]。',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '✍️ 告诉管家你的具体想法',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black38,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: <Widget>[
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                left: 12,
+                                top: 4,
+                                bottom: 4,
+                              ),
+                              child: TextField(
+                                controller: _aiInputController,
+                                maxLines: 4,
+                                minLines: 1,
+                                style: const TextStyle(fontSize: 14),
+                                decoration: const InputDecoration(
+                                  hintText:
+                                      '例如：帮我把第二天下午的行程换成去吃火锅...',
+                                  border: InputBorder.none,
+                                  hintStyle: TextStyle(color: Colors.black38),
+                                ),
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _isProcessing ? null : _submitRequest,
+                            child: Container(
+                              margin: const EdgeInsets.all(4),
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                gradient: _isProcessing
+                                    ? null
+                                    : const LinearGradient(
+                                        colors: <Color>[
+                                          Colors.indigo,
+                                          Colors.purple,
+                                        ],
+                                      ),
+                                color: _isProcessing ? Colors.grey : null,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(
+                                Icons.arrow_upward_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShortcutBtn(
+    String title,
+    String sub,
+    MaterialColor color,
+    String prompt,
+  ) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _fillShortcut(prompt),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.shade50,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.shade100),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: color.shade700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                sub,
+                style: TextStyle(fontSize: 9, color: color.shade400),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

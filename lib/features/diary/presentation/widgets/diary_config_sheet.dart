@@ -1,514 +1,1171 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:gonow/core/utils/image_compress_util.dart';
+import 'package:gonow/features/diary/data/diary_provider.dart';
+import 'package:gonow/features/diary/presentation/screens/diary_detail_screen.dart';
+import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
-enum DiaryCreateMode { itinerary, retro }
-
-class DiaryConfigResult {
-  const DiaryConfigResult({
-    required this.mode,
-    required this.styleType,
-    required this.selectedTripId,
-    required this.locationText,
-    required this.imagePaths,
-  });
-
-  final DiaryCreateMode mode;
-  final String styleType;
-  final String? selectedTripId;
-  final String locationText;
-  final List<String> imagePaths;
+/// 将补录 lazy 用户所选本地路径写入 `is_lazy_pool` 活动节点，供详情页瀑布流展示。
+void _injectLazyPoolPhotosIntoLazyNode(
+  Map<String, dynamic> data,
+  List<XFile> photos,
+) {
+  if (photos.isEmpty) return;
+  final List<String> paths =
+      photos.map((XFile e) => e.path).where((String p) => p.isNotEmpty).toList();
+  if (paths.isEmpty) return;
+  final List<dynamic>? days = data['days'] as List<dynamic>?;
+  if (days == null || days.isEmpty) return;
+  for (int d = 0; d < days.length; d++) {
+    final Map<String, dynamic> day =
+        Map<String, dynamic>.from(days[d] as Map? ?? <String, dynamic>{});
+    final List<dynamic> acts =
+        List<dynamic>.from(day['activities'] as List<dynamic>? ?? <dynamic>[]);
+    for (int a = 0; a < acts.length; a++) {
+      final Map<String, dynamic> act =
+          Map<String, dynamic>.from(acts[a] as Map? ?? <String, dynamic>{});
+      final String flag = act['is_lazy_pool']?.toString().toLowerCase() ?? '';
+      final bool isPool = act['is_lazy_pool'] == true ||
+          flag == 'true' ||
+          flag == '1' ||
+          (act['title'] ?? '').toString().contains('记忆碎片');
+      if (isPool) {
+        act['is_lazy_pool'] = true;
+        act['photos'] = List<String>.from(paths);
+        act['images'] = List<String>.from(paths);
+        acts[a] = act;
+        day['activities'] = acts;
+        days[d] = day;
+        data['days'] = days;
+        return;
+      }
+    }
+  }
 }
 
-Future<DiaryConfigResult?> showDiaryConfigSheet(
-  BuildContext context, {
-  List<Map<String, String>> tripOptions = const <Map<String, String>>[
-    <String, String>{'id': 'trip_beijing', 'title': '北京 5 天亲子行'},
-    <String, String>{'id': 'trip_hangzhou', 'title': '杭州 3 天慢游'},
-    <String, String>{'id': 'trip_chengdu', 'title': '成都 4 天美食局'},
-  ],
-}) {
-  return showModalBottomSheet<DiaryConfigResult>(
+Future<void> showDiaryConfigSheet(BuildContext context) async {
+  final List<Map<String, String>> diaryStyles = <Map<String, String>>[
+    <String, String>{'icon': '🍃', 'name': '文艺清新'},
+    <String, String>{'icon': '🎬', 'name': '电影质感'},
+    <String, String>{'icon': '🌈', 'name': '多巴胺色彩'},
+    <String, String>{'icon': '🍔', 'name': '饕餮食客'},
+    <String, String>{'icon': '🪖', 'name': '硬核特种兵'},
+    <String, String>{'icon': '🌑', 'name': '孤独探索者'},
+    <String, String>{'icon': '🏕️', 'name': '荒野露营派'},
+    <String, String>{'icon': '🧘', 'name': '慢生活疗愈'},
+    <String, String>{'icon': '🏛️', 'name': '城市建筑控'},
+    <String, String>{'icon': '🎧', 'name': '夜色霓虹流'},
+  ];
+
+  final ImagePicker picker = ImagePicker();
+  bool isCustomMode = false;
+  /// `lazy` 懒人照片池；`detailed` 精细日记（仅补录模式）
+  String subRecordMode = 'lazy';
+  String selectedStyle = '文艺清新';
+  bool isGenerating = false;
+  String? errorMessage;
+  final TextEditingController destinationController = TextEditingController();
+  final List<XFile> selectedPhotos = <XFile>[];
+  XFile? detailCoverPhoto;
+
+  await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (BuildContext context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: const _DiaryConfigSheetBody(),
-      );
-    },
-  );
-}
-
-class _DiaryConfigSheetBody extends StatefulWidget {
-  const _DiaryConfigSheetBody();
-
-  @override
-  State<_DiaryConfigSheetBody> createState() => _DiaryConfigSheetBodyState();
-}
-
-class _DiaryConfigSheetBodyState extends State<_DiaryConfigSheetBody> {
-  final ImagePicker _picker = ImagePicker();
-  final TextEditingController _retroLocationController =
-      TextEditingController();
-  final List<Map<String, String>> _tripOptions = const <Map<String, String>>[
-    <String, String>{'id': 'trip_beijing', 'title': '北京 5 天亲子行'},
-    <String, String>{'id': 'trip_hangzhou', 'title': '杭州 3 天慢游'},
-    <String, String>{'id': 'trip_chengdu', 'title': '成都 4 天美食局'},
-  ];
-  final List<_StyleItem> _styleItems = const <_StyleItem>[
-    _StyleItem(label: '🍃 文艺清新', color: Color(0xFF5E9E7B)),
-    _StyleItem(label: '🎬 电影质感', color: Color(0xFF5C6BC0)),
-    _StyleItem(label: '🌈 多巴胺色彩', color: Color(0xFFE91E63)),
-    _StyleItem(label: '🍔 饕餮食客', color: Color(0xFFFF7043)),
-    _StyleItem(label: '🪖 硬核特种兵', color: Color(0xFF546E7A)),
-    _StyleItem(label: '🌑 孤独探索者', color: Color(0xFF616161)),
-    _StyleItem(label: '🏕 荒野露营派', color: Color(0xFF2E7D32)),
-    _StyleItem(label: '🧘 慢生活疗愈', color: Color(0xFF8E24AA)),
-    _StyleItem(label: '🏛 城市建筑控', color: Color(0xFF3949AB)),
-    _StyleItem(label: '🎧 夜色霓虹流', color: Color(0xFF00897B)),
-  ];
-
-  String _selectedStyle = '🍃 文艺清新';
-  String _selectedTripId = 'trip_beijing';
-  final List<String> _pickedImagePaths = <String>[];
-  int _selectedModeIndex = 0;
-  bool _submitting = false;
-
-  @override
-  void dispose() {
-    _retroLocationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickImages() async {
-    final List<XFile> result = await _picker.pickMultiImage(
-      imageQuality: 88,
-      maxWidth: 1800,
-    );
-    if (result.isEmpty) return;
-    setState(() {
-      _pickedImagePaths.addAll(
-        result.map((XFile item) => item.path).where((String e) => e.isNotEmpty),
-      );
-    });
-  }
-
-  Future<void> _submit() async {
-    final bool isRetro = _selectedModeIndex == 1;
-    if (isRetro && _retroLocationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写你去哪儿了')),
-      );
-      return;
-    }
-    if (_submitting) return;
-    setState(() => _submitting = true);
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-    if (!mounted) return;
-    Navigator.of(context).pop(
-      DiaryConfigResult(
-        mode: isRetro ? DiaryCreateMode.retro : DiaryCreateMode.itinerary,
-        styleType: _selectedStyle,
-        selectedTripId: isRetro ? null : _selectedTripId,
-        locationText: _retroLocationController.text.trim(),
-        imagePaths: List<String>.from(_pickedImagePaths),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-      child: Material(
-        color: Colors.white,
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.86,
-            child: Column(
-              children: <Widget>[
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setModalState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: _buildModeTab(
-                            label: '关联已有行程',
-                            selected: _selectedModeIndex == 0,
-                            onTap: () {
-                              if (_selectedModeIndex == 0) return;
-                              HapticFeedback.lightImpact();
-                              setState(() => _selectedModeIndex = 0);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _buildModeTab(
-                            label: '补录往期精彩',
-                            selected: _selectedModeIndex == 1,
-                            onTap: () {
-                              if (_selectedModeIndex == 1) return;
-                              HapticFeedback.lightImpact();
-                              setState(() => _selectedModeIndex = 1);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    child: _selectedModeIndex == 0
-                        ? _buildItineraryMode(
-                            key: const ValueKey<String>('itinerary_mode'),
-                          )
-                        : _buildRetroMode(
-                            key: const ValueKey<String>('retro_mode'),
-                          ),
-                  ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: DecoratedBox(
+              ),
+              child: Stack(
+                children: <Widget>[
+                  Column(
+                    children: <Widget>[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 40,
+                        height: 4,
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: <Color>[
-                              Colors.indigo.shade500,
-                              Colors.purple.shade500,
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '生成配置舱',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setModalState(() {
+                                      isCustomMode = false;
+                                      subRecordMode = 'lazy';
+                                      selectedPhotos.clear();
+                                      detailCoverPhoto = null;
+                                      errorMessage = null;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: !isCustomMode
+                                          ? Colors.white
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: !isCustomMode
+                                          ? <BoxShadow>[
+                                              BoxShadow(
+                                                color: Colors.black.withValues(alpha: 0.04),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ]
+                                          : <BoxShadow>[],
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '关联已有行程',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: !isCustomMode
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                        color: !isCustomMode
+                                            ? Colors.indigo.shade600
+                                            : Colors.grey.shade500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setModalState(() {
+                                      isCustomMode = true;
+                                      subRecordMode = 'lazy';
+                                      errorMessage = null;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: isCustomMode
+                                          ? Colors.white
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: isCustomMode
+                                          ? <BoxShadow>[
+                                              BoxShadow(
+                                                color: Colors.black.withValues(alpha: 0.04),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ]
+                                          : <BoxShadow>[],
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '补录往期精彩',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: isCustomMode
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                        color: isCustomMode
+                                            ? Colors.indigo.shade600
+                                            : Colors.grey.shade500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
-                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              if (!isCustomMode) ...<Widget>[
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.grey.shade200),
+                                    boxShadow: <BoxShadow>[
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.02),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    children: <Widget>[
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(12),
+                                          image: const DecorationImage(
+                                            image: NetworkImage(
+                                              'https://images.unsplash.com/photo-1508804185872-d7badad00f7d?w=200',
+                                            ),
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Text(
+                                              '北京五日带父母舒心游',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 15,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            SizedBox(height: 6),
+                                            Row(
+                                              children: <Widget>[
+                                                Icon(
+                                                  Icons.circle,
+                                                  size: 8,
+                                                  color: Colors.green,
+                                                ),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  '刚结束',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.green,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(Icons.check_circle, color: Colors.indigo),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              if (isCustomMode) ...<Widget>[
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 20),
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: <Widget>[
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            setModalState(() {
+                                              subRecordMode = 'lazy';
+                                              errorMessage = null;
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: subRecordMode == 'lazy'
+                                                  ? Colors.white
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(8),
+                                              boxShadow: subRecordMode == 'lazy'
+                                                  ? <BoxShadow>[
+                                                      BoxShadow(
+                                                        color: Colors.black.withValues(alpha: 0.05),
+                                                        blurRadius: 4,
+                                                      ),
+                                                    ]
+                                                  : <BoxShadow>[],
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '懒人照片池',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: subRecordMode == 'lazy'
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                                  color: subRecordMode == 'lazy'
+                                                      ? Colors.indigo.shade700
+                                                      : Colors.grey.shade500,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            setModalState(() {
+                                              subRecordMode = 'detailed';
+                                              errorMessage = null;
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: subRecordMode == 'detailed'
+                                                  ? Colors.white
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(8),
+                                              boxShadow: subRecordMode == 'detailed'
+                                                  ? <BoxShadow>[
+                                                      BoxShadow(
+                                                        color: Colors.black.withValues(alpha: 0.05),
+                                                        blurRadius: 4,
+                                                      ),
+                                                    ]
+                                                  : <BoxShadow>[],
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '精细日记',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: subRecordMode == 'detailed'
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                                  color: subRecordMode == 'detailed'
+                                                      ? Colors.indigo.shade700
+                                                      : Colors.grey.shade500,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (subRecordMode == 'lazy') ...<Widget>[
+                                  const Text(
+                                    '上传旅途照片 (最多 20 张)',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    height: 88,
+                                    child: ListView.builder(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: selectedPhotos.length +
+                                          (selectedPhotos.length < 20 ? 1 : 0),
+                                      itemBuilder: (BuildContext context, int index) {
+                                        if (index == selectedPhotos.length) {
+                                          return GestureDetector(
+                                            onTap: () async {
+                                              final int remaining =
+                                                  20 - selectedPhotos.length;
+                                              if (remaining <= 0) return;
+                                              List<XFile> files = <XFile>[];
+                                              try {
+                                                files = await picker.pickMultiImage(
+                                                  limit: 20,
+                                                );
+                                              } catch (_) {
+                                                final XFile? one =
+                                                    await picker.pickImage(
+                                                  source: ImageSource.gallery,
+                                                );
+                                                if (one != null) {
+                                                  files = <XFile>[one];
+                                                }
+                                              }
+                                              if (files.isEmpty) return;
+                                              if (!context.mounted) return;
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    '正在处理高画质照片…',
+                                                  ),
+                                                  duration: Duration(seconds: 2),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                              final List<XFile> optimized =
+                                                  await ImageCompressUtil
+                                                      .compressImages(files);
+                                              if (!context.mounted) return;
+                                              setModalState(() {
+                                                selectedPhotos.addAll(
+                                                  optimized.take(remaining),
+                                                );
+                                                while (selectedPhotos.length >
+                                                    20) {
+                                                  selectedPhotos.removeLast();
+                                                }
+                                                errorMessage = null;
+                                              });
+                                            },
+                                            child: Container(
+                                              width: 80,
+                                              height: 80,
+                                              margin: const EdgeInsets.only(right: 10),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade50,
+                                                borderRadius: BorderRadius.circular(16),
+                                                border: Border.all(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                              child: Icon(
+                                                Icons.add_photo_alternate_outlined,
+                                                color: Colors.grey.shade400,
+                                                size: 24,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        return Container(
+                                          width: 80,
+                                          height: 80,
+                                          margin: const EdgeInsets.only(right: 10),
+                                          clipBehavior: Clip.antiAlias,
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: <Widget>[
+                                              Image.file(
+                                                File(selectedPhotos[index].path),
+                                                fit: BoxFit.cover,
+                                              ),
+                                              Positioned(
+                                                top: 4,
+                                                right: 4,
+                                                child: GestureDetector(
+                                                  onTap: () {
+                                                    setModalState(() {
+                                                      selectedPhotos.removeAt(index);
+                                                      errorMessage = null;
+                                                    });
+                                                  },
+                                                  child: Container(
+                                                    padding: const EdgeInsets.all(4),
+                                                    decoration: const BoxDecoration(
+                                                      color: Colors.black54,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.close,
+                                                      size: 12,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade50,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: Colors.grey.shade200),
+                                    ),
+                                    child: TextField(
+                                      controller: destinationController,
+                                      onChanged: (String _) {
+                                        if (errorMessage != null) {
+                                          setModalState(() => errorMessage = null);
+                                        }
+                                      },
+                                      decoration: const InputDecoration(
+                                        hintText: '去了哪儿？(如：秋天的阿勒泰)',
+                                        hintStyle: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.black38,
+                                        ),
+                                        border: InputBorder.none,
+                                      ),
+                                    ),
+                                  ),
+                                ] else ...<Widget>[
+                                  const Text(
+                                    '设置手账封面 (1 张)',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  GestureDetector(
+                                    onTap: () async {
+                                      final XFile? file = await picker.pickImage(
+                                        source: ImageSource.gallery,
+                                      );
+                                      if (file == null) return;
+                                      setModalState(() {
+                                        detailCoverPhoto = file;
+                                        errorMessage = null;
+                                      });
+                                    },
+                                    child: Container(
+                                      width: double.infinity,
+                                      height: 120,
+                                      clipBehavior: Clip.antiAlias,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade50,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: Colors.grey.shade300),
+                                      ),
+                                      child: detailCoverPhoto == null
+                                          ? Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: <Widget>[
+                                                Icon(
+                                                  Icons.add_a_photo_outlined,
+                                                  color: Colors.grey.shade400,
+                                                  size: 32,
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  '点击选择封面',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey.shade500,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : Stack(
+                                              fit: StackFit.expand,
+                                              children: <Widget>[
+                                                Image.file(
+                                                  File(detailCoverPhoto!.path),
+                                                  fit: BoxFit.cover,
+                                                ),
+                                                Positioned(
+                                                  top: 8,
+                                                  right: 8,
+                                                  child: GestureDetector(
+                                                    onTap: () {
+                                                      setModalState(() {
+                                                        detailCoverPhoto = null;
+                                                        errorMessage = null;
+                                                      });
+                                                    },
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(6),
+                                                      decoration: const BoxDecoration(
+                                                        color: Colors.black54,
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                      child: const Icon(
+                                                        Icons.close,
+                                                        size: 14,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade50,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: Colors.grey.shade200),
+                                    ),
+                                    child: TextField(
+                                      controller: destinationController,
+                                      maxLines: 4,
+                                      onChanged: (String _) {
+                                        if (errorMessage != null) {
+                                          setModalState(() => errorMessage = null);
+                                        }
+                                      },
+                                      decoration: const InputDecoration(
+                                        hintText:
+                                            '详细聊聊行程吧...\n例如：\nDay1: 抵达大理，逛古城\nDay2: 租车环绕洱海，看了双廊的日落\n(AI 将根据您的描述搭建精准的时间轴)',
+                                        hintStyle: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.black38,
+                                          height: 1.5,
+                                        ),
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                              const SizedBox(height: 24),
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 3.2,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                ),
+                                itemCount: diaryStyles.length,
+                                itemBuilder: (BuildContext context, int index) {
+                                  final Map<String, String> style = diaryStyles[index];
+                                  final bool isSelected =
+                                      selectedStyle == style['name'];
+                                  return GestureDetector(
+                                    onTap: () {
+                                      setModalState(() {
+                                        selectedStyle = style['name']!;
+                                      });
+                                    },
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? Colors.green.shade50
+                                            : Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? Colors.green.shade400
+                                              : Colors.grey.shade200,
+                                          width: isSelected ? 1.5 : 1.0,
+                                        ),
+                                        boxShadow: isSelected
+                                            ? <BoxShadow>[]
+                                            : <BoxShadow>[
+                                                BoxShadow(
+                                                  color: Colors.black.withValues(alpha: 0.01),
+                                                  blurRadius: 4,
+                                                ),
+                                              ],
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: <Widget>[
+                                          Text(
+                                            style['icon']!,
+                                            style: const TextStyle(fontSize: 16),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            style['name']!,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.bold
+                                                  : FontWeight.w600,
+                                              color: isSelected
+                                                  ? Colors.green.shade700
+                                                  : Colors.grey.shade700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 40),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.redAccent,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                errorMessage!,
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
                           boxShadow: <BoxShadow>[
                             BoxShadow(
-                              color: Colors.indigo.withValues(alpha: 0.3),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 10,
+                              offset: const Offset(0, -4),
                             ),
                           ],
                         ),
-                        child: TextButton(
-                          onPressed: _submitting ? null : _submit,
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.indigo.shade600,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              elevation: 0,
+                              padding: EdgeInsets.zero,
+                            ),
+                            onPressed: () async {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              FocusScope.of(context).unfocus();
+                              setModalState(() => errorMessage = null);
+                              await Future<void>.delayed(
+                                const Duration(milliseconds: 300),
+                              );
+                              if (!context.mounted) return;
+
+                              if (isCustomMode) {
+                                if (destinationController.text.trim().isEmpty) {
+                                  setModalState(() {
+                                    errorMessage = subRecordMode == 'detailed'
+                                        ? '请填写详细行程描述'
+                                        : '请告诉管家您去过的目的地哦';
+                                  });
+                                  return;
+                                }
+                                if (subRecordMode == 'lazy' && selectedPhotos.isEmpty) {
+                                  setModalState(() {
+                                    errorMessage = '请至少上传一张旅途照片';
+                                  });
+                                  return;
+                                }
+                                if (subRecordMode == 'detailed' && detailCoverPhoto == null) {
+                                  setModalState(() {
+                                    errorMessage = '请选择一张手账封面图';
+                                  });
+                                  return;
+                                }
+                              }
+
+                              final ItineraryProvider itineraryProvider =
+                                  Provider.of<ItineraryProvider>(
+                                context,
+                                listen: false,
+                              );
+                              final ItineraryModel? existingItinerary = isCustomMode
+                                  ? null
+                                  : (itineraryProvider.activeItinerary ??
+                                      itineraryProvider.currentItinerary);
+
+                              if (!isCustomMode && existingItinerary == null) {
+                                setModalState(() {
+                                  errorMessage = '未找到可关联的已有行程';
+                                });
+                                return;
+                              }
+
+                              setModalState(() => isGenerating = true);
+                              final DiaryProvider diaryProvider =
+                                  Provider.of<DiaryProvider>(
+                                context,
+                                listen: false,
+                              );
+                              final Map<String, dynamic>? aiGeneratedData =
+                                  await diaryProvider.generateDiaryFromAI(
+                                destination: isCustomMode
+                                    ? destinationController.text.trim()
+                                    : _extractDestination(existingItinerary),
+                                style: selectedStyle,
+                                existingPlanData: existingItinerary?.planData,
+                                subRecordMode: isCustomMode ? subRecordMode : null,
+                                customPhotoCount:
+                                    isCustomMode && subRecordMode == 'lazy'
+                                        ? selectedPhotos.length
+                                        : null,
+                              );
+                              if (!context.mounted) return;
+
+                              if (aiGeneratedData == null) {
+                                setModalState(() {
+                                  isGenerating = false;
+                                  errorMessage = 'AI 思考超时了，请检查网络后重试';
+                                });
+                                return;
+                              }
+
+                              // 🚨 3. 【绝对防御：结构锁死、深拷贝与反向文本注入】
+                              Map<String, dynamic> finalDiaryData;
+                              String? autoCoverImageUrl;
+                              if (!isCustomMode && existingItinerary != null) {
+                                // 关联模式：坚守原有行程作为“绝对骨架”（深拷贝）
+                                finalDiaryData = jsonDecode(
+                                  jsonEncode(existingItinerary.planData),
+                                ) as Map<String, dynamic>;
+                                finalDiaryData['quote'] =
+                                    aiGeneratedData['quote'] ??
+                                    '用$selectedStyle的方式，记录这段闪光的日子。';
+                                finalDiaryData['dateLabel'] =
+                                    aiGeneratedData['dateLabel'] ?? '刚刚生成';
+
+                                try {
+                                  final List<dynamic> orgDays =
+                                      (finalDiaryData['days'] as List<dynamic>?) ??
+                                      (finalDiaryData['daily_schedules']
+                                              as List<dynamic>?) ??
+                                      <dynamic>[];
+                                  final List<dynamic>? aiDays =
+                                      aiGeneratedData['days'] as List<dynamic>?;
+
+                                  // 智能首图提取：遍历原行程，找到第一张有效图片作为封面
+                                  for (final dynamic dayRaw in orgDays) {
+                                    if (autoCoverImageUrl != null) break;
+                                    final Map<String, dynamic> dayMap =
+                                        Map<String, dynamic>.from(
+                                      dayRaw as Map? ?? <String, dynamic>{},
+                                    );
+                                    final List<dynamic> acts =
+                                        (dayMap['activities'] as List<dynamic>?) ??
+                                        <dynamic>[];
+                                    for (final dynamic actRaw in acts) {
+                                      final Map<String, dynamic> actMap =
+                                          Map<String, dynamic>.from(
+                                        actRaw as Map? ?? <String, dynamic>{},
+                                      );
+                                      final List<dynamic> images =
+                                          (actMap['images'] as List<dynamic>?) ??
+                                          <dynamic>[];
+                                      if (images.isNotEmpty) {
+                                        autoCoverImageUrl =
+                                            images.first.toString().trim();
+                                        if (autoCoverImageUrl!.isNotEmpty) break;
+                                      }
+                                      final String imageUrl =
+                                          (actMap['imageUrl'] ?? '').toString().trim();
+                                      if (imageUrl.isNotEmpty) {
+                                        autoCoverImageUrl = imageUrl;
+                                        break;
+                                      }
+                                    }
+                                  }
+                                  if (aiDays != null) {
+                                    for (int i = 0; i < orgDays.length; i++) {
+                                      if (i >= aiDays.length) break;
+                                      final Map<String, dynamic> orgDay =
+                                          Map<String, dynamic>.from(
+                                        orgDays[i] as Map? ??
+                                            <String, dynamic>{},
+                                      );
+                                      final Map<String, dynamic> aiDay =
+                                          Map<String, dynamic>.from(
+                                        aiDays[i] as Map? ?? <String, dynamic>{},
+                                      );
+                                      if (aiDay['summary'] != null) {
+                                        orgDay['summary'] = aiDay['summary'];
+                                      }
+                                      final List<dynamic> orgActs =
+                                          (orgDay['activities']
+                                              as List<dynamic>?) ??
+                                          <dynamic>[];
+                                      final List<dynamic>? aiActs =
+                                          aiDay['activities'] as List<dynamic>?;
+                                      if (aiActs != null) {
+                                        for (int j = 0; j < orgActs.length; j++) {
+                                          if (j >= aiActs.length) break;
+                                          final Map<String, dynamic> orgAct =
+                                              Map<String, dynamic>.from(
+                                            orgActs[j] as Map? ??
+                                                <String, dynamic>{},
+                                          );
+                                          final Map<String, dynamic> aiAct =
+                                              Map<String, dynamic>.from(
+                                            aiActs[j] as Map? ??
+                                                <String, dynamic>{},
+                                          );
+                                          if (aiAct['description'] != null) {
+                                            orgAct['description'] =
+                                                aiAct['description'];
+                                          }
+                                          if (aiAct['tag'] != null) {
+                                            orgAct['tag'] = aiAct['tag'];
+                                          }
+                                          orgActs[j] = orgAct;
+                                        }
+                                      }
+                                      orgDay['activities'] = orgActs;
+                                      orgDays[i] = orgDay;
+                                    }
+                                  }
+                                  if (finalDiaryData['days'] is List<dynamic>) {
+                                    finalDiaryData['days'] = orgDays;
+                                  } else if (finalDiaryData['daily_schedules']
+                                      is List<dynamic>) {
+                                    finalDiaryData['daily_schedules'] = orgDays;
+                                  }
+                                } catch (e) {
+                                  debugPrint('🚨 文本反向注入发生异常，但不影响主干渲染: $e');
+                                }
+                              } else {
+                                // 补录模式：信任 AI 生成骨架
+                                finalDiaryData = aiGeneratedData;
+                              }
+
+                              if (isCustomMode && subRecordMode == 'lazy') {
+                                _injectLazyPoolPhotosIntoLazyNode(
+                                  finalDiaryData,
+                                  selectedPhotos,
+                                );
+                              }
+
+                              final String newDiaryId =
+                                  'local_${DateTime.now().millisecondsSinceEpoch}';
+                              final String extractedTitle =
+                                  (aiGeneratedData['title'] ?? '').toString().trim();
+                              final String newDiaryTitle = extractedTitle.isNotEmpty
+                                  ? extractedTitle
+                                  : (isCustomMode
+                                      ? destinationController.text.trim()
+                                      : existingItinerary!.title);
+                              const String kDefaultDiaryCover =
+                                  'https://images.unsplash.com/photo-1596484552834-6a58f850d0a1?w=800';
+                              String finalCoverImg = kDefaultDiaryCover;
+                              if (isCustomMode && selectedPhotos.isNotEmpty) {
+                                finalCoverImg = selectedPhotos.first.path;
+                              } else if (isCustomMode &&
+                                  detailCoverPhoto != null) {
+                                finalCoverImg = detailCoverPhoto!.path;
+                              } else if (!isCustomMode &&
+                                  existingItinerary != null) {
+                                final String fromAi =
+                                    (autoCoverImageUrl ?? '').trim();
+                                final String fromPlan =
+                                    _extractCoverImage(existingItinerary)
+                                        .trim();
+                                if (fromAi.isNotEmpty) {
+                                  finalCoverImg = fromAi;
+                                } else if (fromPlan.isNotEmpty) {
+                                  finalCoverImg = fromPlan;
+                                }
+                              }
+
+                              final DiaryModel generatedDiary = DiaryModel(
+                                id: newDiaryId,
+                                userId: 'current_user',
+                                title: '✨ $newDiaryTitle',
+                                authorName: '旅行者',
+                                coverImageUrl: finalCoverImg,
+                                isDraft: true,
+                                isPublic: false,
+                                styleType: selectedStyle,
+                                diaryData: finalDiaryData,
+                              );
+
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.maybeOf(context)
+                                  ?.hideCurrentSnackBar();
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              FocusScope.of(context).unfocus();
+
+                              final NavigatorState nav =
+                                  Navigator.of(context);
+                              if (context.mounted) {
+                                await nav.maybePop();
+                              }
+                              await Future<void>.delayed(
+                                const Duration(milliseconds: 400),
+                              );
+                              if (nav.mounted) {
+                                nav.push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => DiaryDetailScreen(
+                                      initialDiary: generatedDiary,
+                                      startEditing: true,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Ink(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: <Color>[
+                                    Colors.indigo.shade500,
+                                    Colors.purple.shade500,
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Center(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    Icon(
+                                      Icons.auto_awesome,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      '✨ AI 一键生成手账',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                          child: _submitting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isGenerating)
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(24),
+                          topRight: Radius.circular(24),
+                        ),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                const SizedBox(
+                                  width: 50,
+                                  height: 50,
                                   child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  '✨ AI 一键生成手账',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
+                                    color: Colors.indigo,
+                                    strokeWidth: 3,
                                   ),
                                 ),
+                                const SizedBox(height: 24),
+                                Text(
+                                  "AI 正在用『$selectedStyle』风格\n为您排版回忆...",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.indigo.shade700,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeTab({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        height: 42,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: selected
-              ? <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: selected ? Colors.indigo.shade700 : Colors.grey.shade500,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildItineraryMode({Key? key}) {
-    return ListView(
-      key: key,
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
-      children: <Widget>[
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            color: Colors.grey.shade50,
-          ),
-          child: Row(
-            children: <Widget>[
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade100,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.map_rounded,
-                  size: 18,
-                  color: Colors.indigo.shade500,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedTripId,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    borderRadius: BorderRadius.circular(14),
-                    items: _tripOptions
-                        .map(
-                          (Map<String, String> option) => DropdownMenuItem<String>(
-                            value: option['id'],
-                            child: Text(option['title'] ?? ''),
-                          ),
-                        )
-                        .toList(growable: false),
-                    onChanged: (String? value) {
-                      if (value == null) return;
-                      setState(() => _selectedTripId = value);
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildStyleGrid(),
-      ],
-    );
-  }
-
-  Widget _buildRetroMode({Key? key}) {
-    return ListView(
-      key: key,
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
-      children: <Widget>[
-        SizedBox(
-          height: 96,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _pickedImagePaths.length + 1,
-            itemBuilder: (BuildContext context, int index) {
-              if (index == _pickedImagePaths.length) {
-                return GestureDetector(
-                  onTap: _pickImages,
-                  child: Container(
-                    width: 88,
-                    margin: const EdgeInsets.only(right: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F5F8),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD9DEE6)),
-                    ),
-                    child: const Icon(
-                      Icons.add_photo_alternate_outlined,
-                      color: Color(0xFF657388),
-                    ),
-                  ),
-                );
-              }
-              return Container(
-                width: 88,
-                margin: const EdgeInsets.only(right: 10),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Image.file(
-                  File(_pickedImagePaths[index]),
-                  fit: BoxFit.cover,
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 14),
-        Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: TextField(
-            controller: _retroLocationController,
-            decoration: InputDecoration(
-              hintText: '你去哪儿了？',
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
-              filled: true,
-              fillColor: const Color(0xFFF6F8FB),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+                ],
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F8ED),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFB4E0C1)),
-          ),
-          child: const Row(
-            children: <Widget>[
-              Icon(Icons.shield_moon_outlined, size: 18, color: Color(0xFF2E7D32)),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '隐私保护：系统不会读取照片位置信息',
-                  style: TextStyle(
-                    color: Color(0xFF2E7D32),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildStyleGrid(),
-      ],
-    );
-  }
+          );
+        },
+      );
+    },
+  );
 
-  Widget _buildStyleGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _styleItems.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.95,
-      ),
-      itemBuilder: (BuildContext context, int index) {
-        final _StyleItem style = _styleItems[index];
-        final bool selected = style.label == _selectedStyle;
-        final String emoji = style.label.split(' ').first;
-        final String label = style.label.replaceFirst('$emoji ', '');
-        return GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            setState(() => _selectedStyle = style.label);
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? Colors.indigo.shade50 : Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected ? Colors.indigo.shade400 : Colors.transparent,
-                width: selected ? 1.5 : 1,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Text(emoji, style: const TextStyle(fontSize: 24)),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: selected
-                        ? const Color(0xFF111827)
-                        : const Color(0xFF4B5563),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  destinationController.dispose();
 }
 
-class _StyleItem {
-  const _StyleItem({required this.label, required this.color});
+String _extractDestination(ItineraryModel? itinerary) {
+  if (itinerary == null) return '未知';
+  final Map<String, dynamic> plan = itinerary.planData;
+  final String destination =
+      (plan['destinationCity'] ?? plan['destination'] ?? plan['city'] ?? '')
+          .toString()
+          .trim();
+  if (destination.isNotEmpty) return destination;
+  return itinerary.title.trim().isNotEmpty ? itinerary.title.trim() : '未知';
+}
 
-  final String label;
-  final Color color;
+String _extractCoverImage(ItineraryModel? itinerary) {
+  if (itinerary != null) {
+    final Map<String, dynamic> plan = itinerary.planData;
+    final List<String> candidates = <String>[
+      (plan['coverImageUrl'] ?? '').toString(),
+      (plan['cover_image_url'] ?? '').toString(),
+      (plan['cover'] ?? '').toString(),
+      (plan['coverUrl'] ?? '').toString(),
+    ];
+    for (final String value in candidates) {
+      if (value.trim().isNotEmpty) return value.trim();
+    }
+  }
+  return 'https://images.unsplash.com/photo-1596484552834-6a58f850d0a1?w=800';
 }
