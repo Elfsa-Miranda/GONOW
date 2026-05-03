@@ -30,25 +30,25 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   final TextEditingController _quoteController = TextEditingController();
   final TextEditingController _aiInputController = TextEditingController();
   final TextEditingController _sheetInputController = TextEditingController();
-  final TextEditingController _timeInputController = TextEditingController();
 
   late DiaryModel _diary = widget.initialDiary;
-  late final Map<String, dynamic> _editableData = _normalizeEditableData(
-    widget.initialDiary.diaryData,
+  late Map<String, dynamic> _editableData = _normalizeEditableData(
+    Map<String, dynamic>.from(widget.initialDiary.diaryData),
   );
   late List<_TimelineNode> _nodes = _buildNodes(_editableData);
   late bool _isEditing = widget.startEditing;
   bool _publishToCommunity = false;
   int _contentVersion = 0;
 
-  late final AnimationController _pulseController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1500),
-  )..repeat(reverse: true);
+  late final AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
     _titleController.text = _diary.title;
     _quoteController.text = (_diary.diaryData['quote'] ?? '').toString();
     _publishToCommunity = _diary.isPublic;
@@ -60,7 +60,6 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     _quoteController.dispose();
     _aiInputController.dispose();
     _sheetInputController.dispose();
-    _timeInputController.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -172,6 +171,94 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     _nodes = _buildNodes(_editableData);
   }
 
+  Map<String, dynamic> _activityMapForTimelineIndex(int index) {
+    final _TimelineNode n = _nodes[index];
+    final List<dynamic> days =
+        (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+    final Map<String, dynamic> day = days[n.dIdx] as Map<String, dynamic>;
+    final List<dynamic> acts = day['activities'] as List<dynamic>;
+    return acts[n.aIdx] as Map<String, dynamic>;
+  }
+
+  void _onTimelineReorder(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) {
+        newIndex -= 1;
+      }
+      _applyTimelineReorder(oldIndex, newIndex);
+      _contentVersion++;
+    });
+  }
+
+  /// 全局顺序重排后，按「各天活动数量不变」将扁平列表重新切回 days[].activities。
+  void _applyTimelineReorder(int oldIndex, int newIndex) {
+    final List<dynamic> days =
+        (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+    if (days.isEmpty) return;
+
+    final List<int> sizes = <int>[];
+    for (final dynamic d in days) {
+      final Map<String, dynamic> day = d as Map<String, dynamic>;
+      final List<dynamic>? acts = day['activities'] as List<dynamic>?;
+      sizes.add(acts?.length ?? 0);
+    }
+    final int total = sizes.fold<int>(0, (int a, int b) => a + b);
+    if (total != _nodes.length ||
+        oldIndex < 0 ||
+        oldIndex >= total ||
+        newIndex < 0 ||
+        newIndex >= total) {
+      return;
+    }
+
+    final List<Map<String, dynamic>> flat = <Map<String, dynamic>>[];
+    for (final _TimelineNode n in _nodes) {
+      final Map<String, dynamic> day = days[n.dIdx] as Map<String, dynamic>;
+      final List<dynamic> acts = day['activities'] as List<dynamic>;
+      flat.add(acts[n.aIdx] as Map<String, dynamic>);
+    }
+
+    final Map<String, dynamic> moved = flat.removeAt(oldIndex);
+    flat.insert(newIndex, moved);
+
+    int offset = 0;
+    for (int dIdx = 0; dIdx < days.length; dIdx++) {
+      final Map<String, dynamic> day = Map<String, dynamic>.from(
+        days[dIdx] as Map<String, dynamic>,
+      );
+      final int sz = sizes[dIdx];
+      final List<Map<String, dynamic>> chunk =
+          List<Map<String, dynamic>>.from(flat.sublist(offset, offset + sz));
+      day['activities'] = chunk;
+      days[dIdx] = day;
+      offset += sz;
+    }
+    _editableData['days'] = days;
+    _refreshFromEditableData();
+  }
+
+  Widget _timelineReorderProxyDecorator(
+    Widget child,
+    int index,
+    Animation<double> animation,
+  ) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (BuildContext context, Widget? child) {
+        final double t = Curves.easeOut.transform(animation.value);
+        return Material(
+          elevation: 10 * t,
+          shadowColor: Colors.black45,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          color: Colors.transparent,
+          child: child,
+        );
+      },
+      child: child,
+    );
+  }
+
   Future<void> _persist({required bool asDraft}) async {
     final DiaryProvider provider = context.read<DiaryProvider>();
     final Map<String, dynamic> updatedData = <String, dynamic>{
@@ -192,21 +279,93 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     _diary = updated;
   }
 
-  Future<void> _onPressBack() async {
-    if (_isEditing) {
-      await _persist(asDraft: true);
-    }
+  static const Duration _editSnackDuration = Duration(milliseconds: 1500);
+
+  /// 编辑页统一短提示（1.5s、中等灰底）。「相册多选」提示请勿使用本方法。
+  SnackBar _editSnackBar(String message) {
+    return SnackBar(
+      content: Text(
+        message,
+        style: const TextStyle(
+          color: Color(0xFF1F2937),
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      duration: _editSnackDuration,
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFFCBD5E1),
+      elevation: 0,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    );
+  }
+
+  void _showEditSnackBar(String message) {
     if (!mounted) return;
-    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(_editSnackBar(message));
+  }
+
+  Future<void> _onPressBack() async {
+    if (!_isEditing) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    final bool? shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text(
+          '保存修改？',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          '您正在编辑中，直接退出将丢失未保存的改动。是否保存当前改动？',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('丢弃改动', style: TextStyle(color: Colors.red)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              '保存改动',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.indigo.shade600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSave == null) return;
+
+    if (shouldSave) {
+      await _persist(asDraft: _diary.isDraft);
+      if (!mounted) return;
+
+      _showEditSnackBar('✅ 改动已保存');
+      Navigator.of(context).pop();
+    } else {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _toggleEditing() async {
     if (_isEditing) {
       await _persist(asDraft: true);
       if (!mounted) return;
+
+      _showEditSnackBar('✅ 已安全保存至草稿箱');
+
       setState(() => _isEditing = false);
       return;
     }
+
     setState(() => _isEditing = true);
   }
 
@@ -258,9 +417,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       } catch (e2, st2) {
         debugPrint('pickImage fallback failed: $e2\n$st2');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法打开相册，请检查系统权限或稍后重试')),
-          );
+          _showEditSnackBar('无法打开相册，请检查系统权限或稍后重试');
         }
         return;
       }
@@ -290,14 +447,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     }
     if (newPaths.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              kIsWeb
-                  ? '未能读取所选图片，请重试或换用其它浏览器'
-                  : '未能读取所选图片路径，请重试',
-            ),
-          ),
+        _showEditSnackBar(
+          kIsWeb
+              ? '未能读取所选图片，请重试或换用其它浏览器'
+              : '未能读取所选图片路径，请重试',
         );
       }
       return;
@@ -312,9 +465,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     });
 
     if (mounted && newPaths.length > 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已添加 ${newPaths.length} 张图片')),
-      );
+      _showEditSnackBar('已添加 ${newPaths.length} 张图片');
     }
   }
 
@@ -370,144 +521,34 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   }
 
   Future<void> _insertActivityAfter(_TimelineNode node) async {
-    // 🚨 Drop keyboard focus before opening modal
     FocusScope.of(context).unfocus();
-    
-    _sheetInputController.clear();
-    _timeInputController.clear();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.85,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        const Text(
-                          '插入新记录点',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _sheetInputController,
-                          decoration: InputDecoration(
-                            hintText: '标题 / 记录点 (如：海边吹风)',
-                            hintStyle: TextStyle(color: Colors.grey.shade400),
-                            filled: true,
-                            fillColor: const Color(0xFFF4F6FA),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: <Widget>[
-                            Expanded(
-                              child: TextField(
-                                controller: _timeInputController,
-                                keyboardType: TextInputType.datetime,
-                                decoration: InputDecoration(
-                                  hintText: '选填 格式: HH:mm (如: 14:30)',
-                                  hintStyle: TextStyle(color: Colors.grey.shade400),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF4F6FA),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: '选择时间',
-                              icon: Icon(
-                                Icons.schedule_rounded,
-                                color: Colors.indigo.shade600,
-                              ),
-                              onPressed: () =>
-                                  _pickTimeIntoController(_timeInputController),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        final String title = _sheetInputController.text.trim();
-                        if (title.isEmpty) return;
-                        final String timeInput = _timeInputController.text.trim();
-                        if (timeInput.isNotEmpty &&
-                            !_isValid24HourTime(timeInput)) {
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            const SnackBar(
-                              content: Text('时间格式错误，请使用 HH:mm（如 14:30）'),
-                            ),
-                          );
-                          return;
-                        }
-                        final List<dynamic> days =
-                            (_editableData['days'] as List<dynamic>?) ??
-                                <dynamic>[];
-                        final Map<String, dynamic> day =
-                            days[node.dIdx] as Map<String, dynamic>;
-                        final List<dynamic> activities =
-                            day['activities'] as List<dynamic>;
-                        activities.insert(node.aIdx + 1, <String, dynamic>{
-                          'title': title,
-                          'time': timeInput,
-                          'description': '',
-                          'lat': 0.0,
-                          'lng': 0.0,
-                          'photos': <String>[],
-                        });
-                        day['activities'] = activities;
-                        setState(() {
-                          _refreshFromEditableData();
-                          _contentVersion++;
-                        });
-                        _sheetInputController.clear();
-                        _timeInputController.clear();
-                        Navigator.of(context).pop();
-                      },
-                      child: const Text('确认插入'),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return _InsertNodeBottomSheet(
+          onConfirm: (String title, String time) {
+            final List<dynamic> days =
+                (_editableData['days'] as List<dynamic>?) ?? <dynamic>[];
+            final Map<String, dynamic> day =
+                days[node.dIdx] as Map<String, dynamic>;
+            final List<dynamic> activities = day['activities'] as List<dynamic>;
+            activities.insert(node.aIdx + 1, <String, dynamic>{
+              'title': title,
+              'time': time,
+              'description': '',
+              'lat': 0.0,
+              'lng': 0.0,
+              'photos': <String>[],
+            });
+            day['activities'] = activities;
+            setState(() {
+              _refreshFromEditableData();
+              _contentVersion++;
+            });
+          },
+          onPickTime: _pickTimeIntoController,
         );
       },
     );
@@ -529,10 +570,12 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Padding(
+        return AnimatedPadding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -791,10 +834,12 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Padding(
+        return AnimatedPadding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
           child: Container(
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -1135,15 +1180,87 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                   ),
                                 ),
                                 icon: Icon(
-                                  _isEditing ? Icons.check_rounded : Icons.edit_outlined,
+                                  _isEditing
+                                      ? Icons.save_alt_rounded
+                                      : Icons.edit_outlined,
                                   size: 18,
                                 ),
                                 label: Text(
-                                  _isEditing ? '完成编辑' : '编辑',
+                                  _isEditing ? '存草稿' : '编辑',
                                   style: const TextStyle(fontWeight: FontWeight.w700),
                                 ),
                               ),
                             ),
+                            if (_isEditing)
+                              Positioned(
+                                top: MediaQuery.of(context).padding.top + 8,
+                                right: 120,
+                                child: IconButton(
+                                  onPressed: () async {
+                                    final bool? confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (BuildContext ctx) => AlertDialog(
+                                        title: const Text('彻底删除'),
+                                        content: const Text(
+                                          '确定要销毁整篇手账吗？所有回忆将不可恢复。',
+                                        ),
+                                        actions: <Widget>[
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
+                                            child: const Text('取消'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
+                                            child: const Text(
+                                              '确定销毁',
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm != true) return;
+                                    if (!context.mounted) return;
+                                    final ScaffoldMessengerState messenger =
+                                        ScaffoldMessenger.of(context);
+                                    final DiaryProvider provider =
+                                        Provider.of<DiaryProvider>(
+                                      context,
+                                      listen: false,
+                                    );
+                                    final bool success =
+                                        await provider.deleteDiary(_diary.id);
+                                    if (!context.mounted) return;
+                                    if (success) {
+                                      Navigator.of(context).pop();
+                                      messenger.showSnackBar(
+                                        _editSnackBar('手账已彻底销毁'),
+                                      );
+                                    } else {
+                                      messenger.showSnackBar(
+                                        _editSnackBar(
+                                          '销毁失败，请检查网络连接',
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  style: IconButton.styleFrom(
+                                    backgroundColor:
+                                        Colors.black.withValues(alpha: 0.25),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: Colors.redAccent,
+                                    size: 20,
+                                  ),
+                                  tooltip: '删除手账',
+                                ),
+                              ),
                             Positioned(
                               bottom: 20,
                               left: 20,
@@ -1210,8 +1327,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                 ),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
-                  sliver: SliverList.builder(
+                  sliver: SliverReorderableList(
                     itemCount: _nodes.length,
+                    onReorder: _onTimelineReorder,
+                    proxyDecorator: _timelineReorderProxyDecorator,
                     itemBuilder: (BuildContext context, int index) {
                       final _TimelineNode node = _nodes[index];
                       final bool showDayHeader =
@@ -1220,9 +1339,18 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                           _nodes[index + 1].day != node.day;
                       final bool lineToNextInSameDay = index < _nodes.length - 1 &&
                           _nodes[index + 1].day == node.day;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
+                      final Map<String, dynamic> actMap =
+                          _activityMapForTimelineIndex(index);
+                      return ReorderableDelayedDragStartListener(
+                        key: ObjectKey(actMap),
+                        index: index,
+                        enabled: _isEditing,
+                        child: Column(
+                          key: ValueKey<String>(
+                            'timeline_node_${node.dIdx}_${node.aIdx}',
+                          ),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
                           if (showDayHeader)
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1458,33 +1586,61 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                                       crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: <Widget>[
                                                         Expanded(
-                                                          child: TextField(
-                                                            // Pass the SCRUBBED empty string here!
-                                                            controller: TextEditingController(
-                                                              text: realDesc,
+                                                          child: TextFormField(
+                                                            key: ValueKey<String>(
+                                                              'desc_${node.dIdx}_${node.aIdx}',
                                                             ),
+                                                            initialValue: realDesc,
                                                             maxLines: null,
-                                                            decoration: const InputDecoration(
-                                                              // Now the ghost text will work!
-                                                              hintText: '新增景点待补充描述...',
+                                                            decoration:
+                                                                const InputDecoration(
+                                                              hintText:
+                                                                  '新增景点待补充描述...',
                                                               hintStyle: TextStyle(
-                                                                color: Colors.black38,
+                                                                color: Colors
+                                                                    .black38,
                                                                 fontSize: 13,
                                                               ),
-                                                              contentPadding: EdgeInsets.all(12),
-                                                              border: InputBorder.none,
+                                                              contentPadding:
+                                                                  EdgeInsets
+                                                                      .all(12),
+                                                              border:
+                                                                  InputBorder
+                                                                      .none,
                                                             ),
-                                                            onChanged: (String val) {
-                                                              final List<dynamic> days =
-                                                                  (_editableData['days'] as List<dynamic>?) ??
+                                                            onChanged:
+                                                                (String val) {
+                                                              final List<
+                                                                      dynamic>
+                                                                  days =
+                                                                  (_editableData['days']
+                                                                          as List<
+                                                                              dynamic>?) ??
                                                                       <dynamic>[];
-                                                              final Map<String, dynamic> day =
-                                                                  days[node.dIdx] as Map<String, dynamic>;
-                                                              final List<dynamic> activities =
-                                                                  day['activities'] as List<dynamic>;
-                                                              final Map<String, dynamic> item =
-                                                                  activities[node.aIdx] as Map<String, dynamic>;
-                                                              item['description'] = val;
+                                                              final Map<String,
+                                                                      dynamic>
+                                                                  day =
+                                                                  days[node.dIdx]
+                                                                      as Map<
+                                                                          String,
+                                                                          dynamic>;
+                                                              final List<
+                                                                      dynamic>
+                                                                  activities =
+                                                                  day['activities']
+                                                                      as List<
+                                                                          dynamic>;
+                                                              final Map<String,
+                                                                      dynamic>
+                                                                  item =
+                                                                  activities[node.aIdx]
+                                                                      as Map<
+                                                                          String,
+                                                                          dynamic>;
+
+                                                              item['description'] =
+                                                                  val;
+
                                                               setState(() {
                                                                 _refreshFromEditableData();
                                                                 _contentVersion++;
@@ -1726,7 +1882,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                               ),
                             ),
                         ],
-                      );
+                      ),
+                    );
                     },
                   ),
                 ),
@@ -1816,10 +1973,21 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                 const SizedBox(width: 8),
                 if (_isEditing)
                   TextButton(
-                    onPressed: () async {
-                      await _persist(asDraft: true);
-                      if (!mounted) return;
-                      Navigator.of(this.context).pop();
+                    onPressed: () {
+                      setState(() {
+                        _editableData = _normalizeEditableData(
+                          Map<String, dynamic>.from(_diary.diaryData),
+                        );
+                        _titleController.text = _diary.title;
+                        _quoteController.text =
+                            (_diary.diaryData['quote'] ?? '').toString();
+                        _publishToCommunity = _diary.isPublic;
+                        _refreshFromEditableData();
+                        _contentVersion++;
+                        _isEditing = false;
+                      });
+                      if (!context.mounted) return;
+                      _showEditSnackBar('已取消编辑，改动未保存');
                     },
                     child: const Text(
                       '取消',
@@ -1846,15 +2014,10 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                   ),
                   child: ElevatedButton(
                     onPressed: () async {
-                      await _persist(asDraft: _isEditing);
-                      if (!mounted) return;
-                      if (_isEditing) {
-                        setState(() => _isEditing = false);
-                      } else {
-                        await _persist(asDraft: false);
-                        if (!mounted) return;
-                        Navigator.of(this.context).pop();
-                      }
+                      await _persist(asDraft: false);
+                      if (!context.mounted) return;
+                      setState(() => _isEditing = false);
+                      _showEditSnackBar('🎉 保存成功！');
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
@@ -1959,10 +2122,12 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Padding(
+        return AnimatedPadding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
           child: Container(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -2097,10 +2262,12 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Padding(
+        return AnimatedPadding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
           child: Container(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -2197,6 +2364,230 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       },
     );
     _sheetInputController.clear();
+  }
+}
+
+class _InsertNodeBottomSheet extends StatefulWidget {
+  const _InsertNodeBottomSheet({
+    required this.onConfirm,
+    this.onPickTime,
+  });
+
+  final void Function(String title, String time) onConfirm;
+  final Future<void> Function(TextEditingController controller)? onPickTime;
+
+  @override
+  State<_InsertNodeBottomSheet> createState() => _InsertNodeBottomSheetState();
+}
+
+class _InsertNodeBottomSheetState extends State<_InsertNodeBottomSheet> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _timeController = TextEditingController();
+  String? _errorMessage;
+
+  static final RegExp _timeRegex =
+      RegExp(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$');
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _timeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF5F7FA),
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(28),
+            topRight: Radius.circular(28),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(28),
+                  topRight: Radius.circular(28),
+                ),
+              ),
+              child: const Center(
+                child: Text(
+                  '插入新记录点',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: TextField(
+                        controller: _titleController,
+                        onChanged: (String _) {
+                          if (_errorMessage != null) {
+                            setState(() => _errorMessage = null);
+                          }
+                        },
+                        decoration: const InputDecoration(
+                          hintText: '标题 / 记录点 (如：海边吹风)',
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _errorMessage != null
+                              ? Colors.red.shade300
+                              : Colors.grey.shade200,
+                        ),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: _timeController,
+                              keyboardType: TextInputType.datetime,
+                              onChanged: (String _) {
+                                if (_errorMessage != null) {
+                                  setState(() => _errorMessage = null);
+                                }
+                              },
+                              decoration: const InputDecoration(
+                                hintText: '大概时间 (格式: HH:mm，选填)',
+                                border: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '选择时间',
+                            icon: const Icon(Icons.schedule_rounded),
+                            color: Colors.indigo.shade600,
+                            onPressed: () async {
+                              if (widget.onPickTime == null) return;
+                              await widget.onPickTime!(_timeController);
+                              if (_errorMessage != null &&
+                                  _timeRegex.hasMatch(_timeController.text.trim())) {
+                                setState(() => _errorMessage = null);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8, left: 4),
+                        child: Row(
+                          children: <Widget>[
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.redAccent,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () {
+                          FocusScope.of(context).unfocus();
+                          final String timeInput = _timeController.text.trim();
+                          final String titleInput = _titleController.text.trim();
+
+                          if (titleInput.isEmpty) {
+                            setState(() => _errorMessage = '请填写标题');
+                            return;
+                          }
+
+                          if (timeInput.isNotEmpty &&
+                              !_timeRegex.hasMatch(timeInput)) {
+                            setState(() {
+                              _errorMessage = '时间格式有误，请输入如 14:30 的24小时制时间';
+                            });
+                            return;
+                          }
+
+                          widget.onConfirm(titleInput, timeInput);
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text(
+                          '确认插入',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

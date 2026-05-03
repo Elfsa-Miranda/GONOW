@@ -491,6 +491,51 @@ class _DiaryCard extends StatelessWidget {
           ),
         );
       },
+      onLongPress: () async {
+        final bool? confirm = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('删除手账'),
+            content: const Text(
+              '确定要永久删除这篇手账吗？此操作将清理相关图片与数据，且无法恢复。',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text(
+                  '删除',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (confirm != true || !context.mounted) return;
+        final DiaryProvider provider = Provider.of<DiaryProvider>(
+          context,
+          listen: false,
+        );
+        final bool success = await provider.deleteDiary(diary.id);
+        if (!context.mounted) return;
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('手账已删除')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('删除失败，请检查网络连接后重试'),
+            ),
+          );
+        }
+      },
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
