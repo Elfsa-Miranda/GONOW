@@ -352,12 +352,23 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () {
+              FocusScope.of(ctx).unfocus();
+              Navigator.pop(ctx);
+            },
+            child: const Text('取消'),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.black87),
-            onPressed: () {
+            onPressed: () async {
+              FocusManager.instance.primaryFocus?.unfocus();
+              await Future<void>.delayed(const Duration(milliseconds: 100));
+              if (!ctx.mounted) return;
               provider.updateNickname(controller.text.trim());
-              Navigator.pop(ctx);
+              if (ctx.mounted) {
+                await Navigator.maybePop(ctx);
+              }
             },
             child: const Text('保存', style: TextStyle(color: Colors.white)),
           ),
@@ -549,22 +560,29 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                             return;
                           }
                           setModalState(() => localError = null);
-                          final bool bindOk = await pageContext.read<ProfileProvider>().verifyAndBindEmail(
-                                _emailController.text.trim(),
-                                _codeController.text.trim(),
-                                _pwdController.text.trim(),
-                              );
-                          if (!ctx.mounted) return;
+
+                          final ProfileProvider profile = pageContext.read<ProfileProvider>();
+
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          await Future<void>.delayed(const Duration(milliseconds: 100));
+
+                          if (!sheetCtx.mounted || !ctx.mounted) return;
+
+                          final bool bindOk = await profile.verifyAndBindEmail(
+                            _emailController.text.trim(),
+                            _codeController.text.trim(),
+                            _pwdController.text.trim(),
+                          );
+                          if (!sheetCtx.mounted || !ctx.mounted) return;
                           if (bindOk) {
-                            await pageContext.read<ProfileProvider>().fetchProfile();
-                            if (!ctx.mounted) return;
-                            Navigator.pop(sheetCtx);
-                            if (mounted) {
-                              ScaffoldMessenger.of(pageContext).showSnackBar(
-                                const SnackBar(content: Text('邮箱绑定成功！')),
-                              );
-                            }
-                          } else {
+                            await profile.fetchProfile();
+                            if (!sheetCtx.mounted) return;
+                            await Navigator.maybePop(sheetCtx);
+                            if (!mounted || !pageContext.mounted) return;
+                            ScaffoldMessenger.of(pageContext).showSnackBar(
+                              const SnackBar(content: Text('邮箱绑定成功！')),
+                            );
+                          } else if (ctx.mounted) {
                             setModalState(() => localError = '验证码错误或绑定失败，请重试');
                           }
                         },

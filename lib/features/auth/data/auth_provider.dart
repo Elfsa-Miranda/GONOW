@@ -4,7 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthProvider with ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
   bool _isLoading = false;
+  bool _guestLoading = false;
+
+  /// 邮箱密码登录 / 注册 / 发重置邮件等。
   bool get isLoading => _isLoading;
+
+  /// 仅游客登录进行中（与 [isLoading] 互斥路由场景）。
+  bool get isGuestLoading => _guestLoading;
 
   Future<bool> signUp(
     String email,
@@ -87,7 +93,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<bool> signInAsGuest(BuildContext context) async {
-    _setLoading(true);
+    _setGuestLoading(true);
     try {
       final AuthResponse response = await _supabase.auth.signInAnonymously();
       if (response.user != null) {
@@ -109,7 +115,7 @@ class AuthProvider with ChangeNotifier {
         _showToast(context, '发生未知错误: $e');
       }
     } finally {
-      _setLoading(false);
+      _setGuestLoading(false);
     }
     return false;
   }
@@ -118,31 +124,66 @@ class AuthProvider with ChangeNotifier {
     await _supabase.auth.signOut();
   }
 
-  /// 发送密码重置邮件（需在 Supabase 控制台配置邮件模板与站点 URL）。
+  /// 发送重置密码邮件（redirectTo 须与 Supabase 控制台 Redirect URLs、Android/iOS 深度链接一致）。
   Future<bool> sendPasswordResetEmail(String email, BuildContext context) async {
     _setLoading(true);
     try {
-      await _supabase.auth.resetPasswordForEmail(email.trim());
+      await _supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: 'io.supabase.gonow://login-callback',
+      );
       if (context.mounted) {
-        _showToast(context, '重置邮件已发送，请前往邮箱完成操作', duration: 3);
+        _showToast(context, '重置链接已发送至邮箱，请查收！', duration: 4);
       }
       return true;
     } on AuthException catch (e) {
       if (context.mounted) {
         _showToast(context, '发送失败：${e.message}');
       }
+      return false;
     } catch (e) {
       if (context.mounted) {
         _showToast(context, '发生未知错误: $e');
       }
+      return false;
     } finally {
       _setLoading(false);
     }
-    return false;
+  }
+
+  /// 邮件跳转回 App 后，用户在此处提交新密码。
+  Future<bool> updateNewPassword(String newPassword, BuildContext context) async {
+    _setLoading(true);
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(password: newPassword),
+      );
+      if (context.mounted) {
+        _showToast(context, '✅ 密码重置成功，请重新登录');
+      }
+      return true;
+    } on AuthException catch (e) {
+      if (context.mounted) {
+        _showToast(context, '更新失败：${e.message}');
+      }
+      return false;
+    } catch (e) {
+      if (context.mounted) {
+        _showToast(context, '发生未知错误: $e');
+      }
+      return false;
+    } finally {
+      _setLoading(false);
+    }
   }
 
   void _setLoading(bool value) {
     _isLoading = value;
+    notifyListeners();
+  }
+
+  void _setGuestLoading(bool value) {
+    _guestLoading = value;
     notifyListeners();
   }
 

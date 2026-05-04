@@ -798,7 +798,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                               FocusScope.of(context).unfocus();
                               setModalState(() => errorMessage = null);
                               await Future<void>.delayed(
-                                const Duration(milliseconds: 300),
+                                const Duration(milliseconds: 100),
                               );
                               if (!context.mounted) return;
 
@@ -915,7 +915,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                       if (images.isNotEmpty) {
                                         autoCoverImageUrl =
                                             images.first.toString().trim();
-                                        if (autoCoverImageUrl!.isNotEmpty) break;
+                                        if (autoCoverImageUrl.isNotEmpty) break;
                                       }
                                       final String imageUrl =
                                           (actMap['imageUrl'] ?? '').toString().trim();
@@ -1037,6 +1037,12 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                 diaryData: finalDiaryData,
                               );
 
+                              if (!context.mounted) return;
+
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await Future<void>.delayed(
+                                const Duration(milliseconds: 100),
+                              );
                               if (!context.mounted) return;
 
                               // ── 修复：用外层 Navigator/ScaffoldMessenger 操作 ──

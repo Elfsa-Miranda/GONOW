@@ -17,6 +17,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  late final TextEditingController _resetEmailController;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   bool _isLoginMode = true;
@@ -27,6 +28,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void initState() {
     super.initState();
+    _resetEmailController = TextEditingController();
     _loadSavedLoginPrefs();
   }
 
@@ -60,6 +62,7 @@ class _AuthScreenState extends State<AuthScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _resetEmailController.dispose();
     super.dispose();
   }
 
@@ -92,45 +95,197 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _showForgotPasswordDialog() {
-    final TextEditingController controller = TextEditingController(text: _emailController.text.trim());
-    showDialog<void>(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('重置密码'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: '邮箱',
-            hintText: 'your@email.com',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(
-            onPressed: () async {
-              final String email = controller.text.trim();
-              if (email.isEmpty || !email.contains('@')) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入有效邮箱')),
-                );
-                return;
-              }
-              await context.read<AuthProvider>().sendPasswordResetEmail(email, context);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('发送重置邮件'),
-          ),
-        ],
+  /// 沉浸式底部面板：找回密码（State 持有控制器；pop 前 unfocus + 延迟，避免 dirty/disposed 冲突）。
+  void _showResetPasswordSheet(BuildContext screenContext) {
+    final BuildContext pageContext = screenContext;
+    _resetEmailController
+      ..clear()
+      ..text = _emailController.text.trim();
+
+    String? localError;
+    bool isSending = false;
+
+    showModalBottomSheet<void>(
+      context: pageContext,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) => StatefulBuilder(
+        builder: (BuildContext ctx, void Function(void Function()) setModalState) {
+          return AnimatedPadding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            child: Container(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '找回密码',
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '请输入您的注册邮箱，我们将向您发送重置链接。',
+                      style: TextStyle(fontSize: 14, color: Colors.grey, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 40),
+                    const Text(
+                      '电子邮箱',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6B8DFF),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: localError != null ? Colors.red.shade200 : Colors.grey.shade200,
+                        ),
+                      ),
+                      child: TextField(
+                        controller: _resetEmailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        decoration: const InputDecoration(
+                          hintText: 'your@email.com',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                        ),
+                        onChanged: (_) {
+                          if (localError != null) {
+                            setModalState(() => localError = null);
+                          }
+                        },
+                      ),
+                    ),
+                    if (localError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10, left: 4),
+                        child: Row(
+                          children: <Widget>[
+                            const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              localError!,
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: <Color>[Color(0xFF6B8DFF), Color(0xFF8E44FF)],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: const Color(0xFF6B8DFF).withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton(
+                          onPressed: isSending
+                              ? null
+                              : () async {
+                                  final String email = _resetEmailController.text.trim();
+                                  if (email.isEmpty || !email.contains('@')) {
+                                    setModalState(() => localError = '请输入有效的邮箱地址');
+                                    return;
+                                  }
+
+                                  setModalState(() {
+                                    localError = null;
+                                    isSending = true;
+                                  });
+                                  FocusScope.of(ctx).unfocus();
+                                  FocusManager.instance.primaryFocus?.unfocus();
+
+                                  final bool success = await pageContext.read<AuthProvider>().sendPasswordResetEmail(
+                                        email,
+                                        pageContext,
+                                      );
+
+                                  if (!ctx.mounted) return;
+                                  setModalState(() => isSending = false);
+
+                                  if (!success) return;
+
+                                  FocusManager.instance.primaryFocus?.unfocus();
+                                  await Future<void>.delayed(const Duration(milliseconds: 100));
+                                  if (!sheetContext.mounted) return;
+                                  await Navigator.maybePop(sheetContext);
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: isSending
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Text(
+                                  '发送重置链接',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
-    ).whenComplete(controller.dispose);
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final AuthProvider auth = context.watch<AuthProvider>();
+    final bool authBusy = auth.isLoading || auth.isGuestLoading;
 
     if (!_prefsLoaded) {
       return const Scaffold(
@@ -230,7 +385,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                       if (_isLoginMode)
                         TextButton(
-                          onPressed: auth.isLoading ? null : _showForgotPasswordDialog,
+                          onPressed: authBusy ? null : () => _showResetPasswordSheet(context),
                           child: const Text(
                             '忘记密码？',
                             style: TextStyle(
@@ -261,7 +416,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ],
                       ),
                       child: ElevatedButton(
-                        onPressed: auth.isLoading ? null : _submit,
+                        onPressed: authBusy ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
@@ -296,17 +451,37 @@ class _AuthScreenState extends State<AuthScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: auth.isLoading ? null : () => auth.signInAsGuest(context),
-                    icon: const Icon(Icons.person_outline, color: Color(0xFF2D3142), size: 20),
-                    label: const Text(
-                      '游客登录',
-                      style: TextStyle(color: Color(0xFF2D3142), fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
+                  OutlinedButton(
+                    onPressed: authBusy ? null : () => auth.signInAsGuest(context),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 52),
                       side: BorderSide(color: Colors.grey.shade300),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        if (auth.isGuestLoading)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF2D3142),
+                              strokeWidth: 2,
+                            ),
+                          )
+                        else
+                          const Icon(Icons.person_outline, color: Color(0xFF2D3142), size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          '游客登录',
+                          style: TextStyle(
+                            color: Color(0xFF2D3142),
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 11),
@@ -318,7 +493,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                       ),
                       TextButton(
-                        onPressed: auth.isLoading
+                        onPressed: authBusy
                             ? null
                             : () {
                                 setState(() => _isLoginMode = !_isLoginMode);

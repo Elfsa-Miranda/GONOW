@@ -102,13 +102,32 @@ class _AuthGateState extends State<AuthGate> {
   /// 避免同一用户重复拉取；登出后清空，下次登录再拉。
   String? _diarySyncedForUserId;
 
+  /// 来自邮件重置链接，需在设置新密码前进 MainScreen。
+  bool _awaitingPasswordReset = false;
+
+  bool _recoveryDialogScheduled = false;
+
   @override
   void initState() {
     super.initState();
     _authSubscription =
         Supabase.instance.client.auth.onAuthStateChange.listen((AuthState data) {
+      if (data.event == AuthChangeEvent.passwordRecovery) {
+        setState(() => _awaitingPasswordReset = true);
+        if (!_recoveryDialogScheduled) {
+          _recoveryDialogScheduled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _showNewPasswordDialog(context);
+          });
+        }
+      }
+
       final Session? session = data.session;
       if (session != null) {
+        if (data.event == AuthChangeEvent.passwordRecovery || _awaitingPasswordReset) {
+          return;
+        }
         final String currentUserId = session.user.id;
         if (_diarySyncedForUserId != currentUserId) {
           _diarySyncedForUserId = currentUserId;
@@ -123,6 +142,8 @@ class _AuthGateState extends State<AuthGate> {
           diaryProvider.fetchCommunityDiaries();
         }
       } else {
+        _recoveryDialogScheduled = false;
+        _awaitingPasswordReset = false;
         if (_diarySyncedForUserId != null) {
           if (kDebugMode) {
             debugPrint('🔐 [AuthGate] 监听到用户登出，清理同步标记');
@@ -130,6 +151,90 @@ class _AuthGateState extends State<AuthGate> {
           _diarySyncedForUserId = null;
         }
       }
+    });
+  }
+
+  Future<void> _showNewPasswordDialog(BuildContext originContext) async {
+    final TextEditingController passwordController = TextEditingController();
+    final TextEditingController confirmController = TextEditingController();
+
+    await showDialog<void>(
+      context: originContext,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('重置密码'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: '新密码',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: '确认密码',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                _recoveryDialogScheduled = false;
+                await Supabase.instance.client.auth.signOut();
+                if (mounted) {
+                  setState(() => _awaitingPasswordReset = false);
+                }
+              },
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final String p = passwordController.text.trim();
+                final String c = confirmController.text.trim();
+                if (p.length < 6) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('密码至少 6 位')),
+                  );
+                  return;
+                }
+                if (p != c) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('两次密码不一致')),
+                  );
+                  return;
+                }
+                final AuthProvider auth = originContext.read<AuthProvider>();
+                final bool ok = await auth.updateNewPassword(p, dialogContext);
+                if (!dialogContext.mounted) return;
+                if (ok) {
+                  Navigator.pop(dialogContext);
+                  _recoveryDialogScheduled = false;
+                  await auth.signOut();
+                  if (mounted) {
+                    setState(() => _awaitingPasswordReset = false);
+                  }
+                }
+              },
+              child: const Text('确认'),
+            ),
+          ],
+        );
+      },
+    ).whenComplete(() {
+      passwordController.dispose();
+      confirmController.dispose();
     });
   }
 
@@ -152,8 +257,31 @@ class _AuthGateState extends State<AuthGate> {
             ),
           );
         }
-        final Session? session =
-            snapshot.hasData ? snapshot.data!.session : null;
+        final AuthState? authState =
+            snapshot.hasData ? snapshot.data : null;
+        final Session? session = authState?.session;
+        final bool recoveryGate = _awaitingPasswordReset ||
+            authState?.event == AuthChangeEvent.passwordRecovery;
+        if (session != null && recoveryGate) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            body: SafeArea(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Icon(Icons.lock_reset, size: 48, color: Colors.grey.shade600),
+                    const SizedBox(height: 16),
+                    Text(
+                      '请在新窗口中设置新密码',
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
         if (session != null) {
           return const MainScreen();
         }
