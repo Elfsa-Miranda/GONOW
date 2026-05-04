@@ -376,52 +376,121 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
     bool codeSent = false;
     bool isSending = false;
+    String? localError;
 
     showModalBottomSheet<void>(
-      context: context,
+      context: pageContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext sheetCtx) => StatefulBuilder(
-        builder: (BuildContext ctx, void Function(void Function()) setModalState) {
-          return AnimatedPadding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-            child: Container(
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+        builder: (BuildContext ctx, void Function(void Function()) setModalState) => AnimatedPadding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          child: Container(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 24),
+                  const Text("绑定安全邮箱", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black87)),
+                  const SizedBox(height: 8),
+                  const Text("为保障数据安全，我们需要验证您的邮箱地址。", style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 32),
+                  
+                  // --- 邮箱输入框 ---
+                  const Text("邮箱地址", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50, 
+                      borderRadius: BorderRadius.circular(16), 
+                      border: Border.all(color: localError != null ? Colors.red.shade200 : Colors.grey.shade200),
+                    ),
+                    child: TextField(
+                      controller: _emailController,
+                      enabled: !codeSent,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      decoration: const InputDecoration(hintText: "example@gmail.com", border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 16)),
+                      onChanged: (_) {
+                        // 🚨 交互：用户一旦开始重新输入，就自动消除红字提示
+                        if (localError != null) setModalState(() => localError = null);
+                      },
+                    ),
+                  ),
+
+                  // 🚨 核心修复：内联错误提示组件
+                  if (localError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, left: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.redAccent, size: 14),
+                          const SizedBox(width: 4),
+                          Text(localError!, style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      '绑定安全邮箱',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black87),
+
+                  const SizedBox(height: 20),
+
+                  if (!codeSent)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                        onPressed: isSending ? null : () async {
+                          // 前置校验
+                          if (_emailController.text.isEmpty || !_emailController.text.contains('@')) {
+                            setModalState(() => localError = '请输入有效的邮箱地址');
+                            return;
+                          }
+                          
+                          setModalState(() {
+                            isSending = true;
+                            localError = null;
+                          });
+                          final bool ok =
+                              await pageContext.read<ProfileProvider>().sendBindEmailCode(_emailController.text.trim());
+
+                          if (ok) {
+                            setModalState(() {
+                              isSending = false;
+                              codeSent = true;
+                            });
+                          } else {
+                            setModalState(() {
+                              isSending = false;
+                              localError = '验证码发送失败，请检查网络或邮箱格式';
+                            });
+                          }
+                        },
+                        child: isSending
+                            ? const SizedBox(
+                                width: 26,
+                                height: 26,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                              )
+                            : const Text(
+                                '获取验证码',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                      ),
                     ),
-                    const SizedBox(height: 8),
+
+                  if (codeSent) ...<Widget>[
                     Text(
-                      '为保障数据安全，我们需要验证您的邮箱地址。',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      '邮箱地址',
+                      '6位验证码',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo.shade700),
                     ),
                     const SizedBox(height: 8),
@@ -432,159 +501,86 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         border: Border.all(color: Colors.grey.shade200),
                       ),
                       child: TextField(
-                        controller: _emailController,
-                        enabled: !codeSent,
-                        keyboardType: TextInputType.emailAddress,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        controller: _codeController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 16, letterSpacing: 4, fontWeight: FontWeight.bold),
                         decoration: const InputDecoration(
-                          hintText: 'example@gmail.com',
+                          hintText: '******',
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         ),
                       ),
                     ),
                     const SizedBox(height: 20),
-                    if (!codeSent)
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.indigo,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          onPressed: isSending
-                              ? null
-                              : () async {
-                                  final String email = _emailController.text.trim();
-                                  if (email.isEmpty || !email.contains('@')) {
-                                    ScaffoldMessenger.of(pageContext).showSnackBar(
-                                      const SnackBar(content: Text('请输入正确的邮箱')),
-                                    );
-                                    return;
-                                  }
-                                  setModalState(() => isSending = true);
-                                  final bool ok = await pageContext.read<ProfileProvider>().sendBindEmailCode(email);
-                                  setModalState(() {
-                                    isSending = false;
-                                    if (ok) codeSent = true;
-                                  });
-                                  if (!pageContext.mounted) return;
-                                  ScaffoldMessenger.of(pageContext).showSnackBar(
-                                    SnackBar(
-                                      content: Text(ok ? '验证码已发送，请查收' : '验证码发送失败，请稍后重试'),
-                                    ),
-                                  );
-                                },
-                          child: isSending
-                              ? const SizedBox(
-                                  width: 26,
-                                  height: 26,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                                )
-                              : const Text(
-                                  '获取验证码',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
+                    Text(
+                      '设置登录密码',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo.shade700),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: TextField(
+                        controller: _pwdController,
+                        obscureText: true,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        decoration: const InputDecoration(
+                          hintText: '至少6位',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         ),
                       ),
-                    if (codeSent) ...<Widget>[
-                      Text(
-                        '6位验证码',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo.shade700),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black87,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
-                        child: TextField(
-                          controller: _codeController,
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(fontSize: 16, letterSpacing: 4, fontWeight: FontWeight.bold),
-                          decoration: const InputDecoration(
-                            hintText: '******',
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        '设置登录密码',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo.shade700),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: TextField(
-                          controller: _pwdController,
-                          obscureText: true,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          decoration: const InputDecoration(
-                            hintText: '至少6位',
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black87,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          onPressed: () async {
-                            if (_codeController.text.trim().isEmpty || _pwdController.text.length < 6) {
-                              ScaffoldMessenger.of(pageContext).showSnackBar(
-                                const SnackBar(content: Text('请填写验证码及至少6位密码')),
+                        onPressed: () async {
+                          if (_codeController.text.trim().isEmpty || _pwdController.text.length < 6) {
+                            setModalState(() => localError = '请填写验证码及至少6位密码');
+                            return;
+                          }
+                          setModalState(() => localError = null);
+                          final bool bindOk = await pageContext.read<ProfileProvider>().verifyAndBindEmail(
+                                _emailController.text.trim(),
+                                _codeController.text.trim(),
+                                _pwdController.text.trim(),
                               );
-                              return;
-                            }
-                            final bool ok = await pageContext.read<ProfileProvider>().verifyAndBindEmail(
-                                  _emailController.text.trim(),
-                                  _codeController.text.trim(),
-                                  _pwdController.text.trim(),
-                                );
+                          if (!ctx.mounted) return;
+                          if (bindOk) {
+                            await pageContext.read<ProfileProvider>().fetchProfile();
                             if (!ctx.mounted) return;
-                            if (ok) {
-                              await pageContext.read<ProfileProvider>().fetchProfile();
-                              if (!ctx.mounted) return;
-                              Navigator.pop(ctx);
-                              if (mounted) {
-                                ScaffoldMessenger.of(pageContext).showSnackBar(
-                                  const SnackBar(content: Text('邮箱绑定成功！')),
-                                );
-                              }
-                            } else if (pageContext.mounted) {
+                            Navigator.pop(sheetCtx);
+                            if (mounted) {
                               ScaffoldMessenger.of(pageContext).showSnackBar(
-                                const SnackBar(content: Text('验证码错误或绑定失败，请重试')),
+                                const SnackBar(content: Text('邮箱绑定成功！')),
                               );
                             }
-                          },
-                          child: const Text(
-                            '确认并绑定',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
+                          } else {
+                            setModalState(() => localError = '验证码错误或绑定失败，请重试');
+                          }
+                        },
+                        child: const Text(
+                          '确认并绑定',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 40),
+                    ),
                   ],
-                ),
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
