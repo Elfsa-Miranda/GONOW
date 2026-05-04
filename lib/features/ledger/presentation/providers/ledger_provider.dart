@@ -1,8 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
 
 import '../domain/expense_model.dart';
 import '../domain/ledger_model.dart' show LedgerBook, OrderTicket;
@@ -16,14 +13,7 @@ class LedgerProvider extends ChangeNotifier {
   LedgerBook? _currentLedger;
 
   // ─── 公开 Getters ───────────────────────────────────────────
-  List<Expense> get expenses {
-    final String? ledgerId = _currentLedger?.id;
-    if (ledgerId == null) return List<Expense>.unmodifiable(<Expense>[]);
-    return List<Expense>.unmodifiable(
-      _expenses.where((Expense e) => e.ledgerId == ledgerId),
-    );
-  }
-
+  List<Expense> get expenses => List<Expense>.unmodifiable(_expenses);
   List<LedgerBook> get ledgers => List<LedgerBook>.unmodifiable(_ledgers);
   LedgerBook? get currentLedger => _currentLedger;
 
@@ -45,17 +35,13 @@ class LedgerProvider extends ChangeNotifier {
   // ─── Supabase 客户端 ────────────────────────────────────────
   SupabaseClient get _db => Supabase.instance.client;
   String? get _uid => _db.auth.currentUser?.id;
-  final Uuid _uuid = const Uuid();
 
   // ──────────────────────────────────────────────────────────────
   // 初始化：拉取账本列表（含新用户模板注入）
   // ──────────────────────────────────────────────────────────────
   Future<void> fetchLedgers() async {
     final String? uid = _uid;
-    if (uid == null) {
-      debugPrint('[LedgerProvider] fetchLedgers: uid is null, user not logged in');
-      return;
-    }
+    if (uid == null) return;
 
     try {
       final List<Map<String, dynamic>> rows = await _db
@@ -65,7 +51,7 @@ class LedgerProvider extends ChangeNotifier {
           .order('created_at', ascending: false);
 
       if (rows.isEmpty) {
-        debugPrint('[LedgerProvider] New user detected, seeding demo template...');
+        // 新用户：注入演示模板，完成后重新拉取。
         await _trySeedDemoTemplate(uid);
         return;
       }
@@ -74,6 +60,7 @@ class LedgerProvider extends ChangeNotifier {
         ..clear()
         ..addAll(rows.map(_rowToLedger));
 
+      // 默认选中第一本账本并拉取其流水。
       if (_currentLedger == null ||
           !_ledgers.any((LedgerBook l) => l.id == _currentLedger!.id)) {
         _currentLedger = _ledgers.first;
@@ -84,8 +71,8 @@ class LedgerProvider extends ChangeNotifier {
         fetchExpenses(_currentLedger!.id),
         fetchTickets(_currentLedger!.id),
       ]);
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] fetchLedgers error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] fetchLedgers error: $e');
     }
   }
 
@@ -93,10 +80,8 @@ class LedgerProvider extends ChangeNotifier {
   // 新用户演示模板注入
   // ──────────────────────────────────────────────────────────────
   Future<void> _trySeedDemoTemplate(String uid) async {
-    String? demoId;
-
-    // Step 1: 创建账本
     try {
+      // Step 1：插入演示账本（严格遵循 schema，无 members 字段）。
       final List<Map<String, dynamic>> bookRows = await _db
           .from('ledger_books')
           .insert(<String, dynamic>{
@@ -105,51 +90,39 @@ class LedgerProvider extends ChangeNotifier {
             'is_settled': false,
           })
           .select();
+
       if (bookRows.isEmpty) return;
-      demoId = bookRows.first['id'] as String;
-      debugPrint('✅ 模板：账本创建成功 ID: $demoId');
-    } catch (e, st) {
-      debugPrint('❌ 模板：账本创建失败: $e\n$st');
-      return;
-    }
+      final String demoId = bookRows.first['id'] as String;
 
-    final String lid = demoId;
-
-    // Step 2: 写入流水
-    try {
+      // Step 2：插入 3 条演示消费流水。
       await _db.from('ledger_expenses').insert(<Map<String, dynamic>>[
         <String, dynamic>{
-          'ledger_id': lid,
+          'ledger_id': demoId,
           'title': '接机专车',
-          'amount': 120.0,
+          'amount': 120,
           'payer': 'Leo',
           'participants': <String>['我', 'Leo', 'Mia', 'Tom'],
         },
         <String, dynamic>{
-          'ledger_id': lid,
+          'ledger_id': demoId,
           'title': '海鲜大排档晚餐',
-          'amount': 850.0,
+          'amount': 850,
           'payer': '我',
           'participants': <String>['我', 'Leo', 'Mia', 'Tom'],
         },
         <String, dynamic>{
-          'ledger_id': lid,
+          'ledger_id': demoId,
           'title': '环岛游艇门票',
-          'amount': 600.0,
+          'amount': 600,
           'payer': 'Mia',
           'participants': <String>['我', 'Leo', 'Mia', 'Tom'],
         },
       ]);
-      debugPrint('✅ 模板：流水创建成功');
-    } catch (e, st) {
-      debugPrint('❌ 模板：流水写入失败: $e\n$st');
-    }
 
-    // Step 3: 写入票务
-    try {
+      // Step 3：插入 2 条演示票务。
       await _db.from('ledger_tickets').insert(<Map<String, dynamic>>[
         <String, dynamic>{
-          'ledger_id': lid,
+          'ledger_id': demoId,
           'type': 'flight',
           'title': 'CA1356',
           'date_str': '10月1日 · 去程',
@@ -161,24 +134,24 @@ class LedgerProvider extends ChangeNotifier {
           'sort_order': 0,
         },
         <String, dynamic>{
-          'ledger_id': lid,
+          'ledger_id': demoId,
           'type': 'hotel',
           'title': '亚特兰蒂斯酒店',
           'date_str': '10月1日',
           'time_a': '14:00',
-          'time_b': '12:00',
-          'loc_a': '海景大床房',
-          'loc_b': '海南省三亚市海棠湾',
+          'time_b': '',
+          'loc_a': '海景大床房 · 含双早 · 2 晚 · 1 间',
+          'loc_b': '海南省三亚市海棠湾亚特兰蒂斯度假区',
           'passenger': 'Leo',
           'sort_order': 1,
         },
       ]);
-      debugPrint('✅ 模板：票务创建成功');
-    } catch (e, st) {
-      debugPrint('❌ 模板：票务写入失败: $e\n$st');
-    }
 
-    await fetchLedgers();
+      // 完成后重新拉取，让新用户立即看到模板。
+      await fetchLedgers();
+    } catch (e) {
+      debugPrint('[LedgerProvider] _trySeedDemoTemplate error: $e');
+    }
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -192,11 +165,12 @@ class LedgerProvider extends ChangeNotifier {
           .eq('ledger_id', ledgerId)
           .order('created_at', ascending: false);
 
-      _expenses.removeWhere((Expense e) => e.ledgerId == ledgerId);
-      _expenses.insertAll(0, rows.map(_rowToExpense));
+      _expenses
+        ..removeWhere((Expense e) => e.ledgerId == ledgerId)
+        ..insertAll(0, rows.map(_rowToExpense));
       notifyListeners();
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] fetchExpenses error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] fetchExpenses error: $e');
     }
   }
 
@@ -214,8 +188,8 @@ class LedgerProvider extends ChangeNotifier {
       _tickets.removeWhere((OrderTicket t) => t.ledgerId == ledgerId);
       _tickets.addAll(rows.map(_rowToTicket));
       notifyListeners();
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] fetchTickets error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] fetchTickets error: $e');
     }
   }
 
@@ -223,30 +197,17 @@ class LedgerProvider extends ChangeNotifier {
   // CRUD：消费流水（乐观更新）
   // ──────────────────────────────────────────────────────────────
 
-  bool _isValidUuid(String id) {
-    return RegExp(
-      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-    ).hasMatch(id);
-  }
-
   Future<void> addExpense(Expense expense) async {
     final String ledgerId = _currentLedger?.id ?? '';
-    final String validId = _isValidUuid(expense.id) ? expense.id : _uuid.v4();
+    final Expense normalized = expense.ledgerId.isEmpty
+        ? _copyExpenseWithLedger(expense, ledgerId)
+        : expense;
 
-    final Expense normalized = Expense(
-      id: validId,
-      ledgerId: expense.ledgerId.isEmpty ? ledgerId : expense.ledgerId,
-      title: expense.title,
-      amount: expense.amount,
-      payer: expense.payer,
-      participants: expense.participants,
-      date: expense.date,
-      iconStr: expense.iconStr,
-    );
-
+    // 1. 乐观更新本地。
     _expenses.insert(0, normalized);
     notifyListeners();
 
+    // 2. 静默同步云端。
     try {
       await _db.from('ledger_expenses').insert(<String, dynamic>{
         'id': normalized.id,
@@ -256,8 +217,8 @@ class LedgerProvider extends ChangeNotifier {
         'payer': normalized.payer,
         'participants': normalized.participants,
       });
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] addExpense sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] addExpense sync error: $e');
     }
   }
 
@@ -282,8 +243,8 @@ class LedgerProvider extends ChangeNotifier {
         'payer': normalized.payer,
         'participants': normalized.participants,
       }).eq('id', id);
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] updateExpense sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] updateExpense sync error: $e');
     }
   }
 
@@ -295,8 +256,8 @@ class LedgerProvider extends ChangeNotifier {
     // 2. 静默同步云端。
     try {
       await _db.from('ledger_expenses').delete().eq('id', id);
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] deleteExpense sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] deleteExpense sync error: $e');
     }
   }
 
@@ -306,41 +267,28 @@ class LedgerProvider extends ChangeNotifier {
 
   Future<void> addTicket(OrderTicket ticket) async {
     final int sortOrder = currentTickets.length;
-    final String validId = _isValidUuid(ticket.id) ? ticket.id : _uuid.v4();
-    final String ledgerId = _currentLedger?.id ?? '';
 
-    final OrderTicket normalized = OrderTicket(
-      id: validId,
-      ledgerId: ticket.ledgerId.isEmpty ? ledgerId : ticket.ledgerId,
-      type: ticket.type,
-      title: ticket.title,
-      dateStr: ticket.dateStr,
-      timeA: ticket.timeA,
-      timeB: ticket.timeB,
-      locationA: ticket.locationA,
-      locationB: ticket.locationB,
-      passenger: ticket.passenger,
-    );
-
-    _tickets.insert(0, normalized);
+    // 1. 乐观更新本地。
+    _tickets.insert(0, ticket);
     notifyListeners();
 
+    // 2. 静默同步云端。
     try {
       await _db.from('ledger_tickets').insert(<String, dynamic>{
-        'id': normalized.id,
-        'ledger_id': normalized.ledgerId,
-        'type': normalized.type,
-        'title': normalized.title,
-        'date_str': normalized.dateStr,
-        'time_a': normalized.timeA,
-        'time_b': normalized.timeB,
-        'loc_a': normalized.locationA,
-        'loc_b': normalized.locationB,
-        'passenger': normalized.passenger,
+        'id': ticket.id,
+        'ledger_id': ticket.ledgerId,
+        'type': ticket.type,
+        'title': ticket.title,
+        'date_str': ticket.dateStr,
+        'time_a': ticket.timeA,
+        'time_b': ticket.timeB,
+        'loc_a': ticket.locationA,
+        'loc_b': ticket.locationB,
+        'passenger': ticket.passenger,
         'sort_order': sortOrder,
       });
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] addTicket sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] addTicket sync error: $e');
     }
   }
 
@@ -364,8 +312,8 @@ class LedgerProvider extends ChangeNotifier {
         'loc_b': updated.locationB,
         'passenger': updated.passenger,
       }).eq('id', id);
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] updateTicket sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] updateTicket sync error: $e');
     }
   }
 
@@ -377,8 +325,8 @@ class LedgerProvider extends ChangeNotifier {
     // 2. 静默同步云端。
     try {
       await _db.from('ledger_tickets').delete().eq('id', id);
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] deleteTicket sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] deleteTicket sync error: $e');
     }
   }
 
@@ -387,6 +335,7 @@ class LedgerProvider extends ChangeNotifier {
     final String? ledgerId = _currentLedger?.id;
     if (ledgerId == null) return;
 
+    // 提取当前账本票务子列表。
     final List<OrderTicket> ledgerTickets = _tickets
         .where((OrderTicket t) => t.ledgerId == ledgerId)
         .toList();
@@ -413,8 +362,8 @@ class LedgerProvider extends ChangeNotifier {
             .update(<String, dynamic>{'sort_order': i})
             .eq('id', ledgerTickets[i].id);
       }
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] reorderTickets sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] reorderTickets sync error: $e');
     }
   }
 
@@ -424,7 +373,7 @@ class LedgerProvider extends ChangeNotifier {
 
   Future<void> switchLedger(LedgerBook ledger) async {
     _currentLedger = ledger;
-    // 不清空其他账本缓存，切换指针后拉取目标账本数据即可。
+    _expenses.removeWhere((Expense e) => e.ledgerId != ledger.id);
     notifyListeners();
     await Future.wait(<Future<void>>[
       fetchExpenses(ledger.id),
@@ -436,7 +385,7 @@ class LedgerProvider extends ChangeNotifier {
     final String? uid = _uid;
     if (uid == null) return;
 
-    // 1. 乐观创建本地占位账本（临时 ID）。
+    // 1. 乐观创建本地占位账本。
     final String tempId = 'tmp_${DateTime.now().millisecondsSinceEpoch}';
     final LedgerBook tempLedger = LedgerBook(
       id: tempId,
@@ -447,9 +396,10 @@ class LedgerProvider extends ChangeNotifier {
     );
     _ledgers.insert(0, tempLedger);
     _currentLedger = tempLedger;
+    _expenses.clear();
     notifyListeners();
 
-    // 2. 静默同步云端，拿到真实 UUID 后替换本地临时记录。
+    // 2. 静默同步云端，拿到真实 UUID 后更新本地。
     try {
       final List<Map<String, dynamic>> rows = await _db
           .from('ledger_books')
@@ -461,20 +411,14 @@ class LedgerProvider extends ChangeNotifier {
           .select();
 
       if (rows.isNotEmpty) {
-        final LedgerBook real = LedgerBook(
-          id: rows.first['id'] as String,
-          title: title,
-          members: List<String>.from(members),
-          createdAt: DateTime.parse(rows.first['created_at'] as String),
-          isSettled: false,
-        );
+        final LedgerBook real = _rowToLedger(rows.first);
         final int idx = _ledgers.indexWhere((LedgerBook l) => l.id == tempId);
         if (idx != -1) _ledgers[idx] = real;
         if (_currentLedger?.id == tempId) _currentLedger = real;
         notifyListeners();
       }
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] createNewLedger sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] createNewLedger sync error: $e');
     }
   }
 
@@ -492,8 +436,8 @@ class LedgerProvider extends ChangeNotifier {
     // 2. 静默同步云端。
     try {
       await _db.from('ledger_books').delete().eq('id', ledgerId);
-    } catch (e, st) {
-      debugPrint('[LedgerProvider] deleteLedger sync error: $e\n$st');
+    } catch (e) {
+      debugPrint('[LedgerProvider] deleteLedger sync error: $e');
     }
   }
 
@@ -518,7 +462,7 @@ class LedgerProvider extends ChangeNotifier {
   // ──────────────────────────────────────────────────────────────
 
   double get totalSpent =>
-      expenses.fold<double>(0, (double s, Expense e) => s + e.amount);
+      _expenses.fold<double>(0, (double s, Expense e) => s + e.amount);
 
   /// 指定账本的消费总额（用于账本选择列表展示）。
   double totalSpentByLedger(String ledgerId) {
@@ -529,7 +473,7 @@ class LedgerProvider extends ChangeNotifier {
 
   double get myBalance {
     double balance = 0;
-    for (final Expense exp in expenses) {
+    for (final Expense exp in _expenses) {
       if (exp.payer == currentUserDisplayName) balance += exp.amount;
       if (exp.participants.contains(currentUserDisplayName)) {
         balance -= exp.amount / exp.participants.length;
@@ -539,7 +483,7 @@ class LedgerProvider extends ChangeNotifier {
   }
 
   List<TransferAction> get settlementActions =>
-      ExpenseCalculator.calculateSettlement(expenses);
+      ExpenseCalculator.calculateSettlement(_expenses);
 
   // ──────────────────────────────────────────────────────────────
   // 行映射辅助方法
@@ -548,35 +492,21 @@ class LedgerProvider extends ChangeNotifier {
   LedgerBook _rowToLedger(Map<String, dynamic> r) => LedgerBook(
         id: r['id'] as String,
         title: r['title'] as String,
-        members: const <String>['我', 'Leo', 'Mia', 'Tom'],
+        members: const <String>['我', 'Leo', 'Mia', 'Tom'], // 本地默认，schema 无此列
         createdAt: DateTime.parse(r['created_at'] as String),
         isSettled: (r['is_settled'] as bool?) ?? false,
       );
 
-  Expense _rowToExpense(Map<String, dynamic> r) {
-    // participants 可能是 List 或 JSON 字符串，兼容两种格式。
-    final dynamic rawParticipants = r['participants'];
-    List<String> participants;
-    if (rawParticipants is List) {
-      participants = rawParticipants.map((dynamic e) => e.toString()).toList();
-    } else if (rawParticipants is String) {
-      final dynamic decoded = jsonDecode(rawParticipants);
-      participants = (decoded as List<dynamic>).map((dynamic e) => e.toString()).toList();
-    } else {
-      participants = <String>[];
-    }
-
-    return Expense(
-      id: r['id'] as String,
-      ledgerId: r['ledger_id'] as String,
-      title: r['title'] as String,
-      amount: (r['amount'] as num).toDouble(),
-      payer: r['payer'] as String,
-      participants: participants,
-      date: DateTime.parse(r['created_at'] as String),
-      iconStr: '',
-    );
-  }
+  Expense _rowToExpense(Map<String, dynamic> r) => Expense(
+        id: r['id'] as String,
+        ledgerId: r['ledger_id'] as String,
+        title: r['title'] as String,
+        amount: (r['amount'] as num).toDouble(),
+        payer: r['payer'] as String,
+        participants: List<String>.from(r['participants'] as List<dynamic>),
+        date: DateTime.parse(r['created_at'] as String),
+        iconStr: '',
+      );
 
   OrderTicket _rowToTicket(Map<String, dynamic> r) => OrderTicket(
         id: r['id'] as String,

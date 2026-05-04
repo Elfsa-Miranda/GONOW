@@ -176,6 +176,19 @@ class _LedgerScreenState extends State<LedgerScreen> {
           : _buildTicketsView(),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
+          final LedgerProvider provider = context.read<LedgerProvider>();
+
+          if (provider.currentLedger == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('请先点击顶部「旅行账本」添加新账本'),
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 2),
+              ),
+            );
+            return;
+          }
+
           if (_currentTab == 0) {
             _showAddExpenseSheet(context);
           } else {

@@ -74,7 +74,10 @@ lib/
     ├── ootd/
     │   └── presentation/screens/ootd_screen.dart   # 从「我的」衣橱入口 push，非底栏 Tab
     └── profile/
-        └── presentation/screens/profile_screen.dart  # 足迹卡、资产入口（手账 Tab / 账本 / 衣橱）
+        ├── data/footprint_provider.dart               # 足迹状态管理（国内/海外已点亮地区）
+        └── presentation/
+            ├── screens/profile_screen.dart            # 足迹卡、资产入口（手账 Tab / 账本 / 衣橱）
+            └── widgets/footprint_map_widget.dart      # 足迹地图交互组件（点亮/缩放/全屏）
 ```
 
 **规模提示：** `itinerary_screen.dart`、`discover_screen.dart`、`diary_detail_screen.dart` 为超大单文件，改功能时建议先搜索关键词（如 `TripMode`、`_MapSource`、`isLazyPool`）再动刀。
