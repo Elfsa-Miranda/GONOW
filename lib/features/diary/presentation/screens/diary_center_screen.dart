@@ -459,7 +459,6 @@ class _DiaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int likes = (diary.diaryData['likes'] as num?)?.toInt() ?? 0;
     final String dateLabel = diary.createdAt != null
         ? '${diary.createdAt!.year.toString().padLeft(4, '0')}.${diary.createdAt!.month.toString().padLeft(2, '0')}.${diary.createdAt!.day.toString().padLeft(2, '0')}'
         : (diary.diaryData['dateLabel'] ?? '2026.01.01')
@@ -607,25 +606,6 @@ class _DiaryCard extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF111827),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: <Widget>[
-                      const Icon(
-                        Icons.favorite_rounded,
-                        size: 15,
-                        color: Color(0xFFE11D48),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$likes',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF4B5563),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
