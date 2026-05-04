@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../domain/expense_model.dart';
-import '../domain/ledger_model.dart' show LedgerBook;
+import '../domain/ledger_model.dart' show LedgerBook, OrderTicket;
 
 /// 旅行账本状态：真实流水 + AA 贪心结算。
 class LedgerProvider extends ChangeNotifier {
@@ -9,6 +9,18 @@ class LedgerProvider extends ChangeNotifier {
   List<Expense> get expenses => List<Expense>.unmodifiable(_expenses);
   final Map<String, List<Expense>> _expensesByLedgerId =
       <String, List<Expense>>{};
+
+  final List<OrderTicket> _tickets = <OrderTicket>[];
+
+  List<OrderTicket> get currentTickets {
+    final String? ledgerId = _currentLedger?.id;
+    if (ledgerId == null) {
+      return List<OrderTicket>.unmodifiable(<OrderTicket>[]);
+    }
+    return List<OrderTicket>.unmodifiable(
+      _tickets.where((OrderTicket t) => t.ledgerId == ledgerId),
+    );
+  }
 
   // 兼容旧 UI 字段命名。
   String currentUserDisplayName = '我';
@@ -65,6 +77,95 @@ class LedgerProvider extends ChangeNotifier {
       ),
     ]);
     _expensesByLedgerId[_currentLedger!.id] = List<Expense>.from(_expenses);
+
+    _tickets.addAll(<OrderTicket>[
+      OrderTicket(
+        id: 'tk_flight_demo',
+        ledgerId: _currentLedger!.id,
+        type: 'flight',
+        title: 'CA1356',
+        dateStr: '10月1日 · 去程',
+        timeA: '10:30',
+        timeB: '13:55',
+        locationA: '北京 PEK',
+        locationB: '三亚 SYX',
+        passenger: 'Leo',
+      ),
+      OrderTicket(
+        id: 'tk_hotel_demo',
+        ledgerId: _currentLedger!.id,
+        type: 'hotel',
+        title: '亚特兰蒂斯酒店',
+        dateStr: '10月1日',
+        timeA: '14:00',
+        timeB: '',
+        locationA: '海景大床房 · 含双早 · 2 晚 · 1 间',
+        locationB: '海南省三亚市海棠湾亚特兰蒂斯度假区',
+        passenger: 'Leo',
+      ),
+    ]);
+  }
+
+  void addTicket(OrderTicket ticket) {
+    _tickets.insert(0, ticket);
+    notifyListeners();
+  }
+
+  void updateTicket(String id, OrderTicket updated) {
+    final int index = _tickets.indexWhere((OrderTicket t) => t.id == id);
+    if (index != -1) {
+      _tickets[index] = updated;
+      notifyListeners();
+    }
+  }
+
+  void deleteTicket(String id) {
+    _tickets.removeWhere((OrderTicket t) => t.id == id);
+    notifyListeners();
+  }
+
+  /// 在当前账本可见列表维度上重排（与 [currentTickets] 顺序一致）。
+  void reorderTickets(int oldIndex, int newIndex) {
+    final String? ledgerId = _currentLedger?.id;
+    if (ledgerId == null) {
+      return;
+    }
+
+    int firstIdx = -1;
+    for (int i = 0; i < _tickets.length; i++) {
+      if (_tickets[i].ledgerId == ledgerId) {
+        firstIdx = i;
+        break;
+      }
+    }
+    if (firstIdx == -1) {
+      return;
+    }
+
+    final List<OrderTicket> ledgerTickets = <OrderTicket>[];
+    for (final OrderTicket t in _tickets) {
+      if (t.ledgerId == ledgerId) {
+        ledgerTickets.add(t);
+      }
+    }
+
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    if (oldIndex < 0 || oldIndex >= ledgerTickets.length) {
+      return;
+    }
+    if (newIndex < 0 || newIndex > ledgerTickets.length) {
+      return;
+    }
+
+    final OrderTicket moved = ledgerTickets.removeAt(oldIndex);
+    ledgerTickets.insert(newIndex, moved);
+
+    _tickets.removeWhere((OrderTicket t) => t.ledgerId == ledgerId);
+    final int insertAt = firstIdx.clamp(0, _tickets.length);
+    _tickets.insertAll(insertAt, ledgerTickets);
+    notifyListeners();
   }
 
   double get totalSpent =>
@@ -185,6 +286,7 @@ class LedgerProvider extends ChangeNotifier {
     _ledgers.removeWhere((LedgerBook l) => l.id == ledgerId);
     _expenses.removeWhere((Expense e) => e.ledgerId == ledgerId);
     _expensesByLedgerId.remove(ledgerId);
+    _tickets.removeWhere((OrderTicket t) => t.ledgerId == ledgerId);
 
     if (_currentLedger?.id == ledgerId) {
       _currentLedger = _ledgers.isNotEmpty ? _ledgers.first : null;

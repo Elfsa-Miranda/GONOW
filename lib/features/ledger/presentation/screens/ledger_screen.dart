@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:gonow/features/ledger/data/ledger_provider.dart';
 import 'package:gonow/features/ledger/domain/expense_model.dart';
-import 'package:gonow/features/ledger/domain/ledger_model.dart' show LedgerBook;
+import 'package:gonow/features/ledger/domain/ledger_model.dart' show LedgerBook, OrderTicket;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 旅行账本：双轨（结伴 AA / 机酒票务）+ 票根凹槽与圆角阴影 UI。
 class LedgerScreen extends StatefulWidget {
@@ -178,6 +178,8 @@ class _LedgerScreenState extends State<LedgerScreen> {
         onPressed: () {
           if (_currentTab == 0) {
             _showAddExpenseSheet(context);
+          } else {
+            _showAddTicketSheet(context);
           }
         },
         backgroundColor: Colors.black87,
@@ -932,60 +934,84 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         final String dateLine =
                             '${b.createdAt.year}-${b.createdAt.month.toString().padLeft(2, '0')}-${b.createdAt.day.toString().padLeft(2, '0')}'
                             '${b.isSettled ? ' · 已归档' : ''}';
-                        return Material(
-                          color: isCurrent ? Colors.indigo.shade50 : Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(16),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () {
-                              provider.switchLedger(b);
-                              Navigator.pop(sheetContext);
-                            },
-                            onLongPress: () async {
-                              final bool? confirm = await showDialog<bool>(
-                                context: sheetContext,
-                                builder: (BuildContext ctx) => AlertDialog(
-                                  title: const Text(
-                                    '删除旅行账本',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
+                        return Dismissible(
+                          key: ValueKey<String>('ledger_${b.id}'),
+                          direction: DismissDirection.horizontal,
+                          background: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.only(left: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade400,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(Icons.delete_sweep, color: Colors.white),
+                          ),
+                          secondaryBackground: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade400,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(Icons.delete_sweep, color: Colors.white),
+                          ),
+                          confirmDismiss: (_) async {
+                            final bool? ok = await showDialog<bool>(
+                              context: sheetContext,
+                              builder: (BuildContext ctx) => AlertDialog(
+                                title: const Text(
+                                  '删除旅行账本',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                content: Text(
+                                  '确定要永久删除《${b.title}》及其所有的流水记录吗？此操作无法恢复。',
+                                ),
+                                actions: <Widget>[
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('取消'),
                                   ),
-                                  content: Text(
-                                    '确定要永久删除《${b.title}》及其所有的流水记录吗？此操作无法恢复。',
-                                  ),
-                                  actions: <Widget>[
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(ctx, false),
-                                      child: const Text('取消'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      child: const Text(
-                                        '彻底删除',
-                                        style: TextStyle(
-                                          color: Colors.red,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text(
+                                      '彻底删除',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
+                              ),
+                            );
+                            return ok ?? false;
+                          },
+                          onDismissed: (_) {
+                            provider.deleteLedger(b.id);
+                            if (screenContext.mounted) {
+                              ScaffoldMessenger.of(screenContext).showSnackBar(
+                                const SnackBar(content: Text('账本已删除')),
                               );
-
-                              if (confirm == true) {
-                                provider.deleteLedger(b.id);
-                                if (screenContext.mounted) {
-                                  ScaffoldMessenger.of(screenContext).showSnackBar(
-                                    const SnackBar(content: Text('账本已删除')),
-                                  );
-                                }
-                              }
-                            },
-                            child: _buildLedgerItem(
-                              title: b.title,
-                              amount: provider.totalSpentByLedger(b.id).toStringAsFixed(2),
-                              dateLine: dateLine,
-                              isActive: isCurrent,
-                              isSettled: b.isSettled,
+                            }
+                          },
+                          child: Material(
+                            color: isCurrent ? Colors.indigo.shade50 : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(16),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () {
+                                provider.switchLedger(b);
+                                Navigator.pop(sheetContext);
+                              },
+                              child: _buildLedgerItem(
+                                title: b.title,
+                                amount: provider.totalSpentByLedger(b.id).toStringAsFixed(2),
+                                dateLine: dateLine,
+                                isActive: isCurrent,
+                                isSettled: b.isSettled,
+                              ),
                             ),
                           ),
                         );
@@ -1298,418 +1324,845 @@ class _LedgerScreenState extends State<LedgerScreen> {
     return it.moveNext() ? String.fromCharCode(it.current) : '?';
   }
 
+  // ==================== Tab 1: 机酒票务 (实体票根设计) ====================
   Widget _buildTicketsView() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: <Widget>[
-        Container(
-          decoration: BoxDecoration(
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: Colors.indigo.withValues(alpha: 0.1),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
+    return Consumer<LedgerProvider>(
+      builder: (BuildContext context, LedgerProvider provider, _) {
+        final List<OrderTicket> tickets = provider.currentTickets;
+
+        if (tickets.isEmpty) {
+          return Center(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Container(
-                  color: Colors.indigo.shade600,
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
+                Icon(Icons.confirmation_num_outlined, size: 64, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  '暂无订单，点击右下角添加',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ReorderableListView.builder(
+          padding: const EdgeInsets.all(20),
+          itemCount: tickets.length,
+          onReorder: (int oldIndex, int newIndex) {
+            provider.reorderTickets(oldIndex, newIndex);
+          },
+          proxyDecorator: (Widget child, int index, Animation<double> animation) {
+            return Material(
+              color: Colors.transparent,
+              elevation: 0,
+              child: child,
+            );
+          },
+          itemBuilder: (BuildContext context, int index) {
+            final OrderTicket ticket = tickets[index];
+            return Container(
+              key: ValueKey<String>(ticket.id),
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Dismissible(
+                key: ValueKey<String>('dismiss_${ticket.id}'),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade400,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 24),
+                  child: const Icon(Icons.delete_outline, color: Colors.white),
+                ),
+                confirmDismiss: (_) async {
+                  final bool? ok = await showDialog<bool>(
+                    context: context,
+                    builder: (BuildContext ctx) => AlertDialog(
+                      title: const Text('删除订单'),
+                      content: const Text('确定要删除这个记录吗？'),
+                      actions: <Widget>[
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('取消'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('删除', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                  return ok ?? false;
+                },
+                onDismissed: (_) => provider.deleteTicket(ticket.id),
+                child: InkWell(
+                  onTap: () => _showAddTicketSheet(context, existingTicket: ticket),
+                  borderRadius: BorderRadius.circular(24),
+                  child: ticket.type == 'hotel' ? _buildHotelCard(ticket) : _buildFlightCard(ticket),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFlightCard(OrderTicket ticket) {
+    final bool isTrain = ticket.type == 'train';
+    final Color themeColor = isTrain ? Colors.blue.shade600 : Colors.indigo.shade600;
+
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: themeColor.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Column(
+          children: <Widget>[
+            Container(
+              color: themeColor,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: <Widget>[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                const Icon(Icons.flight_takeoff, color: Colors.white, size: 12),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '10月1日 · 去程',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Text(
-                            'CA1356',
-                            style: TextStyle(
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              isTrain ? Icons.train : Icons.flight_takeoff,
                               color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
+                              size: 14,
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              const Text(
-                                '10:30',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              Text(
-                                '北京 PEK',
-                                style: TextStyle(
-                                  color: Colors.indigo.shade100,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Column(
-                                children: <Widget>[
-                                  Text(
-                                    '直飞 3h25m',
-                                    style: TextStyle(
-                                      color: Colors.indigo.shade200,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Stack(
-                                    alignment: Alignment.center,
-                                    children: <Widget>[
-                                      Container(
-                                        height: 1,
-                                        width: double.infinity,
-                                        color: Colors.indigo.shade300,
-                                      ),
-                                      Icon(
-                                        Icons.flight,
-                                        color: Colors.indigo.shade100,
-                                        size: 16,
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                            const SizedBox(width: 6),
+                            Text(
+                              ticket.dateStr,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: <Widget>[
-                              const Text(
-                                '13:55',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              Text(
-                                '三亚 SYX',
-                                style: TextStyle(
-                                  color: Colors.indigo.shade100,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  height: 30,
-                  color: Colors.white,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: <Widget>[
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: LayoutBuilder(
-                            builder: (BuildContext context, BoxConstraints c) {
-                              return CustomPaint(
-                                size: Size(c.maxWidth, 2),
-                                painter: _TicketDashedLinePainter(
-                                  color: Colors.grey.shade300,
-                                ),
-                              );
-                            },
-                          ),
+                          ],
                         ),
                       ),
-                      Positioned(
-                        left: -15,
-                        top: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 30,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFF5F7FA),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: -15,
-                        top: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 30,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFF5F7FA),
-                            shape: BoxShape.circle,
-                          ),
+                      Text(
+                        ticket.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                          fontSize: 16,
                         ),
                       ),
                     ],
                   ),
-                ),
-                Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  child: Row(
+                  const SizedBox(height: 24),
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            '乘机人',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey.shade400,
-                              fontWeight: FontWeight.bold,
+                            ticket.timeA,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 36,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            'Leo',
+                          Text(
+                            ticket.locationA,
                             style: TextStyle(
-                              fontSize: 14,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
                             ),
                           ),
                         ],
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            children: <Widget>[
+                              Text(
+                                isTrain ? '高铁' : '直飞',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Stack(
+                                alignment: Alignment.center,
+                                children: <Widget>[
+                                  _TicketDashRow(
+                                    segments: 15,
+                                    dashColor: Colors.white.withValues(alpha: 0.4),
+                                    segmentHeight: 1.5,
+                                  ),
+                                  Icon(
+                                    isTrain ? Icons.train : Icons.flight,
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: <Widget>[
                           Text(
-                            '座位',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey.shade400,
-                              fontWeight: FontWeight.bold,
+                            ticket.timeB,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 36,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            '42A',
+                          Text(
+                            ticket.locationB,
                             style: TextStyle(
-                              fontSize: 14,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
                             ),
                           ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              height: 30,
+              color: Colors.white,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _TicketDashRow(
+                        segments: 30,
+                        dashColor: Colors.grey.shade300,
+                        segmentHeight: 1.5,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: -15,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 30,
+                      decoration: BoxDecoration(
+                        color: _bgColor,
+                        shape: BoxShape.circle,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(3, 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: -15,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 30,
+                      decoration: BoxDecoration(
+                        color: _bgColor,
+                        shape: BoxShape.circle,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(-3, 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        '出行人',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade400,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        ticket.passenger,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: themeColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.qr_code_2, size: 16, color: themeColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          '查看凭证',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: themeColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHotelCard(OrderTicket ticket) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 90,
+            height: 90,
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(Icons.hotel, color: Colors.orange.shade300, size: 32),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        ticket.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '已确认',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  ticket.locationA,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            '${ticket.dateStr} ${ticket.timeA}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            ticket.locationB.isEmpty ? '暂无地址' : ticket.locationB,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final String destination =
+                            ticket.locationB.isNotEmpty ? ticket.locationB : ticket.title;
+                        if (destination.isEmpty) return;
+
+                        final String encodedDest = Uri.encodeComponent(destination);
+                        final Uri androidUri = Uri.parse(
+                          'androidamap://route?sourceApplication=TravelApp&dname=$encodedDest',
+                        );
+                        final Uri iosUri = Uri.parse(
+                          'iosamap://path?sourceApplication=TravelApp&dname=$encodedDest',
+                        );
+                        final Uri webUri = Uri.parse(
+                          'https://uri.amap.com/search?keyword=$encodedDest',
+                        );
+
+                        try {
+                          if (await canLaunchUrl(androidUri)) {
+                            await launchUrl(androidUri);
+                          } else if (await canLaunchUrl(iosUri)) {
+                            await launchUrl(iosUri);
+                          } else {
+                            await launchUrl(
+                              webUri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        } catch (_) {
+                          await launchUrl(
+                            webUri,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: Colors.indigo.shade50,
-                          borderRadius: BorderRadius.circular(12),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.indigo.shade100),
+                        ),
+                        child: Icon(
+                          Icons.location_on,
+                          size: 16,
+                          color: Colors.indigo.shade500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypeTab(
+    String type,
+    String label,
+    IconData icon,
+    String selectedType,
+    VoidCallback onTap,
+  ) {
+    final bool isSelected = type == selectedType;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 4,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, size: 14, color: isSelected ? Colors.indigo : Colors.grey.shade400),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.indigo : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddTicketSheet(BuildContext context, {OrderTicket? existingTicket}) {
+    final LedgerProvider provider = context.read<LedgerProvider>();
+    String selectedType = existingTicket?.type ?? 'flight';
+
+    final TextEditingController titleController =
+        TextEditingController(text: existingTicket?.title ?? '');
+    final TextEditingController dateController =
+        TextEditingController(text: existingTicket?.dateStr ?? '');
+    final TextEditingController timeAController =
+        TextEditingController(text: existingTicket?.timeA ?? '');
+    final TextEditingController timeBController =
+        TextEditingController(text: existingTicket?.timeB ?? '');
+    final TextEditingController locAController =
+        TextEditingController(text: existingTicket?.locationA ?? '');
+    final TextEditingController locBController =
+        TextEditingController(text: existingTicket?.locationB ?? '');
+    final TextEditingController passengerController =
+        TextEditingController(text: existingTicket?.passenger.isNotEmpty == true ? existingTicket!.passenger : '我');
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, void Function(void Function()) setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        existingTicket == null ? '录入机酒票务' : '修改订单',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
                           children: <Widget>[
-                            Icon(Icons.qr_code, size: 14, color: Colors.indigo.shade600),
-                            const SizedBox(width: 4),
-                            Text(
-                              '凭证',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.indigo.shade600,
-                              ),
+                            _buildTypeTab(
+                              'flight',
+                              '航班',
+                              Icons.flight,
+                              selectedType,
+                              () => setModalState(() => selectedType = 'flight'),
+                            ),
+                            _buildTypeTab(
+                              'train',
+                              '高铁',
+                              Icons.train,
+                              selectedType,
+                              () => setModalState(() => selectedType = 'train'),
+                            ),
+                            _buildTypeTab(
+                              'hotel',
+                              '酒店',
+                              Icons.hotel,
+                              selectedType,
+                              () => setModalState(() => selectedType = 'hotel'),
                             ),
                           ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: titleController,
+                        decoration: InputDecoration(
+                          hintText: selectedType == 'hotel' ? '酒店名称' : '航班号/车次',
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: dateController,
+                              decoration: InputDecoration(
+                                hintText: '日期 (如 10.01)',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: passengerController,
+                              decoration: InputDecoration(
+                                hintText: selectedType == 'hotel' ? '入住人' : '出行人',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: timeAController,
+                              decoration: InputDecoration(
+                                hintText: selectedType == 'hotel' ? '入住时间' : '出发时间',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: timeBController,
+                              decoration: InputDecoration(
+                                hintText: selectedType == 'hotel' ? '退房时间' : '到达时间',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: locAController,
+                              decoration: InputDecoration(
+                                hintText: selectedType == 'hotel' ? '房型' : '出发地',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: locBController,
+                              decoration: InputDecoration(
+                                hintText: selectedType == 'hotel' ? '详细地址' : '目的地',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          minimumSize: const Size(double.infinity, 56),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () {
+                          if (titleController.text.trim().isEmpty) {
+                            return;
+                          }
+                          final String? lid = provider.currentLedger?.id;
+                          if (lid == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('请先选择或创建一个旅行账本')),
+                            );
+                            return;
+                          }
+
+                          final OrderTicket newTicket = OrderTicket(
+                            id: existingTicket?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                            ledgerId: lid,
+                            type: selectedType,
+                            title: titleController.text.trim(),
+                            dateStr: dateController.text.trim(),
+                            timeA: timeAController.text.trim(),
+                            timeB: timeBController.text.trim(),
+                            locationA: locAController.text.trim(),
+                            locationB: locBController.text.trim(),
+                            passenger: passengerController.text.trim().isEmpty
+                                ? '我'
+                                : passengerController.text.trim(),
+                          );
+
+                          if (existingTicket != null) {
+                            provider.updateTicket(existingTicket.id, newTicket);
+                          } else {
+                            provider.addTicket(newTicket);
+                          }
+                          Navigator.pop(sheetContext);
+                        },
+                        child: const Text(
+                          '确定保存',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.grey.shade100),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
               ),
-            ],
-          ),
-          child: Row(
-            children: <Widget>[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: CachedNetworkImage(
-                  imageUrl:
-                      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=300',
-                  width: 100,
-                  height: 100,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, _, _) => Container(
-                    width: 100,
-                    height: 100,
-                    color: Colors.grey.shade200,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        const Expanded(
-                          child: Text(
-                            '亚特兰蒂斯酒店',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.black87,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade50,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            '已确认',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green.shade600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '海景大床房 · 含双早',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              '10月1日 14:00',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            Text(
-                              '2 晚 · 1 间',
-                              style: TextStyle(fontSize: 9, color: Colors.grey.shade400),
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade50,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.location_on,
-                            size: 14,
-                            color: Colors.grey.shade400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+            );
+          },
+        );
+      },
     );
   }
 }
 
-/// 票根中间虚线（Flutter Border 不支持 dashed，用手绘虚线段）。
-class _TicketDashedLinePainter extends CustomPainter {
-  _TicketDashedLinePainter({required this.color});
+/// 票根虚线：用交替色块模拟虚线段（与指令中的 `List.generate` 逻辑一致）。
+class _TicketDashRow extends StatelessWidget {
+  const _TicketDashRow({
+    required this.segments,
+    required this.dashColor,
+    this.segmentHeight = 1.5,
+  });
 
-  final Color color;
+  final int segments;
+  final Color dashColor;
+  final double segmentHeight;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    const double dash = 5;
-    const double gap = 4;
-    final Paint p = Paint()
-      ..color = color
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    double x = 0;
-    final double y = size.height / 2;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, y), Offset((x + dash).clamp(0, size.width), y), p);
-      x += dash + gap;
-    }
+  Widget build(BuildContext context) {
+    return Row(
+      children: List<Widget>.generate(
+        segments,
+        (int index) => Expanded(
+          child: Container(
+            height: segmentHeight,
+            color: index.isEven ? dashColor : Colors.transparent,
+          ),
+        ),
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant _TicketDashedLinePainter oldDelegate) =>
-      oldDelegate.color != color;
 }

@@ -17,6 +17,34 @@ class LedgerBook {
   final bool isSettled;
 }
 
+/// 机酒与票务订单（航班 / 高铁 / 酒店）。
+class OrderTicket {
+  const OrderTicket({
+    required this.id,
+    required this.ledgerId,
+    required this.type,
+    required this.title,
+    required this.dateStr,
+    required this.timeA,
+    required this.timeB,
+    required this.locationA,
+    required this.locationB,
+    required this.passenger,
+  });
+
+  final String id;
+  final String ledgerId;
+  /// `flight` | `train` | `hotel`
+  final String type;
+  final String title;
+  final String dateStr;
+  final String timeA;
+  final String timeB;
+  final String locationA;
+  final String locationB;
+  final String passenger;
+}
+
 /// AA 单笔流水：垫付人 + 参与平摊成员（须包含垫付人）。
 class Expense {
   const Expense({
