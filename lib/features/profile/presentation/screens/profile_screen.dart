@@ -2,7 +2,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:gonow/features/ledger/presentation/screens/ledger_screen.dart';
 import 'package:gonow/features/ootd/presentation/screens/ootd_screen.dart';
+import 'package:gonow/features/profile/data/profile_provider.dart';
+import 'package:gonow/features/profile/presentation/screens/profile_settings_screen.dart';
 import 'package:gonow/features/profile/presentation/widgets/footprint_map_widget.dart';
+import 'package:provider/provider.dart';
 
 /// 「我的」：黑金足迹矢量地图 + 账本 / 衣橱入口。
 class ProfileScreen extends StatefulWidget {
@@ -16,6 +19,15 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ProfileProvider>().fetchProfile();
+    });
+  }
+
   List<String> _visitedChina = <String>[
     '北京市',
     '上海市',
@@ -51,45 +63,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: Row(
                 children: <Widget>[
-                  Container(
-                    width: 64,
-                    height: 64,
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.indigo.shade100, width: 2),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
-                      child: CachedNetworkImage(
-                        imageUrl:
-                            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&q=80',
-                        fit: BoxFit.cover,
-                        errorWidget: (_, _, _) => Container(color: Colors.grey.shade200),
-                      ),
-                    ),
+                  Consumer<ProfileProvider>(
+                    builder: (BuildContext context, ProfileProvider profile, _) {
+                      final String url = profile.avatarUrl ?? '';
+                      final bool hasAvatar = url.isNotEmpty;
+                      return Container(
+                        width: 64,
+                        height: 64,
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.indigo.shade100, width: 2),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(30),
+                          child: hasAvatar
+                              ? CachedNetworkImage(
+                                  imageUrl: url,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (_, _, _) => Container(
+                                    color: Colors.grey.shade200,
+                                    child: Icon(Icons.person, color: Colors.grey.shade400),
+                                  ),
+                                )
+                              : Container(
+                                  color: Colors.grey.shade200,
+                                  child: Icon(Icons.person, size: 32, color: Colors.grey.shade400),
+                                ),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const <Widget>[
-                        Text(
-                          '旅行者_Leo',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        _LevelBadge(),
-                      ],
+                    child: Consumer<ProfileProvider>(
+                      builder: (BuildContext context, ProfileProvider profile, _) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              profile.nickname,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const _LevelBadge(),
+                          ],
+                        );
+                      },
                     ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.settings_outlined, color: Colors.black45),
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ProfileSettingsScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

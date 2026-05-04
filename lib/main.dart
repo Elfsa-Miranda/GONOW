@@ -10,6 +10,7 @@ import 'package:gonow/features/diary/data/diary_provider.dart';
 import 'package:gonow/features/ledger/data/ledger_provider.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
+import 'package:gonow/features/profile/data/profile_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -45,6 +46,13 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(),
+        ),
+        ChangeNotifierProvider<ProfileProvider>(
+          create: (_) {
+            final ProfileProvider p = ProfileProvider();
+            p.fetchProfile();
+            return p;
+          },
         ),
         ChangeNotifierProvider<DiaryProvider>(
           create: (_) => DiaryProvider(),
