@@ -54,12 +54,16 @@ class AuthProvider with ChangeNotifier {
         email: email,
         password: password,
       );
-      if (response.user != null) {
-        await _supabase.from('profiles').upsert(<String, dynamic>{
-          'id': response.user!.id,
-          'nickname': '旅行者_${response.user!.id.substring(0, 4)}',
-        });
+      if (response.user == null) {
+        if (context.mounted) {
+          _showToast(context, '登录失败，请检查邮箱与密码');
+        }
+        return false;
       }
+      await _supabase.from('profiles').upsert(<String, dynamic>{
+        'id': response.user!.id,
+        'nickname': '旅行者_${response.user!.id.substring(0, 4)}',
+      });
       if (context.mounted) {
         _showToast(context, '欢迎回来！');
       }
@@ -112,6 +116,29 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> signOut() async {
     await _supabase.auth.signOut();
+  }
+
+  /// 发送密码重置邮件（需在 Supabase 控制台配置邮件模板与站点 URL）。
+  Future<bool> sendPasswordResetEmail(String email, BuildContext context) async {
+    _setLoading(true);
+    try {
+      await _supabase.auth.resetPasswordForEmail(email.trim());
+      if (context.mounted) {
+        _showToast(context, '重置邮件已发送，请前往邮箱完成操作', duration: 3);
+      }
+      return true;
+    } on AuthException catch (e) {
+      if (context.mounted) {
+        _showToast(context, '发送失败：${e.message}');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        _showToast(context, '发生未知错误: $e');
+      }
+    } finally {
+      _setLoading(false);
+    }
+    return false;
   }
 
   void _setLoading(bool value) {
