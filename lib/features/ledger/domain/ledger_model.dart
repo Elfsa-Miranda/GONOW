@@ -5,12 +5,14 @@ class LedgerBook {
   const LedgerBook({
     required this.id,
     required this.title,
+    required this.members,
     required this.createdAt,
     this.isSettled = false,
   });
 
   final String id;
   final String title;
+  final List<String> members;
   final DateTime createdAt;
   final bool isSettled;
 }

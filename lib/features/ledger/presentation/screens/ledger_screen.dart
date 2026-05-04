@@ -1,7 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:gonow/features/ledger/data/ledger_provider.dart';
-import 'package:gonow/features/ledger/domain/ledger_model.dart';
+import 'package:gonow/features/ledger/domain/expense_model.dart';
+import 'package:gonow/features/ledger/domain/ledger_model.dart' show LedgerBook;
 import 'package:provider/provider.dart';
 
 /// 旅行账本：双轨（结伴 AA / 机酒票务）+ 票根凹槽与圆角阴影 UI。
@@ -166,18 +167,27 @@ class _LedgerScreenState extends State<LedgerScreen> {
           ),
         ),
       ),
-      body: _currentTab == 0 ? _buildAASplitView(context) : _buildTicketsView(),
+      body: _currentTab == 0
+          ? Consumer<LedgerProvider>(
+              builder: (BuildContext context, LedgerProvider provider, _) {
+                return _buildAASplitView(context, provider);
+              },
+            )
+          : _buildTicketsView(),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: () {
+          if (_currentTab == 0) {
+            _showAddExpenseSheet(context);
+          }
+        },
         backgroundColor: Colors.black87,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildAASplitView(BuildContext context) {
-    final LedgerProvider p = context.watch<LedgerProvider>();
-    final List<Expense> items = p.currentExpenses;
+  Widget _buildAASplitView(BuildContext context, LedgerProvider p) {
+    final List<Expense> items = p.expenses;
     final double total = p.totalSpent;
     final double myNet = p.myNetBalance;
     final int nPeople = p.participantCount;
@@ -217,26 +227,109 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(Icons.people, color: Colors.white, size: 12),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$nPeople人',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                  GestureDetector(
+                    onTap: () {
+                      if (p.currentLedger == null) {
+                        return;
+                      }
+                      final TextEditingController editMembersController =
+                          TextEditingController(
+                        text: p.currentMembers.join(', '),
+                      );
+                      showDialog<void>(
+                        context: context,
+                        builder: (BuildContext ctx) => AlertDialog(
+                          title: const Text(
+                            '编辑同行人',
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              TextField(
+                                controller: editMembersController,
+                                autofocus: true,
+                                decoration: InputDecoration(
+                                  hintText: '用逗号或空格隔开',
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '修改后将应用于后续新增的账单，不影响历史记录',
+                                style: TextStyle(fontSize: 10, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                          actions: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('取消'),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.indigo,
+                              ),
+                              onPressed: () {
+                                if (editMembersController.text.trim().isEmpty) {
+                                  return;
+                                }
+                                List<String> updatedMembers = editMembersController
+                                    .text
+                                    .split(RegExp(r'[,，\s]+'))
+                                    .map((String e) => e.trim())
+                                    .where((String e) => e.isNotEmpty)
+                                    .toList();
+
+                                if (!updatedMembers.contains('我')) {
+                                  updatedMembers.insert(0, '我');
+                                }
+                                updatedMembers = updatedMembers.toSet().toList();
+
+                                p.updateLedgerMembers(p.currentLedger!.id, updatedMembers);
+                                Navigator.pop(ctx);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('同行人已更新')),
+                                  );
+                                }
+                              },
+                              child: const Text(
+                                '保存',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Icon(Icons.people, color: Colors.white, size: 12),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$nPeople人',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -330,7 +423,62 @@ class _LedgerScreenState extends State<LedgerScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ...items.map(_buildExpenseTile),
+        ...items.map((Expense exp) {
+          return Dismissible(
+            key: ValueKey<String>(exp.id),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade400,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 24),
+              child: const Icon(Icons.delete_outline, color: Colors.white),
+            ),
+            confirmDismiss: (DismissDirection direction) async {
+              final bool? confirmed = await showDialog<bool>(
+                context: context,
+                builder: (BuildContext ctx) => AlertDialog(
+                  title: const Text(
+                    '删除账单',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  content: const Text('确定要删除这笔账单吗？'),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text(
+                        '删除',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+              return confirmed ?? false;
+            },
+            onDismissed: (_) {
+              p.deleteExpense(exp.id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已删除该笔账单')),
+              );
+            },
+            child: InkWell(
+              onTap: () => _showAddExpenseSheet(context, existingExpense: exp),
+              borderRadius: BorderRadius.circular(20),
+              child: _buildExpenseTile(exp),
+            ),
+          );
+        }),
       ],
     );
   }
@@ -449,10 +597,287 @@ class _LedgerScreenState extends State<LedgerScreen> {
     return '${d.month}月${d.day}日 $hm';
   }
 
-  void _showLedgerSelectorSheet(BuildContext context) {
-    final LedgerProvider provider = context.read<LedgerProvider>();
+  void _showAddExpenseSheet(BuildContext context, {Expense? existingExpense}) {
+    final LedgerProvider provider = Provider.of<LedgerProvider>(
+      context,
+      listen: false,
+    );
+    final TextEditingController amountController = TextEditingController(
+      text: existingExpense?.amount.toString() ?? '',
+    );
+    final TextEditingController titleController = TextEditingController(
+      text: existingExpense?.title ?? '',
+    );
+    String selectedPayer = existingExpense?.payer ?? '我';
+    List<String> selectedParticipants = existingExpense != null
+        ? List<String>.from(existingExpense.participants)
+        : List<String>.from(provider.currentMembers);
+
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      '记一笔',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          flex: 1,
+                          child: TextField(
+                            controller: amountController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              prefixText: '¥ ',
+                              hintText: '0.00',
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: titleController,
+                            decoration: InputDecoration(
+                              hintText: '名目 (如: 海鲜大排档)',
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '谁垫付的？',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: provider.currentMembers.map((String m) {
+                        return ChoiceChip(
+                          label: Text(m),
+                          selected: selectedPayer == m,
+                          onSelected: (bool _) =>
+                              setModalState(() => selectedPayer = m),
+                          selectedColor: Colors.orange.shade100,
+                          labelStyle: TextStyle(
+                            color: selectedPayer == m
+                                ? Colors.orange.shade800
+                                : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '谁参与平摊？',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: provider.currentMembers.map((String m) {
+                        return FilterChip(
+                          label: Text(m),
+                          selected: selectedParticipants.contains(m),
+                          onSelected: (bool val) {
+                            setModalState(() {
+                              if (val) {
+                                selectedParticipants.add(m);
+                              } else if (selectedParticipants.length > 1) {
+                                selectedParticipants.remove(m);
+                              }
+                            });
+                          },
+                          selectedColor: Colors.indigo.shade100,
+                          checkmarkColor: Colors.indigo.shade700,
+                          labelStyle: TextStyle(
+                            color: selectedParticipants.contains(m)
+                                ? Colors.indigo.shade700
+                                : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black87,
+                        minimumSize: const Size(double.infinity, 56),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () {
+                        if (amountController.text.isEmpty ||
+                            titleController.text.isEmpty) {
+                          return;
+                        }
+                        final double amount =
+                            double.tryParse(amountController.text) ?? 0;
+                        if (amount <= 0 || selectedParticipants.isEmpty) return;
+
+                        final Expense newExp = Expense(
+                          id: existingExpense?.id ??
+                              DateTime.now().millisecondsSinceEpoch.toString(),
+                          ledgerId: provider.currentLedger?.id ?? 'default_ledger',
+                          title: titleController.text,
+                          amount: amount,
+                          payer: selectedPayer,
+                          participants: selectedParticipants,
+                          date: existingExpense?.date ?? DateTime.now(),
+                        );
+
+                        if (existingExpense != null) {
+                          provider.updateExpense(newExp.id, newExp);
+                        } else {
+                          provider.addExpense(newExp);
+                        }
+                        Navigator.pop(context);
+                      },
+                      child: const Text(
+                        '确定',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildLedgerItem({
+    required String title,
+    required String amount,
+    required String dateLine,
+    required bool isActive,
+    required bool isSettled,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dateLine,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '总支出 ¥$amount',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.indigo.shade500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (isSettled)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '已结算',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              if (isActive)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Colors.indigo.shade400,
+                    size: 22,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLedgerSelectorSheet(BuildContext screenContext) {
+    final LedgerProvider provider = screenContext.read<LedgerProvider>();
+    showModalBottomSheet<void>(
+      context: screenContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext sheetContext) {
@@ -501,9 +926,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       itemCount: provider.ledgers.length,
                       separatorBuilder: (BuildContext context, int index) =>
                           const SizedBox(height: 8),
-                      itemBuilder: (BuildContext context, int i) {
+                      itemBuilder: (BuildContext _, int i) {
                         final LedgerBook b = provider.ledgers[i];
                         final bool isCurrent = provider.currentLedger?.id == b.id;
+                        final String dateLine =
+                            '${b.createdAt.year}-${b.createdAt.month.toString().padLeft(2, '0')}-${b.createdAt.day.toString().padLeft(2, '0')}'
+                            '${b.isSettled ? ' · 已归档' : ''}';
                         return Material(
                           color: isCurrent ? Colors.indigo.shade50 : Colors.grey.shade50,
                           borderRadius: BorderRadius.circular(16),
@@ -513,60 +941,183 @@ class _LedgerScreenState extends State<LedgerScreen> {
                               provider.switchLedger(b);
                               Navigator.pop(sheetContext);
                             },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                              child: Row(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Text(
-                                          b.title,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${b.createdAt.year}-${b.createdAt.month.toString().padLeft(2, '0')}-${b.createdAt.day.toString().padLeft(2, '0')}'
-                                          '${b.isSettled ? ' · 已归档' : ''}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                            onLongPress: () async {
+                              final bool? confirm = await showDialog<bool>(
+                                context: sheetContext,
+                                builder: (BuildContext ctx) => AlertDialog(
+                                  title: const Text(
+                                    '删除旅行账本',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
                                   ),
-                                  if (b.isSettled)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade200,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        '已结算',
+                                  content: Text(
+                                    '确定要永久删除《${b.title}》及其所有的流水记录吗？此操作无法恢复。',
+                                  ),
+                                  actions: <Widget>[
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, false),
+                                      child: const Text('取消'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text(
+                                        '彻底删除',
                                         style: TextStyle(
-                                          fontSize: 10,
+                                          color: Colors.red,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.grey.shade700,
                                         ),
                                       ),
                                     ),
-                                  if (isCurrent)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 8),
-                                      child: Icon(Icons.check_circle, color: Colors.indigo.shade400, size: 22),
-                                    ),
-                                ],
-                              ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirm == true) {
+                                provider.deleteLedger(b.id);
+                                if (screenContext.mounted) {
+                                  ScaffoldMessenger.of(screenContext).showSnackBar(
+                                    const SnackBar(content: Text('账本已删除')),
+                                  );
+                                }
+                              }
+                            },
+                            child: _buildLedgerItem(
+                              title: b.title,
+                              amount: provider.totalSpentByLedger(b.id).toStringAsFixed(2),
+                              dateLine: dateLine,
+                              isActive: isCurrent,
+                              isSettled: b.isSettled,
                             ),
                           ),
                         );
                       },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        final TextEditingController nameController =
+                            TextEditingController();
+                        final TextEditingController membersController =
+                            TextEditingController(text: '我, ');
+                        showDialog<void>(
+                          context: sheetContext,
+                          builder: (BuildContext ctx) => AlertDialog(
+                            title: const Text(
+                              '新建旅行账本',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                TextField(
+                                  controller: nameController,
+                                  autofocus: true,
+                                  decoration: InputDecoration(
+                                    hintText: '账本名称 (如：五一川西自驾)',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: membersController,
+                                  decoration: InputDecoration(
+                                    hintText: '出行人 (用逗号或空格隔开)',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  '提示：多个成员请用逗号或空格隔开，后续记账将自动分摊',
+                                  style: TextStyle(fontSize: 10, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                            actions: <Widget>[
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text(
+                                  '取消',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  final String title =
+                                      nameController.text.trim();
+                                  if (title.isNotEmpty &&
+                                      membersController.text.trim().isNotEmpty) {
+                                    List<String> parsedMembers = membersController
+                                        .text
+                                        .split(RegExp(r'[,，\s]+'))
+                                        .map((String e) => e.trim())
+                                        .where((String e) => e.isNotEmpty)
+                                        .toList();
+
+                                    if (!parsedMembers.contains('我')) {
+                                      parsedMembers.insert(0, '我');
+                                    }
+                                    parsedMembers = parsedMembers.toSet().toList();
+
+                                    provider.createNewLedger(
+                                      title,
+                                      parsedMembers,
+                                    );
+                                    Navigator.pop(ctx);
+                                    Navigator.pop(sheetContext);
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.indigo,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text(
+                                  '创建',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.add, color: Colors.white),
+                      label: const Text(
+                        '新建空白账本',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black87,
+                        minimumSize: const Size(double.infinity, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -692,7 +1243,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: <Widget>[
                                   Text(
-                                    '${action.from} → ${action.to}',
+                                    '${action.from} 需支付给 ${action.to}',
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.end,
@@ -714,9 +1265,9 @@ class _LedgerScreenState extends State<LedgerScreen> {
                     }),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.share, color: Colors.white, size: 18),
+                    icon: const Icon(Icons.check, color: Colors.white, size: 18),
                     label: const Text(
-                      '生成账单长图发微信',
+                      '确定',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -726,7 +1277,9 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
                   ),
                 ],
               ),

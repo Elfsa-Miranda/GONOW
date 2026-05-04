@@ -1,12 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:gonow/features/ledger/presentation/screens/ledger_screen.dart';
-import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:gonow/features/ootd/presentation/screens/ootd_screen.dart';
 import 'package:gonow/features/profile/presentation/widgets/footprint_map_widget.dart';
-import 'package:provider/provider.dart';
 
-/// 「我的」：黑金足迹矢量地图 + 手账 / 账本 / 衣橱三入口。
+/// 「我的」：黑金足迹矢量地图 + 账本 / 衣橱入口。
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onOpenOOTD});
 
@@ -150,17 +148,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           builder: (_) => const LedgerScreen(),
                         ),
                       );
-                    },
-                  ),
-                  _buildAssetCard(
-                    context,
-                    title: '旅行手账',
-                    subtitle: '零门槛自动生成',
-                    icon: Icons.menu_book_outlined,
-                    color: Colors.indigo,
-                    hasSparkle: true,
-                    onTap: () {
-                      context.read<MainNavProvider>().setTab(2);
                     },
                   ),
                   _buildAssetCard(
