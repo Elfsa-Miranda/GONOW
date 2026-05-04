@@ -1009,7 +1009,13 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
 
   void _showEditSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(_editSnackBar(message));
+    // addPostFrameCallback で次フレームに遅延させることで、
+    // setState によるツリー再構築と SnackBar の Overlay 追加が
+    // 同一フレームで衝突して GlobalKey 重複エラーになるのを防ぐ
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(_editSnackBar(message));
+    });
   }
 
   void _captureEditSnapshot() {
@@ -1046,14 +1052,18 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       if (single != null) picked = <XFile>[single];
     }
     if (picked.isEmpty) return;
-
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('正在上传新封面...'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+
+    // 用 addPostFrameCallback 显示"正在上传"提示，避免与后续 setState 同帧冲突
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('正在上传新封面...'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    });
 
     final DiaryProvider provider = context.read<DiaryProvider>();
     final String localPath = picked.first.path;
@@ -1139,8 +1149,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       await _persist(asDraft: _diary.isDraft);
       if (!mounted) return false;
 
-      _showEditSnackBar('✅ 改动已保存');
       Navigator.of(context).pop();
+      _showEditSnackBar('✅ 改动已保存');
       return true;
     } else {
       if (!mounted) return false;
@@ -1154,9 +1164,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       await _persist(asDraft: true);
       if (!mounted) return;
 
-      _showEditSnackBar('✅ 已安全保存至草稿箱');
-
       setState(() => _isEditing = false);
+      _showEditSnackBar('✅ 已安全保存至草稿箱');
       return;
     }
 
@@ -1418,17 +1427,18 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
         );
       },
     ).then((_) {
-      // BottomSheet が完全に閉じた後に SnackBar を表示
-      // この時点では BottomSheet の Overlay は確実に破棄済み
       final String? msg = _pendingMessage;
       if (msg != null && msg.isNotEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_pendingIsError ? msg : '✨ $msg'),
-            backgroundColor:
-                _pendingIsError ? Colors.red.shade400 : null,
-          ),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_pendingIsError ? msg : '✨ $msg'),
+              backgroundColor:
+                  _pendingIsError ? Colors.red.shade400 : null,
+            ),
+          );
+        });
       }
     });
   }
@@ -1966,8 +1976,8 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                     );
                                     if (confirm != true) return;
                                     if (!context.mounted) return;
-                                    final ScaffoldMessengerState messenger =
-                                        ScaffoldMessenger.of(context);
+                                    final NavigatorState deleteNav =
+                                        Navigator.of(context);
                                     final DiaryProvider provider =
                                         Provider.of<DiaryProvider>(
                                       context,
@@ -1977,16 +1987,27 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                                         await provider.deleteDiary(_diary.id);
                                     if (!context.mounted) return;
                                     if (success) {
-                                      Navigator.of(context).pop();
-                                      messenger.showSnackBar(
-                                        _editSnackBar('手账已彻底销毁'),
-                                      );
+                                      deleteNav.pop();
+                                      // pop 后用 addPostFrameCallback 显示 SnackBar，
+                                      // 避免 pop 的 Overlay 销毁与 SnackBar 挂载同帧冲突
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                        if (deleteNav.mounted) {
+                                          ScaffoldMessenger.maybeOf(
+                                            deleteNav.context,
+                                          )?.showSnackBar(
+                                            _editSnackBar('手账已彻底销毁'),
+                                          );
+                                        }
+                                      });
                                     } else {
-                                      messenger.showSnackBar(
-                                        _editSnackBar(
-                                          '销毁失败，请检查网络连接',
-                                        ),
-                                      );
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          _editSnackBar(
+                                            '销毁失败，请检查网络连接',
+                                          ),
+                                        );
+                                      }
                                     }
                                   },
                                   style: IconButton.styleFrom(

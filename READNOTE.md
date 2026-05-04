@@ -14,7 +14,7 @@
 | 后端 / 数据 | `supabase_flutter`（Auth、Postgres 表、Storage） |
 | AI | `http` 调用 **DeepSeek** `chat/completions`（`ai_custom_screen.dart`） |
 | 地图 | `amap_flutter_map` + `amap_flutter_base`、`google_maps_flutter`；`geolocator` 定位；`amap_config` 区分 **SDK Key** 与 **Web 服务 Key** |
-| 展示 | `flutter_markdown`、`cached_network_image`、`flutter_staggered_grid_view`、`image_picker`、`url_launcher` |
+| 展示 | `flutter_markdown`、`cached_network_image`、`flutter_staggered_grid_view`、`reorderable_grid_view`、`syncfusion_flutter_maps`、`image_picker`、`url_launcher` |
 
 **安全提示：** Supabase URL/anon key、高德 Key、DeepSeek API Key 等目前写在源码中，上线前应改为构建期环境变量或远端下发，并轮换已暴露的密钥。
 
@@ -29,45 +29,59 @@
 
 ```
 lib/
-├── main.dart                    # 入口：WidgetsFlutterBinding、Supabase.initialize、MultiProvider、AuthGate
+├── main.dart                    # 入口：Supabase.initialize、MultiProvider（含 Ledger/Diary 等）、AuthGate
 ├── core/
-│   ├── constants/               # amap_config（地图 Key）、app_colors
+│   ├── constants/               # amap_config、api_keys、ai_config（DeepSeek 等）、app_colors
 │   ├── data/
-│   │   └── mock_database.dart   # 盲盒城市等本地 mock 数据（网络/表不可用时兜底或开发用）
+│   │   └── mock_database.dart   # 盲盒城市等本地 mock（表不可用时兜底）
 │   ├── models/
 │   │   └── city_model.dart
 │   ├── providers/
-│   │   └── travel_provider.dart # 发现域：盲盒/免签/国际/文化习俗等状态与拉取
+│   │   └── travel_provider.dart # 发现域：盲盒/免签/国际/文化习俗等
 │   ├── services/
-│   │   └── travel_service.dart  # 访问 Supabase 表：blind_box_cities、visa_free_countries、international_countries
-│   └── theme/
-│       └── app_theme.dart      # 全局主题（AppColors、Material3）
+│   │   └── travel_service.dart  # Supabase：blind_box_cities、visa_free_countries、international_countries
+│   ├── theme/
+│   │   └── app_theme.dart       # 全局 Material3 主题
+│   └── utils/
+│       └── image_compress_util.dart
 └── features/
     ├── auth/
     │   ├── data/auth_provider.dart
     │   └── presentation/auth_screen.dart
     ├── main_nav/
-    │   ├── data/main_nav_provider.dart    # 底部 Tab 索引、打开 AI 底栏的 token、pending 提示词与自动发送
+    │   ├── data/main_nav_provider.dart    # Tab 索引、AI 底栏 token、pending 提示词
     │   ├── presentation/screens/main_screen.dart
-    │   └── presentation/widgets/         # custom_bottom_bar、custom_fab（中央 AI 按钮）
+    │   └── presentation/widgets/          # custom_bottom_bar、custom_fab
     ├── discover/
-    │   └── presentation/screens/         # discover_screen、blind_box_screen
+    │   └── presentation/screens/          # discover_screen、blind_box_screen
     ├── itinerary/
-    │   ├── data/itinerary_provider.dart   # 行程模型、双模式、本地+Supabase 持久化、照片与 activity 更新
-    │   └── presentation/screens/itinerary_screen.dart  # 大图：地图、时间轴、模式切换等
+    │   ├── data/itinerary_provider.dart
+    │   └── presentation/screens/itinerary_screen.dart
+    ├── diary/
+    │   ├── data/diary_provider.dart       # 手账列表/社区、Supabase 与本地逻辑
+    │   └── presentation/
+    │       ├── screens/diary_center_screen.dart、diary_detail_screen.dart
+    │       └── widgets/diary_config_sheet.dart
     ├── ai_custom/
-    │   └── presentation/screens/ai_custom_screen.dart  # AI 对话、解析 JSON 行程、导入并跳转行程 Tab
+    │   └── presentation/screens/ai_custom_screen.dart
+    ├── ledger/                          # 旅行账本（AA + 机酒票根 UI）
+    │   ├── domain/ledger_model.dart
+    │   ├── utils/expense_calculator.dart
+    │   ├── data/ledger_provider.dart
+    │   └── presentation/screens/ledger_screen.dart
+    ├── common/
+    │   └── presentation/widgets/full_screen_photo_gallery.dart
     ├── ootd/
-    │   └── presentation/screens/ootd_screen.dart
+    │   └── presentation/screens/ootd_screen.dart   # 从「我的」衣橱入口 push，非底栏 Tab
     └── profile/
-        └── presentation/screens/profile_screen.dart
+        └── presentation/screens/profile_screen.dart  # 足迹卡、资产入口（手账 Tab / 账本 / 衣橱）
 ```
 
-**规模提示：** `itinerary_screen.dart`、`discover_screen.dart` 为超大单文件，改功能时建议先搜索关键词（如 `TripMode`、`_MapSource`）再动刀。
+**规模提示：** `itinerary_screen.dart`、`discover_screen.dart`、`diary_detail_screen.dart` 为超大单文件，改功能时建议先搜索关键词（如 `TripMode`、`_MapSource`、`isLazyPool`）再动刀。
 
 ## 5. 应用启动与认证
 
-1. `main.dart` 注册 `MainNavProvider`、`TravelProvider`（启动时 `fetchCulturalCustoms()`）、`ItineraryProvider`（`fetchActiveItinerary()`）、`AuthProvider`。
+1. `main.dart` 注册 `MainNavProvider`、`TravelProvider`（`fetchCulturalCustoms()`）、`ItineraryProvider`（`fetchActiveItinerary()`）、`AuthProvider`、`DiaryProvider`、`LedgerProvider`。
 2. `AuthGate` 监听 `Supabase.instance.client.auth.onAuthStateChange`：有 `session` → `MainScreen()`，否则 → `AuthScreen()`。
 3. `AuthProvider`：`signUp` / `signIn` / 登出等，成功时维护 `profiles` 表昵称等。
 
@@ -76,8 +90,9 @@ lib/
 - **`MainScreen`** 使用 `IndexedStack` 固定四个子页（顺序与底栏一致）：
   1. `DiscoverScreen`（发现）
   2. `ItineraryScreen`（行程）
-  3. `OotdScreen`（穿搭展示）
-  4. `ProfileScreen`（我的，多为静态入口卡片）
+  3. `DiaryCenterScreen`（手账中心）
+  4. `ProfileScreen`（我的：足迹、旅行账本、手账 Tab 切换、衣橱等）
+- **`OotdScreen`**：不在底栏；由 `ProfileScreen`（衣橱）`Navigator.push` 打开。
 - **中央 FAB** `CustomFab`：通过 `MainNavProvider.requestOpenAiSheet()` 提升 `openAiRequestToken`，`MainScreen` 在 `addPostFrameCallback` 里 `showModalBottomSheet` 弹出 **`AiCustomScreen`**。
 - **默认 FAB 行为**：若无 `pendingAiPrompt`，会写入示例文案并 `shouldAutoSendAi = true`，打开 AI 后自动带入发送逻辑（与 `MainNavProvider` 配合）。
 
@@ -114,12 +129,13 @@ lib/
 | `ai_chat_messages` | AI 对话与可选行程 JSON |
 | `blind_box_cities` / `visa_free_countries` / `international_countries` | 发现页数据 |
 | `cultural_customs` | 文化习俗 |
+| `public_diaries` | 手账主数据（`DiaryProvider`） |
 | `itinerary_photos` | Storage 桶名（行程图片路径） |
 | `activity_photos` | 活动级照片元数据 |
 
 ## 11. 与 `pubspec.yaml` 的对应关系
 
-主要依赖见 `pubspec.yaml` 的 `dependencies`：`provider`、`supabase_flutter`、`http`、`flutter_markdown`、双地图 SDK、`geolocator`、`shared_preferences`、`image_picker` 等。新增能力时优先查是否已有 `core/services` 或 feature 内封装，避免重复造轮子。
+主要依赖见 `pubspec.yaml`：`provider`、`supabase_flutter`、`http`、`flutter_markdown`、双地图 SDK、`geolocator`、`shared_preferences`、`image_picker`、`flutter_staggered_grid_view`、`reorderable_grid_view`、`syncfusion_flutter_maps` 等。新增能力时优先查 `core/services` 与各 feature 内封装，避免重复造轮子。
 
 ## 12. 维护本 READNOTE 的建议
 

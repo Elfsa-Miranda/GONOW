@@ -49,6 +49,13 @@ void _injectLazyPoolPhotosIntoLazyNode(
 }
 
 Future<void> showDiaryConfigSheet(BuildContext context) async {
+  // 在进入 showModalBottomSheet 之前保存外层 context 的导航器与 ScaffoldMessenger。
+  // builder 内部的 (BuildContext context) 会把外层 context 遮蔽（shadow），
+  // 如果在 builder 内用被遮蔽的 context 调用 maybePop / push，
+  // 拿到的是 BottomSheet 子路由的 Navigator，而非真正的根 Navigator，
+  // 导致 pop+push 在同一帧操作两个 Overlay，触发 GlobalKey 重复崩溃。
+  final NavigatorState outerNav = Navigator.of(context);
+  final ScaffoldMessengerState outerMessenger = ScaffoldMessenger.of(context);
   final List<Map<String, String>> diaryStyles = <Map<String, String>>[
     <String, String>{'icon': '🍃', 'name': '文艺清新'},
     <String, String>{'icon': '🎬', 'name': '电影质感'},
@@ -1031,29 +1038,33 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                               );
 
                               if (!context.mounted) return;
-                              ScaffoldMessenger.maybeOf(context)
-                                  ?.hideCurrentSnackBar();
-                              FocusManager.instance.primaryFocus?.unfocus();
-                              FocusScope.of(context).unfocus();
 
-                              final NavigatorState nav =
-                                  Navigator.of(context);
-                              if (context.mounted) {
-                                await nav.maybePop();
+                              // ── 修复：用外层 Navigator/ScaffoldMessenger 操作 ──
+                              // 1. 先隐藏任何正在显示的 SnackBar（用外层 messenger，
+                              //    避免在 builder context 的 Overlay 里操作）
+                              outerMessenger.hideCurrentSnackBar();
+
+                              // 2. 关闭 BottomSheet（用外层 nav 的 maybePop）
+                              //    maybePop 是异步的，确保 BottomSheet Overlay 完全移除
+                              if (outerNav.canPop()) {
+                                await outerNav.maybePop();
                               }
-                              await Future<void>.delayed(
-                                const Duration(milliseconds: 400),
-                              );
-                              if (nav.mounted) {
-                                nav.push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => DiaryDetailScreen(
-                                      initialDiary: generatedDiary,
-                                      startEditing: true,
+
+                              // 3. 用 addPostFrameCallback 把 push 延迟到下一帧，
+                              //    确保当前帧的 Overlay 销毁流程（_Theater finalizeTree）
+                              //    完全结束后再挂载新路由，彻底消除 GlobalKey 重复。
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (outerNav.mounted) {
+                                  outerNav.push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => DiaryDetailScreen(
+                                        initialDiary: generatedDiary,
+                                        startEditing: true,
+                                      ),
                                     ),
-                                  ),
-                                );
-                              }
+                                  );
+                                }
+                              });
                             },
                             child: Ink(
                               decoration: BoxDecoration(

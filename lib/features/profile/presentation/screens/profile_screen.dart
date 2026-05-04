@@ -1,378 +1,284 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:gonow/features/ledger/presentation/screens/ledger_screen.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:gonow/features/ootd/presentation/screens/ootd_screen.dart';
+import 'package:gonow/features/profile/presentation/widgets/footprint_map_widget.dart';
 import 'package:provider/provider.dart';
 
-class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+/// 「我的」：黑金足迹矢量地图 + 手账 / 账本 / 衣橱三入口。
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key, this.onOpenOOTD});
 
-  static const List<_AssetItem> _assets = <_AssetItem>[
-    _AssetItem(
-      title: 'AA 账单中心',
-      subtitle: '一键清算结伴花销',
-      icon: Icons.receipt_long_outlined,
-      iconColor: Colors.orange,
-      iconBackground: Color(0xFFFFF3E0),
-      showAiTag: false,
-    ),
-    _AssetItem(
-      title: '旅行手账',
-      subtitle: '零门槛自动生成',
-      icon: Icons.menu_book_outlined,
-      iconColor: Colors.blue,
-      iconBackground: Color(0xFFEAF2FF),
-      showAiTag: true,
-    ),
-    _AssetItem(
-      title: '我的衣橱',
-      subtitle: 'OOTD试穿收藏',
-      icon: Icons.shopping_bag_outlined,
-      iconColor: Colors.pink,
-      iconBackground: Color(0xFFFFEEF5),
-      showAiTag: false,
-    ),
-    _AssetItem(
-      title: '订单中心',
-      subtitle: '机酒门票记录',
-      icon: Icons.article_outlined,
-      iconColor: Colors.indigo,
-      iconBackground: Color(0xFFEFF1FF),
-      showAiTag: false,
-    ),
+  /// 可选：外部自定义打开衣橱；为 null 时默认 push [OotdScreen]。
+  final VoidCallback? onOpenOOTD;
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  List<String> _visitedChina = <String>[
+    '北京市',
+    '上海市',
+    '广东省',
+    '四川省',
+    '浙江省',
+    '新疆维吾尔自治区',
+  ];
+  List<String> _visitedWorld = <String>[
+    '中国',
+    '日本',
+    '泰国',
+    '法国',
+    '美国',
+    '英国',
   ];
 
   @override
   Widget build(BuildContext context) {
+    final double topPad = MediaQuery.paddingOf(context).top;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
         slivers: <Widget>[
-          _buildProfileHeader(),
-          _buildFootprintCard(),
-          _buildAssetsHeader(),
-          _buildAssetsGrid(),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 36)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: topPad + 24,
+                left: 20,
+                right: 20,
+                bottom: 24,
+              ),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 64,
+                    height: 64,
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.indigo.shade100, width: 2),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: CachedNetworkImage(
+                        imageUrl:
+                            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&q=80',
+                        fit: BoxFit.cover,
+                        errorWidget: (_, _, _) => Container(color: Colors.grey.shade200),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const <Widget>[
+                        Text(
+                          '旅行者_Leo',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        _LevelBadge(),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: Colors.black45),
+                    onPressed: () {},
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: FootprintMapWidget(
+                visitedChina: _visitedChina,
+                visitedWorld: _visitedWorld,
+                onDataChanged: (List<String> newChina, List<String> newWorld) {
+                  setState(() {
+                    _visitedChina = newChina;
+                    _visitedWorld = newWorld;
+                  });
+                },
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(20, 32, 20, 16),
+              child: Text(
+                '旅行资产',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                // 真机系统字号放大时略增大单元格高度，避免宫格底部溢出。
+                childAspectRatio: 1.1,
+              ),
+              delegate: SliverChildListDelegate(
+                <Widget>[
+                  _buildAssetCard(
+                    context,
+                    title: '旅行账本',
+                    subtitle: 'AA清算与票务',
+                    icon: Icons.account_balance_wallet_outlined,
+                    color: Colors.orange,
+                    onTap: () {
+                      Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const LedgerScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildAssetCard(
+                    context,
+                    title: '旅行手账',
+                    subtitle: '零门槛自动生成',
+                    icon: Icons.menu_book_outlined,
+                    color: Colors.indigo,
+                    hasSparkle: true,
+                    onTap: () {
+                      context.read<MainNavProvider>().setTab(2);
+                    },
+                  ),
+                  _buildAssetCard(
+                    context,
+                    title: '我的衣橱',
+                    subtitle: 'OOTD实景试穿',
+                    icon: Icons.shopping_bag_outlined,
+                    color: Colors.pink,
+                    onTap: () {
+                      if (widget.onOpenOOTD != null) {
+                        widget.onOpenOOTD!();
+                      } else {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const OotdScreen(),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
         ],
       ),
     );
   }
 
-  Widget _buildProfileHeader() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 48, 20, 24),
-        child: Row(
-          children: <Widget>[
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.blue.shade50, width: 2),
-              ),
-              child: ClipOval(
-                child: CachedNetworkImage(
-                  imageUrl:
-                      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
-                  fit: BoxFit.cover,
-                  placeholder: (BuildContext context, String url) {
-                    return Container(color: Colors.grey.shade200);
-                  },
-                  errorWidget: (BuildContext context, String url, Object error) {
-                    return Container(
-                      color: Colors.grey.shade200,
-                      alignment: Alignment.center,
-                      child: Icon(
-                        Icons.person_outline_rounded,
-                        color: Colors.grey.shade500,
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    '旅行者_Leo',
-                    style: TextStyle(
-                      color: Colors.grey.shade800,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade800,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'Lv.3 探索家',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.settings_outlined,
-              color: Colors.grey.shade400,
-              size: 24,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFootprintCard() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Container(
-          height: 120,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: <Color>[
-                Colors.grey.shade900,
-                Colors.grey.shade800,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 15,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: <Widget>[
-              Positioned(
-                right: -12,
-                top: -26,
-                child: Transform.rotate(
-                  angle: -0.3,
-                  child: Icon(
-                    Icons.public,
-                    size: 140,
-                    color: Colors.white.withOpacity(0.05),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(
-                          Icons.explore_outlined,
-                          size: 18,
-                          color: Colors.lightBlueAccent,
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          '世界足迹地图',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    RichText(
-                      text: TextSpan(
-                        style: TextStyle(
-                          color: Colors.grey.shade300,
-                          fontSize: 12,
-                        ),
-                        children: const <InlineSpan>[
-                          TextSpan(text: '你已点亮地球上的 '),
-                          TextSpan(
-                            text: '12',
-                            style: TextStyle(
-                              color: Colors.lightBlueAccent,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              height: 1.0,
-                            ),
-                          ),
-                          TextSpan(text: ' 个城市'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAssetsHeader() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-        child: Text(
-          '旅行资产',
-          style: TextStyle(
-            color: Colors.grey.shade800,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAssetsGrid() {
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.4,
-        ),
-        delegate: SliverChildBuilderDelegate(
-          (BuildContext context, int index) {
-            final _AssetItem item = _assets[index];
-            return _AssetCard(
-              item: item,
-              onTap: () {
-                if (item.title == '我的衣橱') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => const OotdScreen(),
-                    ),
-                  );
-                  return;
-                }
-                if (item.title == '旅行手账') {
-                  context.read<MainNavProvider>().setTab(2);
-                }
-              },
-            );
-          },
-          childCount: _assets.length,
-        ),
-      ),
-    );
-  }
-}
-
-class _AssetCard extends StatelessWidget {
-  const _AssetCard({required this.item, required this.onTap});
-
-  final _AssetItem item;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildAssetCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required MaterialColor color,
+    bool hasSparkle = false,
+    VoidCallback? onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.grey.shade100),
           boxShadow: <BoxShadow>[
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Stack(
+          clipBehavior: Clip.none,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: item.iconBackground,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      item.icon,
-                      size: 20,
-                      color: item.iconColor,
-                    ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: color.shade50,
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Icon(icon, color: color.shade500, size: 20),
+                ),
+                const Spacer(),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF2E2E2E),
+                      color: Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            if (item.showAiTag)
+            if (hasSparkle)
               Positioned(
-                top: 8,
-                right: 8,
+                top: -4,
+                right: -4,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.circular(999),
+                    color: Colors.indigo.shade500,
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Text(
-                    '✨ AI生成',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.auto_awesome, color: Colors.white, size: 8),
+                      SizedBox(width: 2),
+                      Text(
+                        'AI',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -383,20 +289,28 @@ class _AssetCard extends StatelessWidget {
   }
 }
 
-class _AssetItem {
-  const _AssetItem({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.iconColor,
-    required this.iconBackground,
-    required this.showAiTag,
-  });
+class _LevelBadge extends StatelessWidget {
+  const _LevelBadge();
 
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBackground;
-  final bool showAiTag;
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade800,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text(
+          'Lv.3 探索家',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
 }

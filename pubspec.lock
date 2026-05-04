@@ -1106,6 +1106,22 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.12.4"
+  syncfusion_flutter_core:
+    dependency: transitive
+    description:
+      name: syncfusion_flutter_core
+      sha256: b377be3df580e9fdc4e5cc5e47fc09a513c8b08dc4ed05eb45c43f5fd34add2d
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "33.2.4"
+  syncfusion_flutter_maps:
+    dependency: "direct main"
+    description:
+      name: syncfusion_flutter_maps
+      sha256: dbc0c0779c89d3815b5e2e4d9651b5894939e5f0f7d62bc10ef331fae70eb764
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "33.2.4"
   synchronized:
     dependency: transitive
     description:
