@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:gonow/features/ledger/data/ledger_provider.dart';
 import 'package:gonow/features/ledger/domain/expense_model.dart';
 import 'package:gonow/features/ledger/domain/ledger_model.dart' show LedgerBook, OrderTicket;
@@ -657,15 +658,11 @@ class _LedgerScreenState extends State<LedgerScreen> {
                     Row(
                       children: <Widget>[
                         Expanded(
-                          flex: 1,
+                          flex: 2,
                           child: TextField(
-                            controller: amountController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
+                            controller: titleController,
                             decoration: InputDecoration(
-                              prefixText: '¥ ',
-                              hintText: '0.00',
+                              hintText: '名目 (如: 海鲜大排档)',
                               filled: true,
                               fillColor: Colors.grey.shade50,
                               border: OutlineInputBorder(
@@ -677,11 +674,34 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          flex: 2,
+                          flex: 1,
                           child: TextField(
-                            controller: titleController,
+                            controller: amountController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            inputFormatters: <TextInputFormatter>[
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.]'),
+                              ),
+                              TextInputFormatter.withFunction(
+                                (TextEditingValue oldValue,
+                                    TextEditingValue newValue) {
+                                  final String t = newValue.text;
+                                  if (t.isEmpty) return newValue;
+                                  if (!RegExp(r'^\d*\.?\d*$').hasMatch(t)) {
+                                    return oldValue;
+                                  }
+                                  if (t.indexOf('.') != t.lastIndexOf('.')) {
+                                    return oldValue;
+                                  }
+                                  return newValue;
+                                },
+                              ),
+                            ],
                             decoration: InputDecoration(
-                              hintText: '名目 (如: 海鲜大排档)',
+                              prefixText: '¥ ',
+                              hintText: '0.00',
                               filled: true,
                               fillColor: Colors.grey.shade50,
                               border: OutlineInputBorder(

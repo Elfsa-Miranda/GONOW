@@ -168,6 +168,15 @@ class ItineraryModel {
   final String? remoteId;
   final DateTime? createdAt;
 
+  /// 列表筛选与删除：优先云端行 id；否则本地占位（云端 delete 仅对 UUID 生效）。
+  String get id {
+    final String? r = remoteId?.trim();
+    if (r != null && r.isNotEmpty) {
+      return r;
+    }
+    return 'local_${startDate.millisecondsSinceEpoch}_${title.hashCode.abs()}';
+  }
+
   ItineraryModel copyWith({
     String? title,
     DateTime? startDate,
@@ -273,12 +282,15 @@ class ItineraryProvider extends ChangeNotifier {
 
   ItineraryModel? _currentItinerary;
   ItineraryModel? _activeItinerary;
+  final List<ItineraryModel> _myItineraries = <ItineraryModel>[];
 
   bool _isBusy = false;
   bool get isBusy => _isBusy;
 
   ItineraryModel? get currentItinerary => _currentItinerary;
   ItineraryModel? get activeItinerary => _activeItinerary;
+  List<ItineraryModel> get myItineraries =>
+      List<ItineraryModel>.unmodifiable(_myItineraries);
 
   // 双模式状态管理
   TripMode _currentMode = TripMode.planning;
@@ -298,6 +310,111 @@ class ItineraryProvider extends ChangeNotifier {
       caseSensitive: false,
     );
     return uuidRegex.hasMatch(id);
+  }
+
+  Future<void> _persistMyItinerariesList() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String fallbackUserId =
+          Supabase.instance.client.auth.currentUser?.id ?? 'guest';
+      final String freshJsonStr = jsonEncode(
+        _myItineraries.map((ItineraryModel e) => e.toJson()).toList(),
+      );
+      await prefs.setString('my_itineraries_cache_$fallbackUserId', freshJsonStr);
+    } catch (e) {
+      debugPrint('本地缓存更新失败(my_itineraries): $e');
+    }
+  }
+
+  Future<void> _syncMyItinerariesFromStorage() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String fallbackUserId =
+          Supabase.instance.client.auth.currentUser?.id ?? 'guest';
+      final String? raw = prefs.getString('my_itineraries_cache_$fallbackUserId');
+      if (raw != null && raw.trim().isNotEmpty) {
+        final Object? decoded = jsonDecode(raw);
+        if (decoded is List<dynamic>) {
+          _myItineraries
+            ..clear()
+            ..addAll(
+              decoded
+                  .whereType<Map<String, dynamic>>()
+                  .map(
+                    (Map<String, dynamic> e) =>
+                        sanitizeItineraryImages(ItineraryModel.fromJson(e)),
+                  ),
+            );
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('my_itineraries 读取失败: $e');
+    }
+    _myItineraries
+      ..clear()
+      ..addAll(
+        _currentItinerary == null
+            ? <ItineraryModel>[]
+            : <ItineraryModel>[
+                sanitizeItineraryImages(_currentItinerary!),
+              ],
+      );
+  }
+
+  void _upsertMyItinerary(ItineraryModel model) {
+    final String mid = model.id;
+    final int idx = _myItineraries.indexWhere((ItineraryModel e) => e.id == mid);
+    if (idx >= 0) {
+      _myItineraries[idx] = model;
+    } else {
+      _myItineraries.add(model);
+    }
+  }
+
+  /// 多行程列表中切换当前「激活」行程（行程 Tab 优先展示）。
+  void setActiveItinerary(ItineraryModel itinerary) {
+    _activeItinerary = itinerary;
+    notifyListeners();
+  }
+
+  /// 删除行程：本地列表 + 缓存；已登录且 id 为 UUID 时同步删除云端 [_tableName] 行。
+  Future<void> deleteItinerary(String id) async {
+    _myItineraries.removeWhere((ItineraryModel e) => e.id == id);
+    if (_activeItinerary?.id == id) {
+      _activeItinerary =
+          _myItineraries.isNotEmpty ? _myItineraries.first : null;
+    }
+    if (_currentItinerary?.id == id) {
+      _currentItinerary =
+          _myItineraries.isNotEmpty ? _myItineraries.first : null;
+      try {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        if (_currentItinerary != null) {
+          await prefs.setString(
+            _prefsKey,
+            jsonEncode(_currentItinerary!.toJson()),
+          );
+        } else {
+          await prefs.remove(_prefsKey);
+        }
+      } catch (e) {
+        debugPrint('current_itinerary 本地更新失败: $e');
+      }
+    }
+    notifyListeners();
+
+    await _persistMyItinerariesList();
+
+    final String? userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null && _isValidUuid(id)) {
+      try {
+        await Supabase.instance.client.from(_tableName).delete().eq('id', id);
+        debugPrint('✅ 行程已从云端彻底删除');
+      } catch (e) {
+        debugPrint('⚠️ 云端删除失败: $e');
+      }
+    }
   }
 
   TripState getTripState([DateTime? now]) {
@@ -335,6 +452,7 @@ class ItineraryProvider extends ChangeNotifier {
       _currentItinerary = null;
       _activeItinerary = null;
     }
+    await _syncMyItinerariesFromStorage();
     notifyListeners();
   }
 
@@ -362,7 +480,9 @@ class ItineraryProvider extends ChangeNotifier {
         );
         _currentItinerary = model;
         _activeItinerary = model;
+        _upsertMyItinerary(model);
         await _saveToLocal(model);
+        await _persistMyItinerariesList();
       } else {
         await loadFromPrefs();
       }
@@ -393,17 +513,33 @@ class ItineraryProvider extends ChangeNotifier {
   Future<void> saveItinerary(ItineraryModel model) async {
     _currentItinerary = model;
     _activeItinerary = model;
+    _upsertMyItinerary(model);
     notifyListeners();
     try {
       await saveToSupabase(model);
       await _saveToLocal(model);
+      await _persistMyItinerariesList();
     } catch (_) {
       try {
         await _saveToLocal(model);
+        await _persistMyItinerariesList();
       } catch (_) {
         // keep memory state even when persistence fails
       }
     }
+  }
+
+  /// 将编辑中的 [planData] 写回当前行程并持久化（内存 / 本地 / 多行程缓存 / 云端）。
+  Future<void> updateItineraryData(Map<String, dynamic> newPlanData) async {
+    final ItineraryModel? base = _activeItinerary ?? _currentItinerary;
+    if (base == null) {
+      return;
+    }
+    final Map<String, dynamic> json = base.toJson();
+    json['planData'] = newPlanData;
+    final ItineraryModel updated =
+        sanitizeItineraryImages(ItineraryModel.fromJson(json));
+    await saveItinerary(updated);
   }
 
   ItineraryModel sanitizeItineraryImages(ItineraryModel model) {

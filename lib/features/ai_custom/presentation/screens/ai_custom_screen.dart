@@ -40,6 +40,8 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   final FocusNode _inputFocusNode = FocusNode();
   String? _hintPrompt;
   bool _showAllHistory = false;
+  /// 防止同一帧内多次 register PostFrameCallback 导致重复发送。
+  bool _autoSendPostFrameScheduled = false;
   http.Client? _activeClient;
   int _requestSeq = 0;
   int? _activeRequestId;
@@ -190,18 +192,6 @@ $currentPlanJson
     setState(() {
       _hintPrompt = hintPrompt;
     });
-
-    if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
-      if (navProvider.shouldAutoSendAi) {
-        navProvider.shouldAutoSendAi = false;
-
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !context.read<MainNavProvider>().isAiPlanning) {
-            _sendMessage();
-          }
-        });
-      }
-    }
   }
 
   Future<void> loadChatHistory() async {
@@ -751,8 +741,30 @@ $currentPlanJson
 
   @override
   Widget build(BuildContext context) {
+    final MainNavProvider navProvider = context.watch<MainNavProvider>();
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final bool isGlobalLoading = context.watch<MainNavProvider>().isAiPlanning;
+    final bool isGlobalLoading = navProvider.isAiPlanning;
+    final String? pendingTrim = navProvider.pendingAiPrompt?.trim();
+
+    if (navProvider.shouldAutoSendAi &&
+        !isGlobalLoading &&
+        pendingTrim != null &&
+        pendingTrim.isNotEmpty &&
+        !_autoSendPostFrameScheduled) {
+      _autoSendPostFrameScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _autoSendPostFrameScheduled = false;
+        if (!mounted) return;
+        final MainNavProvider nav = context.read<MainNavProvider>();
+        if (!nav.shouldAutoSendAi || nav.isAiPlanning) return;
+        final String text = nav.pendingAiPrompt?.trim() ?? '';
+        if (text.isEmpty) return;
+        nav.clearAiPendingState();
+        _textController.text = text;
+        _sendMessage();
+      });
+    }
+
     const int displayThreshold = 5;
     final bool hasHiddenHistory =
         _messages.length > displayThreshold && !_showAllHistory;

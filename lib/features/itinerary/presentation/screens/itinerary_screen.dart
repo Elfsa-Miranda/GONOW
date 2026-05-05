@@ -76,6 +76,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   int? _uploadingActIdx;
   final ImagePicker _imagePicker = ImagePicker();
 
+  // --- 沉浸式编辑态 ---
+  bool _isEditing = false;
+  Map<String, dynamic>? _editablePlanData;
+
   @override
   void initState() {
     super.initState();
@@ -316,7 +320,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             ? TripState.preparing 
             : TripState.traveling;
         
-        final List<_DayRoute> dayRoutes = _buildDayRoutes(model);
+        final ItineraryModel routeModel =
+            (_isEditing && _editablePlanData != null)
+                ? ItineraryModel.fromJson(<String, dynamic>{
+                    ...model.toJson(),
+                    'planData': _editablePlanData,
+                  })
+                : model;
+        final List<_DayRoute> dayRoutes = _buildDayRoutes(routeModel);
         if (_selectedDayIndex > dayRoutes.length) {
           _selectedDayIndex = 0;
         }
@@ -327,110 +338,133 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           // 分屏结构：地图固定可见，列表独立滚动，避免跳转时地图被顶出视野。
           body: Column(
             children: <Widget>[
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  MediaQuery.of(context).padding.top + 10,
-                  16,
-                  10,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    // 第一行：让标题独占一行，自由换行，彻底展示完整！
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            model.title,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              height: 1.3,
+              if (_isEditing)
+                _buildImmersiveEditAppBar(provider, model)
+              else
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    MediaQuery.of(context).padding.top + 10,
+                    16,
+                    10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              model.title,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                height: 1.3,
+                              ),
+                              softWrap: true,
                             ),
-                            softWrap: true,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // 第二行：放置恢复了样式的切换胶囊 和 收起地图按钮
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        _buildMiniModeToggle(context),
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              _isMapCollapsed = !_isMapCollapsed;
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.indigo.shade50,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.indigo.shade100),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                Icon(
-                                  _isMapCollapsed
-                                      ? Icons.map_outlined
-                                      : Icons.unfold_less_rounded,
-                                  size: 16,
-                                  color: Colors.indigo.shade600,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _isMapCollapsed ? '展开地图' : '收起地图',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.indigo.shade700,
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          _buildMiniModeToggle(context),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              TextButton(
+                                onPressed: () => _startEditMode(model),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.indigo.shade700,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
                                   ),
                                 ),
-                              ],
-                            ),
+                                child: const Text(
+                                  '编辑行程',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _isMapCollapsed = !_isMapCollapsed;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.indigo.shade50,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.indigo.shade100,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Icon(
+                                        _isMapCollapsed
+                                            ? Icons.map_outlined
+                                            : Icons.unfold_less_rounded,
+                                        size: 16,
+                                        color: Colors.indigo.shade600,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _isMapCollapsed ? '展开地图' : '收起地图',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.indigo.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                height: _isMapCollapsed
-                    ? 0.0
-                    : MediaQuery.of(context).size.height * 0.3,
-                margin: EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: _isMapCollapsed ? 0 : 12,
-                ),
-                clipBehavior: Clip.hardEdge,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.3,
-                    child: _buildMapOnlyWidget(
-                      model: model,
-                      state: effectiveState,
-                      dayRoutes: dayRoutes,
+              if (!_isEditing)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  height: _isMapCollapsed
+                      ? 0.0
+                      : MediaQuery.of(context).size.height * 0.3,
+                  margin: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: _isMapCollapsed ? 0 : 12,
+                  ),
+                  clipBehavior: Clip.hardEdge,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.3,
+                      child: _buildMapOnlyWidget(
+                        model: model,
+                        state: effectiveState,
+                        dayRoutes: dayRoutes,
+                      ),
                     ),
                   ),
                 ),
-              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: _buildDayTabBar(
@@ -461,6 +495,885 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           ),
         );
       },
+    );
+  }
+
+  Map<String, dynamic> _clonePlanData(Map<String, dynamic> source) {
+    return Map<String, dynamic>.from(
+      jsonDecode(jsonEncode(source)) as Map<dynamic, dynamic>,
+    );
+  }
+
+  String _planDaysStorageKey(Map<String, dynamic> plan) {
+    final List? ds = plan['daily_schedules'] as List?;
+    final List? d = plan['days'] as List?;
+    if (ds != null && ds.isNotEmpty) {
+      return 'daily_schedules';
+    }
+    if (d != null && d.isNotEmpty) {
+      return 'days';
+    }
+    return ds != null ? 'daily_schedules' : 'days';
+  }
+
+  void _startEditMode(ItineraryModel model) {
+    setState(() {
+      _isEditing = true;
+      _editablePlanData = _clonePlanData(model.planData);
+    });
+  }
+
+  bool _hasShellNodes() {
+    if (_editablePlanData == null) {
+      return false;
+    }
+    final String storageKey = _planDaysStorageKey(_editablePlanData!);
+    final List<dynamic>? days =
+        _editablePlanData![storageKey] as List<dynamic>?;
+    if (days == null) {
+      return false;
+    }
+    for (final dynamic day in days) {
+      if (day is! Map) {
+        continue;
+      }
+      final Map<String, dynamic> dayMap =
+          Map<String, dynamic>.from(day);
+      final List<dynamic>? acts = dayMap['activities'] as List<dynamic>?;
+      if (acts == null) {
+        continue;
+      }
+      for (final dynamic act in acts) {
+        if (act is! Map) {
+          continue;
+        }
+        final Map<String, dynamic> m = Map<String, dynamic>.from(act);
+        final String desc = (m['description'] ?? '').toString();
+        final String title = (m['title'] ?? '').toString();
+        if (desc.trim().isEmpty || title.contains('新增景点')) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Future<void> _commitEditMode(
+    ItineraryProvider provider,
+    ItineraryModel model,
+  ) async {
+    if (_editablePlanData == null) {
+      setState(() {
+        _isEditing = false;
+      });
+      return;
+    }
+
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    if (_hasShellNodes()) {
+      final bool? useAi = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: const Text(
+            '✨ AI 智能补全',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            '检测到您添加了新的行程点。是否需要让 AI 管家为您自动顺延时间、并补全景点的玩法描述？',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text(
+                '直接保存',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                '让 AI 补全',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      if (useAi == null) {
+        return;
+      }
+      if (useAi) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('正在呼叫 AI 管家... (数据将随后保存)'),
+          ),
+        );
+      }
+    }
+
+    await provider.updateItineraryData(
+      Map<String, dynamic>.from(_editablePlanData!),
+    );
+    if (!mounted) {
+      return;
+    }
+    _triggerRouteSyncFromProvider();
+    setState(() {
+      _isEditing = false;
+      _editablePlanData = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ 行程修改已保存'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _finishEditMode(
+    bool save,
+    ItineraryProvider provider,
+    ItineraryModel model,
+  ) async {
+    if (!save) {
+      setState(() {
+        _isEditing = false;
+        _editablePlanData = null;
+      });
+      return;
+    }
+    await _commitEditMode(provider, model);
+  }
+
+  Widget _buildImmersiveEditAppBar(
+    ItineraryProvider provider,
+    ItineraryModel model,
+  ) {
+    final double top = MediaQuery.of(context).padding.top;
+    return Material(
+      color: Colors.white.withValues(alpha: 0.95),
+      elevation: 0,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(4, top + 6, 4, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            SizedBox(
+              width: 80,
+              child: TextButton(
+                onPressed: () {
+                  // ignore: discarded_futures
+                  _finishEditMode(false, provider, model);
+                },
+                child: Text(
+                  '取消',
+                  style: TextStyle(
+                    color: Colors.grey.shade400,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Text(
+                    '编辑行程',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  Text(
+                    '拖拽可排序',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.indigo.shade600,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ElevatedButton(
+                onPressed: () async {
+                  await _finishEditMode(true, provider, model);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
+                ),
+                child: const Text(
+                  '完成',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildEditingReorderSlivers() {
+    if (_editablePlanData == null) {
+      return <Widget>[];
+    }
+    final String storageKey = _planDaysStorageKey(_editablePlanData!);
+    List<dynamic> daysRaw =
+        (_editablePlanData![storageKey] as List<dynamic>?) ?? <dynamic>[];
+    if (daysRaw.isEmpty) {
+      return <Widget>[
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text(
+                '暂无日程结构，请先保存行程后再编辑。',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    final int maxDay = daysRaw.length;
+    final int sel = _selectedDayIndex > maxDay ? 0 : _selectedDayIndex;
+    final List<int> dayIndices = sel == 0
+        ? List<int>.generate(maxDay, (int i) => i)
+        : <int>[sel - 1].where((int i) => i >= 0 && i < maxDay).toList();
+
+    final List<Widget> out = <Widget>[];
+    bool firstHeader = true;
+    for (final int dayIndex in dayIndices) {
+      final Map<String, dynamic> dayMap =
+          Map<String, dynamic>.from(daysRaw[dayIndex] as Map);
+      final List<dynamic> activities =
+          List<dynamic>.from((dayMap['activities'] as List<dynamic>?) ?? <dynamic>[]);
+
+      out.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildEditableDayHeader(
+              dayMap,
+              dayIndex,
+              isFirst: firstHeader,
+            ),
+          ),
+        ),
+      );
+      firstHeader = false;
+
+      out.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: activities.isEmpty
+                ? _buildInsertDivider(dayIndex, -1, storageKey)
+                : ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    itemCount: activities.length,
+                    onReorder: (int oldIndex, int newIndex) {
+                      if (!_isEditing) {
+                        return;
+                      }
+                      setState(() {
+                        int ni = newIndex;
+                        if (ni > oldIndex) {
+                          ni -= 1;
+                        }
+                        final List<dynamic> dr =
+                            (_editablePlanData![storageKey] as List<dynamic>?) ??
+                            <dynamic>[];
+                        final Map<String, dynamic> dm =
+                            Map<String, dynamic>.from(dr[dayIndex] as Map);
+                        final List<dynamic> acts = List<dynamic>.from(
+                          (dm['activities'] as List<dynamic>?) ?? <dynamic>[],
+                        );
+                        final dynamic moved = acts.removeAt(oldIndex);
+                        acts.insert(ni, moved);
+                        dm['activities'] = acts;
+                        dr[dayIndex] = dm;
+                        _editablePlanData![storageKey] = dr;
+                      });
+                    },
+                    itemBuilder: (BuildContext context, int index) {
+                      final Map<String, dynamic> activity =
+                          Map<String, dynamic>.from(activities[index] as Map);
+                      final String stableKey =
+                          '${activity['id'] ?? 'act'}_${dayIndex}_$index';
+                      return Container(
+                        key: ValueKey<String>(stableKey),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            _buildEditableActivityNode(
+                              activity,
+                              dayIndex,
+                              index,
+                              index,
+                            ),
+                            _buildInsertDivider(dayIndex, index, storageKey),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+      );
+    }
+    out.add(
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _buildAddDayButton(),
+        ),
+      ),
+    );
+    return out;
+  }
+
+  void _insertEditableActivity(
+    int dayIndex,
+    int afterIndex,
+    String storageKey, {
+    String title = '新行程点',
+    String time = '',
+    String type = 'custom',
+    String description = '',
+  }) {
+    if (_editablePlanData == null) {
+      return;
+    }
+    setState(() {
+      final List<dynamic> days =
+          (_editablePlanData![storageKey] as List<dynamic>?) ?? <dynamic>[];
+      if (dayIndex >= days.length) {
+        return;
+      }
+      final Map<String, dynamic> dm =
+          Map<String, dynamic>.from(days[dayIndex] as Map);
+      final List<dynamic> acts = List<dynamic>.from(
+        (dm['activities'] as List<dynamic>?) ?? <dynamic>[],
+      );
+      final String newId =
+          'edit_${DateTime.now().millisecondsSinceEpoch}_${acts.length}';
+      final int insertAt = (afterIndex + 1).clamp(0, acts.length);
+      acts.insert(
+        insertAt,
+        <String, dynamic>{
+          'id': newId,
+          'time': time,
+          'title': title,
+          'type': type,
+          'recommended_duration': '时长待定',
+          'tag': '自定义添加',
+          'description': description,
+          'lat': 0.0,
+          'lng': 0.0,
+          'imageUrl': '',
+        },
+      );
+      dm['activities'] = acts;
+      days[dayIndex] = dm;
+      _editablePlanData![storageKey] = days;
+    });
+  }
+
+  Future<void> _deleteActivity(int dayIndex, int activityIndex) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text(
+          '删除行程点',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text('确定要删除这个行程点吗？'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              '删除',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || _editablePlanData == null) {
+      return;
+    }
+    final String storageKey = _planDaysStorageKey(_editablePlanData!);
+    setState(() {
+      final List<dynamic> days =
+          (_editablePlanData![storageKey] as List<dynamic>?) ?? <dynamic>[];
+      if (dayIndex >= days.length) {
+        return;
+      }
+      final Map<String, dynamic> dm =
+          Map<String, dynamic>.from(days[dayIndex] as Map);
+      final List<dynamic> acts = List<dynamic>.from(
+        (dm['activities'] as List<dynamic>?) ?? <dynamic>[],
+      );
+      if (activityIndex >= 0 && activityIndex < acts.length) {
+        acts.removeAt(activityIndex);
+      }
+      if (acts.isEmpty) {
+        days.removeAt(dayIndex);
+      } else {
+        dm['activities'] = acts;
+        days[dayIndex] = dm;
+      }
+      _editablePlanData![storageKey] = days;
+    });
+  }
+
+  Future<void> _deleteWholeDay(int dayIndex) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text(
+          '删除整天行程',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text('确定删除这一天的所有行程点吗？'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              '删除',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || _editablePlanData == null) {
+      return;
+    }
+    setState(() {
+      final String storageKey = _planDaysStorageKey(_editablePlanData!);
+      final List<dynamic> days =
+          List<dynamic>.from(
+            (_editablePlanData![storageKey] as List<dynamic>?) ??
+                <dynamic>[],
+          );
+      if (dayIndex >= 0 && dayIndex < days.length) {
+        days.removeAt(dayIndex);
+        _editablePlanData![storageKey] = days;
+      }
+    });
+  }
+
+  void _addNewDay() {
+    if (_editablePlanData == null) {
+      return;
+    }
+    setState(() {
+      final String storageKey = _planDaysStorageKey(_editablePlanData!);
+      final List<dynamic> days = List<dynamic>.from(
+        (_editablePlanData![storageKey] as List<dynamic>?) ?? <dynamic>[],
+      );
+      days.add(<String, dynamic>{
+        'dayTitle': '新的一天',
+        'summary': '继续探索未知的风景...',
+        'theme_color': '#4F46E5',
+        'activities': <dynamic>[],
+      });
+      _editablePlanData![storageKey] = days;
+    });
+  }
+
+  Future<void> _openInsertActivitySheet(
+    int dayIndex,
+    int afterActivityIndex,
+    String storageKey,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) => _InsertNodeBottomSheet(
+        onConfirm: (String title, String time) {
+          _insertEditableActivity(
+            dayIndex,
+            afterActivityIndex,
+            storageKey,
+            title: title,
+            time: time,
+            type: 'custom',
+            description: '新增景点待补充描述...',
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEditableActivityNode(
+    Map<String, dynamic> item,
+    int dIdx,
+    int aIdx,
+    int reorderIndex,
+  ) {
+    final String titleStr = item['title']?.toString() ?? '';
+    final bool isAiNode = item['type']?.toString() == 'custom' ||
+        titleStr.contains('四季民福');
+    final Color borderColor =
+        isAiNode ? Colors.amber.shade400 : Colors.indigo.shade50;
+    final Color shadowColor =
+        isAiNode ? Colors.amber.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.03);
+    final String timeStr = item['time']?.toString() ?? '';
+    final String durationStr =
+        item['recommended_duration']?.toString() ??
+        item['recommendedDuration']?.toString() ??
+        '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: borderColor,
+          width: isAiNode ? 1.5 : 1.0,
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 15,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          InkWell(
+            onTap: () {
+              // ignore: discarded_futures
+              _deleteActivity(dIdx, aIdx);
+            },
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: Icon(
+                Icons.remove_circle,
+                color: Colors.red.shade300,
+                size: 22,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Text(
+                        timeStr.isNotEmpty ? timeStr : '时间待定',
+                        style: TextStyle(
+                          color: isAiNode
+                              ? Colors.amber.shade600
+                              : Colors.indigo.shade600,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isAiNode
+                              ? Colors.amber.shade50
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (isAiNode) ...<Widget>[
+                              Icon(
+                                Icons.edit,
+                                size: 10,
+                                color: Colors.amber.shade700,
+                              ),
+                              const SizedBox(width: 2),
+                            ],
+                            Text(
+                              isAiNode
+                                  ? '待 AI 润色'
+                                  : '游玩 ${durationStr.isNotEmpty ? durationStr : '2h'}',
+                              style: TextStyle(
+                                color: isAiNode
+                                    ? Colors.amber.shade700
+                                    : Colors.grey.shade500,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    titleStr.isNotEmpty ? titleStr : '未命名景点',
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ReorderableDragStartListener(
+            index: reorderIndex,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: Icon(
+                Icons.drag_handle_rounded,
+                color: Colors.grey.shade300,
+                size: 26,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsertDivider(int dIdx, int aIdx, String storageKey) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: GestureDetector(
+        onTap: () {
+          // ignore: discarded_futures
+          _openInsertActivitySheet(dIdx, aIdx, storageKey);
+        },
+        child: Row(
+          children: <Widget>[
+            Expanded(child: _buildDashedLine()),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.indigo.shade50,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.indigo.shade100),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.add, size: 12, color: Colors.indigo.shade600),
+                  const SizedBox(width: 4),
+                  Text(
+                    '插入新行程点',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.indigo.shade600,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(child: _buildDashedLine()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDashedLine() {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double boxWidth = constraints.constrainWidth();
+        const double dashWidth = 4.0;
+        const double dashHeight = 1.5;
+        final int dashCount = (boxWidth / (2 * dashWidth)).floor().clamp(1, 400);
+        return Flex(
+          direction: Axis.horizontal,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List<Widget>.generate(dashCount, (_) {
+            return const SizedBox(
+              width: dashWidth,
+              height: dashHeight,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: Color(0xFFC7D2FE)),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
+  Widget _buildEditableDayHeader(
+    Map<String, dynamic> dayData,
+    int dIdx, {
+    bool isFirst = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(top: isFirst ? 8 : 24, bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.indigo.shade600,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: Colors.indigo.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              'DAY ${dIdx + 1}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              dayData['dayTitle']?.toString() ??
+                  dayData['day_title']?.toString() ??
+                  '行程安排',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: Colors.black87,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              // ignore: discarded_futures
+              _deleteWholeDay(dIdx);
+            },
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.delete_outline,
+                size: 14,
+                color: Colors.red.shade300,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddDayButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: GestureDetector(
+        onTap: _addNewDay,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.indigo.shade200,
+              width: 1.5,
+              style: BorderStyle.solid,
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.indigo.withValues(alpha: 0.02),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(Icons.calendar_month, color: Colors.indigo.shade500, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                '添加新的一天',
+                style: TextStyle(
+                  color: Colors.indigo.shade600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -2246,6 +3159,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     ItineraryProvider provider,
     List<_DayRoute> dayRoutes,
   ) {
+    if (_isEditing) {
+      return _buildEditingReorderSlivers();
+    }
     final Map<dynamic, dynamic> prepRoot =
         (model.planData['pre_trip_prep'] as Map?) ?? const <dynamic, dynamic>{};
     final _PrepModule bookingsModule = _PrepModule(
@@ -2922,6 +3838,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     ItineraryProvider provider,
     List<_DayRoute> dayRoutes,
   ) {
+    if (_isEditing) {
+      return _buildEditingReorderSlivers();
+    }
     final int keep = model.hashCode ^ provider.hashCode;
     if (keep == -1) {
       return <Widget>[];
@@ -3003,6 +3922,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   const SizedBox(height: 2),
                   _buildTransitCard(
                     transit: transit,
+                    origin: item,
                     destination: filteredTimeline[index + 1],
                   ),
                 ],
@@ -3573,11 +4493,11 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   Widget _buildTransitCard({
     required Map<String, dynamic> transit,
+    required Map<String, dynamic> origin,
     required Map<String, dynamic> destination,
   }) {
     final double? lat = (destination['lat'] as num?)?.toDouble();
     final double? lng = (destination['lng'] as num?)?.toDouble();
-    final String name = destination['title']?.toString() ?? '目的地';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -3638,10 +4558,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   InkWell(
                     onTap: (lat != null && lng != null)
                         ? () => _launchNavigationTo(
-                            lat: lat,
-                            lng: lng,
-                            name: name,
-                          )
+                              origin: origin,
+                              destination: destination,
+                              transit: transit,
+                            )
                         : null,
                     borderRadius: BorderRadius.circular(12),
                     child: Row(
@@ -3975,23 +4895,60 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Future<void> _launchNavigationTo({
-    required double lat,
-    required double lng,
-    required String name,
+    required Map<String, dynamic> origin,
+    required Map<String, dynamic> destination,
+    required Map<String, dynamic> transit,
   }) async {
-    final Uri amapUri = Uri.parse(
-      'androidamap://navi?sourceApplication=GoNow&lat=$lat&lon=$lng&dev=0&style=2',
+    final double? dLat = (destination['lat'] as num?)?.toDouble();
+    final double? dLng = (destination['lng'] as num?)?.toDouble();
+    final String dName = destination['title']?.toString() ?? '目的地';
+    if (dLat == null || dLng == null) return;
+
+    final double? sLat = (origin['lat'] as num?)?.toDouble();
+    final double? sLng = (origin['lng'] as num?)?.toDouble();
+    final String sName = origin['title']?.toString() ?? '起点';
+    final bool hasStart =
+        sLat != null &&
+        sLng != null &&
+        sLat != 0 &&
+        sLng != 0;
+
+    final String mode = transit['mode']?.toString() ?? 'car';
+    final int androidMode = mode == 'walk' ? 2 : 0;
+    final String webMode = mode == 'walk' ? 'walk' : 'car';
+
+    final String encS = Uri.encodeComponent(sName);
+    final String encD = Uri.encodeComponent(dName);
+
+    final Uri androidRouteUri = Uri.parse(
+      hasStart
+          ? 'androidamap://route?sourceApplication=gonow&slat=$sLat&slon=$sLng&sname=$encS&dlat=$dLat&dlon=$dLng&dname=$encD&dev=0&t=$androidMode'
+          : 'androidamap://route?sourceApplication=gonow&dlat=$dLat&dlon=$dLng&dname=$encD&dev=0&t=$androidMode',
     );
-    final Uri appleMapUri = Uri.parse(
-      'http://maps.apple.com/?daddr=$lat,$lng&dirflg=d',
+    final Uri iosRouteUri = Uri.parse(
+      hasStart
+          ? 'iosamap://path?sourceApplication=gonow&slat=$sLat&slon=$sLng&sname=$encS&dlat=$dLat&dlon=$dLng&dname=$encD&dev=0&t=$androidMode'
+          : 'iosamap://path?sourceApplication=gonow&dlat=$dLat&dlon=$dLng&dname=$encD&dev=0&t=$androidMode',
     );
     final Uri webUri = Uri.parse(
-      'https://uri.amap.com/navigation?to=$lng,$lat,${Uri.encodeComponent(name)}&mode=car',
+      hasStart
+          ? 'https://uri.amap.com/navigation?from=$sLng,$sLat,$encS&to=$dLng,$dLat,$encD&mode=$webMode&callnative=1&src=gonow'
+          : 'https://uri.amap.com/navigation?to=$dLng,$dLat,$encD&mode=$webMode&callnative=1&src=gonow',
     );
+    final Uri appleMapUri = Uri.parse(
+      hasStart
+          ? 'http://maps.apple.com/?saddr=$sLat,$sLng&daddr=$dLat,$dLng&dirflg=d'
+          : 'http://maps.apple.com/?daddr=$dLat,$dLng&dirflg=d',
+    );
+
     try {
-      if (await canLaunchUrl(amapUri)) {
-        await launchUrl(amapUri, mode: LaunchMode.externalApplication);
-      } else if (await canLaunchUrl(appleMapUri)) {
+      if (!kIsWeb && Platform.isAndroid && await canLaunchUrl(androidRouteUri)) {
+        await launchUrl(androidRouteUri, mode: LaunchMode.externalApplication);
+      } else if (!kIsWeb &&
+          Platform.isIOS &&
+          await canLaunchUrl(iosRouteUri)) {
+        await launchUrl(iosRouteUri, mode: LaunchMode.externalApplication);
+      } else if (!kIsWeb && await canLaunchUrl(appleMapUri)) {
         await launchUrl(appleMapUri, mode: LaunchMode.externalApplication);
       } else {
         await launchUrl(webUri, mode: LaunchMode.externalApplication);
@@ -4008,6 +4965,229 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       }
     }
     return null;
+  }
+}
+
+/// 插入新行程点（标题幽灵提示 + 取消 / 确定）
+class _InsertNodeBottomSheet extends StatefulWidget {
+  const _InsertNodeBottomSheet({required this.onConfirm});
+
+  final void Function(String title, String time) onConfirm;
+
+  @override
+  State<_InsertNodeBottomSheet> createState() => _InsertNodeBottomSheetState();
+}
+
+class _InsertNodeBottomSheetState extends State<_InsertNodeBottomSheet> {
+  static final RegExp _hhmmRegExp =
+      RegExp(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$');
+
+  late final TextEditingController _titleController;
+  late final TextEditingController _timeController;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController();
+    _timeController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _timeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(28),
+            topRight: Radius.circular(28),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(28),
+                  topRight: Radius.circular(28),
+                ),
+              ),
+              child: const Center(
+                child: Text(
+                  '插入新记录点',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: TextField(
+                      controller: _titleController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: '新行程点 (例如：老北京炸酱面)',
+                        hintStyle: TextStyle(
+                          color: Colors.black38,
+                          fontSize: 14,
+                        ),
+                        border: InputBorder.none,
+                      ),
+                      onChanged: (_) {
+                        if (_errorMessage != null) {
+                          setState(() => _errorMessage = null);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _errorMessage != null
+                            ? Colors.red.shade300
+                            : Colors.grey.shade200,
+                      ),
+                    ),
+                    child: TextField(
+                      controller: _timeController,
+                      keyboardType: TextInputType.datetime,
+                      onChanged: (String val) {
+                        if (_errorMessage != null) {
+                          setState(() => _errorMessage = null);
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        hintText: '大概时间 (格式: HH:mm，选填)',
+                        hintStyle: TextStyle(
+                          color: Colors.black38,
+                          fontSize: 14,
+                        ),
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  if (_errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, left: 4),
+                      child: Row(
+                        children: <Widget>[
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.redAccent,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text(
+                            '取消',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.indigo,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          onPressed: () {
+                            FocusScope.of(context).unfocus();
+                            String titleInput = _titleController.text.trim();
+                            if (titleInput.isEmpty) {
+                              titleInput = '新行程点';
+                            }
+                            final String timeInput = _timeController.text.trim();
+                            if (timeInput.isNotEmpty &&
+                                !_hhmmRegExp.hasMatch(timeInput)) {
+                              setState(
+                                () => _errorMessage =
+                                    '时间格式有误，请输入如 14:30',
+                              );
+                              return;
+                            }
+                            widget.onConfirm(titleInput, timeInput);
+                            Navigator.pop(context);
+                          },
+                          child: const Text(
+                            '确定',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

@@ -50,6 +50,7 @@ class MainNavProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 每次调用都会重新拉高 [shouldAutoSendAi]（由 [autoSend] 决定），并打开 AI 面板（token++）。
   void triggerAiPlanning(
     String prompt, {
     String? source,
@@ -60,8 +61,12 @@ class MainNavProvider extends ChangeNotifier {
     shouldAutoSendAi = autoSend;
     _openAiRequestToken++;
     notifyListeners();
+    if (kDebugMode) {
+      debugPrint('🚀 AI 规划已触发 autoSend=$autoSend prompt=${prompt.length > 40 ? '${prompt.substring(0, 40)}…' : prompt}');
+    }
   }
 
+  /// 自动发送被消费后调用，防止同一指令在 build 里重复触发。
   void clearAiPendingState() {
     pendingAiPrompt = null;
     pendingAiSource = null;

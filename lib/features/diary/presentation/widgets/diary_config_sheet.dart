@@ -49,13 +49,43 @@ void _injectLazyPoolPhotosIntoLazyNode(
 }
 
 Future<void> showDiaryConfigSheet(BuildContext context) async {
-  // 在进入 showModalBottomSheet 之前保存外层 context 的导航器与 ScaffoldMessenger。
-  // builder 内部的 (BuildContext context) 会把外层 context 遮蔽（shadow），
-  // 如果在 builder 内用被遮蔽的 context 调用 maybePop / push，
-  // 拿到的是 BottomSheet 子路由的 Navigator，而非真正的根 Navigator，
-  // 导致 pop+push 在同一帧操作两个 Overlay，触发 GlobalKey 重复崩溃。
-  final NavigatorState outerNav = Navigator.of(context);
-  final ScaffoldMessengerState outerMessenger = ScaffoldMessenger.of(context);
+  // ── 根本修复：改用真正的 StatefulWidget 作为 BottomSheet 内容。
+  // 原来用 StatefulBuilder 时，_destinationController 在函数作用域内声明，
+  // 生命周期与 showModalBottomSheet 的 await 绑定：
+  //   1. outerNav.maybePop() 返回 → BottomSheet 关闭动画开始（但未结束）
+  //   2. await showModalBottomSheet 完成 → _destinationController.dispose() 被调用
+  //   3. BottomSheet 动画最后几帧仍在重建 TextField → controller 已销毁 → 崩溃
+  //   4. 级联触发 _dependents.isEmpty + Duplicate GlobalKey 红屏
+  //
+  // StatefulWidget 的 dispose() 由 Flutter 框架在动画真正结束后调用，
+  // 保证 controller 在最后一帧渲染完成之前绝对不会被销毁。
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    // useRootNavigator: true 确保使用根 Navigator，
+    // 避免 builder context 的子 Navigator 与外层 Navigator 产生 Overlay 竞争
+    useRootNavigator: true,
+    builder: (BuildContext sheetContext) {
+      return _DiaryConfigSheetContent(outerContext: context);
+    },
+  );
+}
+// ── _DiaryConfigSheetContent ──────────────────────────────────────────────────
+// BottomSheet の内容を StatefulWidget に昇格させた。
+// これにより TextEditingController の dispose() が Flutter フレームワークの
+// ウィジェット破棄ライフサイクル（アニメーション完了後）と正確に同期し、
+// 閉じるアニメーション中に controller が使用されてクラッシュするのを防ぐ。
+class _DiaryConfigSheetContent extends StatefulWidget {
+  const _DiaryConfigSheetContent({required this.outerContext});
+  final BuildContext outerContext;
+
+  @override
+  State<_DiaryConfigSheetContent> createState() =>
+      _DiaryConfigSheetContentState();
+}
+
+class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
   final List<Map<String, String>> diaryStyles = <Map<String, String>>[
     <String, String>{'icon': '🍃', 'name': '文艺清新'},
     <String, String>{'icon': '🎬', 'name': '电影质感'},
@@ -69,28 +99,231 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
     <String, String>{'icon': '🎧', 'name': '夜色霓虹流'},
   ];
 
-  final ImagePicker picker = ImagePicker();
-  bool isCustomMode = false;
-  /// `lazy` 懒人照片池；`detailed` 精细日记（仅补录模式）
-  String subRecordMode = 'lazy';
-  String selectedStyle = '文艺清新';
-  bool isGenerating = false;
-  String? errorMessage;
-  final TextEditingController destinationController = TextEditingController();
-  final List<XFile> selectedPhotos = <XFile>[];
-  XFile? detailCoverPhoto;
+  final ImagePicker _picker = ImagePicker();
+  bool _isCustomMode = false;
+  String _subRecordMode = 'lazy';
+  String _selectedStyle = '文艺清新';
+  bool _isGenerating = false;
+  String? _errorMessage;
+  final TextEditingController _destinationController = TextEditingController();
+  final List<XFile> _selectedPhotos = <XFile>[];
+  XFile? _detailCoverPhoto;
 
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (BuildContext context) {
-      return StatefulBuilder(
-        builder: (BuildContext context, StateSetter setModalState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
+  @override
+  void dispose() {
+    // Flutter フレームワークがアニメーション完了後に呼ぶため、
+    // 閉じるアニメーション中に TextField が controller を参照しても安全
+    _destinationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onGenerate() async {
+    final NavigatorState outerNav = Navigator.of(widget.outerContext);
+
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (!mounted) return;
+
+    if (_isCustomMode) {
+      if (_destinationController.text.trim().isEmpty) {
+        setState(() {
+          _errorMessage = _subRecordMode == 'detailed'
+              ? '请填写详细行程描述'
+              : '请告诉管家您去过的目的地哦';
+        });
+        return;
+      }
+      if (_subRecordMode == 'lazy' && _selectedPhotos.isEmpty) {
+        setState(() => _errorMessage = '请至少上传一张旅途照片');
+        return;
+      }
+      if (_subRecordMode == 'detailed' && _detailCoverPhoto == null) {
+        setState(() => _errorMessage = '请选择一张手账封面图');
+        return;
+      }
+    }
+
+    final ItineraryProvider itineraryProvider =
+        Provider.of<ItineraryProvider>(context, listen: false);
+    final ItineraryModel? existingItinerary = _isCustomMode
+        ? null
+        : (itineraryProvider.activeItinerary ??
+            itineraryProvider.currentItinerary);
+
+    if (!_isCustomMode && existingItinerary == null) {
+      setState(() => _errorMessage = '未找到可关联的已有行程');
+      return;
+    }
+
+    setState(() => _isGenerating = true);
+
+    final DiaryProvider diaryProvider =
+        Provider.of<DiaryProvider>(context, listen: false);
+    final Map<String, dynamic>? aiGeneratedData =
+        await diaryProvider.generateDiaryFromAI(
+      destination: _isCustomMode
+          ? _destinationController.text.trim()
+          : _extractDestination(existingItinerary),
+      style: _selectedStyle,
+      existingPlanData: existingItinerary?.planData,
+      subRecordMode: _isCustomMode ? _subRecordMode : null,
+      customPhotoCount:
+          _isCustomMode && _subRecordMode == 'lazy' ? _selectedPhotos.length : null,
+    );
+
+    if (!mounted) return;
+
+    if (aiGeneratedData == null) {
+      setState(() {
+        _isGenerating = false;
+        _errorMessage = 'AI 思考超时了，请检查网络后重试';
+      });
+      return;
+    }
+
+    // ── 数据组装（与原逻辑完全一致）──
+    Map<String, dynamic> finalDiaryData;
+    String? autoCoverImageUrl;
+    if (!_isCustomMode && existingItinerary != null) {
+      finalDiaryData = jsonDecode(jsonEncode(existingItinerary.planData))
+          as Map<String, dynamic>;
+      finalDiaryData['quote'] = aiGeneratedData['quote'] ??
+          '用$_selectedStyle的方式，记录这段闪光的日子。';
+      finalDiaryData['dateLabel'] = aiGeneratedData['dateLabel'] ?? '刚刚生成';
+
+      try {
+        final List<dynamic> orgDays =
+            (finalDiaryData['days'] as List<dynamic>?) ??
+            (finalDiaryData['daily_schedules'] as List<dynamic>?) ??
+            <dynamic>[];
+        final List<dynamic>? aiDays = aiGeneratedData['days'] as List<dynamic>?;
+
+        for (final dynamic dayRaw in orgDays) {
+          if (autoCoverImageUrl != null) break;
+          final Map<String, dynamic> dayMap = Map<String, dynamic>.from(
+            dayRaw as Map? ?? <String, dynamic>{},
+          );
+          final List<dynamic> acts =
+              (dayMap['activities'] as List<dynamic>?) ?? <dynamic>[];
+          for (final dynamic actRaw in acts) {
+            final Map<String, dynamic> actMap = Map<String, dynamic>.from(
+              actRaw as Map? ?? <String, dynamic>{},
+            );
+            final List<dynamic> images =
+                (actMap['images'] as List<dynamic>?) ?? <dynamic>[];
+            if (images.isNotEmpty) {
+              autoCoverImageUrl = images.first.toString().trim();
+              if (autoCoverImageUrl!.isNotEmpty) break;
+            }
+            final String imageUrl =
+                (actMap['imageUrl'] ?? actMap['image_url'] ?? '').toString().trim();
+            if (imageUrl.isNotEmpty) {
+              autoCoverImageUrl = imageUrl;
+              break;
+            }
+          }
+        }
+
+        if (aiDays != null) {
+          for (int d = 0; d < orgDays.length && d < aiDays.length; d++) {
+            final Map<String, dynamic> orgDay = Map<String, dynamic>.from(
+              orgDays[d] as Map? ?? <String, dynamic>{},
+            );
+            final Map<String, dynamic> aiDay = Map<String, dynamic>.from(
+              aiDays[d] as Map? ?? <String, dynamic>{},
+            );
+            orgDay['dayLabel'] = aiDay['dayLabel'] ?? orgDay['dayLabel'];
+            final List<dynamic> orgActs =
+                (orgDay['activities'] as List<dynamic>?) ?? <dynamic>[];
+            final List<dynamic> aiActs =
+                (aiDay['activities'] as List<dynamic>?) ?? <dynamic>[];
+            for (int a = 0; a < orgActs.length && a < aiActs.length; a++) {
+              final Map<String, dynamic> orgAct = Map<String, dynamic>.from(
+                orgActs[a] as Map? ?? <String, dynamic>{},
+              );
+              final Map<String, dynamic> aiAct = Map<String, dynamic>.from(
+                aiActs[a] as Map? ?? <String, dynamic>{},
+              );
+              orgAct['description'] = aiAct['description'] ?? orgAct['description'];
+              orgActs[a] = orgAct;
+            }
+            orgDay['activities'] = orgActs;
+            orgDays[d] = orgDay;
+          }
+          finalDiaryData['days'] = orgDays;
+        }
+      } catch (_) {}
+    } else {
+      finalDiaryData =
+          Map<String, dynamic>.from(aiGeneratedData);
+      if (_isCustomMode && _subRecordMode == 'lazy' && _selectedPhotos.isNotEmpty) {
+        _injectLazyPoolPhotosIntoLazyNode(finalDiaryData, _selectedPhotos);
+      }
+    }
+
+    final String newDiaryId =
+        'diary_${DateTime.now().millisecondsSinceEpoch}';
+    final String extractedTitle =
+        (aiGeneratedData['title'] ?? '').toString().trim();
+    final String newDiaryTitle = extractedTitle.isNotEmpty
+        ? extractedTitle
+        : (_isCustomMode
+            ? _destinationController.text.trim()
+            : existingItinerary!.title);
+
+    const String kDefaultDiaryCover =
+        'https://images.unsplash.com/photo-1596484552834-6a58f850d0a1?w=800';
+    String finalCoverImg = kDefaultDiaryCover;
+    if (_isCustomMode && _selectedPhotos.isNotEmpty) {
+      finalCoverImg = _selectedPhotos.first.path;
+    } else if (_isCustomMode && _detailCoverPhoto != null) {
+      finalCoverImg = _detailCoverPhoto!.path;
+    } else if (!_isCustomMode && existingItinerary != null) {
+      final String fromAi = (autoCoverImageUrl ?? '').trim();
+      final String fromPlan = _extractCoverImage(existingItinerary).trim();
+      if (fromAi.isNotEmpty) {
+        finalCoverImg = fromAi;
+      } else if (fromPlan.isNotEmpty) {
+        finalCoverImg = fromPlan;
+      }
+    }
+
+    final DiaryModel generatedDiary = DiaryModel(
+      id: newDiaryId,
+      userId: 'current_user',
+      title: '✨ $newDiaryTitle',
+      authorName: '旅行者',
+      coverImageUrl: finalCoverImg,
+      isDraft: true,
+      isPublic: false,
+      styleType: _selectedStyle,
+      diaryData: finalDiaryData,
+    );
+
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    // ── 关键修复：用 pushReplacement 替代 pop + push ──
+    // pop + push 会在同一帧（或相邻帧）先销毁 BottomSheet Overlay，
+    // 再挂载新路由 Overlay，期间两个 _OverlayEntryWidgetState 的 GlobalKey
+    // 可能同时存在于 _Theater 中，触发 Duplicate GlobalKey 崩溃。
+    // pushReplacement 是原子操作：直接将当前路由替换为新路由，
+    // Overlay 只有一次重建，从根本上消除了 GlobalKey 竞争。
+    outerNav.pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => DiaryDetailScreen(
+          initialDiary: generatedDiary,
+          startEditing: true,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
             child: Container(
               height: MediaQuery.of(context).size.height * 0.85,
               decoration: const BoxDecoration(
@@ -136,22 +369,22 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                               Expanded(
                                 child: GestureDetector(
                                   onTap: () {
-                                    setModalState(() {
-                                      isCustomMode = false;
-                                      subRecordMode = 'lazy';
-                                      selectedPhotos.clear();
-                                      detailCoverPhoto = null;
-                                      errorMessage = null;
+                                    setState(() {
+                                      _isCustomMode = false;
+                                      _subRecordMode = 'lazy';
+                                      _selectedPhotos.clear();
+                                      _detailCoverPhoto = null;
+                                      _errorMessage = null;
                                     });
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(vertical: 10),
                                     decoration: BoxDecoration(
-                                      color: !isCustomMode
+                                      color: !_isCustomMode
                                           ? Colors.white
                                           : Colors.transparent,
                                       borderRadius: BorderRadius.circular(12),
-                                      boxShadow: !isCustomMode
+                                      boxShadow: !_isCustomMode
                                           ? <BoxShadow>[
                                               BoxShadow(
                                                 color: Colors.black.withValues(alpha: 0.04),
@@ -166,10 +399,10 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                       '关联已有行程',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        fontWeight: !isCustomMode
+                                        fontWeight: !_isCustomMode
                                             ? FontWeight.bold
                                             : FontWeight.w500,
-                                        color: !isCustomMode
+                                        color: !_isCustomMode
                                             ? Colors.indigo.shade600
                                             : Colors.grey.shade500,
                                       ),
@@ -180,20 +413,20 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                               Expanded(
                                 child: GestureDetector(
                                   onTap: () {
-                                    setModalState(() {
-                                      isCustomMode = true;
-                                      subRecordMode = 'lazy';
-                                      errorMessage = null;
+                                    setState(() {
+                                      _isCustomMode = true;
+                                      _subRecordMode = 'lazy';
+                                      _errorMessage = null;
                                     });
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(vertical: 10),
                                     decoration: BoxDecoration(
-                                      color: isCustomMode
+                                      color: _isCustomMode
                                           ? Colors.white
                                           : Colors.transparent,
                                       borderRadius: BorderRadius.circular(12),
-                                      boxShadow: isCustomMode
+                                      boxShadow: _isCustomMode
                                           ? <BoxShadow>[
                                               BoxShadow(
                                                 color: Colors.black.withValues(alpha: 0.04),
@@ -208,10 +441,10 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                       '补录往期精彩',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        fontWeight: isCustomMode
+                                        fontWeight: _isCustomMode
                                             ? FontWeight.bold
                                             : FontWeight.w500,
-                                        color: isCustomMode
+                                        color: _isCustomMode
                                             ? Colors.indigo.shade600
                                             : Colors.grey.shade500,
                                       ),
@@ -230,7 +463,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              if (!isCustomMode) ...<Widget>[
+                              if (!_isCustomMode) ...<Widget>[
                                 Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
@@ -300,7 +533,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                   ),
                                 ),
                               ],
-                              if (isCustomMode) ...<Widget>[
+                              if (_isCustomMode) ...<Widget>[
                                 Container(
                                   margin: const EdgeInsets.only(bottom: 20),
                                   padding: const EdgeInsets.all(4),
@@ -313,19 +546,19 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                       Expanded(
                                         child: GestureDetector(
                                           onTap: () {
-                                            setModalState(() {
-                                              subRecordMode = 'lazy';
-                                              errorMessage = null;
+                                            setState(() {
+                                              _subRecordMode = 'lazy';
+                                              _errorMessage = null;
                                             });
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(vertical: 8),
                                             decoration: BoxDecoration(
-                                              color: subRecordMode == 'lazy'
+                                              color: _subRecordMode == 'lazy'
                                                   ? Colors.white
                                                   : Colors.transparent,
                                               borderRadius: BorderRadius.circular(8),
-                                              boxShadow: subRecordMode == 'lazy'
+                                              boxShadow: _subRecordMode == 'lazy'
                                                   ? <BoxShadow>[
                                                       BoxShadow(
                                                         color: Colors.black.withValues(alpha: 0.05),
@@ -339,10 +572,10 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                                 '懒人照片池',
                                                 style: TextStyle(
                                                   fontSize: 12,
-                                                  fontWeight: subRecordMode == 'lazy'
+                                                  fontWeight: _subRecordMode == 'lazy'
                                                       ? FontWeight.bold
                                                       : FontWeight.normal,
-                                                  color: subRecordMode == 'lazy'
+                                                  color: _subRecordMode == 'lazy'
                                                       ? Colors.indigo.shade700
                                                       : Colors.grey.shade500,
                                                 ),
@@ -354,19 +587,19 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                       Expanded(
                                         child: GestureDetector(
                                           onTap: () {
-                                            setModalState(() {
-                                              subRecordMode = 'detailed';
-                                              errorMessage = null;
+                                            setState(() {
+                                              _subRecordMode = 'detailed';
+                                              _errorMessage = null;
                                             });
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(vertical: 8),
                                             decoration: BoxDecoration(
-                                              color: subRecordMode == 'detailed'
+                                              color: _subRecordMode == 'detailed'
                                                   ? Colors.white
                                                   : Colors.transparent,
                                               borderRadius: BorderRadius.circular(8),
-                                              boxShadow: subRecordMode == 'detailed'
+                                              boxShadow: _subRecordMode == 'detailed'
                                                   ? <BoxShadow>[
                                                       BoxShadow(
                                                         color: Colors.black.withValues(alpha: 0.05),
@@ -380,10 +613,10 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                                 '精细日记',
                                                 style: TextStyle(
                                                   fontSize: 12,
-                                                  fontWeight: subRecordMode == 'detailed'
+                                                  fontWeight: _subRecordMode == 'detailed'
                                                       ? FontWeight.bold
                                                       : FontWeight.normal,
-                                                  color: subRecordMode == 'detailed'
+                                                  color: _subRecordMode == 'detailed'
                                                       ? Colors.indigo.shade700
                                                       : Colors.grey.shade500,
                                                 ),
@@ -395,7 +628,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                     ],
                                   ),
                                 ),
-                                if (subRecordMode == 'lazy') ...<Widget>[
+                                if (_subRecordMode == 'lazy') ...<Widget>[
                                   const Text(
                                     '上传旅途照片 (最多 20 张)',
                                     style: TextStyle(
@@ -409,23 +642,23 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                     height: 88,
                                     child: ListView.builder(
                                       scrollDirection: Axis.horizontal,
-                                      itemCount: selectedPhotos.length +
-                                          (selectedPhotos.length < 20 ? 1 : 0),
+                                      itemCount: _selectedPhotos.length +
+                                          (_selectedPhotos.length < 20 ? 1 : 0),
                                       itemBuilder: (BuildContext context, int index) {
-                                        if (index == selectedPhotos.length) {
+                                        if (index == _selectedPhotos.length) {
                                           return GestureDetector(
                                             onTap: () async {
                                               final int remaining =
-                                                  20 - selectedPhotos.length;
+                                                  20 - _selectedPhotos.length;
                                               if (remaining <= 0) return;
                                               List<XFile> files = <XFile>[];
                                               try {
-                                                files = await picker.pickMultiImage(
+                                                files = await _picker.pickMultiImage(
                                                   limit: 20,
                                                 );
                                               } catch (_) {
                                                 final XFile? one =
-                                                    await picker.pickImage(
+                                                    await _picker.pickImage(
                                                   source: ImageSource.gallery,
                                                 );
                                                 if (one != null) {
@@ -449,15 +682,15 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                                   await ImageCompressUtil
                                                       .compressImages(files);
                                               if (!context.mounted) return;
-                                              setModalState(() {
-                                                selectedPhotos.addAll(
+                                              setState(() {
+                                                _selectedPhotos.addAll(
                                                   optimized.take(remaining),
                                                 );
-                                                while (selectedPhotos.length >
+                                                while (_selectedPhotos.length >
                                                     20) {
-                                                  selectedPhotos.removeLast();
+                                                  _selectedPhotos.removeLast();
                                                 }
-                                                errorMessage = null;
+                                                _errorMessage = null;
                                               });
                                             },
                                             child: Container(
@@ -491,7 +724,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                             fit: StackFit.expand,
                                             children: <Widget>[
                                               Image.file(
-                                                File(selectedPhotos[index].path),
+                                                File(_selectedPhotos[index].path),
                                                 fit: BoxFit.cover,
                                               ),
                                               Positioned(
@@ -499,9 +732,9 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                                 right: 4,
                                                 child: GestureDetector(
                                                   onTap: () {
-                                                    setModalState(() {
-                                                      selectedPhotos.removeAt(index);
-                                                      errorMessage = null;
+                                                    setState(() {
+                                                      _selectedPhotos.removeAt(index);
+                                                      _errorMessage = null;
                                                     });
                                                   },
                                                   child: Container(
@@ -536,10 +769,10 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                       border: Border.all(color: Colors.grey.shade200),
                                     ),
                                     child: TextField(
-                                      controller: destinationController,
+                                      controller: _destinationController,
                                       onChanged: (String _) {
-                                        if (errorMessage != null) {
-                                          setModalState(() => errorMessage = null);
+                                        if (_errorMessage != null) {
+                                          setState(() => _errorMessage = null);
                                         }
                                       },
                                       decoration: const InputDecoration(
@@ -564,13 +797,13 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                   const SizedBox(height: 8),
                                   GestureDetector(
                                     onTap: () async {
-                                      final XFile? file = await picker.pickImage(
+                                      final XFile? file = await _picker.pickImage(
                                         source: ImageSource.gallery,
                                       );
                                       if (file == null) return;
-                                      setModalState(() {
-                                        detailCoverPhoto = file;
-                                        errorMessage = null;
+                                      setState(() {
+                                        _detailCoverPhoto = file;
+                                        _errorMessage = null;
                                       });
                                     },
                                     child: Container(
@@ -582,7 +815,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                         borderRadius: BorderRadius.circular(16),
                                         border: Border.all(color: Colors.grey.shade300),
                                       ),
-                                      child: detailCoverPhoto == null
+                                      child: _detailCoverPhoto == null
                                           ? Column(
                                               mainAxisAlignment: MainAxisAlignment.center,
                                               children: <Widget>[
@@ -606,7 +839,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                               fit: StackFit.expand,
                                               children: <Widget>[
                                                 Image.file(
-                                                  File(detailCoverPhoto!.path),
+                                                  File(_detailCoverPhoto!.path),
                                                   fit: BoxFit.cover,
                                                 ),
                                                 Positioned(
@@ -614,9 +847,9 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                                   right: 8,
                                                   child: GestureDetector(
                                                     onTap: () {
-                                                      setModalState(() {
-                                                        detailCoverPhoto = null;
-                                                        errorMessage = null;
+                                                      setState(() {
+                                                        _detailCoverPhoto = null;
+                                                        _errorMessage = null;
                                                       });
                                                     },
                                                     child: Container(
@@ -649,11 +882,11 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                       border: Border.all(color: Colors.grey.shade200),
                                     ),
                                     child: TextField(
-                                      controller: destinationController,
+                                      controller: _destinationController,
                                       maxLines: 4,
                                       onChanged: (String _) {
-                                        if (errorMessage != null) {
-                                          setModalState(() => errorMessage = null);
+                                        if (_errorMessage != null) {
+                                          setState(() => _errorMessage = null);
                                         }
                                       },
                                       decoration: const InputDecoration(
@@ -686,11 +919,11 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                 itemBuilder: (BuildContext context, int index) {
                                   final Map<String, String> style = diaryStyles[index];
                                   final bool isSelected =
-                                      selectedStyle == style['name'];
+                                      _selectedStyle == style['name'];
                                   return GestureDetector(
                                     onTap: () {
-                                      setModalState(() {
-                                        selectedStyle = style['name']!;
+                                      setState(() {
+                                        _selectedStyle = style['name']!;
                                       });
                                     },
                                     child: AnimatedContainer(
@@ -746,7 +979,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                           ),
                         ),
                       ),
-                      if (errorMessage != null)
+                      if (_errorMessage != null)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
@@ -759,7 +992,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                errorMessage!,
+                                _errorMessage!,
                                 style: const TextStyle(
                                   color: Colors.redAccent,
                                   fontSize: 13,
@@ -793,285 +1026,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                               elevation: 0,
                               padding: EdgeInsets.zero,
                             ),
-                            onPressed: () async {
-                              FocusManager.instance.primaryFocus?.unfocus();
-                              FocusScope.of(context).unfocus();
-                              setModalState(() => errorMessage = null);
-                              await Future<void>.delayed(
-                                const Duration(milliseconds: 100),
-                              );
-                              if (!context.mounted) return;
-
-                              if (isCustomMode) {
-                                if (destinationController.text.trim().isEmpty) {
-                                  setModalState(() {
-                                    errorMessage = subRecordMode == 'detailed'
-                                        ? '请填写详细行程描述'
-                                        : '请告诉管家您去过的目的地哦';
-                                  });
-                                  return;
-                                }
-                                if (subRecordMode == 'lazy' && selectedPhotos.isEmpty) {
-                                  setModalState(() {
-                                    errorMessage = '请至少上传一张旅途照片';
-                                  });
-                                  return;
-                                }
-                                if (subRecordMode == 'detailed' && detailCoverPhoto == null) {
-                                  setModalState(() {
-                                    errorMessage = '请选择一张手账封面图';
-                                  });
-                                  return;
-                                }
-                              }
-
-                              final ItineraryProvider itineraryProvider =
-                                  Provider.of<ItineraryProvider>(
-                                context,
-                                listen: false,
-                              );
-                              final ItineraryModel? existingItinerary = isCustomMode
-                                  ? null
-                                  : (itineraryProvider.activeItinerary ??
-                                      itineraryProvider.currentItinerary);
-
-                              if (!isCustomMode && existingItinerary == null) {
-                                setModalState(() {
-                                  errorMessage = '未找到可关联的已有行程';
-                                });
-                                return;
-                              }
-
-                              setModalState(() => isGenerating = true);
-                              final DiaryProvider diaryProvider =
-                                  Provider.of<DiaryProvider>(
-                                context,
-                                listen: false,
-                              );
-                              final Map<String, dynamic>? aiGeneratedData =
-                                  await diaryProvider.generateDiaryFromAI(
-                                destination: isCustomMode
-                                    ? destinationController.text.trim()
-                                    : _extractDestination(existingItinerary),
-                                style: selectedStyle,
-                                existingPlanData: existingItinerary?.planData,
-                                subRecordMode: isCustomMode ? subRecordMode : null,
-                                customPhotoCount:
-                                    isCustomMode && subRecordMode == 'lazy'
-                                        ? selectedPhotos.length
-                                        : null,
-                              );
-                              if (!context.mounted) return;
-
-                              if (aiGeneratedData == null) {
-                                setModalState(() {
-                                  isGenerating = false;
-                                  errorMessage = 'AI 思考超时了，请检查网络后重试';
-                                });
-                                return;
-                              }
-
-                              // 🚨 3. 【绝对防御：结构锁死、深拷贝与反向文本注入】
-                              Map<String, dynamic> finalDiaryData;
-                              String? autoCoverImageUrl;
-                              if (!isCustomMode && existingItinerary != null) {
-                                // 关联模式：坚守原有行程作为“绝对骨架”（深拷贝）
-                                finalDiaryData = jsonDecode(
-                                  jsonEncode(existingItinerary.planData),
-                                ) as Map<String, dynamic>;
-                                finalDiaryData['quote'] =
-                                    aiGeneratedData['quote'] ??
-                                    '用$selectedStyle的方式，记录这段闪光的日子。';
-                                finalDiaryData['dateLabel'] =
-                                    aiGeneratedData['dateLabel'] ?? '刚刚生成';
-
-                                try {
-                                  final List<dynamic> orgDays =
-                                      (finalDiaryData['days'] as List<dynamic>?) ??
-                                      (finalDiaryData['daily_schedules']
-                                              as List<dynamic>?) ??
-                                      <dynamic>[];
-                                  final List<dynamic>? aiDays =
-                                      aiGeneratedData['days'] as List<dynamic>?;
-
-                                  // 智能首图提取：遍历原行程，找到第一张有效图片作为封面
-                                  for (final dynamic dayRaw in orgDays) {
-                                    if (autoCoverImageUrl != null) break;
-                                    final Map<String, dynamic> dayMap =
-                                        Map<String, dynamic>.from(
-                                      dayRaw as Map? ?? <String, dynamic>{},
-                                    );
-                                    final List<dynamic> acts =
-                                        (dayMap['activities'] as List<dynamic>?) ??
-                                        <dynamic>[];
-                                    for (final dynamic actRaw in acts) {
-                                      final Map<String, dynamic> actMap =
-                                          Map<String, dynamic>.from(
-                                        actRaw as Map? ?? <String, dynamic>{},
-                                      );
-                                      final List<dynamic> images =
-                                          (actMap['images'] as List<dynamic>?) ??
-                                          <dynamic>[];
-                                      if (images.isNotEmpty) {
-                                        autoCoverImageUrl =
-                                            images.first.toString().trim();
-                                        if (autoCoverImageUrl.isNotEmpty) break;
-                                      }
-                                      final String imageUrl =
-                                          (actMap['imageUrl'] ?? '').toString().trim();
-                                      if (imageUrl.isNotEmpty) {
-                                        autoCoverImageUrl = imageUrl;
-                                        break;
-                                      }
-                                    }
-                                  }
-                                  if (aiDays != null) {
-                                    for (int i = 0; i < orgDays.length; i++) {
-                                      if (i >= aiDays.length) break;
-                                      final Map<String, dynamic> orgDay =
-                                          Map<String, dynamic>.from(
-                                        orgDays[i] as Map? ??
-                                            <String, dynamic>{},
-                                      );
-                                      final Map<String, dynamic> aiDay =
-                                          Map<String, dynamic>.from(
-                                        aiDays[i] as Map? ?? <String, dynamic>{},
-                                      );
-                                      if (aiDay['summary'] != null) {
-                                        orgDay['summary'] = aiDay['summary'];
-                                      }
-                                      final List<dynamic> orgActs =
-                                          (orgDay['activities']
-                                              as List<dynamic>?) ??
-                                          <dynamic>[];
-                                      final List<dynamic>? aiActs =
-                                          aiDay['activities'] as List<dynamic>?;
-                                      if (aiActs != null) {
-                                        for (int j = 0; j < orgActs.length; j++) {
-                                          if (j >= aiActs.length) break;
-                                          final Map<String, dynamic> orgAct =
-                                              Map<String, dynamic>.from(
-                                            orgActs[j] as Map? ??
-                                                <String, dynamic>{},
-                                          );
-                                          final Map<String, dynamic> aiAct =
-                                              Map<String, dynamic>.from(
-                                            aiActs[j] as Map? ??
-                                                <String, dynamic>{},
-                                          );
-                                          if (aiAct['description'] != null) {
-                                            orgAct['description'] =
-                                                aiAct['description'];
-                                          }
-                                          if (aiAct['tag'] != null) {
-                                            orgAct['tag'] = aiAct['tag'];
-                                          }
-                                          orgActs[j] = orgAct;
-                                        }
-                                      }
-                                      orgDay['activities'] = orgActs;
-                                      orgDays[i] = orgDay;
-                                    }
-                                  }
-                                  if (finalDiaryData['days'] is List<dynamic>) {
-                                    finalDiaryData['days'] = orgDays;
-                                  } else if (finalDiaryData['daily_schedules']
-                                      is List<dynamic>) {
-                                    finalDiaryData['daily_schedules'] = orgDays;
-                                  }
-                                } catch (e) {
-                                  debugPrint('🚨 文本反向注入发生异常，但不影响主干渲染: $e');
-                                }
-                              } else {
-                                // 补录模式：信任 AI 生成骨架
-                                finalDiaryData = aiGeneratedData;
-                              }
-
-                              if (isCustomMode && subRecordMode == 'lazy') {
-                                _injectLazyPoolPhotosIntoLazyNode(
-                                  finalDiaryData,
-                                  selectedPhotos,
-                                );
-                              }
-
-                              final String newDiaryId =
-                                  'local_${DateTime.now().millisecondsSinceEpoch}';
-                              final String extractedTitle =
-                                  (aiGeneratedData['title'] ?? '').toString().trim();
-                              final String newDiaryTitle = extractedTitle.isNotEmpty
-                                  ? extractedTitle
-                                  : (isCustomMode
-                                      ? destinationController.text.trim()
-                                      : existingItinerary!.title);
-                              const String kDefaultDiaryCover =
-                                  'https://images.unsplash.com/photo-1596484552834-6a58f850d0a1?w=800';
-                              String finalCoverImg = kDefaultDiaryCover;
-                              if (isCustomMode && selectedPhotos.isNotEmpty) {
-                                finalCoverImg = selectedPhotos.first.path;
-                              } else if (isCustomMode &&
-                                  detailCoverPhoto != null) {
-                                finalCoverImg = detailCoverPhoto!.path;
-                              } else if (!isCustomMode &&
-                                  existingItinerary != null) {
-                                final String fromAi =
-                                    (autoCoverImageUrl ?? '').trim();
-                                final String fromPlan =
-                                    _extractCoverImage(existingItinerary)
-                                        .trim();
-                                if (fromAi.isNotEmpty) {
-                                  finalCoverImg = fromAi;
-                                } else if (fromPlan.isNotEmpty) {
-                                  finalCoverImg = fromPlan;
-                                }
-                              }
-
-                              final DiaryModel generatedDiary = DiaryModel(
-                                id: newDiaryId,
-                                userId: 'current_user',
-                                title: '✨ $newDiaryTitle',
-                                authorName: '旅行者',
-                                coverImageUrl: finalCoverImg,
-                                isDraft: true,
-                                isPublic: false,
-                                styleType: selectedStyle,
-                                diaryData: finalDiaryData,
-                              );
-
-                              if (!context.mounted) return;
-
-                              FocusManager.instance.primaryFocus?.unfocus();
-                              await Future<void>.delayed(
-                                const Duration(milliseconds: 100),
-                              );
-                              if (!context.mounted) return;
-
-                              // ── 修复：用外层 Navigator/ScaffoldMessenger 操作 ──
-                              // 1. 先隐藏任何正在显示的 SnackBar（用外层 messenger，
-                              //    避免在 builder context 的 Overlay 里操作）
-                              outerMessenger.hideCurrentSnackBar();
-
-                              // 2. 关闭 BottomSheet（用外层 nav 的 maybePop）
-                              //    maybePop 是异步的，确保 BottomSheet Overlay 完全移除
-                              if (outerNav.canPop()) {
-                                await outerNav.maybePop();
-                              }
-
-                              // 3. 用 addPostFrameCallback 把 push 延迟到下一帧，
-                              //    确保当前帧的 Overlay 销毁流程（_Theater finalizeTree）
-                              //    完全结束后再挂载新路由，彻底消除 GlobalKey 重复。
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                if (outerNav.mounted) {
-                                  outerNav.push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => DiaryDetailScreen(
-                                        initialDiary: generatedDiary,
-                                        startEditing: true,
-                                      ),
-                                    ),
-                                  );
-                                }
-                              });
-                            },
+                            onPressed: _isGenerating ? null : _onGenerate,
                             child: Ink(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
@@ -1109,7 +1064,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                       ),
                     ],
                   ),
-                  if (isGenerating)
+                  if (_isGenerating)
                     Positioned.fill(
                       child: ClipRRect(
                         borderRadius: const BorderRadius.only(
@@ -1133,7 +1088,7 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
                                 ),
                                 const SizedBox(height: 24),
                                 Text(
-                                  "AI 正在用『$selectedStyle』风格\n为您排版回忆...",
+                                  "AI 正在用『$_selectedStyle』风格\n为您排版回忆...",
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: 15,
@@ -1152,13 +1107,8 @@ Future<void> showDiaryConfigSheet(BuildContext context) async {
               ),
             ),
           );
-        },
-      );
-    },
-  );
-
-  destinationController.dispose();
-}
+  } // end build
+} // end _DiaryConfigSheetContentState
 
 String _extractDestination(ItineraryModel? itinerary) {
   if (itinerary == null) return '未知';

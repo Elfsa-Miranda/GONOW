@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:gonow/core/providers/travel_provider.dart';
 import 'package:gonow/features/discover/presentation/screens/blind_box_screen.dart';
+import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -19,7 +18,6 @@ class DiscoverScreen extends StatefulWidget {
 }
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
-  String _selectedCategory = '推荐';
   final List<String> _searchHints = <String>[
     '下个月看海，人少一点',
     '带父母去北京玩五天',
@@ -35,6 +33,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   int _currentHintIndex = 0;
   Timer? _hintTimer;
   bool _isLocked = false;
+
+  int _selectedFilterIndex = 0;
+  static const List<String> _filterTabs = <String>[
+    '全部',
+    '计划中',
+    '进行中',
+    '已完成',
+  ];
 
   @override
   void initState() {
@@ -93,107 +99,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     await provider.refreshVisaData(force: true);
   }
 
-  static const List<String> _categories = <String>[
-    '推荐',
-    '海岛度假',
-    '城市漫步',
-    '户外露营',
-    '自驾越野',
-  ];
-
-  static const List<_DiscoverItem> _mockItems = <_DiscoverItem>[
-    _DiscoverItem(
-      id: '1',
-      imageUrl: 'https://picsum.photos/400/600?random=1',
-      title: '沿海悬崖与日落步道，感受风和光的温柔拥抱',
-      authorName: '旅行家小A',
-      likes: 1843,
-      authorAvatar: 'https://picsum.photos/80/80?random=21',
-      isAiGenerated: false,
-    ),
-    _DiscoverItem(
-      id: '2',
-      imageUrl: 'https://picsum.photos/400/300?random=2',
-      title: '京都和服 OOTD 绝美机位大公开',
-      authorName: 'OOTD女孩',
-      likes: 962,
-      authorAvatar: 'https://picsum.photos/80/80?random=22',
-      isAiGenerated: true,
-    ),
-    _DiscoverItem(
-      id: '3',
-      imageUrl: 'https://picsum.photos/400/520?random=3',
-      title: '瑞士少女峰小众路线，教你避开人流拍大片',
-      authorName: '探索者Leo',
-      likes: 2364,
-      authorAvatar: 'https://picsum.photos/80/80?random=23',
-      isAiGenerated: true,
-    ),
-    _DiscoverItem(
-      id: '4',
-      imageUrl: 'https://picsum.photos/400/360?random=4',
-      title: '老城咖啡街区一日漫游，步行也能发现美',
-      authorName: '周末计划',
-      likes: 783,
-      authorAvatar: 'https://picsum.photos/80/80?random=24',
-      isAiGenerated: false,
-    ),
-    _DiscoverItem(
-      id: '5',
-      imageUrl: 'https://picsum.photos/400/500?random=5',
-      title: '海岛清晨环岛骑行，风景从不重样',
-      authorName: '海风笔记',
-      likes: 3182,
-      authorAvatar: 'https://picsum.photos/80/80?random=25',
-      isAiGenerated: false,
-    ),
-    _DiscoverItem(
-      id: '6',
-      imageUrl: 'https://picsum.photos/400/320?random=6',
-      title: '周末短途自驾路线，2 小时直达天然氧吧',
-      authorName: '公路派',
-      likes: 1290,
-      authorAvatar: 'https://picsum.photos/80/80?random=26',
-      isAiGenerated: false,
-    ),
-    _DiscoverItem(
-      id: '7',
-      imageUrl: 'https://picsum.photos/400/680?random=7',
-      title: '雪山脚下的晨雾与草甸，像一场电影开场',
-      authorName: '雪境旅人',
-      likes: 2675,
-      authorAvatar: 'https://picsum.photos/80/80?random=27',
-      isAiGenerated: true,
-    ),
-    _DiscoverItem(
-      id: '8',
-      imageUrl: 'https://picsum.photos/400/340?random=8',
-      title: '艺术馆与河岸夜景联动，城市漫步新体验',
-      authorName: '城市漫游者',
-      likes: 1541,
-      authorAvatar: 'https://picsum.photos/80/80?random=28',
-      isAiGenerated: false,
-    ),
-    _DiscoverItem(
-      id: '9',
-      imageUrl: 'https://picsum.photos/400/700?random=9',
-      title: '秘境峡谷轻徒步，沿线瀑布连成风景长卷',
-      authorName: '山野手册',
-      likes: 2016,
-      authorAvatar: 'https://picsum.photos/80/80?random=29',
-      isAiGenerated: true,
-    ),
-    _DiscoverItem(
-      id: '10',
-      imageUrl: 'https://picsum.photos/400/360?random=10',
-      title: '海边木栈道与灯塔，傍晚黄金时刻很治愈',
-      authorName: '慢游日记',
-      likes: 1128,
-      authorAvatar: 'https://picsum.photos/80/80?random=30',
-      isAiGenerated: false,
-    ),
-  ];
-
   static const List<_CultureTip> _cultureTips = <_CultureTip>[
     _CultureTip(
       country: '🇸🇬 新加坡',
@@ -238,10 +143,128 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           slivers: <Widget>[
             _buildHeaderSliver(context),
             _buildQuickActionsSliver(context),
-            _buildCategorySliver(context),
-            _buildSectionHeaderSliver(context),
-            _buildWaterfallSliver(),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            SliverToBoxAdapter(
+              child: Consumer<ItineraryProvider>(
+                builder:
+                    (BuildContext context, ItineraryProvider p, Widget? _) {
+                  return _buildItineraryHeader(p);
+                },
+              ),
+            ),
+            Consumer<ItineraryProvider>(
+              builder:
+                  (BuildContext context, ItineraryProvider provider, Widget? _) {
+                final List<ItineraryModel> allItineraries =
+                    provider.myItineraries;
+                final List<ItineraryModel> filteredList =
+                    allItineraries.where((ItineraryModel itinerary) {
+                  if (_selectedFilterIndex == 0) {
+                    return true;
+                  }
+                  final Map<String, dynamic> statusInfo =
+                      _getItineraryStatusInfo(itinerary);
+                  return statusInfo['index'] == _selectedFilterIndex;
+                }).toList();
+
+                if (filteredList.isEmpty) {
+                  return SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: Column(
+                          children: <Widget>[
+                            Icon(
+                              Icons.flight_takeoff_rounded,
+                              size: 48,
+                              color: Colors.grey.shade300,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '空空如也，快去定制新行程吧',
+                              style: TextStyle(color: Colors.grey.shade400),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (BuildContext context, int index) {
+                      final ItineraryModel itinerary = filteredList[index];
+                      final Map<String, dynamic> statusInfo =
+                          _getItineraryStatusInfo(itinerary);
+                      final Map<String, dynamic> planData =
+                          itinerary.planData;
+                      final int daysCount = itinerary.days.isNotEmpty
+                          ? itinerary.days.length
+                          : 1;
+                      final String startDate =
+                          itinerary.startDate.toIso8601String().split('T').first;
+                      final dynamic rawBudget =
+                          planData['estimated_budget_per_person'];
+                      final String budgetStr = rawBudget == null
+                          ? '预算核算中'
+                          : rawBudget.toString();
+
+                      return _buildItineraryCard(
+                        title: itinerary.title,
+                        location: _destinationLine(itinerary),
+                        dates: '$startDate 起 ($daysCount天)',
+                        status: statusInfo['status'] as String,
+                        statusColor: statusInfo['color'] as Color,
+                        imageUrl: _extractCover(planData),
+                        tags: const <String>['AI 定制', '专属'],
+                        budget: budgetStr,
+                        onEnterTap: () {
+                          provider.setActiveItinerary(itinerary);
+                          Provider.of<MainNavProvider>(
+                            context,
+                            listen: false,
+                          ).setTab(1);
+                        },
+                        onDeleteTap: () async {
+                          final bool? ok = await showDialog<bool>(
+                            context: context,
+                            builder: (BuildContext ctx) {
+                              return AlertDialog(
+                                title: const Text('删除行程'),
+                                content: const Text('确定删除该行程？此操作不可撤销。'),
+                                actions: <Widget>[
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(ctx, false),
+                                    child: const Text('取消'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(ctx, true),
+                                    child: const Text('删除'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                          if (ok == true && context.mounted) {
+                            await provider.deleteItinerary(itinerary.id);
+                            if (!context.mounted) {
+                              return;
+                            }
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('行程已删除')),
+                            );
+                          }
+                        },
+                      );
+                    },
+                    childCount: filteredList.length,
+                  ),
+                );
+              },
+            ),
+            const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
           ],
         ),
       ),
@@ -343,110 +366,440 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  Widget _buildCategorySliver(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
-    return SliverToBoxAdapter(
-      child: SizedBox(
-        height: 52,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: _categories.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (BuildContext context, int index) {
-            final String category = _categories[index];
-            final bool isSelected = category == _selectedCategory;
-            return Center(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: () => setState(() => _selectedCategory = category),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
+  int _countForFilter(ItineraryProvider p, int filterIndex) {
+    final List<ItineraryModel> all = p.myItineraries;
+    if (filterIndex == 0) {
+      return all.length;
+    }
+    return all.where((ItineraryModel it) {
+      final Map<String, dynamic> info = _getItineraryStatusInfo(it);
+      return info['index'] == filterIndex;
+    }).length;
+  }
+
+  Map<String, dynamic> _getItineraryStatusInfo(ItineraryModel itinerary) {
+    final DateTime start = DateTime(
+      itinerary.startDate.year,
+      itinerary.startDate.month,
+      itinerary.startDate.day,
+    );
+    final DateTime end = DateTime(
+      itinerary.endDate.year,
+      itinerary.endDate.month,
+      itinerary.endDate.day,
+    );
+    final DateTime now = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    if (now.isBefore(start)) {
+      return <String, dynamic>{
+        'status': '计划中',
+        'color': Colors.blue.shade500,
+        'index': 1,
+      };
+    }
+    if (now.isAfter(end)) {
+      return <String, dynamic>{
+        'status': '已完成',
+        'color': Colors.grey.shade500,
+        'index': 3,
+      };
+    }
+    return <String, dynamic>{
+      'status': '进行中',
+      'color': Colors.green.shade500,
+      'index': 2,
+    };
+  }
+
+  String _destinationLine(ItineraryModel itinerary) {
+    final Map<String, dynamic> plan = itinerary.planData;
+    final Object? d =
+        plan['destination_city'] ??
+        plan['destinationCity'] ??
+        plan['destination'] ??
+        plan['destination_name'];
+    if (d != null && d.toString().trim().isNotEmpty) {
+      return d.toString().trim();
+    }
+    return itinerary.title;
+  }
+
+  String _extractCover(Map<String, dynamic> planData) {
+    final Object? cover =
+        planData['coverImageUrl'] ?? planData['cover_image_url'];
+    if (cover != null && cover.toString().trim().isNotEmpty) {
+      return cover.toString().trim();
+    }
+    final List<dynamic>? days = planData['days'] as List<dynamic>?;
+    if (days != null && days.isNotEmpty && days.first is Map) {
+      final Map<String, dynamic> day0 =
+          Map<String, dynamic>.from(days.first as Map);
+      final List<dynamic>? acts = day0['activities'] as List<dynamic>?;
+      if (acts != null && acts.isNotEmpty && acts.first is Map) {
+        final Map<String, dynamic> a0 =
+            Map<String, dynamic>.from(acts.first as Map);
+        final Object? u = a0['imageUrl'] ?? a0['image_url'];
+        if (u != null && u.toString().trim().isNotEmpty) {
+          return u.toString().trim();
+        }
+      }
+    }
+    return 'https://images.unsplash.com/photo-1540206395-68808572332f?w=800';
+  }
+
+  Widget _buildItineraryHeader(ItineraryProvider itineraryProvider) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+      child: Column(
+        children: <Widget>[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: <Widget>[
+              Text(
+                '我的旅行行程',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.grey.shade900,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.add, size: 14, color: Colors.indigo.shade600),
+                    const SizedBox(width: 4),
+                    Text(
+                      '添加',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.indigo.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List<Widget>.generate(_filterTabs.length, (int index) {
+                final bool isActive = _selectedFilterIndex == index;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedFilterIndex = index),
+                  child: _buildFilterTab(
+                    '${_filterTabs[index]} (${_countForFilter(itineraryProvider, index)})',
+                    isActive: isActive,
                   ),
-                  decoration: BoxDecoration(
-                    color: isSelected ? colorScheme.primary : Colors.white,
-                    borderRadius: BorderRadius.circular(999),
-                    border: isSelected
-                        ? null
-                        : Border.all(color: Colors.grey.shade200),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterTab(String text, {required bool isActive}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isActive ? const Color(0xFF111827) : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: isActive
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : <BoxShadow>[],
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+          color: isActive ? Colors.white : Colors.grey.shade500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItineraryCard({
+    required String title,
+    required String location,
+    required String dates,
+    required String status,
+    required Color statusColor,
+    required String imageUrl,
+    required List<String> tags,
+    required String budget,
+    VoidCallback? onEnterTap,
+    VoidCallback? onDeleteTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24, left: 20, right: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 180,
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
                   ),
-                  child: Text(
-                    category,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: isSelected ? Colors.white : Colors.grey.shade600,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.w500,
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        Container(color: Colors.grey.shade200),
+                  ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: 60,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.1),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeaderSliver(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: Text(
-                '达人足迹',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurface,
-                  fontWeight: FontWeight.w800,
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(color: Colors.black12, blurRadius: 4),
+                      ],
+                    ),
+                    child: Text(
+                      status,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-            Text(
-              '更多>',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWaterfallSliver() {
-    const EdgeInsets gridPadding = EdgeInsets.all(16);
-    const double spacing = 12;
-    const double minTileWidth = 140;
-    return SliverLayoutBuilder(
-      builder: (BuildContext context, constraints) {
-        final double innerWidth =
-            constraints.crossAxisExtent - gridPadding.horizontal;
-        final int computedCount =
-            ((innerWidth + spacing) / (minTileWidth + spacing)).floor().clamp(
-              1,
-              2,
-            );
-        return SliverPadding(
-          padding: gridPadding,
-          sliver: SliverMasonryGrid.count(
-            crossAxisCount: computedCount,
-            mainAxisSpacing: spacing,
-            crossAxisSpacing: spacing,
-            childCount: _mockItems.length,
-            itemBuilder: (BuildContext context, int index) {
-              return _DiscoverCard(item: _mockItems[index]);
-            },
           ),
-        );
-      },
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.location_on,
+                      size: 14,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      location,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.calendar_month,
+                      size: 14,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      dates,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Row(
+                      children: tags
+                          .map(
+                            (String t) => Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade100),
+                              ),
+                              child: Text(
+                                t,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        budget,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1, color: Color(0xFFF3F4F6)),
+                ),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: onEnterTap,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo.shade600,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          '进入行程',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        border: Border.all(color: Colors.grey.shade200),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: onDeleteTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          border: Border.all(color: Colors.red.shade100),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.delete_outline,
+                          size: 18,
+                          color: Colors.red.shade400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -959,159 +1312,6 @@ class _QuickActionCard extends StatelessWidget {
   }
 }
 
-class _DiscoverCard extends StatelessWidget {
-  const _DiscoverCard({required this.item});
-
-  final _DiscoverItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colorScheme = theme.colorScheme;
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: colorScheme.shadow.withOpacity(0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Stack(
-            children: <Widget>[
-              CachedNetworkImage(
-                imageUrl: item.imageUrl,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                placeholder: (_, __) => AspectRatio(
-                  aspectRatio: 1,
-                  child: Container(color: colorScheme.surfaceContainerHighest),
-                ),
-                errorWidget: (_, __, ___) => AspectRatio(
-                  aspectRatio: 1,
-                  child: Container(
-                    color: Colors.blueGrey.shade800,
-                    child: const Center(
-                      child: Icon(
-                        Icons.public,
-                        color: Colors.white30,
-                        size: 40,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (item.isAiGenerated)
-                Positioned(
-                  left: 8,
-                  bottom: 8,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        color: colorScheme.primary.withOpacity(0.86),
-                        child: Text(
-                          '✨ AI生成',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: colorScheme.onPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  item.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: <Widget>[
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: item.authorAvatar,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => Container(
-                            color: colorScheme.surfaceContainerHighest,
-                            alignment: Alignment.center,
-                            child: Icon(
-                              Icons.person_rounded,
-                              size: 12,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        item.authorName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.favorite_rounded,
-                      size: 14,
-                      color: colorScheme.error,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${item.likes}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _VisaBottomSheet extends StatelessWidget {
   const _VisaBottomSheet();
 
@@ -1554,26 +1754,6 @@ class _QuickActionData {
   final IconData icon;
   final _QuickTone tone;
   final Future<void> Function() onTap;
-}
-
-class _DiscoverItem {
-  const _DiscoverItem({
-    required this.id,
-    required this.imageUrl,
-    required this.title,
-    required this.authorName,
-    required this.likes,
-    required this.authorAvatar,
-    required this.isAiGenerated,
-  });
-
-  final String id;
-  final String imageUrl;
-  final String title;
-  final String authorName;
-  final int likes;
-  final String authorAvatar;
-  final bool isAiGenerated;
 }
 
 enum _CultureTone { warning, custom, note }

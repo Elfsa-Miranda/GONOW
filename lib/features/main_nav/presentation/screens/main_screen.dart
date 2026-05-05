@@ -33,11 +33,11 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onAiFabPressed() {
     final MainNavProvider provider = context.read<MainNavProvider>();
-    if (provider.pendingAiPrompt == null || provider.pendingAiPrompt!.isEmpty) {
-      provider.pendingAiPrompt = '带父母去北京玩五天经典路线';
-      provider.shouldAutoSendAi = true;
-    }
-    provider.requestOpenAiSheet();
+    const String defaultPrompt = '带父母去北京玩五天经典路线';
+    final String trimmed = provider.pendingAiPrompt?.trim() ?? '';
+    final String prompt = trimmed.isNotEmpty ? trimmed : defaultPrompt;
+    final String source = _sourceLabelForIndex(provider.currentIndex);
+    provider.triggerAiPlanning(prompt, source: source, autoSend: true);
   }
 
   String _sourceLabelForIndex(int index) {
