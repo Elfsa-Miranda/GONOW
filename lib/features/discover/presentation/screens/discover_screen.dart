@@ -495,7 +495,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       child: Column(
         children: <Widget>[
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
               Text(
                 '我的旅行行程',
@@ -503,27 +502,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   color: Colors.grey.shade900,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.indigo.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Icon(Icons.add, size: 14, color: Colors.indigo.shade600),
-                    const SizedBox(width: 4),
-                    Text(
-                      '添加',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.indigo.shade600,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ],

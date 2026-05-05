@@ -2361,7 +2361,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                 ),
                 if (_isEditing)
                   SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                    padding: const EdgeInsets.fromLTRB(20, 30, 20, 120),
                     sliver: SliverToBoxAdapter(
                       child: Builder(
                         builder: (BuildContext context) {

@@ -1531,6 +1531,13 @@ JSON 必须严格包含以下 4 个字段：
                       TextEditingController(text: item['title'] ?? '');
                   final TextEditingController editTimeCtrl =
                       TextEditingController(text: item['time'] ?? '');
+                  final String currentDuration = (item['recommended_duration'] ??
+                          '')
+                      .toString()
+                      .replaceAll('游玩 ', '')
+                      .replaceAll('预计游玩 ', '');
+                  final TextEditingController editDurationCtrl =
+                      TextEditingController(text: currentDuration);
                   showDialog<void>(
                     context: context,
                     builder: (BuildContext ctx) => StatefulBuilder(
@@ -1546,112 +1553,122 @@ JSON 必须严格包含以下 4 个字段：
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              TextField(
-                                controller: editTitleCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: '地点/活动名称',
+                          content: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                TextField(
+                                  controller: editTitleCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: '地点/活动名称',
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-                              GestureDetector(
-                                onTap: () {
-                                  FocusScope.of(dialogContext).unfocus();
-                                  DateTime tempTime = DateTime(2026, 1, 1, 9, 0);
-                                  if (editTimeCtrl.text.isNotEmpty) {
-                                    try {
-                                      final List<String> parts =
-                                          editTimeCtrl.text.split(':');
-                                      tempTime = DateTime(
-                                        2026,
-                                        1,
-                                        1,
-                                        int.parse(parts[0]),
-                                        int.parse(parts[1]),
-                                      );
-                                    } catch (_) {}
-                                  }
-                                  showCupertinoModalPopup<void>(
-                                    context: dialogContext,
-                                    builder: (_) => Container(
-                                      height: 260,
-                                      color: Colors.white,
-                                      child: Column(
-                                        children: <Widget>[
-                                          Container(
-                                            color: Colors.grey.shade50,
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: <Widget>[
-                                                TextButton(
-                                                  onPressed: () {
-                                                    setDialogState(() {
-                                                      editTimeCtrl.clear();
-                                                    });
-                                                    Navigator.pop(dialogContext);
-                                                  },
-                                                  child: const Text(
-                                                    '清除',
-                                                    style: TextStyle(
-                                                      color: Colors.grey,
+                                const SizedBox(height: 16),
+                                TextField(
+                                  controller: editDurationCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: '游玩时长 (选填)',
+                                    hintText: '如：2小时 / 半天',
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                GestureDetector(
+                                  onTap: () {
+                                    FocusScope.of(dialogContext).unfocus();
+                                    DateTime tempTime = DateTime(2026, 1, 1, 9, 0);
+                                    if (editTimeCtrl.text.isNotEmpty) {
+                                      try {
+                                        final List<String> parts =
+                                            editTimeCtrl.text.split(':');
+                                        tempTime = DateTime(
+                                          2026,
+                                          1,
+                                          1,
+                                          int.parse(parts[0]),
+                                          int.parse(parts[1]),
+                                        );
+                                      } catch (_) {}
+                                    }
+                                    showCupertinoModalPopup<void>(
+                                      context: dialogContext,
+                                      builder: (_) => Container(
+                                        height: 260,
+                                        color: Colors.white,
+                                        child: Column(
+                                          children: <Widget>[
+                                            Container(
+                                              color: Colors.grey.shade50,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: <Widget>[
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      setDialogState(() {
+                                                        editTimeCtrl.clear();
+                                                      });
+                                                      Navigator.pop(dialogContext);
+                                                    },
+                                                    child: const Text(
+                                                      '清除',
+                                                      style: TextStyle(
+                                                        color: Colors.grey,
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                                TextButton(
-                                                  onPressed: () {
-                                                    setDialogState(() {
-                                                      editTimeCtrl.text =
-                                                          '${tempTime.hour.toString().padLeft(2, '0')}:${tempTime.minute.toString().padLeft(2, '0')}';
-                                                    });
-                                                    Navigator.pop(dialogContext);
-                                                  },
-                                                  child: const Text(
-                                                    '确定',
-                                                    style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      setDialogState(() {
+                                                        editTimeCtrl.text =
+                                                            '${tempTime.hour.toString().padLeft(2, '0')}:${tempTime.minute.toString().padLeft(2, '0')}';
+                                                      });
+                                                      Navigator.pop(dialogContext);
+                                                    },
+                                                    child: const Text(
+                                                      '确定',
+                                                      style: TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                          Expanded(
-                                            child: CupertinoDatePicker(
-                                              mode:
-                                                  CupertinoDatePickerMode.time,
-                                              use24hFormat: true,
-                                              initialDateTime: tempTime,
-                                              onDateTimeChanged:
-                                                  (DateTime newDate) {
-                                                    tempTime = newDate;
-                                                  },
+                                            Expanded(
+                                              child: CupertinoDatePicker(
+                                                mode:
+                                                    CupertinoDatePickerMode.time,
+                                                use24hFormat: true,
+                                                initialDateTime: tempTime,
+                                                onDateTimeChanged:
+                                                    (DateTime newDate) {
+                                                      tempTime = newDate;
+                                                    },
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                },
-                                child: AbsorbPointer(
-                                  child: TextField(
-                                    controller: editTimeCtrl,
-                                    decoration: const InputDecoration(
-                                      labelText: '大概时间 (选填)',
-                                      hintText: '点击滑动选择',
-                                      suffixIcon: Icon(
-                                        Icons.access_time,
-                                        size: 18,
+                                    );
+                                  },
+                                  child: AbsorbPointer(
+                                    child: TextField(
+                                      controller: editTimeCtrl,
+                                      decoration: const InputDecoration(
+                                        labelText: '大概时间 (选填)',
+                                        hintText: '点击滑动选择',
+                                        suffixIcon: Icon(
+                                          Icons.access_time,
+                                          size: 18,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                           actions: <Widget>[
                             TextButton(
@@ -1693,14 +1710,25 @@ JSON 必须严格包含以下 4 个字段：
                                           Map<String, dynamic>.from(
                                         acts[aIdx] as Map,
                                       );
+                                      final String newDuration =
+                                          editDurationCtrl.text.trim();
                                       act['title'] = editTitleCtrl.text.trim();
                                       act['time'] = editTimeCtrl.text.trim();
+                                      act['recommended_duration'] =
+                                          newDuration.isNotEmpty
+                                          ? newDuration
+                                          : '时长待定';
+                                      act['duration'] = act['recommended_duration'];
                                       acts[aIdx] = act;
                                       dm['activities'] = acts;
                                       days[dIdx] = dm;
                                       _editablePlanData![storageKey] = days;
                                       item['title'] = act['title'];
                                       item['time'] = act['time'];
+                                      item['recommended_duration'] =
+                                          act['recommended_duration'];
+                                      item['duration'] = act['duration'];
+                                      _refreshFromEditableData();
                                       _contentVersion++;
                                     }
                                   }
