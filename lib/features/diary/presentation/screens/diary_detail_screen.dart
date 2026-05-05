@@ -43,7 +43,6 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   );
   late List<_TimelineNode> _nodes = _buildNodes(_editableData);
   late bool _isEditing = widget.startEditing;
-  bool _publishToCommunity = false;
   int _contentVersion = 0;
   String _snapshotDataStr = '';
   String _snapshotTitle = '';
@@ -61,7 +60,6 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
     )..repeat(reverse: true);
     _titleController.text = _diary.title;
     _quoteController.text = (_diary.diaryData['quote'] ?? '').toString();
-    _publishToCommunity = _diary.isPublic;
     if (_isEditing) {
       _captureEditSnapshot();
     }
@@ -959,29 +957,28 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
   }
 
   Future<void> _persist({required bool asDraft}) async {
-    final DiaryProvider provider = context.read<DiaryProvider>();
-    final String finalQuote =
-        (_editableData['quote'] ?? _quoteController.text).toString().trim();
-    final Map<String, dynamic> updatedData = <String, dynamic>{
-      ..._editableData,
-      'quote': finalQuote,
-      'days': _editableData['days'],
-      'updatedAt': DateTime.now().toIso8601String(),
-    };
-    final DiaryModel updated = _diary.copyWith(
-      title: _titleController.text.trim().isEmpty
-          ? '未命名手账'
-          : _titleController.text.trim(),
-      coverImageUrl: _editableCoverImageUrl.trim().isEmpty
-          ? _diary.coverImageUrl
-          : _editableCoverImageUrl.trim(),
-      isDraft: asDraft,
-      isPublic: asDraft ? false : _publishToCommunity,
-      diaryData: updatedData,
+    final DiaryProvider provider = Provider.of<DiaryProvider>(
+      context,
+      listen: false,
     );
-    await provider.saveDiary(updated);
-    _diary = updated;
-    _editableCoverImageUrl = updated.coverImageUrl;
+    final DiaryModel updatedDiary = _diary.copyWith(
+      title: _titleController.text.trim().isNotEmpty
+          ? _titleController.text.trim()
+          : '未命名手账',
+      diaryData: _editableData,
+      isDraft: asDraft,
+      isPublic: false,
+    );
+
+    await provider.saveDiary(updatedDiary);
+
+    if (mounted) {
+      setState(() {
+        _diary = updatedDiary;
+      });
+    } else {
+      _diary = updatedDiary;
+    }
     _captureEditSnapshot();
   }
 
@@ -2462,7 +2459,7 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
             if (_isEditing)
               Positioned(
                 right: 16,
-                bottom: 44,
+                bottom: MediaQuery.of(context).padding.bottom + 92,
                 child: AnimatedBuilder(
                   animation: _pulseController,
                   builder: (BuildContext context, Widget? child) {
@@ -2483,119 +2480,133 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
                   ),
                 ),
               ),
-          ],
-        ),
-        bottomNavigationBar: _isEditing
-            ? SafeArea(
-          top: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: Color(0x12000000),
-                  blurRadius: 10,
-                  offset: Offset(0, -4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Row(
-                    children: <Widget>[
-                      const Text(
-                        '🌍 公开至发现页',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
-                      Switch(
-                        value: _publishToCommunity,
-                        onChanged: (bool value) {
-                          setState(() => _publishToCommunity = value);
-                        },
-                      ),
-                    ],
+            if (_isEditing)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    12,
+                    20,
+                    MediaQuery.of(context).padding.bottom + 12,
                   ),
-                ),
-                const SizedBox(width: 8),
-                if (_isEditing)
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _editableData = _normalizeEditableData(
-                          Map<String, dynamic>.from(_diary.diaryData),
-                        );
-                        _titleController.text = _diary.title;
-                        _quoteController.text =
-                            (_diary.diaryData['quote'] ?? '').toString();
-                        _editableCoverImageUrl = _diary.coverImageUrl;
-                        _publishToCommunity = _diary.isPublic;
-                        _refreshFromEditableData();
-                        _captureEditSnapshot();
-                        _contentVersion++;
-                        _isEditing = false;
-                      });
-                      if (!context.mounted) return;
-                      _showEditSnackBar('已取消编辑，改动未保存');
-                    },
-                    child: const Text(
-                      '取消',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                const SizedBox(width: 6),
-                Container(
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: <Color>[
-                        Colors.indigo.shade600,
-                        Colors.purple.shade500,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.white,
                     boxShadow: <BoxShadow>[
                       BoxShadow(
-                        color: Colors.indigo.withValues(alpha: 0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, -5),
+                      ),
+                    ],
+                    border: Border(
+                      top: BorderSide(color: Colors.grey.shade100),
+                    ),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        flex: 2,
+                        child: TextButton(
+                          onPressed: () => _onPressBack(),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                          child: const Text(
+                            '取消',
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 3,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            await _persist(asDraft: true);
+                            if (mounted) {
+                              setState(() => _isEditing = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('📁 已安全保存至草稿箱'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(
+                              color: Colors.indigo.shade100,
+                              width: 1.5,
+                            ),
+                            backgroundColor: Colors.indigo.shade50.withValues(
+                              alpha: 0.6,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                          child: Text(
+                            '存草稿',
+                            style: TextStyle(
+                              color: Colors.indigo.shade600,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 3,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await _persist(asDraft: false);
+                            if (mounted) {
+                              setState(() => _isEditing = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✅ 手账已完成'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: Colors.indigo.shade600,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                          child: const Text(
+                            '完成',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      await _persist(asDraft: false);
-                      if (!context.mounted) return;
-                      setState(() => _isEditing = false);
-                      _showEditSnackBar('🎉 保存成功！');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                    ),
-                    child: Text(
-                      _publishToCommunity ? '完成并发布' : '完成',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
                 ),
-              ],
-            ),
-          ),
-        )
-            : null,
+              ),
+          ],
+        ),
+        bottomNavigationBar: null,
       ),
     );
   }

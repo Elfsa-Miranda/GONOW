@@ -177,6 +177,21 @@ class ItineraryModel {
     return 'local_${startDate.millisecondsSinceEpoch}_${title.hashCode.abs()}';
   }
 
+  /// 兼容 Discover 页等直接读取目的地字段。
+  String get destinationCity {
+    final dynamic fromPlan = planData['destination_city'] ??
+        planData['destinationCity'] ??
+        planData['destination'];
+    final String v = fromPlan?.toString().trim() ?? '';
+    if (v.isNotEmpty) {
+      return v;
+    }
+    return '探索未知';
+  }
+
+  /// 兼容旧调用命名。
+  String get destination => destinationCity;
+
   ItineraryModel copyWith({
     String? title,
     DateTime? startDate,
@@ -264,6 +279,7 @@ class ItineraryModel {
     return <String, dynamic>{
       'remoteId': remoteId,
       'title': title,
+      'destination_city': destinationCity,
       'startDate': startDate.toIso8601String(),
       'endDate': endDate.toIso8601String(),
       'planData': planData,
@@ -543,6 +559,98 @@ class ItineraryProvider extends ChangeNotifier {
     final ItineraryModel updated =
         sanitizeItineraryImages(ItineraryModel.fromJson(json));
     await saveItinerary(updated);
+  }
+
+  // 更新行程的基础信息（标题、地点、日期、标签、预算）
+  Future<void> updateItineraryBasicInfo({
+    required String id,
+    required String newTitle,
+    required String newDestination,
+    required String newStartDate,
+    required String newEndDate,
+    required String newBudget,
+    required String newActualCost,
+    required List<String> newTags,
+  }) async {
+    final int index = _myItineraries.indexWhere((ItineraryModel e) => e.id == id);
+    if (index == -1) return;
+
+    // 1. 深拷贝并更新 planData
+    final ItineraryModel oldItinerary = _myItineraries[index];
+    final Map<String, dynamic> updatedPlanData = Map<String, dynamic>.from(
+      oldItinerary.planData,
+    );
+    updatedPlanData['start_date'] = newStartDate;
+    updatedPlanData['end_date'] = newEndDate;
+    updatedPlanData['estimated_budget_per_person'] = newBudget;
+    updatedPlanData['actual_cost'] = newActualCost;
+    updatedPlanData['tags'] = newTags;
+    updatedPlanData['destination_city'] = newDestination;
+    updatedPlanData['destinationCity'] = newDestination;
+
+    DateTime parsedStartDate = oldItinerary.startDate;
+    if (newStartDate.trim().isNotEmpty) {
+      parsedStartDate = DateTime.tryParse(newStartDate) ?? oldItinerary.startDate;
+    }
+    DateTime parsedEndDate = oldItinerary.endDate;
+    if (newEndDate.trim().isNotEmpty) {
+      parsedEndDate = DateTime.tryParse(newEndDate) ?? oldItinerary.endDate;
+    } else {
+      final Duration tripDuration = oldItinerary.endDate.difference(
+        oldItinerary.startDate,
+      );
+      parsedEndDate = parsedStartDate.add(tripDuration);
+    }
+
+    // 2. 重组新的 Model
+    final ItineraryModel updatedItinerary = sanitizeItineraryImages(
+      oldItinerary.copyWith(
+        title: newTitle,
+        startDate: _toDayStart(parsedStartDate),
+        endDate: _toDayStart(parsedEndDate),
+        planData: updatedPlanData,
+      ),
+    );
+
+    // 3. 乐观更新 UI
+    _myItineraries[index] = updatedItinerary;
+    if (_activeItinerary?.id == id) {
+      _activeItinerary = updatedItinerary;
+    }
+    if (_currentItinerary?.id == id) {
+      _currentItinerary = updatedItinerary;
+    }
+    notifyListeners();
+
+    // 4. 持久化到本地和云端
+    final String? userId = Supabase.instance.client.auth.currentUser?.id;
+    final String fallbackUserId = userId ?? 'guest';
+
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String freshJsonStr = jsonEncode(
+        _myItineraries.map((ItineraryModel e) => e.toJson()).toList(),
+      );
+      await prefs.setString('my_itineraries_cache_$fallbackUserId', freshJsonStr);
+      if (_currentItinerary?.id == id) {
+        await prefs.setString(_prefsKey, jsonEncode(updatedItinerary.toJson()));
+      }
+    } catch (e) {
+      debugPrint('本地缓存更新失败: $e');
+    }
+
+    if (userId != null && _isValidUuid(id)) {
+      try {
+        await Supabase.instance.client.from(_tableName).update(<String, dynamic>{
+          'title': newTitle,
+          'start_date': newStartDate,
+          'destination_city': newDestination,
+          'plan_data': updatedPlanData,
+        }).eq('id', id);
+      } catch (e) {
+        debugPrint('云端更新行程信息失败: $e');
+      }
+    }
   }
 
   ItineraryModel sanitizeItineraryImages(ItineraryModel model) {

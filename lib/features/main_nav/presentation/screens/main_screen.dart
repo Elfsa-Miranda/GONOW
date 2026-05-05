@@ -33,11 +33,12 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onAiFabPressed() {
     final MainNavProvider provider = context.read<MainNavProvider>();
-    const String defaultPrompt = '带父母去北京玩五天经典路线';
-    final String trimmed = provider.pendingAiPrompt?.trim() ?? '';
-    final String prompt = trimmed.isNotEmpty ? trimmed : defaultPrompt;
     final String source = _sourceLabelForIndex(provider.currentIndex);
-    provider.triggerAiPlanning(prompt, source: source, autoSend: true);
+    // 用户主动点击 FAB 打开面板：只传入 source，不设置 autoSend=true。
+    // 让用户自己决定是否发送，而非自动触发。
+    // 若此时恰好有外部注入的 pendingAiPrompt，它会作为输入框 hint 显示，
+    // 但不会被自动发送。
+    provider.requestOpenAiSheet(source: source);
   }
 
   String _sourceLabelForIndex(int index) {
@@ -59,6 +60,14 @@ class _MainScreenState extends State<MainScreen> {
         : null;
     final String source =
         provider.pendingAiSource ?? _sourceLabelForIndex(provider.currentIndex);
+    // 在打开 sheet 前读取 autoSend 意图，然后立即清除 provider 状态。
+    // 这样 AiCustomScreen 内部不再需要监听全局 shouldAutoSendAi，
+    // 避免 sheet rebuild 时重复触发或状态残留导致误触发。
+    final bool autoSend = provider.shouldAutoSendAi &&
+        initialPrompt != null &&
+        initialPrompt.isNotEmpty;
+    provider.clearAiPendingState();
+
     final bool? shouldOpenItinerary = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -77,7 +86,11 @@ class _MainScreenState extends State<MainScreen> {
           tween: Tween<double>(begin: 0.72, end: heightFactor),
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutQuart,
-          child: AiCustomScreen(source: source, initialPrompt: initialPrompt),
+          child: AiCustomScreen(
+            source: source,
+            initialPrompt: initialPrompt,
+            autoSend: autoSend,
+          ),
           builder: (BuildContext context, double value, Widget? child) {
             return FractionallySizedBox(heightFactor: value, child: child);
           },

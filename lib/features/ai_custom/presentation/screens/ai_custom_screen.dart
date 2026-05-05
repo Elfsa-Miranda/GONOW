@@ -26,8 +26,16 @@ class ChatMessage {
 class AiCustomScreen extends StatefulWidget {
   final String source;
   final String? initialPrompt;
+  /// 若为 true，sheet 打开后会立即将 [initialPrompt] 自动发送。
+  /// 仅由外部业务逻辑（非 FAB 直接点击）传入 true，FAB 路径始终为 false。
+  final bool autoSend;
 
-  const AiCustomScreen({super.key, this.source = '底部导航栏', this.initialPrompt});
+  const AiCustomScreen({
+    super.key,
+    this.source = '底部导航栏',
+    this.initialPrompt,
+    this.autoSend = false,
+  });
 
   @override
   State<AiCustomScreen> createState() => _AiCustomScreenState();
@@ -744,23 +752,22 @@ $currentPlanJson
     final MainNavProvider navProvider = context.watch<MainNavProvider>();
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final bool isGlobalLoading = navProvider.isAiPlanning;
-    final String? pendingTrim = navProvider.pendingAiPrompt?.trim();
 
-    if (navProvider.shouldAutoSendAi &&
+    // 自动发送守卫：完全依赖构造时传入的 widget.autoSend，
+    // 不再监听 provider 的全局 shouldAutoSendAi，彻底杜绝状态残留导致的误触发。
+    // FAB 路径：autoSend=false，永远不会进入此分支。
+    // 外部触发路径：autoSend=true 且 initialPrompt 非空，才自动发送。
+    if (widget.autoSend &&
+        widget.initialPrompt != null &&
+        widget.initialPrompt!.isNotEmpty &&
         !isGlobalLoading &&
-        pendingTrim != null &&
-        pendingTrim.isNotEmpty &&
         !_autoSendPostFrameScheduled) {
       _autoSendPostFrameScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _autoSendPostFrameScheduled = false;
         if (!mounted) return;
-        final MainNavProvider nav = context.read<MainNavProvider>();
-        if (!nav.shouldAutoSendAi || nav.isAiPlanning) return;
-        final String text = nav.pendingAiPrompt?.trim() ?? '';
-        if (text.isEmpty) return;
-        nav.clearAiPendingState();
-        _textController.text = text;
+        if (context.read<MainNavProvider>().isAiPlanning) return;
+        _textController.text = widget.initialPrompt!;
         _sendMessage();
       });
     }

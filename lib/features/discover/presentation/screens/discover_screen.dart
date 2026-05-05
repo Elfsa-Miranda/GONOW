@@ -198,26 +198,62 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           _getItineraryStatusInfo(itinerary);
                       final Map<String, dynamic> planData =
                           itinerary.planData;
-                      final int daysCount = itinerary.days.isNotEmpty
-                          ? itinerary.days.length
-                          : 1;
-                      final String startDate =
-                          itinerary.startDate.toIso8601String().split('T').first;
-                      final dynamic rawBudget =
-                          planData['estimated_budget_per_person'];
-                      final String budgetStr = rawBudget == null
-                          ? '预算核算中'
-                          : rawBudget.toString();
+                      String startDateStr =
+                          planData['start_date']?.toString().split('T')[0] ?? '';
+                      String endDateStr =
+                          planData['end_date']?.toString().split('T')[0] ?? '';
+                      int daysCount =
+                          (planData['days'] as List<dynamic>?)?.length ?? 1;
+                      if (startDateStr.isEmpty) {
+                        startDateStr =
+                            itinerary.startDate.toIso8601String().split('T')[0];
+                      }
+                      if (endDateStr.isEmpty) {
+                        endDateStr =
+                            itinerary.endDate.toIso8601String().split('T')[0];
+                      }
+                      if (startDateStr.isNotEmpty && endDateStr.isNotEmpty) {
+                        try {
+                          final DateTime sDate = DateTime.parse(startDateStr);
+                          final DateTime eDate = DateTime.parse(endDateStr);
+                          daysCount = eDate.difference(sDate).inDays + 1;
+                          if (daysCount < 1) {
+                            daysCount = 1;
+                          }
+                        } catch (_) {}
+                      }
+                      String displayDates =
+                          startDateStr.isNotEmpty ? startDateStr : '日期未定';
+                      if (endDateStr.isNotEmpty && startDateStr != endDateStr) {
+                        displayDates += ' 至 $endDateStr';
+                      }
+                      displayDates += ' ($daysCount天)';
+                      final List<String> realTags =
+                          planData['tags'] != null && planData['tags'] is List
+                          ? List<String>.from(planData['tags'] as List<dynamic>)
+                          : <String>['AI 定制', '专属'];
+                      final String budgetStr =
+                          planData['estimated_budget_per_person']?.toString() ??
+                              '';
+                      final String actualCostStr =
+                          planData['actual_cost']?.toString() ?? '';
+                      String displayBudget = '';
+                      if (actualCostStr.isNotEmpty) {
+                        displayBudget = '预 ¥$budgetStr | 实 ¥$actualCostStr';
+                      } else {
+                        displayBudget =
+                            budgetStr.isNotEmpty ? '¥$budgetStr' : '预算核算中';
+                      }
 
                       return _buildItineraryCard(
                         title: itinerary.title,
                         location: _destinationLine(itinerary),
-                        dates: '$startDate 起 ($daysCount天)',
+                        dates: displayDates,
                         status: statusInfo['status'] as String,
                         statusColor: statusInfo['color'] as Color,
                         imageUrl: _extractCover(planData),
-                        tags: const <String>['AI 定制', '专属'],
-                        budget: budgetStr,
+                        tags: realTags,
+                        budget: displayBudget,
                         onEnterTap: () {
                           provider.setActiveItinerary(itinerary);
                           Provider.of<MainNavProvider>(
@@ -256,6 +292,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                               const SnackBar(content: Text('行程已删除')),
                             );
                           }
+                        },
+                        onEditTap: () {
+                          _showEditItinerarySheet(context, itinerary);
                         },
                       );
                     },
@@ -549,6 +588,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     required String budget,
     VoidCallback? onEnterTap,
     VoidCallback? onDeleteTap,
+    VoidCallback? onEditTap,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 24, left: 20, right: 20),
@@ -683,35 +723,46 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
+                // 标签与预算
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: <Widget>[
-                    Row(
-                      children: tags
-                          .map(
-                            (String t) => Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.grey.shade100),
-                              ),
-                              child: Text(
-                                t,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey.shade600,
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: tags
+                              .map(
+                                (String t) => Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade50,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: Colors.grey.shade100,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    t,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          )
-                          .toList(),
+                              )
+                              .toList(),
+                        ),
+                      ),
                     ),
+                    const SizedBox(width: 12),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -760,18 +811,21 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        border: Border.all(color: Colors.grey.shade200),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        Icons.edit_outlined,
-                        size: 18,
-                        color: Colors.grey.shade600,
+                    GestureDetector(
+                      onTap: onEditTap,
+                      child: Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          border: Border.all(color: Colors.grey.shade200),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.edit_outlined,
+                          size: 18,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -811,6 +865,304 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       builder: (BuildContext context) {
         return const _VisaBottomSheet();
       },
+    );
+  }
+
+  // 弹出修改行程信息的底窗
+  void _showEditItinerarySheet(BuildContext context, ItineraryModel itinerary) {
+    final Map<String, dynamic> planData = itinerary.planData;
+    final TextEditingController titleCtrl = TextEditingController(text: itinerary.title);
+    final TextEditingController destCtrl = TextEditingController(text: itinerary.destinationCity);
+    final TextEditingController budgetCtrl = TextEditingController(
+      text: planData['estimated_budget_per_person']?.toString() ?? '',
+    );
+    final TextEditingController actualCostCtrl = TextEditingController(
+      text: planData['actual_cost']?.toString() ?? '',
+    );
+    List<String> existingTags = <String>[];
+    if (planData['tags'] != null && planData['tags'] is List) {
+      existingTags = List<String>.from(planData['tags'] as List<dynamic>);
+    } else if (planData['tags'] == null) {
+      existingTags = <String>['AI 定制', '专属'];
+    }
+    final TextEditingController tagsCtrl = TextEditingController(
+      text: existingTags.join(', '),
+    );
+    String selectedStartDateStr =
+        planData['start_date']?.toString().split('T')[0] ?? '';
+    String selectedEndDateStr =
+        planData['end_date']?.toString().split('T')[0] ?? '';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (
+            BuildContext context,
+            void Function(void Function()) setModalState,
+          ) {
+            return AnimatedPadding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '修改行程信息',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            _buildEditLabel('行程标题'),
+                            _buildEditField(titleCtrl, '如：北京五日带父母舒心游'),
+                            _buildEditLabel('目的地'),
+                            _buildEditField(destCtrl, '如：北京'),
+                            Row(
+                              children: <Widget>[
+                                Expanded(child: _buildEditLabel('预估预算')),
+                                const SizedBox(width: 12),
+                                Expanded(child: _buildEditLabel('实际花费 (选填)')),
+                              ],
+                            ),
+                            Row(
+                              children: <Widget>[
+                                Expanded(child: _buildEditField(budgetCtrl, '如：3500')),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildEditField(actualCostCtrl, '如：3200'),
+                                ),
+                              ],
+                            ),
+                            _buildEditLabel('自定义标签 (用逗号隔开)'),
+                            _buildEditField(tagsCtrl, '如：带父母, 慢节奏'),
+                            Row(
+                              children: <Widget>[
+                                Expanded(child: _buildEditLabel('出发日期')),
+                                const SizedBox(width: 12),
+                                Expanded(child: _buildEditLabel('结束日期')),
+                              ],
+                            ),
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: _buildDatePicker(
+                                    context,
+                                    selectedStartDateStr,
+                                    (String date) {
+                                      setModalState(() => selectedStartDateStr = date);
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildDatePicker(
+                                    context,
+                                    selectedEndDateStr,
+                                    (String date) {
+                                      setModalState(() => selectedEndDateStr = date);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () async {
+                          if (titleCtrl.text.trim().isEmpty ||
+                              destCtrl.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('标题和目的地不能为空')),
+                            );
+                            return;
+                          }
+                          final List<String> newTags = tagsCtrl.text
+                              .split(RegExp(r'[,，]'))
+                              .map((String e) => e.trim())
+                              .where((String e) => e.isNotEmpty)
+                              .toList();
+
+                          await Provider.of<ItineraryProvider>(
+                            context,
+                            listen: false,
+                          ).updateItineraryBasicInfo(
+                            id: itinerary.id,
+                            newTitle: titleCtrl.text.trim(),
+                            newDestination: destCtrl.text.trim(),
+                            newStartDate: selectedStartDateStr,
+                            newEndDate: selectedEndDateStr,
+                            newBudget: budgetCtrl.text.trim(),
+                            newActualCost: actualCostCtrl.text.trim(),
+                            newTags: newTags.isEmpty
+                                ? <String>['专属定制']
+                                : newTags,
+                          );
+
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('✅ 行程信息已更新')),
+                            );
+                          }
+                        },
+                        child: const Text(
+                          '保存修改',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildEditLabel(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8, left: 4),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        color: Colors.indigo,
+      ),
+    ),
+  );
+
+  Widget _buildEditField(TextEditingController controller, String hint) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: TextField(
+      controller: controller,
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.black38),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.indigo.shade300),
+        ),
+      ),
+    ),
+  );
+
+  Widget _buildDatePicker(
+    BuildContext context,
+    String currentValue,
+    Function(String) onPicked,
+  ) {
+    return GestureDetector(
+      onTap: () async {
+        FocusScope.of(context).unfocus();
+        DateTime initialDate = DateTime.now();
+        if (currentValue.isNotEmpty) {
+          try {
+            initialDate = DateTime.parse(currentValue);
+          } catch (_) {}
+        }
+        final DateTime? picked = await showDatePicker(
+          context: context,
+          initialDate: initialDate,
+          firstDate: DateTime(2020),
+          lastDate: DateTime.now().add(const Duration(days: 1000)),
+          builder: (BuildContext context, Widget? child) => Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(primary: Colors.indigo),
+            ),
+            child: child!,
+          ),
+        );
+        if (picked != null) {
+          onPicked(picked.toIso8601String().split('T')[0]);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: <Widget>[
+            Text(
+              currentValue.isEmpty ? '未设置' : currentValue,
+              style: TextStyle(
+                fontSize: 13,
+                color: currentValue.isEmpty ? Colors.black38 : Colors.black87,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Icon(Icons.calendar_month, color: Colors.indigo, size: 18),
+          ],
+        ),
+      ),
     );
   }
 
