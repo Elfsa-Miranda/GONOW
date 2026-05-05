@@ -253,7 +253,7 @@ class _DiaryCenterScreenState extends State<DiaryCenterScreen> {
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                const TextSpan(text: ' · 社区精选 '),
+                                const TextSpan(text: ' · 我的日记 '),
                                 TextSpan(
                                   text: '${diaryProvider.communityDiaries.length}',
                                   style: TextStyle(
