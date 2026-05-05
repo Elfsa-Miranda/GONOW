@@ -530,6 +530,9 @@ class ItineraryProvider extends ChangeNotifier {
   }
 
   /// 将编辑中的 [planData] 写回当前行程并持久化（内存 / 本地 / 多行程缓存 / 云端）。
+  ///
+  /// 通过完整 `fromJson` 重建模型，确保 `days` 等与 `planData` 同步；再用 [saveItinerary]
+  /// 触发 [notifyListeners]。
   Future<void> updateItineraryData(Map<String, dynamic> newPlanData) async {
     final ItineraryModel? base = _activeItinerary ?? _currentItinerary;
     if (base == null) {

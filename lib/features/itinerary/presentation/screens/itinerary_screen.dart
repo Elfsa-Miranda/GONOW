@@ -14,6 +14,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:gonow/core/constants/ai_config.dart';
 import 'package:gonow/core/constants/amap_config.dart';
 import 'package:gonow/features/common/presentation/widgets/full_screen_photo_gallery.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
@@ -79,6 +80,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   // --- 沉浸式编辑态 ---
   bool _isEditing = false;
   Map<String, dynamic>? _editablePlanData;
+  /// 编辑态 JSON 变更后的局部版本戳，用于强制依赖 planData 的子组件刷新。
+  int _contentVersion = 0;
 
   @override
   void initState() {
@@ -516,6 +519,232 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     return ds != null ? 'daily_schedules' : 'days';
   }
 
+  /// 行程目的地城市提示词（高德地理编码 city 参数）
+  String _destinationCityHint(ItineraryModel? itinerary) {
+    if (itinerary == null) {
+      return '北京';
+    }
+    final Map<String, dynamic> pd =
+        Map<String, dynamic>.from(itinerary.planData);
+    final Object? dest =
+        pd['destination'] ??
+        pd['city'] ??
+        pd['destination_city'] ??
+        pd['destinationCity'];
+    final String d = dest?.toString().trim() ?? '';
+    if (d.isNotEmpty) {
+      return d;
+    }
+    final String title = itinerary.title;
+    if (title.contains('上海')) {
+      return '上海';
+    }
+    if (title.contains('北京')) {
+      return '北京';
+    }
+    return '北京';
+  }
+
+  bool _coordsNonZero(double? lat, double? lng) {
+    if (lat == null || lng == null) {
+      return false;
+    }
+    if (lat == 0 && lng == 0) {
+      return false;
+    }
+    return true;
+  }
+
+  /// 高德 Web 地理编码，将景点名纠偏为真实坐标（经度,纬度）供地图/算路使用。
+  Future<gmap.LatLng?> _getRealLocation(String title, String city) async {
+    return _geocodeKeywordWithAmap(title, city);
+  }
+
+  Future<gmap.LatLng?> _geocodeKeywordWithAmap(
+    String keyword,
+    String city,
+  ) async {
+    final String k = keyword.trim();
+    if (k.isEmpty) {
+      return null;
+    }
+    try {
+      final Uri uri = Uri.https('restapi.amap.com', '/v3/geocode/geo', <String, String>{
+        'key': AMapConfig.webApiKey,
+        'address': k,
+        if (city.trim().isNotEmpty) 'city': city.trim(),
+      });
+      final http.Response res =
+          await http.get(uri).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) {
+        return null;
+      }
+      final Object? decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      if (decoded['status']?.toString() != '1') {
+        return null;
+      }
+      final List<dynamic>? geocodes =
+          decoded['geocodes'] as List<dynamic>?;
+      if (geocodes == null || geocodes.isEmpty) {
+        return null;
+      }
+      final Object? rawGeo = geocodes.first;
+      if (rawGeo is! Map) {
+        return null;
+      }
+      final String loc =
+          Map<String, dynamic>.from(rawGeo)['location']?.toString() ?? '';
+      final List<String> parts = loc.split(',');
+      if (parts.length < 2) {
+        return null;
+      }
+      final double? lng = double.tryParse(parts[0].trim());
+      final double? lat = double.tryParse(parts[1].trim());
+      if (lat == null || lng == null) {
+        return null;
+      }
+      return gmap.LatLng(lat, lng);
+    } catch (e) {
+      debugPrint('地理编码失败: $e');
+      return null;
+    }
+  }
+
+  void _showAiLoadingDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext ctx) => const Center(
+        child: Card(
+          color: Colors.white,
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                CircularProgressIndicator(color: Colors.indigo),
+                SizedBox(height: 16),
+                Text(
+                  'AI 正在润色…',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.indigo,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _callLlmForPolish(String originalText) async {
+    final http.Response response = await http
+        .post(
+          Uri.parse(AiConfig.deepseekEndpoint),
+          headers: <String, String>{
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${AiConfig.deepseekApiKey}',
+          },
+          body: jsonEncode(<String, dynamic>{
+            'model': AiConfig.deepseekModel,
+            'messages': <Map<String, String>>[
+              <String, String>{
+                'role': 'user',
+                'content':
+                    '我正在写手账，请帮我把这段旅行日记润色得更有电影感：$originalText\n'
+                    '直接返回润色后的文字，不要引号、前言或 Markdown。',
+              },
+            ],
+          }),
+        )
+        .timeout(const Duration(seconds: 45));
+    if (response.statusCode != 200) {
+      return null;
+    }
+    final Map<String, dynamic> body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final String? content =
+        (body['choices'] as List<dynamic>?)?.first['message']?['content']
+            ?.toString();
+    return content?.trim();
+  }
+
+  Future<void> _polishNodeDescription(
+    int dIdx,
+    int aIdx,
+    String originalText,
+  ) async {
+    if (originalText.trim().isEmpty) {
+      return;
+    }
+    if (_editablePlanData == null) {
+      return;
+    }
+    _showAiLoadingDialog();
+    try {
+      final String? result = await _callLlmForPolish(originalText);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context, rootNavigator: true).pop();
+
+      if (result == null || result.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('润色失败，请稍后重试')),
+        );
+        return;
+      }
+
+      setState(() {
+        final String storageKey =
+            _planDaysStorageKey(_editablePlanData!);
+        final List<dynamic> days = List<dynamic>.from(
+          (_editablePlanData![storageKey] as List<dynamic>?) ??
+              <dynamic>[],
+        );
+        if (dIdx < 0 || dIdx >= days.length) {
+          return;
+        }
+        final Map<String, dynamic> dayMap =
+            Map<String, dynamic>.from(days[dIdx] as Map);
+        final List<dynamic> acts = List<dynamic>.from(
+          (dayMap['activities'] as List<dynamic>?) ?? <dynamic>[],
+        );
+        if (aIdx < 0 || aIdx >= acts.length) {
+          return;
+        }
+        final Map<String, dynamic> activity =
+            Map<String, dynamic>.from(acts[aIdx] as Map);
+        activity['description'] = result.trim();
+        acts[aIdx] = activity;
+        dayMap['activities'] = acts;
+        days[dIdx] = dayMap;
+        _editablePlanData![storageKey] = days;
+        _contentVersion++;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✨ AI 已为您重新打磨文案')),
+        );
+      }
+    } catch (e) {
+      debugPrint('润色失败: $e');
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('润色失败: $e')),
+        );
+      }
+    }
+  }
+
   void _startEditMode(ItineraryModel model) {
     setState(() {
       _isEditing = true;
@@ -625,14 +854,21 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     if (!mounted) {
       return;
     }
-    _triggerRouteSyncFromProvider();
+    final ItineraryModel? synced =
+        provider.activeItinerary ?? provider.currentItinerary;
+    if (synced != null) {
+      await _fetchAllRoutesAndSync(synced);
+    }
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _isEditing = false;
       _editablePlanData = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('✅ 行程修改已保存'),
+        content: Text('✅ 行程改动已安全同步'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -870,6 +1106,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     String time = '',
     String type = 'custom',
     String description = '',
+    double lat = 0,
+    double lng = 0,
   }) {
     if (_editablePlanData == null) {
       return;
@@ -898,14 +1136,15 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           'recommended_duration': '时长待定',
           'tag': '自定义添加',
           'description': description,
-          'lat': 0.0,
-          'lng': 0.0,
+          'lat': lat,
+          'lng': lng,
           'imageUrl': '',
         },
       );
       dm['activities'] = acts;
       days[dayIndex] = dm;
       _editablePlanData![storageKey] = days;
+      _contentVersion++;
     });
   }
 
@@ -1032,12 +1271,17 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     int afterActivityIndex,
     String storageKey,
   ) async {
+    final ItineraryProvider p = context.read<ItineraryProvider>();
+    final ItineraryModel? m = p.activeItinerary ?? p.currentItinerary;
+    final String city = _destinationCityHint(m);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext sheetContext) => _InsertNodeBottomSheet(
-        onConfirm: (String title, String time) {
+        geocodeCity: city,
+        resolveLocation: _getRealLocation,
+        onConfirm: (String title, String time, double lat, double lng) {
           _insertEditableActivity(
             dayIndex,
             afterActivityIndex,
@@ -1046,6 +1290,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             time: time,
             type: 'custom',
             description: '新增景点待补充描述...',
+            lat: lat,
+            lng: lng,
           );
         },
       ),
@@ -1128,43 +1374,66 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isAiNode
-                              ? Colors.amber.shade50
-                              : Colors.grey.shade100,
+                      if (isAiNode)
+                        InkWell(
+                          onTap: () {
+                            final String desc =
+                                item['description']?.toString() ?? '';
+                            final String src =
+                                desc.trim().isEmpty ? titleStr : desc;
+                            // ignore: discarded_futures
+                            _polishNodeDescription(dIdx, aIdx, src);
+                          },
                           borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            if (isAiNode) ...<Widget>[
-                              Icon(
-                                Icons.edit,
-                                size: 10,
-                                color: Colors.amber.shade700,
-                              ),
-                              const SizedBox(width: 2),
-                            ],
-                            Text(
-                              isAiNode
-                                  ? '待 AI 润色'
-                                  : '游玩 ${durationStr.isNotEmpty ? durationStr : '2h'}',
-                              style: TextStyle(
-                                color: isAiNode
-                                    ? Colors.amber.shade700
-                                    : Colors.grey.shade500,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
                             ),
-                          ],
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(
+                                  Icons.auto_awesome,
+                                  size: 10,
+                                  color: Colors.amber.shade700,
+                                ),
+                                const SizedBox(width: 2),
+                                Text(
+                                  'AI 润色',
+                                  style: TextStyle(
+                                    color: Colors.amber.shade700,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '游玩 ${durationStr.isNotEmpty ? durationStr : '2h'}',
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -2652,12 +2921,27 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       }
     }
 
-    // ② 行前（preparing）模式：按 DayRoute 内部顺序预取
+    // ② 行前（preparing）模式：跳过无坐标节点，连接相邻有效点
     for (final _DayRoute route in dayRoutes) {
-      for (int i = 0; i < route.activities.length - 1; i++) {
+      int i = 0;
+      while (i < route.activities.length) {
+        while (i < route.activities.length &&
+            (route.activities[i].lat == 0 || route.activities[i].lng == 0)) {
+          i++;
+        }
+        if (i >= route.activities.length) {
+          break;
+        }
+        int j = i + 1;
+        while (j < route.activities.length &&
+            (route.activities[j].lat == 0 || route.activities[j].lng == 0)) {
+          j++;
+        }
+        if (j >= route.activities.length) {
+          break;
+        }
         final ActivityItem a = route.activities[i];
-        final ActivityItem b = route.activities[i + 1];
-        if (a.lat == 0 || a.lng == 0 || b.lat == 0 || b.lng == 0) continue;
+        final ActivityItem b = route.activities[j];
         await _fetchRoute(
           amap_base.LatLng(a.lat, a.lng),
           amap_base.LatLng(b.lat, b.lng),
@@ -2665,6 +2949,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         );
         if (!mounted) return;
         setState(() {});
+        i = j;
       }
     }
   }
@@ -2682,35 +2967,64 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     }
 
     for (final List<Map<String, dynamic>> activities in planDays.values) {
-      for (int i = 0; i < activities.length - 1; i++) {
+      int i = 0;
+      while (i < activities.length) {
+        while (i < activities.length &&
+            !_coordsNonZero(
+              (activities[i]['lat'] as num?)?.toDouble(),
+              (activities[i]['lng'] as num?)?.toDouble(),
+            )) {
+          i++;
+        }
+        if (i >= activities.length) {
+          break;
+        }
+        int j = i + 1;
+        while (j < activities.length &&
+            !_coordsNonZero(
+              (activities[j]['lat'] as num?)?.toDouble(),
+              (activities[j]['lng'] as num?)?.toDouble(),
+            )) {
+          j++;
+        }
+        if (j >= activities.length) {
+          break;
+        }
         final Map<String, dynamic> origin = activities[i];
-        final Map<String, dynamic> dest = activities[i + 1];
+        final Map<String, dynamic> dest = activities[j];
         final String originTitle = origin['title']?.toString() ?? '起点';
         final String destTitle = dest['title']?.toString() ?? '终点';
         final double? olat = (origin['lat'] as num?)?.toDouble();
         final double? olng = (origin['lng'] as num?)?.toDouble();
         final double? dlat = (dest['lat'] as num?)?.toDouble();
         final double? dlng = (dest['lng'] as num?)?.toDouble();
-        if (olat == null || olng == null || dlat == null || dlng == null) {
+        if (!_coordsNonZero(olat, olng) || !_coordsNonZero(dlat, dlng)) {
+          i = j;
           continue;
         }
+
+        final double oLa = olat!;
+        final double oLn = olng!;
+        final double dLa = dlat!;
+        final double dLn = dlng!;
 
         _RouteFetchResult result;
         try {
           result = await _fetchRoute(
-            amap_base.LatLng(olat, olng),
-            amap_base.LatLng(dlat, dlng),
+            amap_base.LatLng(oLa, oLn),
+            amap_base.LatLng(dLa, dLn),
             (origin['transit'] as Map<String, dynamic>?)?['mode']?.toString(),
           );
         } catch (e) {
           debugPrint('请求路段 $originTitle 到 $destTitle 失败: $e');
+          i = j;
           continue;
         }
         if (!mounted) return;
 
         final int distanceMeters = result.distanceMeters > 0
             ? result.distanceMeters
-            : Geolocator.distanceBetween(olat, olng, dlat, dlng).round();
+            : Geolocator.distanceBetween(oLa, oLn, dLa, dLn).round();
         final int durationSeconds = result.durationSeconds > 0
             ? result.durationSeconds
             : (distanceMeters / (distanceMeters > 2000 ? 8.3 : 1.2)).round();
@@ -2735,6 +3049,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             origin['transit'] as Map<String, dynamic>,
           );
         });
+        i = j;
       }
     }
   }
@@ -3879,6 +4194,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
               .toList(growable: false);
     return <Widget>[
       SliverList(
+        key: ValueKey<int>(_contentVersion),
         delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
           final Map<String, dynamic> item = filteredTimeline[index];
           final int currentDayIndex =
@@ -3917,6 +4233,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   isFirst: index == 0,
                   isLast: isLast && transit == null,
                   dayOrder: _dayOrderAt(filteredTimeline, index),
+                  itineraryModel: model,
                 ),
                 if (!isLast && transit != null) ...<Widget>[
                   const SizedBox(height: 2),
@@ -4167,6 +4484,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     required bool isFirst,
     required bool isLast,
     required int dayOrder,
+    required ItineraryModel itineraryModel,
   }) {
     return KeyedSubtree(
       key: _timelineItemGlobalKey(item),
@@ -4178,7 +4496,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
             isLast: isLast,
             dayOrder: dayOrder,
           ),
-          Expanded(child: _buildMainCard(item, dayIndex, activityIndex)),
+          Expanded(
+            child: _buildMainCard(
+              item,
+              dayIndex,
+              activityIndex,
+              itineraryModel: itineraryModel,
+            ),
+          ),
         ],
       ),
     );
@@ -4345,27 +4670,38 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     );
   }
 
-  Widget _buildMainCard(Map<String, dynamic> item, int dayIndex, int activityIndex) {
+  Widget _buildMainCard(
+    Map<String, dynamic> item,
+    int dayIndex,
+    int activityIndex, {
+    required ItineraryModel itineraryModel,
+  }) {
     final bool isArrived = _isTimelineItemArrived(item);
 
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 300),
-      opacity: isArrived ? 0.65 : 1.0,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade100, width: 1.5),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
+    return GestureDetector(
+      onTap: () {
+        if (!_isEditing) {
+          _startEditMode(itineraryModel);
+        }
+      },
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: isArrived ? 0.65 : 1.0,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade100, width: 1.5),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
@@ -4486,6 +4822,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                 ),
               ),
           ],
+        ),
         ),
       ),
     );
@@ -4968,11 +5305,19 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 }
 
-/// 插入新行程点（标题幽灵提示 + 取消 / 确定）
+/// 插入新行程点：Cupertino 滑动时钟 + 高德静默纠偏坐标
 class _InsertNodeBottomSheet extends StatefulWidget {
-  const _InsertNodeBottomSheet({required this.onConfirm});
+  const _InsertNodeBottomSheet({
+    required this.geocodeCity,
+    required this.resolveLocation,
+    required this.onConfirm,
+  });
 
-  final void Function(String title, String time) onConfirm;
+  final String geocodeCity;
+  final Future<gmap.LatLng?> Function(String title, String city)
+      resolveLocation;
+  final void Function(String title, String time, double lat, double lng)
+      onConfirm;
 
   @override
   State<_InsertNodeBottomSheet> createState() => _InsertNodeBottomSheetState();
@@ -4998,6 +5343,73 @@ class _InsertNodeBottomSheetState extends State<_InsertNodeBottomSheet> {
     _titleController.dispose();
     _timeController.dispose();
     super.dispose();
+  }
+
+  DateTime _initialTimeForPicker() {
+    final String t = _timeController.text.trim();
+    if (_hhmmRegExp.hasMatch(t)) {
+      final List<String> p = t.split(':');
+      final int h = int.tryParse(p[0]) ?? 9;
+      final int m = int.tryParse(p[1]) ?? 0;
+      return DateTime(2026, 1, 1, h.clamp(0, 23), m.clamp(0, 59));
+    }
+    return DateTime(2026, 1, 1, 9, 0);
+  }
+
+  void _showCupertinoTimePicker() {
+    FocusScope.of(context).unfocus();
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext sheetContext) {
+        return Container(
+          height: 260,
+          color: Colors.white,
+          child: Column(
+            children: <Widget>[
+              Container(
+                color: Colors.grey.shade50,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _timeController.clear());
+                        Navigator.of(sheetContext).pop();
+                      },
+                      child: const Text(
+                        '清除',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      child: const Text(
+                        '确定',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  use24hFormat: true,
+                  initialDateTime: _initialTimeForPicker(),
+                  onDateTimeChanged: (DateTime newDate) {
+                    setState(() {
+                      _timeController.text =
+                          '${newDate.hour.toString().padLeft(2, '0')}:'
+                          '${newDate.minute.toString().padLeft(2, '0')}';
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -5069,35 +5481,34 @@ class _InsertNodeBottomSheetState extends State<_InsertNodeBottomSheet> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: _errorMessage != null
-                            ? Colors.red.shade300
-                            : Colors.grey.shade200,
-                      ),
-                    ),
-                    child: TextField(
-                      controller: _timeController,
-                      keyboardType: TextInputType.datetime,
-                      onChanged: (String val) {
-                        if (_errorMessage != null) {
-                          setState(() => _errorMessage = null);
-                        }
-                      },
-                      decoration: const InputDecoration(
-                        hintText: '大概时间 (格式: HH:mm，选填)',
-                        hintStyle: TextStyle(
-                          color: Colors.black38,
-                          fontSize: 14,
+                  GestureDetector(
+                    onTap: _showCupertinoTimePicker,
+                    child: AbsorbPointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
                         ),
-                        border: InputBorder.none,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _errorMessage != null
+                                ? Colors.red.shade300
+                                : Colors.grey.shade200,
+                          ),
+                        ),
+                        child: TextField(
+                          controller: _timeController,
+                          decoration: const InputDecoration(
+                            hintText: '大概时间 (选填，点击滑动选择)',
+                            hintStyle: TextStyle(
+                              color: Colors.black38,
+                              fontSize: 14,
+                            ),
+                            border: InputBorder.none,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -5151,11 +5562,12 @@ class _InsertNodeBottomSheetState extends State<_InsertNodeBottomSheet> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          onPressed: () {
+                          onPressed: () async {
                             FocusScope.of(context).unfocus();
                             String titleInput = _titleController.text.trim();
                             if (titleInput.isEmpty) {
-                              titleInput = '新行程点';
+                              setState(() => _errorMessage = '请填写行程点名称');
+                              return;
                             }
                             final String timeInput = _timeController.text.trim();
                             if (timeInput.isNotEmpty &&
@@ -5166,7 +5578,19 @@ class _InsertNodeBottomSheetState extends State<_InsertNodeBottomSheet> {
                               );
                               return;
                             }
-                            widget.onConfirm(titleInput, timeInput);
+                            gmap.LatLng? realCoords;
+                            try {
+                              realCoords = await widget.resolveLocation(
+                                titleInput,
+                                widget.geocodeCity,
+                              );
+                            } catch (_) {}
+                            final double lat = realCoords?.latitude ?? 0.0;
+                            final double lng = realCoords?.longitude ?? 0.0;
+                            if (!context.mounted) {
+                              return;
+                            }
+                            widget.onConfirm(titleInput, timeInput, lat, lng);
                             Navigator.pop(context);
                           },
                           child: const Text(
