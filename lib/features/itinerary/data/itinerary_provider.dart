@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -153,6 +155,7 @@ class ItineraryModel {
     required this.arrivedActivityIds,
     required this.arrivedAtByActivityId,
     required this.prepTaskDoneMap,
+    this.version = 1,
     this.remoteId,
     this.createdAt,
   });
@@ -165,6 +168,7 @@ class ItineraryModel {
   final Set<String> arrivedActivityIds;
   final Map<String, String> arrivedAtByActivityId;
   final Map<String, bool> prepTaskDoneMap;
+  final int version;
   final String? remoteId;
   final DateTime? createdAt;
 
@@ -201,6 +205,7 @@ class ItineraryModel {
     Set<String>? arrivedActivityIds,
     Map<String, String>? arrivedAtByActivityId,
     Map<String, bool>? prepTaskDoneMap,
+    int? version,
     String? remoteId,
     DateTime? createdAt,
   }) {
@@ -214,6 +219,7 @@ class ItineraryModel {
       arrivedAtByActivityId:
           arrivedAtByActivityId ?? this.arrivedAtByActivityId,
       prepTaskDoneMap: prepTaskDoneMap ?? this.prepTaskDoneMap,
+      version: version ?? this.version,
       remoteId: remoteId ?? this.remoteId,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -272,6 +278,7 @@ class ItineraryModel {
                 (String key, dynamic value) =>
                     MapEntry<String, bool>(key, value == true),
               ),
+      version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }
 
@@ -288,6 +295,7 @@ class ItineraryModel {
       'arrivedActivityIds': arrivedActivityIds.toList(growable: false),
       'arrivedAtByActivityId': arrivedAtByActivityId,
       'prepTaskDoneMap': prepTaskDoneMap,
+      'version': version,
     };
   }
 }
@@ -295,6 +303,11 @@ class ItineraryModel {
 class ItineraryProvider extends ChangeNotifier {
   static const String _prefsKey = 'current_itinerary_json';
   static const String _tableName = 'itineraries';
+  final SupabaseClient _supabase = Supabase.instance.client;
+  RealtimeChannel? _itineraryChannel;
+  RealtimeChannel? _presenceChannel;
+  List<Map<String, dynamic>> _onlineUsers = <Map<String, dynamic>>[];
+  String? _someoneElseEditingName;
 
   ItineraryModel? _currentItinerary;
   ItineraryModel? _activeItinerary;
@@ -307,6 +320,9 @@ class ItineraryProvider extends ChangeNotifier {
   ItineraryModel? get activeItinerary => _activeItinerary;
   List<ItineraryModel> get myItineraries =>
       List<ItineraryModel>.unmodifiable(_myItineraries);
+  List<Map<String, dynamic>> get onlineUsers =>
+      List<Map<String, dynamic>>.unmodifiable(_onlineUsers);
+  String? get someoneElseEditingName => _someoneElseEditingName;
 
   // 双模式状态管理
   TripMode _currentMode = TripMode.planning;
@@ -392,6 +408,167 @@ class ItineraryProvider extends ChangeNotifier {
   void setActiveItinerary(ItineraryModel itinerary) {
     _activeItinerary = itinerary;
     notifyListeners();
+    subscribeToItinerary(itinerary.id);
+    joinPresence(itinerary.id);
+  }
+
+  // --- 实时协作 (Realtime) 频道 ---
+
+  // 🚨 开启指定行程的实时监听
+  void subscribeToItinerary(String itineraryId) {
+    unsubscribeItinerary(); // 如果已有监听先取消
+
+    debugPrint('📡 准备连接 Realtime 频道: 行程 ID $itineraryId');
+
+    _itineraryChannel =
+        _supabase.channel('public:user_itineraries:id=eq.$itineraryId');
+
+    _itineraryChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'user_itineraries',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: itineraryId,
+          ),
+          callback: (PostgresChangePayload payload) {
+            // 🚨 V2 语法：使用 payload.newRecord 获取更新后的完整数据
+            final Map<String, dynamic> newData = payload.newRecord;
+            if (newData.isNotEmpty &&
+                _activeItinerary != null &&
+                _activeItinerary!.id == itineraryId) {
+              final ItineraryModel updatedItinerary = sanitizeItineraryImages(
+                ItineraryModel.fromJson(newData),
+              );
+              _activeItinerary = updatedItinerary;
+
+              final int index = _myItineraries.indexWhere(
+                (ItineraryModel e) => e.id == itineraryId,
+              );
+              if (index != -1) {
+                _myItineraries[index] = updatedItinerary;
+              }
+
+              notifyListeners();
+              debugPrint('🔄 监听到好友修改了行程，UI 已实时同步完成！');
+            }
+          },
+        )
+        .subscribe((RealtimeSubscribeStatus status, [Object? error]) {
+          // V2 语法：状态变成了枚举 RealtimeSubscribeStatus
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            debugPrint('✅ 成功订阅行程实时频道！');
+          }
+          if (error != null) {
+            debugPrint('⚠️ Realtime 订阅异常: $error');
+          }
+        });
+  }
+
+  // 🚨 关闭实时监听 (节省性能)
+  void unsubscribeItinerary() {
+    if (_itineraryChannel != null) {
+      _supabase.removeChannel(_itineraryChannel!);
+      _itineraryChannel = null;
+      debugPrint('🛑 已断开行程实时监听频道');
+    }
+  }
+
+  // ==========================================
+  // 👥 协同编辑：Presence 在线状态感知
+  // ==========================================
+  // 🚨 核心修复：使用 V2 的 onPresenceSync 语法，彻底移除废弃的 RealtimePresenceState 类型
+  void joinPresence(String itineraryId) {
+    final User? user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    final String myUserId = user.id;
+    final String myNickname = '旅行者_${myUserId.substring(0, 4)}';
+    final String myAvatarUrl =
+        'https://api.dicebear.com/7.x/avataaars/png?seed=$myUserId';
+
+    leavePresence();
+
+    _presenceChannel = _supabase.channel('tracking_$itineraryId');
+    _presenceChannel!
+        .onPresenceSync((dynamic payload) {
+          // 🚨 V2 语法核心修复：不再使用 RealtimePresenceState 类型声明
+          final dynamic state = _presenceChannel!.presenceState();
+          final List<Map<String, dynamic>> users = <Map<String, dynamic>>[];
+          String? editingName;
+
+          for (final dynamic entry in state.entries) {
+            for (final dynamic presence in entry.value) {
+              // 强力容错：兼容不同版本的 Supabase 载荷结构
+              Map<String, dynamic> p;
+              if (presence is Map) {
+                p = Map<String, dynamic>.from(presence);
+              } else {
+                p = Map<String, dynamic>.from((presence as dynamic).payload);
+              }
+              users.add(p);
+              if (p['user_id'] != myUserId && p['status'] == 'editing') {
+                editingName = p['nickname']?.toString();
+              }
+            }
+          }
+
+          _onlineUsers = users;
+          _someoneElseEditingName = editingName;
+          notifyListeners();
+        })
+        .subscribe((RealtimeSubscribeStatus status, [Object? error]) async {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            await _presenceChannel!.track(<String, dynamic>{
+              'user_id': myUserId,
+              'nickname': myNickname,
+              'avatar': myAvatarUrl,
+              'status': 'viewing',
+            });
+          }
+          if (error != null) {
+            debugPrint('⚠️ Presence 订阅异常: $error');
+          }
+        });
+  }
+
+  // 修改自己的状态 (编辑 / 浏览)
+  Future<void> updatePresenceStatus(String newStatus) async {
+    if (_presenceChannel != null) {
+      final User? user = _supabase.auth.currentUser;
+      if (user == null) return;
+
+      final String myUserId = user.id;
+      final String myNickname = '旅行者_${myUserId.substring(0, 4)}';
+      final String myAvatarUrl =
+          'https://api.dicebear.com/7.x/avataaars/png?seed=$myUserId';
+
+      await _presenceChannel!.track(<String, dynamic>{
+        'user_id': myUserId,
+        'nickname': myNickname,
+        'avatar': myAvatarUrl,
+        'status': newStatus,
+      });
+    }
+  }
+
+  void leavePresence() {
+    if (_presenceChannel != null) {
+      _supabase.removeChannel(_presenceChannel!);
+      _presenceChannel = null;
+      _onlineUsers.clear();
+      _someoneElseEditingName = null;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    unsubscribeItinerary();
+    leavePresence();
+    super.dispose();
   }
 
   /// 删除行程：本地列表 + 缓存；已登录且 id 为 UUID 时同步删除云端 [_tableName] 行。
@@ -472,6 +649,188 @@ class ItineraryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ========================================================
+  // 🚀 核心 1：离线优先拉取 (包含多成员协作行程融合)
+  // ========================================================
+  Future<void> loadMyItineraries() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final SupabaseClient supabase = Supabase.instance.client;
+    final String userId = supabase.auth.currentUser?.id ?? 'guest';
+
+    // 步骤 A：本地秒开逻辑 (保持原有不动)
+    final String? localDataStr = prefs.getString('my_itineraries_cache_$userId');
+    if (localDataStr != null) {
+      try {
+        final List<dynamic> localJson = jsonDecode(localDataStr) as List<dynamic>;
+        _myItineraries
+          ..clear()
+          ..addAll(
+            localJson
+                .whereType<Map<String, dynamic>>()
+                .map(
+                  (Map<String, dynamic> data) =>
+                      sanitizeItineraryImages(ItineraryModel.fromJson(data)),
+                ),
+          );
+        if (_myItineraries.isNotEmpty) {
+          _activeItinerary = _myItineraries.first;
+        }
+        notifyListeners();
+        debugPrint('✅ 本地缓存行程加载成功，实现秒开！');
+      } catch (e) {
+        debugPrint('❌ 本地缓存解析失败: $e');
+      }
+    }
+
+    // 步骤 B：如果是游客，到此结束。如果是正式用户，静默去云端对账。
+    if (supabase.auth.currentUser == null) return;
+
+    try {
+      // 🚨 核心改造：并发拉取【自己创建的】和【别人邀请我加入的】行程
+      final dynamic myFuture = supabase
+          .from('user_itineraries')
+          .select()
+          .eq('user_id', userId);
+
+      final dynamic sharedFuture = supabase
+          .from('itinerary_members')
+          .select('user_itineraries(*)')
+          .eq('user_id', userId);
+
+      // 并发执行，节省等待时间
+      final List<dynamic> results = await Future.wait(<Future<dynamic>>[
+        myFuture as Future<dynamic>,
+        sharedFuture as Future<dynamic>,
+      ]);
+
+      // 🚨 核心改造：合并与去重
+      final Map<String, ItineraryModel> mergedMap = <String, ItineraryModel>{};
+
+      // 处理我的行程
+      for (final dynamic data in (results[0] as List<dynamic>)) {
+        if (data is! Map<String, dynamic>) continue;
+        final ItineraryModel itinerary = sanitizeItineraryImages(
+          ItineraryModel.fromJson(data),
+        );
+        mergedMap[itinerary.id] = itinerary;
+      }
+
+      // 处理共享的行程
+      for (final dynamic data in (results[1] as List<dynamic>)) {
+        if (data is! Map<String, dynamic>) continue;
+        final dynamic nested = data['user_itineraries'];
+        if (nested is! Map<String, dynamic>) continue;
+        final ItineraryModel itinerary = sanitizeItineraryImages(
+          ItineraryModel.fromJson(nested),
+        );
+        mergedMap[itinerary.id] = itinerary;
+      }
+
+      // 转为 List 并排序 (降序排列，由于 ID 是时间戳字符串，可以直接按 ID 降序对比)
+      final List<ItineraryModel> cloudItineraries = mergedMap.values.toList();
+      cloudItineraries.sort((ItineraryModel a, ItineraryModel b) => b.id.compareTo(a.id));
+
+      // 步骤 C：比对并覆写。
+      _myItineraries
+        ..clear()
+        ..addAll(cloudItineraries);
+      if (_myItineraries.isNotEmpty) {
+        _activeItinerary = _myItineraries.first;
+      }
+
+      // 刷新磁盘缓存
+      final String freshJsonStr =
+          jsonEncode(_myItineraries.map((ItineraryModel e) => e.toJson()).toList());
+      await prefs.setString('my_itineraries_cache_$userId', freshJsonStr);
+
+      notifyListeners();
+      debugPrint('☁️ 云端行程数据(含协作)同步完成并写入本地缓存');
+    } catch (e) {
+      debugPrint('⚠️ 云端同步失败，继续使用本地缓存: $e');
+    }
+  }
+
+  // ==========================================
+  // 🤝 协同编辑：分享与加入逻辑
+  // ==========================================
+
+  // 1. 生成并分享邀请链接
+  Future<void> shareItinerary(String itineraryId, String title) async {
+    // 🚨 核心修改：将 gonow:// 替换为标准的 https 网址，这样微信等软件才会识别为超链接
+    final String deepLink = 'https://gonow.app/join?id=$itineraryId';
+    final String shareText =
+        '💡 邀请你和我一起在 GoNow 编辑旅行行程！\n📍 行程：《$title》\n👉 点击链接马上加入：$deepLink';
+    await Share.share(shareText);
+  }
+
+  // 生成口令并复制到剪贴板
+  Future<void> copyItineraryCommand(String itineraryId, String title) async {
+    final String commandText =
+        '【GoNow 旅行管家】\n復制这段话，打开 GoNow 立即加入协作：\n📍 行程：《$title》\n🗝️ 专属口令：￥$itineraryId￥';
+    await Clipboard.setData(ClipboardData(text: commandText));
+    debugPrint('✅ 已生成口令并复制到剪贴板: $itineraryId');
+  }
+
+  // 解析剪贴板中的口令 (正则提取)
+  String? parseCommand(String text) {
+    final RegExp regExp = RegExp(r'￥([^￥]+)￥');
+    final RegExpMatch? match = regExp.firstMatch(text);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1);
+    }
+    return null;
+  }
+
+  // 2. 拦截到链接后，执行加入逻辑
+  Future<void> joinItinerary(String itineraryId, BuildContext context) async {
+    final String? userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录后再加入协作行程！')),
+      );
+      return;
+    }
+
+    try {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('正在加入行程...')));
+
+      await _supabase.from('itinerary_members').insert(<String, dynamic>{
+        'itinerary_id': itineraryId,
+        'user_id': userId,
+        'role': 'editor',
+      });
+
+      await loadMyItineraries();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('✅ 成功加入协作行程！')));
+        if (_myItineraries.isNotEmpty) {
+          final ItineraryModel joinedItinerary = _myItineraries.firstWhere(
+            (ItineraryModel e) => e.id == itineraryId,
+            orElse: () => _myItineraries.first,
+          );
+          _activeItinerary = joinedItinerary;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      if (e.toString().contains('duplicate key value')) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('您已经在这个行程中啦！')));
+      } else {
+        debugPrint('加入行程失败: $e');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('加入失败，请检查链接或网络')));
+      }
+    }
+  }
+
   Future<void> fetchActiveItinerary() async {
     _isBusy = true;
     notifyListeners();
@@ -549,16 +908,66 @@ class ItineraryProvider extends ChangeNotifier {
   ///
   /// 通过完整 `fromJson` 重建模型，确保 `days` 等与 `planData` 同步；再用 [saveItinerary]
   /// 触发 [notifyListeners]。
+  ///
+  /// 兼容旧调用：内部转发到乐观锁版本。
   Future<void> updateItineraryData(Map<String, dynamic> newPlanData) async {
+    await updateItineraryDataWithLock(newPlanData);
+  }
+
+  // 🚨 核心重构：带有乐观锁的局部更新机制
+  // 返回值：true 表示保存成功，false 表示遇到并发冲突被拦截
+  Future<bool> updateItineraryDataWithLock(
+    Map<String, dynamic> newPlanData,
+  ) async {
     final ItineraryModel? base = _activeItinerary ?? _currentItinerary;
     if (base == null) {
-      return;
+      return false;
     }
-    final Map<String, dynamic> json = base.toJson();
-    json['planData'] = newPlanData;
-    final ItineraryModel updated =
-        sanitizeItineraryImages(ItineraryModel.fromJson(json));
-    await saveItinerary(updated);
+
+    final String targetId = base.id;
+    final int currentVersion = base.version;
+    final int nextVersion = currentVersion + 1;
+    final Map<String, dynamic> sanitizedPlanData =
+        sanitizeItineraryImages(base.copyWith(planData: newPlanData)).planData;
+
+    try {
+      final List<dynamic> response = await _supabase
+          .from('user_itineraries')
+          .update(<String, dynamic>{
+            'plan_data': sanitizedPlanData,
+            'version': nextVersion,
+          })
+          .eq('id', targetId)
+          .eq('version', currentVersion)
+          .select();
+
+      if (response.isEmpty) {
+        debugPrint('⚠️ 乐观锁拦截：版本冲突！本地版本 $currentVersion 已经过期。');
+        return false;
+      }
+
+      final ItineraryModel updated = base.copyWith(
+        planData: sanitizedPlanData,
+        version: nextVersion,
+      );
+      _activeItinerary = updated;
+      _currentItinerary = updated;
+
+      final int index = _myItineraries.indexWhere(
+        (ItineraryModel e) => e.id == targetId,
+      );
+      if (index != -1) {
+        _myItineraries[index] = updated;
+      }
+
+      await _saveToLocal(updated);
+      await _persistMyItinerariesList();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('更新数据失败: $e');
+      return false;
+    }
   }
 
   // 更新行程的基础信息（标题、地点、日期、标签、预算）

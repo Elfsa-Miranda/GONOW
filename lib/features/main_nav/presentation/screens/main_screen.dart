@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:app_links/app_links.dart';
+import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -17,8 +22,11 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _handledAiRequestToken = 0;
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+  String? _lastProcessedCommand;
 
   late final List<Widget> _pages = <Widget>[
     const DiscoverScreen(),
@@ -26,6 +34,14 @@ class _MainScreenState extends State<MainScreen> {
     const DiaryCenterScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initDeepLinkListener();
+    _checkClipboardForCommand();
+  }
 
   void _onTabChanged(int index) {
     context.read<MainNavProvider>().setTab(index);
@@ -49,6 +65,140 @@ class _MainScreenState extends State<MainScreen> {
       3 => '我的页',
       _ => '底部导航栏',
     };
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkClipboardForCommand();
+    }
+  }
+
+  void _initDeepLinkListener() {
+    _appLinks = AppLinks();
+    _linkSubscription = _appLinks.uriLinkStream.listen((Uri uri) {
+      _handleIncomingLink(uri);
+    });
+    _appLinks.getInitialLink().then((Uri? uri) {
+      if (uri != null) {
+        _handleIncomingLink(uri);
+      }
+    });
+  }
+
+  void _handleIncomingLink(Uri uri) {
+    debugPrint('🔗 捕获到深度链接: $uri');
+    bool isMatch = false;
+
+    if (uri.scheme == 'gonow' && uri.host == 'join_trip') {
+      isMatch = true;
+    } else if ((uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host == 'gonow.app' &&
+        uri.path == '/join') {
+      isMatch = true;
+    }
+
+    if (isMatch) {
+      final String? itineraryId = uri.queryParameters['id'];
+      if (itineraryId != null && itineraryId.isNotEmpty) {
+        Provider.of<ItineraryProvider>(
+          context,
+          listen: false,
+        ).joinItinerary(itineraryId, context);
+      }
+    }
+  }
+
+  Future<void> _checkClipboardForCommand() async {
+    final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || data?.text == null) return;
+
+    final String text = data!.text!;
+    final ItineraryProvider provider = Provider.of<ItineraryProvider>(
+      context,
+      listen: false,
+    );
+    final String? itineraryId = provider.parseCommand(text);
+
+    if (itineraryId != null && itineraryId != _lastProcessedCommand) {
+      _lastProcessedCommand = itineraryId;
+      _showCommandDetectedDialog(itineraryId);
+    }
+  }
+
+  void _showCommandDetectedDialog(String id) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: const Row(
+          children: <Widget>[
+            Icon(Icons.auto_awesome, color: Colors.indigo),
+            SizedBox(width: 10),
+            Text(
+              '发现旅行口令',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Text(
+              '检测到剪贴板中有一份好友分享的行程口令，是否立即查看并加入协作？',
+              style: TextStyle(color: Colors.black54, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '口令 ID: $id',
+              style: const TextStyle(fontSize: 10, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () async {
+              _lastProcessedCommand = id;
+              await Clipboard.setData(const ClipboardData(text: ''));
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('忽略', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () async {
+              _lastProcessedCommand = id;
+              await Clipboard.setData(const ClipboardData(text: ''));
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+              }
+              Provider.of<ItineraryProvider>(
+                context,
+                listen: false,
+              ).joinItinerary(id, context);
+            },
+            child: const Text(
+              '立即加入',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showAiCustomSheet() async {

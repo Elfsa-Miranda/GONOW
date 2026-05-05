@@ -19,6 +19,7 @@ import 'package:gonow/core/constants/ai_config.dart';
 import 'package:gonow/core/constants/amap_config.dart';
 import 'package:gonow/features/common/presentation/widgets/full_screen_photo_gallery.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
+import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -181,7 +182,18 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     _loadAmapArrowTexture();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _triggerRouteSyncFromProvider();
+      _bindCollaborationChannelsOnEnter();
     });
+  }
+
+  void _bindCollaborationChannelsOnEnter() {
+    if (!mounted) return;
+    final ItineraryProvider provider = context.read<ItineraryProvider>();
+    final ItineraryModel? model =
+        provider.activeItinerary ?? provider.currentItinerary;
+    if (model == null) return;
+    provider.subscribeToItinerary(model.id);
+    provider.joinPresence(model.id);
   }
 
   void _triggerRouteSyncFromProvider() {
@@ -295,27 +307,33 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   Widget build(BuildContext context) {
     return Consumer<ItineraryProvider>(
       builder: (BuildContext context, ItineraryProvider provider, _) {
-        final ItineraryModel? model =
-            provider.activeItinerary ?? provider.currentItinerary;
-        if (model == null) {
+        final ItineraryProvider itineraryProvider = provider;
+        final ItineraryModel? activeTrip =
+            itineraryProvider.activeItinerary ?? itineraryProvider.currentItinerary;
+        if (activeTrip == null) {
           return Scaffold(
             backgroundColor: Colors.white,
             body: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  '暂无行程，请先在 AI 定制页生成并导入。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(Icons.map_outlined, size: 64, color: Colors.grey.shade200),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '当前没有选中的行程',
+                    style: TextStyle(color: Colors.grey),
                   ),
-                ),
+                  TextButton(
+                    onPressed: () =>
+                        Provider.of<MainNavProvider>(context, listen: false).setTab(0),
+                    child: const Text('去“发现”页选一个吧'),
+                  ),
+                ],
               ),
             ),
           );
         }
+        final ItineraryModel model = activeTrip;
 
         // 使用用户手动选择的模式，而不是自动计算的 TripState
         final TripMode currentMode = provider.currentMode;
@@ -365,9 +383,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                                 fontWeight: FontWeight.w900,
                                 height: 1.3,
                               ),
-                              softWrap: true,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          _buildCollaboratorStack(context),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -974,6 +995,223 @@ JSON 必须严格包含以下 4 个字段：
       _isEditing = true;
       _editablePlanData = _clonePlanData(model.planData);
     });
+    final ItineraryProvider provider = Provider.of<ItineraryProvider>(
+      context,
+      listen: false,
+    );
+    provider.updatePresenceStatus(_isEditing ? 'editing' : 'viewing');
+  }
+
+  void _showCollaboratorList(BuildContext context) {
+    final ItineraryProvider provider = Provider.of<ItineraryProvider>(
+      context,
+      listen: false,
+    );
+    final ItineraryModel? active =
+        provider.activeItinerary ?? provider.currentItinerary;
+    final List<Map<String, dynamic>> members = provider.onlineUsers.isNotEmpty
+        ? provider.onlineUsers
+        : <Map<String, dynamic>>[
+            <String, dynamic>{
+              'nickname': '我 (Owner)',
+              'avatar': 'https://api.dicebear.com/7.x/avataaars/png?seed=me',
+            },
+          ];
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              '协作同伴',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 20),
+            ...members.map((Map<String, dynamic> m) {
+              final String nickname =
+                  (m['nickname'] ?? '匿名伙伴').toString().trim().isNotEmpty
+                  ? (m['nickname'] ?? '匿名伙伴').toString()
+                  : '匿名伙伴';
+              final String avatar = (m['avatar'] ?? '').toString().trim();
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: Colors.grey.shade200,
+                  backgroundImage: avatar.isNotEmpty
+                      ? NetworkImage(avatar)
+                      : const NetworkImage(
+                          'https://api.dicebear.com/7.x/avataaars/png?seed=unknown',
+                        ),
+                ),
+                title: Text(
+                  nickname,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                trailing: Text(
+                  nickname.contains('我') ? '房主' : '编辑者',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+              );
+            }),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Divider(),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                if (active != null) {
+                  provider.copyItineraryCommand(active.id, active.title);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('🗝️ 协作口令已复制！去微信粘贴给好友吧~'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              label: const Text('复制口令邀请好友'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 0,
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCollaboratorStack(BuildContext context) {
+    final ItineraryProvider provider = Provider.of<ItineraryProvider>(context);
+    final List<String> avatars = provider.onlineUsers
+        .map((Map<String, dynamic> e) => (e['avatar'] ?? '').toString().trim())
+        .where((String e) => e.isNotEmpty)
+        .toList(growable: false);
+    final String firstAvatar = avatars.isNotEmpty
+        ? avatars.first
+        : 'https://api.dicebear.com/7.x/avataaars/png?seed=me';
+    final String? secondAvatar = avatars.length > 1 ? avatars[1] : null;
+    final int extraCount = avatars.length > 2 ? avatars.length - 2 : 0;
+
+    return GestureDetector(
+      onTap: () => _showCollaboratorList(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              width: extraCount > 0 ? 54 : 44,
+              height: 24,
+              child: Stack(
+                children: <Widget>[
+                  Positioned(
+                    left: 0,
+                    child: CircleAvatar(
+                      radius: 12,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: NetworkImage(firstAvatar),
+                    ),
+                  ),
+                  Positioned(
+                    left: 16,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: secondAvatar != null
+                          ? CircleAvatar(
+                              radius: 10,
+                              backgroundColor: Colors.grey.shade200,
+                              backgroundImage: NetworkImage(secondAvatar),
+                            )
+                          : CircleAvatar(
+                              radius: 10,
+                              backgroundColor: Colors.indigo.shade100,
+                              child: Icon(
+                                Icons.people_alt_rounded,
+                                size: 10,
+                                color: Colors.indigo.shade400,
+                              ),
+                            ),
+                    ),
+                  ),
+                  if (extraCount > 0)
+                    Positioned(
+                      left: 30,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.indigo,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: Text(
+                          '+$extraCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 14,
+              color: Colors.grey,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildImmersiveEditAppBar(
@@ -998,6 +1236,11 @@ JSON 必须严格包含以下 4 个字段：
                     _isEditing = false;
                     _editablePlanData = null;
                   });
+                  final ItineraryProvider provider =
+                      Provider.of<ItineraryProvider>(context, listen: false);
+                  provider.updatePresenceStatus(
+                    _isEditing ? 'editing' : 'viewing',
+                  );
                 },
                 child: Text(
                   '取消',
@@ -1032,6 +1275,35 @@ JSON 必须严格包含以下 4 个字段：
                 ],
               ),
             ),
+            IconButton(
+              onPressed: () {
+                final ItineraryProvider provider =
+                    Provider.of<ItineraryProvider>(context, listen: false);
+                final ItineraryModel? active =
+                    provider.activeItinerary ?? provider.currentItinerary;
+                if (active != null) {
+                  provider.copyItineraryCommand(active.id, active.title);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('🗝️ 协作口令已复制！去微信粘贴给好友吧~'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.person_add_alt_1_rounded,
+                  size: 18,
+                  color: Colors.indigo,
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: ElevatedButton(
@@ -1042,9 +1314,53 @@ JSON 必须严格包含以下 4 个字段：
                   // 2. 彻底移除全局 AI 补全拦截，直接进入保存流程
                   final ItineraryProvider provider =
                       Provider.of<ItineraryProvider>(context, listen: false);
-                  if (provider.activeItinerary != null &&
-                      _editablePlanData != null) {
-                    await provider.updateItineraryData(_editablePlanData!);
+                  if (_editablePlanData == null) {
+                    return;
+                  }
+                  final bool success = await provider
+                      .updateItineraryDataWithLock(_editablePlanData!);
+                  if (!mounted) {
+                    return;
+                  }
+                  if (!success) {
+                    await showDialog<void>(
+                      context: context,
+                      builder: (BuildContext ctx) => AlertDialog(
+                        title: const Row(
+                          children: <Widget>[
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.orange,
+                            ),
+                            SizedBox(width: 8),
+                            Text('保存失败 (版本冲突)'),
+                          ],
+                        ),
+                        content: const Text(
+                          '数据已被其他成员修改。为了防止覆盖他们的心血，请刷新页面获取最新数据后重试！',
+                        ),
+                        actions: <Widget>[
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              setState(() {
+                                _isEditing = false;
+                                _editablePlanData = null;
+                              });
+                              provider.updatePresenceStatus('viewing');
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                            ),
+                            child: const Text(
+                              '我知道了',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                    return;
                   }
 
                   // 3. 退出编辑态并刷新 UI
@@ -1061,9 +1377,12 @@ JSON 必须严格包含以下 4 个字段：
                       _isEditing = false;
                       _editablePlanData = null;
                     });
+                    provider.updatePresenceStatus(
+                      _isEditing ? 'editing' : 'viewing',
+                    );
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('✅ 行程修改已保存'),
+                        content: Text('✅ 行程已安全保存'),
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
@@ -3652,7 +3971,7 @@ JSON 必须严格包含以下 4 个字段：
   // 迷你版模式切换胶囊 - 放置在顶栏（完整恢复精美样式）
   Widget _buildMiniModeToggle(BuildContext context) {
     final ItineraryProvider provider = Provider.of<ItineraryProvider>(context);
-    final bool isTraveling = provider.currentMode == TripMode.traveling;
+    final bool isTraveling = provider.getTripState() == TripState.traveling;
     
     return Container(
       width: 160,

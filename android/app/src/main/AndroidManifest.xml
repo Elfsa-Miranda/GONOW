@@ -48,6 +48,24 @@
                     android:scheme="io.supabase.gonow"
                     android:host="login-callback" />
             </intent-filter>
+            <!-- 🚨 新增：拦截 gonow://join_trip 协议 -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- 协议名 scheme 和 主机名 host -->
+                <data android:scheme="gonow" android:host="join_trip" />
+            </intent-filter>
+            <!-- 新增：拦截标准的 https://gonow.app/join 链接 (App Links) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="gonow.app" />
+                <data android:pathPrefix="/join" />
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
