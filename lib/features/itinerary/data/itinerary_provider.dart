@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -196,6 +197,23 @@ class ItineraryModel {
   /// 兼容旧调用命名。
   String get destination => destinationCity;
 
+  String? get status {
+    final String value =
+        (planData['status'] ?? planData['trip_status'] ?? '').toString().trim();
+    return value.isEmpty ? null : value;
+  }
+
+  String? get coverImageUrl {
+    final String value = (planData['coverImageUrl'] ??
+            planData['cover_image_url'] ??
+            planData['cover'] ??
+            planData['coverUrl'] ??
+            '')
+        .toString()
+        .trim();
+    return value.isEmpty ? null : value;
+  }
+
   ItineraryModel copyWith({
     String? title,
     DateTime? startDate,
@@ -208,12 +226,23 @@ class ItineraryModel {
     int? version,
     String? remoteId,
     DateTime? createdAt,
+    String? status,
+    String? coverImageUrl,
   }) {
+    final Map<String, dynamic> mergedPlanData =
+        Map<String, dynamic>.from(planData ?? this.planData);
+    if (status != null) {
+      mergedPlanData['status'] = status;
+    }
+    if (coverImageUrl != null) {
+      mergedPlanData['cover_image_url'] = coverImageUrl;
+      mergedPlanData['coverImageUrl'] = coverImageUrl;
+    }
     return ItineraryModel(
       title: title ?? this.title,
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
-      planData: planData ?? this.planData,
+      planData: mergedPlanData,
       days: days ?? this.days,
       arrivedActivityIds: arrivedActivityIds ?? this.arrivedActivityIds,
       arrivedAtByActivityId:
@@ -230,6 +259,22 @@ class ItineraryModel {
         (json['planData'] as Map<String, dynamic>?) ??
         (json['plan_data'] as Map<String, dynamic>?) ??
         Map<String, dynamic>.from(json);
+    final String topLevelStatus =
+        (json['status'] ?? json['trip_status'] ?? '').toString().trim();
+    if (topLevelStatus.isNotEmpty &&
+        normalizedPlanData['status']?.toString().trim().isEmpty != false) {
+      normalizedPlanData['status'] = topLevelStatus;
+    }
+    final String topLevelCover =
+        (json['cover_image_url'] ?? json['coverImageUrl'] ?? '')
+            .toString()
+            .trim();
+    if (topLevelCover.isNotEmpty &&
+        normalizedPlanData['cover_image_url']?.toString().trim().isEmpty !=
+            false) {
+      normalizedPlanData['cover_image_url'] = topLevelCover;
+      normalizedPlanData['coverImageUrl'] = topLevelCover;
+    }
     final List<dynamic> rawDays =
         (normalizedPlanData['days'] as List<dynamic>?) ?? <dynamic>[];
     final DateTime now = DateTime.now();
@@ -780,6 +825,68 @@ class ItineraryProvider extends ChangeNotifier {
     final String shareText =
         '💡 邀请你和我一起在 GoNow 编辑旅行行程！\n📍 行程：《$title》\n👉 点击链接马上加入：$deepLink';
     await Share.share(shareText);
+  }
+
+  Future<void> uploadCustomCover(String itineraryId) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
+    if (image == null) return;
+
+    try {
+      final File file = File(image.path);
+      final List<String> segments = image.path.split('.');
+      final String fileExt = segments.isNotEmpty ? segments.last : 'jpg';
+      final String fileName =
+          'custom_cover_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+      final String filePath = 'user_covers/$fileName';
+
+      // 上传图片到 Storage
+      await _supabase.storage.from('travel-images').upload(filePath, file);
+      final String publicUrl =
+          _supabase.storage.from('travel-images').getPublicUrl(filePath);
+
+      // 检查是否为本地 ID（以 local_ 开头的是本地未同步的行程）
+      final bool isLocalId = itineraryId.startsWith('local_');
+      
+      // 只有非本地 ID 才更新数据库
+      if (!isLocalId) {
+        await _supabase
+            .from(_tableName)
+            .update(<String, dynamic>{'cover_image_url': publicUrl}).eq(
+              'id',
+              itineraryId,
+            );
+      }
+
+      // 更新本地缓存中的所有相关实例
+      final int index =
+          _myItineraries.indexWhere((ItineraryModel t) => t.id == itineraryId);
+      if (index != -1) {
+        final ItineraryModel updatedItinerary = _myItineraries[index].copyWith(
+          coverImageUrl: publicUrl,
+        );
+        _myItineraries[index] = updatedItinerary;
+        
+        // 同步更新所有相关引用
+        if (_activeItinerary?.id == itineraryId) {
+          _activeItinerary = updatedItinerary;
+        }
+        if (_currentItinerary?.id == itineraryId) {
+          _currentItinerary = updatedItinerary;
+        }
+        
+        // 强制刷新 UI
+        notifyListeners();
+        
+        debugPrint('✅ 封面更新成功: $publicUrl ${isLocalId ? "(本地行程)" : ""}');
+      }
+    } catch (e) {
+      debugPrint('❌ 上传自定义封面失败: $e');
+      rethrow; // 重新抛出异常，让调用方知道失败了
+    }
   }
 
   // 生成口令并复制到剪贴板

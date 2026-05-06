@@ -358,9 +358,10 @@ ${jsonEncode(existingPlanData)}
 
 请严格基于上述真实行程，以【$style】的心情风格，为每个景点撰写绝美的手账文案（description 字段）。
 【极度重要】：
-1. 必须完全保留原有的天数（days）、活动（activities）、标题（title）和时间（time）。绝对不允许删减景点或篡改原有结构！
+1. 必须完全保留原有的天数（days）、活动（activities）、标题（title）、时间（time）、注释（note）、照片（images）等所有字段。绝对不允许删减景点或篡改原有结构！
 2. 你的任务仅仅是根据【$style】风格，为每个 activities 补充大约60-100字的高质量游记description。
-3. 必须返回纯正的 JSON 字符串（可以用```json包裹），严禁输出废话！
+3. 如果原数据中已有 note 字段（用户的个人注释），必须原封不动保留，不要修改或删除。
+4. 必须返回纯正的 JSON 字符串（可以用```json包裹），严禁输出废话！
 ''';
     } else if ((subRecordMode ?? '').trim() == 'lazy') {
       systemPrompt = '''
@@ -445,7 +446,7 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
               ],
             }),
           )
-          .timeout(const Duration(seconds: 45));
+          .timeout(const Duration(seconds: 90)); // 增加超时时间到 90 秒，支持大行程数据
 
       if (response.statusCode != 200) {
         debugPrint('手账 AI 生成失败: HTTP ${response.statusCode}');

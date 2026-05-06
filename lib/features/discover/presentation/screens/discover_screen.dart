@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gonow/core/providers/travel_provider.dart';
+import 'package:gonow/core/utils/travel_image_helper.dart';
 import 'package:gonow/features/discover/presentation/screens/blind_box_screen.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
@@ -245,13 +246,24 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                             budgetStr.isNotEmpty ? '¥$budgetStr' : '预算核算中';
                       }
 
+                      // 使用 TravelImageHelper 获取默认图片
+                      final String displayImage =
+                          (itinerary.coverImageUrl != null &&
+                              itinerary.coverImageUrl!.isNotEmpty)
+                          ? itinerary.coverImageUrl!
+                          : TravelImageHelper.getImageUrlForDestination(
+                              itinerary.destinationCity.isNotEmpty
+                                  ? itinerary.destinationCity
+                                  : itinerary.title,
+                            );
+
                       return _buildItineraryCard(
                         title: itinerary.title,
-                        location: _destinationLine(itinerary),
+                        location: itinerary.destinationCity,
                         dates: displayDates,
                         status: statusInfo['status'] as String,
                         statusColor: statusInfo['color'] as Color,
-                        imageUrl: _extractCover(planData),
+                        imageUrl: displayImage,
                         tags: realTags,
                         budget: displayBudget,
                         onEnterTap: () {
@@ -295,6 +307,20 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                         },
                         onEditTap: () {
                           _showEditItinerarySheet(context, itinerary);
+                        },
+                        onCoverTap: () async {
+                          try {
+                            await provider.uploadCustomCover(itinerary.id);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('封面更新成功')),
+                            );
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('上传失败: $e')),
+                            );
+                          }
                         },
                       );
                     },
@@ -466,9 +492,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return itinerary.title;
   }
 
-  String _extractCover(Map<String, dynamic> planData) {
-    final Object? cover =
-        planData['coverImageUrl'] ?? planData['cover_image_url'];
+  String _resolveDisplayCover(ItineraryModel itinerary) {
+    final String cloudCover = (itinerary.coverImageUrl ?? '').trim();
+    if (cloudCover.isNotEmpty) {
+      return cloudCover;
+    }
+    final Map<String, dynamic> planData = itinerary.planData;
+    final Object? cover = planData['coverImageUrl'] ?? planData['cover_image_url'];
     if (cover != null && cover.toString().trim().isNotEmpty) {
       return cover.toString().trim();
     }
@@ -486,7 +516,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         }
       }
     }
-    return 'https://images.unsplash.com/photo-1540206395-68808572332f?w=800';
+    return TravelImageHelper.getImageUrlForDestination(itinerary.title);
   }
 
   Widget _buildItineraryHeader(ItineraryProvider itineraryProvider) {
@@ -567,6 +597,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     VoidCallback? onEnterTap,
     VoidCallback? onDeleteTap,
     VoidCallback? onEditTap,
+    VoidCallback? onCoverTap,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 24, left: 20, right: 20),
@@ -586,65 +617,96 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         children: <Widget>[
           SizedBox(
             height: 180,
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(24),
+            child: GestureDetector(
+              onTap: onCoverTap,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (BuildContext context, String url) =>
+                          Container(color: Colors.grey.shade100),
+                      errorWidget:
+                          (
+                            BuildContext context,
+                            String url,
+                            Object error,
+                          ) => Container(
+                            color: Colors.grey.shade200,
+                            child: const Icon(
+                              Icons.broken_image,
+                              color: Colors.grey,
+                            ),
+                          ),
+                    ),
                   ),
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        Container(color: Colors.grey.shade200),
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 60,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: <Color>[
+                            Colors.black.withValues(alpha: 0.1),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 60,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: <Color>[
-                          Colors.black.withValues(alpha: 0.1),
-                          Colors.transparent,
+                  Positioned(
+                    bottom: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: const <BoxShadow>[
+                          BoxShadow(color: Colors.black12, blurRadius: 4),
                         ],
                       ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: const <BoxShadow>[
-                        BoxShadow(color: Colors.black12, blurRadius: 4),
-                      ],
-                    ),
-                    child: Text(
-                      status,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.0,
+                      child: Text(
+                        status,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Padding(

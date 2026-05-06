@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:gonow/core/utils/image_compress_util.dart';
+import 'package:gonow/core/utils/travel_image_helper.dart';
 import 'package:gonow/features/diary/data/diary_provider.dart';
 import 'package:gonow/features/diary/presentation/screens/diary_detail_screen.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
@@ -105,9 +107,71 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
   String _selectedStyle = '文艺清新';
   bool _isGenerating = false;
   String? _errorMessage;
+  String? _selectedItineraryId;
   final TextEditingController _destinationController = TextEditingController();
   final List<XFile> _selectedPhotos = <XFile>[];
   XFile? _detailCoverPhoto;
+
+  String _getStatusText(String? status) {
+    switch (status) {
+      case 'planning':
+        return '计划中';
+      case 'traveling':
+        return '进行中';
+      case 'finished':
+        return '已结束';
+      default:
+        return '未定';
+    }
+  }
+
+  Color _getStatusColor(String? status) {
+    switch (status) {
+      case 'planning':
+        return Colors.blue.shade400;
+      case 'traveling':
+        return Colors.green.shade400;
+      case 'finished':
+        return Colors.grey.shade400;
+      default:
+        return Colors.grey.shade400;
+    }
+  }
+
+  /// 根据行程日期动态计算状态（与发现页保持一致）
+  Map<String, dynamic> _getItineraryStatusInfo(ItineraryModel itinerary) {
+    final DateTime start = DateTime(
+      itinerary.startDate.year,
+      itinerary.startDate.month,
+      itinerary.startDate.day,
+    );
+    final DateTime end = DateTime(
+      itinerary.endDate.year,
+      itinerary.endDate.month,
+      itinerary.endDate.day,
+    );
+    final DateTime now = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    if (now.isBefore(start)) {
+      return <String, dynamic>{
+        'status': '计划中',
+        'color': Colors.blue.shade500,
+      };
+    }
+    if (now.isAfter(end)) {
+      return <String, dynamic>{
+        'status': '已完成',
+        'color': Colors.grey.shade500,
+      };
+    }
+    return <String, dynamic>{
+      'status': '进行中',
+      'color': Colors.green.shade500,
+    };
+  }
 
   @override
   void dispose() {
@@ -144,14 +208,26 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
 
     final ItineraryProvider itineraryProvider =
         Provider.of<ItineraryProvider>(context, listen: false);
+    final List<ItineraryModel> itineraries = itineraryProvider.myItineraries;
     final ItineraryModel? existingItinerary = _isCustomMode
         ? null
-        : (itineraryProvider.activeItinerary ??
-            itineraryProvider.currentItinerary);
+        : itineraries.cast<ItineraryModel?>().firstWhere(
+              (ItineraryModel? item) => item?.id == _selectedItineraryId,
+              orElse: () => null,
+            );
 
     if (!_isCustomMode && existingItinerary == null) {
       setState(() => _errorMessage = '未找到可关联的已有行程');
       return;
+    }
+    if (!_isCustomMode && existingItinerary != null) {
+      final String finalCoverImage =
+          (existingItinerary.coverImageUrl ?? '').trim().isNotEmpty
+          ? existingItinerary.coverImageUrl!.trim()
+          : TravelImageHelper.getImageUrlForDestination(existingItinerary.title);
+      debugPrint(
+        '准备生成手账: ${existingItinerary.title}, 背景图: $finalCoverImage',
+      );
     }
 
     setState(() => _isGenerating = true);
@@ -243,7 +319,10 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
               final Map<String, dynamic> aiAct = Map<String, dynamic>.from(
                 aiActs[a] as Map? ?? <String, dynamic>{},
               );
+              // 只更新 AI 生成的 description，保留原有的 note、images 等所有其他字段
               orgAct['description'] = aiAct['description'] ?? orgAct['description'];
+              // 确保 note 字段不被覆盖（即使 AI 返回了 note 字段，也使用原始的）
+              // orgAct 已经包含了原始的 note，所以不需要额外处理
               orgActs[a] = orgAct;
             }
             orgDay['activities'] = orgActs;
@@ -270,21 +349,41 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
             ? _destinationController.text.trim()
             : existingItinerary!.title);
 
-    const String kDefaultDiaryCover =
-        'https://images.unsplash.com/photo-1596484552834-6a58f850d0a1?w=800';
-    String finalCoverImg = kDefaultDiaryCover;
+    // 统一使用 TravelImageHelper 获取默认图片，确保手账和行程的默认封面一致
+    String finalCoverImg;
+    
     if (_isCustomMode && _selectedPhotos.isNotEmpty) {
+      // 自定义模式：懒人池模式，使用用户上传的第一张照片
       finalCoverImg = _selectedPhotos.first.path;
     } else if (_isCustomMode && _detailCoverPhoto != null) {
+      // 自定义模式：详细模式，使用用户选择的封面照片
       finalCoverImg = _detailCoverPhoto!.path;
+    } else if (_isCustomMode) {
+      // 自定义模式：没有上传照片，使用基于目的地的默认图片
+      finalCoverImg = TravelImageHelper.getImageUrlForDestination(
+        _destinationController.text.trim(),
+      );
     } else if (!_isCustomMode && existingItinerary != null) {
+      // 关联行程模式：手账封面独立于行程封面
+      // 优先使用 AI 从行程活动中提取的第一张图片作为手账封面
+      // 这样手账封面来自实际的旅行照片，而不是行程的自定义封面
       final String fromAi = (autoCoverImageUrl ?? '').trim();
-      final String fromPlan = _extractCoverImage(existingItinerary).trim();
+      // 统一使用 destinationCity 优先，与发现页和配置舱列表保持一致
+      final String fromFallback = TravelImageHelper.getImageUrlForDestination(
+        existingItinerary.destinationCity.isNotEmpty
+            ? existingItinerary.destinationCity
+            : existingItinerary.title,
+      );
+      
+      // 优先级：AI提取的活动图片 > 基于目的地的默认图片
       if (fromAi.isNotEmpty) {
         finalCoverImg = fromAi;
-      } else if (fromPlan.isNotEmpty) {
-        finalCoverImg = fromPlan;
+      } else {
+        finalCoverImg = fromFallback;
       }
+    } else {
+      // 兜底：使用通用默认图片
+      finalCoverImg = TravelImageHelper.getImageUrlForDestination('');
     }
 
     final DiaryModel generatedDiary = DiaryModel(
@@ -320,6 +419,16 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
 
   @override
   Widget build(BuildContext context) {
+    final ItineraryProvider itineraryProvider =
+        Provider.of<ItineraryProvider>(context);
+    final List<ItineraryModel> itineraries = itineraryProvider.myItineraries;
+    if (itineraries.isEmpty) {
+      _selectedItineraryId = null;
+    } else if (_selectedItineraryId == null ||
+        !itineraries.any((ItineraryModel e) => e.id == _selectedItineraryId)) {
+      _selectedItineraryId = itineraries.first.id;
+    }
+
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -464,74 +573,180 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
                               if (!_isCustomMode) ...<Widget>[
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.grey.shade200),
-                                    boxShadow: <BoxShadow>[
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.02),
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    children: <Widget>[
-                                      Container(
-                                        width: 48,
-                                        height: 48,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade100,
-                                          borderRadius: BorderRadius.circular(12),
-                                          image: const DecorationImage(
-                                            image: NetworkImage(
-                                              'https://images.unsplash.com/photo-1508804185872-d7badad00f7d?w=200',
+                                if (itineraries.isEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.all(20),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '暂无可用行程，先去规划一次旅行吧！',
+                                      style:
+                                          TextStyle(color: Colors.grey.shade500),
+                                    ),
+                                  )
+                                else
+                                  Column(
+                                    children: itineraries.map((ItineraryModel trip) {
+                                      final bool isSelected =
+                                          _selectedItineraryId == trip.id;
+
+                                      // 使用动态计算的状态信息（与发现页保持一致）
+                                      final Map<String, dynamic> statusInfo =
+                                          _getItineraryStatusInfo(trip);
+
+                                      final String imageUrl =
+                                          (trip.coverImageUrl ?? '').trim().isNotEmpty
+                                          ? trip.coverImageUrl!.trim()
+                                          : TravelImageHelper
+                                                .getImageUrlForDestination(
+                                                  trip.destinationCity.isNotEmpty
+                                                      ? trip.destinationCity
+                                                      : trip.title,
+                                                );
+                                      
+                                      // 调试日志：检查图片 URL
+                                      debugPrint('行程 "${trip.title}" 的图片 URL: $imageUrl');
+
+                                      return GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedItineraryId = trip.id;
+                                          });
+                                        },
+                                        child: Container(
+                                          margin: const EdgeInsets.only(bottom: 12),
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(
+                                              color: isSelected
+                                                  ? Colors.indigo
+                                                  : Colors.grey.shade100,
+                                              width: isSelected ? 2 : 1,
                                             ),
-                                            fit: BoxFit.cover,
+                                            boxShadow: <BoxShadow>[
+                                              if (isSelected)
+                                                BoxShadow(
+                                                  color: Colors.indigo
+                                                      .withValues(alpha: 0.1),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                            ],
+                                          ),
+                                          child: Row(
+                                            children: <Widget>[
+                                              ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                child: CachedNetworkImage(
+                                                  imageUrl: imageUrl,
+                                                  width: 48,
+                                                  height: 48,
+                                                  fit: BoxFit.cover,
+                                                  placeholder:
+                                                      (
+                                                        BuildContext context,
+                                                        String url,
+                                                      ) => Container(
+                                                        color: Colors
+                                                            .grey
+                                                            .shade100,
+                                                        width: 48,
+                                                        height: 48,
+                                                        child: const Padding(
+                                                          padding:
+                                                              EdgeInsets.all(
+                                                                12,
+                                                              ),
+                                                          child:
+                                                              CircularProgressIndicator(
+                                                                strokeWidth: 2,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                  errorWidget:
+                                                      (
+                                                        BuildContext context,
+                                                        String url,
+                                                        Object error,
+                                                      ) => Container(
+                                                        color: Colors
+                                                            .grey
+                                                            .shade200,
+                                                        width: 48,
+                                                        height: 48,
+                                                        child: const Icon(
+                                                          Icons
+                                                              .image_not_supported,
+                                                          color: Colors.grey,
+                                                          size: 20,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: <Widget>[
+                                                    Text(
+                                                      trip.title,
+                                                      style: const TextStyle(
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      children: <Widget>[
+                                                        Container(
+                                                          width: 6,
+                                                          height: 6,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: statusInfo['color'] as Color,
+                                                            shape: BoxShape
+                                                                .circle,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          statusInfo['status'] as String,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: Colors.grey
+                                                                .shade600,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              if (isSelected)
+                                                const Icon(
+                                                  Icons.check_circle_rounded,
+                                                  color: Colors.indigo,
+                                                  size: 24,
+                                                )
+                                              else
+                                                Icon(
+                                                  Icons.circle_outlined,
+                                                  color: Colors.grey.shade300,
+                                                  size: 24,
+                                                ),
+                                            ],
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      const Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            Text(
-                                              '北京五日带父母舒心游',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w900,
-                                                fontSize: 15,
-                                                color: Colors.black87,
-                                              ),
-                                            ),
-                                            SizedBox(height: 6),
-                                            Row(
-                                              children: <Widget>[
-                                                Icon(
-                                                  Icons.circle,
-                                                  size: 8,
-                                                  color: Colors.green,
-                                                ),
-                                                SizedBox(width: 6),
-                                                Text(
-                                                  '刚结束',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.green,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Icon(Icons.check_circle, color: Colors.indigo),
-                                    ],
+                                      );
+                                    }).toList(),
                                   ),
-                                ),
                               ],
                               if (_isCustomMode) ...<Widget>[
                                 Container(
@@ -1026,7 +1241,11 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
                               elevation: 0,
                               padding: EdgeInsets.zero,
                             ),
-                            onPressed: _isGenerating ? null : _onGenerate,
+                            onPressed: _isGenerating ||
+                                    (!_isCustomMode &&
+                                        _selectedItineraryId == null)
+                                ? null
+                                : _onGenerate,
                             child: Ink(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(

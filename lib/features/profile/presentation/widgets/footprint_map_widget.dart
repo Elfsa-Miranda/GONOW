@@ -58,74 +58,121 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
     _initMapData();
   }
 
-  // 🚨 核心修复 2：数据大清洗 + MultiPolygon 展开
-  // world.json 中 91 个国家是 MultiPolygon 类型（如澳大利亚、美国等）。
-  // Syncfusion SfMaps 渲染 MultiPolygon 时会将子多边形展开，导致实际渲染数量（1083）
-  // 远超 dataCount（217），造成 mapper index 越界，整张地图空白渲染失败。
-  // 修复：将所有 MultiPolygon 展开为独立的 Polygon feature，确保一一对应。
   void _cleanGeoJson(Map<String, dynamic> geoJson) {
-    if (geoJson['features'] == null) return;
+    debugPrint('[MAP-DIAG] ===== _cleanGeoJson 开始 =====');
 
-    final features = geoJson['features'] as List<dynamic>;
-    final List<dynamic> cleanedFeatures = [];
-
-    for (final feature in features) {
-      final props = feature['properties'];
-      final geom = feature['geometry'];
-
-      // 过滤无效 feature：props 为空、name 为 null 或空字符串、geometry 为空
-      if (props == null) continue;
-      final name = props['name'];
-      if (name == null || name.toString().trim().isEmpty) continue;
-      if (geom == null || geom['coordinates'] == null) continue;
-
-      final String geomType = geom['type'].toString();
-
-      if (geomType == 'Polygon') {
-        // Polygon 直接保留
-        cleanedFeatures.add(feature);
-      } else if (geomType == 'MultiPolygon') {
-        // ✅ 关键修复：将 MultiPolygon 的每个子多边形展开为独立 Polygon feature
-        // 保留相同的 properties（name 相同），Syncfusion 会按 name 归组渲染
-        final List<dynamic> subPolygons = geom['coordinates'] as List<dynamic>;
-        for (final polyCoords in subPolygons) {
-          cleanedFeatures.add({
-            'type': 'Feature',
-            'properties': Map<String, dynamic>.from(props as Map),
-            'geometry': {
-              'type': 'Polygon',
-              'coordinates': polyCoords,
-            },
-          });
-        }
-      }
-      // 其他类型（Point、LineString 等）直接忽略
+    final rawFeatures = geoJson['features'];
+    if (rawFeatures == null) {
+      debugPrint('[MAP-DIAG-3] ❌ features 字段为 null，JSON 结构异常！');
+      return;
     }
 
-    geoJson['features'] = cleanedFeatures;
+    final List<dynamic> input = rawFeatures as List<dynamic>;
+    debugPrint('[MAP-DIAG-3] 原始 features 数量: ${input.length}');
+
+    if (input.isNotEmpty) {
+      final first = input[0] as Map<String, dynamic>;
+      debugPrint('[MAP-DIAG-4] 第一条 feature keys: ${first.keys.toList()}');
+      debugPrint('[MAP-DIAG-4] 有无 type 字段: ${first.containsKey("type")} => ${first["type"]}');
+      debugPrint('[MAP-DIAG-4] properties: ${first["properties"]}');
+      debugPrint('[MAP-DIAG-5] geometry.type: ${(first["geometry"] as Map?)?["type"]}');
+    }
+
+    final Map<String, int> geomTypeCounts = {};
+    for (final f in input) {
+      final geomType = (f['geometry'] as Map<String, dynamic>?)?['type']?.toString() ?? 'null';
+      geomTypeCounts[geomType] = (geomTypeCounts[geomType] ?? 0) + 1;
+    }
+    debugPrint('[MAP-DIAG-5] geometry 类型分布: $geomTypeCounts');
+
+    final List<Map<String, dynamic>> fixedFeatures = [];
+    int skipped = 0;
+    int expanded = 0;
+
+    for (final raw in input) {
+      final Map<String, dynamic> feat = raw as Map<String, dynamic>;
+      final props = feat['properties'] as Map<String, dynamic>?;
+      final geom = feat['geometry'] as Map<String, dynamic>?;
+
+      if (props == null || geom == null || geom['coordinates'] == null) {
+        skipped++;
+        continue;
+      }
+      final name = props['name']?.toString().trim() ?? '';
+      if (name.isEmpty) {
+        skipped++;
+        continue;
+      }
+
+      final geomType = geom['type']?.toString() ?? '';
+
+      if (geomType == 'Polygon') {
+        fixedFeatures.add({
+          'type': 'Feature',
+          'properties': {'name': name},
+          'geometry': geom,
+        });
+      } else if (geomType == 'MultiPolygon') {
+        for (final polyCoords in (geom['coordinates'] as List<dynamic>)) {
+          fixedFeatures.add({
+            'type': 'Feature',
+            'properties': {'name': name},
+            'geometry': {'type': 'Polygon', 'coordinates': polyCoords},
+          });
+          expanded++;
+        }
+      } else {
+        skipped++;
+      }
+    }
+
+    debugPrint('[MAP-DIAG-5] 处理后 features 数量: ${fixedFeatures.length}（展开了 $expanded 个子多边形，跳过 $skipped 条）');
+    debugPrint('[MAP-DIAG-4] 处理后第一条 type 字段: ${fixedFeatures.isNotEmpty ? fixedFeatures[0]["type"] : "无数据"}');
+
+    geoJson['features'] = fixedFeatures;
+    debugPrint('[MAP-DIAG] ===== _cleanGeoJson 完成 =====');
   }
 
   // 异步读取解析 GeoJSON
   Future<void> _initMapData() async {
+    debugPrint('[MAP-DIAG] ===== _initMapData 开始，isChinaView=$_isChinaView =====');
     setState(() => _isLoading = true);
+
     try {
       if (_isChinaView && _chinaGeoJsonCache == null) {
+        debugPrint('[MAP-DIAG-2] 开始加载 assets/china.json ...');
         final jsonString = await rootBundle.loadString('assets/china.json');
-        final geoJson = jsonDecode(jsonString);
-        _cleanGeoJson(geoJson); // 洗牌
+        debugPrint('[MAP-DIAG-2] ✅ china.json 加载成功，字符数: ${jsonString.length}');
+        final geoJson = jsonDecode(jsonString) as Map<String, dynamic>;
+        debugPrint('[MAP-DIAG-1] ✅ china.json jsonDecode 成功，顶层 keys: ${geoJson.keys.toList()}');
+        _cleanGeoJson(geoJson);
         _chinaGeoJsonCache = geoJson;
+      } else if (_isChinaView) {
+        debugPrint('[MAP-DIAG-8] china 使用缓存，features 数: ${(_chinaGeoJsonCache!["features"] as List).length}');
       }
+
       if (!_isChinaView && _worldGeoJsonCache == null) {
+        debugPrint('[MAP-DIAG-2] 开始加载 assets/world.json ...');
         final jsonString = await rootBundle.loadString('assets/world.json');
-        final geoJson = jsonDecode(jsonString);
-        _cleanGeoJson(geoJson); // 洗牌
+        debugPrint('[MAP-DIAG-2] ✅ world.json 加载成功，字符数: ${jsonString.length}');
+        final geoJson = jsonDecode(jsonString) as Map<String, dynamic>;
+        debugPrint('[MAP-DIAG-1] ✅ world.json jsonDecode 成功，顶层 keys: ${geoJson.keys.toList()}');
+        _cleanGeoJson(geoJson);
         _worldGeoJsonCache = geoJson;
+      } else if (!_isChinaView) {
+        debugPrint('[MAP-DIAG-8] world 使用缓存，features 数: ${(_worldGeoJsonCache!["features"] as List).length}');
       }
+
+      debugPrint('[MAP-DIAG] 调用 _buildMapSource ...');
       _buildMapSource();
-    } catch (e) {
-      debugPrint("地图数据初始化失败: $e");
+      debugPrint('[MAP-DIAG-6] mapBytes 已生成，dataCount: ${_mapData.length}');
+    } catch (e, stack) {
+      debugPrint('[MAP-DIAG] ❌❌❌ 异常: $e');
+      debugPrint('[MAP-DIAG] 堆栈: $stack');
     } finally {
+      debugPrint('[MAP-DIAG-7] finally: mounted=$mounted，即将 setState isLoading=false');
       if (mounted) setState(() => _isLoading = false);
+      debugPrint('[MAP-DIAG-7] ✅ _isLoading 已设为 false');
     }
   }
 
@@ -136,25 +183,24 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
     final geoJson = _isChinaView ? _chinaGeoJsonCache! : _worldGeoJsonCache!;
     final currentVisited = _isChinaView ? _localVisitedChina : _localVisitedWorld;
 
-    // 1. 基于展开后的 features 数组构建渲染数据（与 features 数组完全一一对应）
-    // MultiPolygon 已展开：同一国家多条 feature 同 name，Syncfusion 按 name 归组显示
     _mapData = (geoJson['features'] as List<dynamic>).map((feature) {
       final String regionName = feature['properties']['name'].toString();
       final bool isLit = currentVisited.contains(regionName);
       return _MapModel(regionName, isLit ? Colors.indigo.shade500 : Colors.white.withOpacity(0.05));
     }).toList();
 
-    // 2. 将清洗后的 Map 字典编码为 Uint8List 字节流
-    final Uint8List mapBytes = Uint8List.fromList(utf8.encode(jsonEncode(geoJson)));
+    // ✅ 修复根本原因：
+    // memory() 接收的是 shapefile 二进制，不是 GeoJSON 字节流！
+    // GeoJSON 必须用 asset() 加载，传文件路径字符串。
+    // china.json 本身格式正常可直接用；world 用预处理好的 world_fixed.json。
+    final String assetPath = _isChinaView ? 'assets/china.json' : 'assets/world_fixed.json';
 
-    // 3. 传入字节流给引擎
-    _shapeSource = MapShapeSource.memory(
-      mapBytes,
-      shapeDataField: 'name', 
+    _shapeSource = MapShapeSource.asset(
+      assetPath,
+      shapeDataField: 'name',
       dataCount: _mapData.length,
       primaryValueMapper: (int index) => _mapData[index].region,
       shapeColorValueMapper: (int index) => _mapData[index].color,
-      // 直接映射文字，利用插件自带的 MapLabelOverflow.hide 防止杂乱
       dataLabelMapper: (int index) => _mapData[index].region,
     );
   }
