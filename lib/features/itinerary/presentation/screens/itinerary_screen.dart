@@ -82,8 +82,23 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   // --- 沉浸式编辑态 ---
   bool _isEditing = false;
   Map<String, dynamic>? _editablePlanData;
+  /// 编辑前 [planData] 快照（取消时用于回滚云端）
+  Map<String, dynamic>? _planDataSnapshot;
+  /// 快照对应的乐观锁版本
+  int _snapshotVersion = 1;
   /// 编辑态 JSON 变更后的局部版本戳，用于强制依赖 planData 的子组件刷新。
   int _contentVersion = 0;
+
+  /// 保存行程时防连点（完成按钮 Loading）
+  bool _isSaving = false;
+
+  /// 保存成功后「完成」按钮短暂展示绿色打勾动画
+  bool _saveButtonSuccessMark = false;
+
+  Timer? _autoSaveDebounce;
+
+  /// [dispose] 时用于 [clearRemoteUpdateCallback]，避免在 dispose 使用 [context]
+  ItineraryProvider? _collaborationProviderRef;
 
   @override
   void initState() {
@@ -194,6 +209,31 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     if (model == null) return;
     provider.subscribeToItinerary(model.id);
     provider.joinPresence(model.id);
+
+    _collaborationProviderRef?.clearRemoteUpdateCallback();
+    _collaborationProviderRef = provider;
+    provider.setRemoteUpdateCallback(() {
+      if (!mounted) return;
+      if (_isEditing) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🔄 协作者刚刚更新了行程'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
+  }
+
+  /// 防抖自动保存：编辑操作后 800ms 无新操作则静默提交云端
+  void _triggerAutoSave() {
+    _autoSaveDebounce?.cancel();
+    _autoSaveDebounce = Timer(const Duration(milliseconds: 800), () async {
+      if (!_isEditing || _editablePlanData == null || !mounted) return;
+      final ItineraryProvider provider = context.read<ItineraryProvider>();
+      await provider.updateItineraryDataWithLock(_editablePlanData!);
+    });
   }
 
   void _triggerRouteSyncFromProvider() {
@@ -268,6 +308,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   @override
   void dispose() {
+    _autoSaveDebounce?.cancel();
+    _collaborationProviderRef?.clearRemoteUpdateCallback();
+    _collaborationProviderRef = null;
     _positionSub?.cancel();
     _scrollController.dispose();
     _googleController?.dispose();
@@ -820,6 +863,7 @@ JSON 必须严格包含以下 4 个字段：
         _refreshFromEditableData();
         _contentVersion++;
       });
+      _triggerAutoSave();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -994,12 +1038,14 @@ JSON 必须严格包含以下 4 个字段：
     setState(() {
       _isEditing = true;
       _editablePlanData = _clonePlanData(model.planData);
+      _planDataSnapshot = _clonePlanData(model.planData);
+      _snapshotVersion = model.version;
     });
     final ItineraryProvider provider = Provider.of<ItineraryProvider>(
       context,
       listen: false,
     );
-    provider.updatePresenceStatus(_isEditing ? 'editing' : 'viewing');
+    provider.updatePresenceStatus('editing');
   }
 
   void _showCollaboratorList(BuildContext context) {
@@ -1230,17 +1276,37 @@ JSON 必须严格包含以下 4 个字段：
             SizedBox(
               width: 80,
               child: TextButton(
-                onPressed: () {
+                onPressed: _isSaving
+                    ? null
+                    : () async {
                   FocusManager.instance.primaryFocus?.unfocus();
+                  _autoSaveDebounce?.cancel();
+
+                  final bool someoneElseEditing =
+                      provider.someoneElseEditingName != null;
+                  if (someoneElseEditing) {
+                    setState(() {
+                      _isEditing = false;
+                      _editablePlanData = null;
+                      _planDataSnapshot = null;
+                    });
+                    provider.updatePresenceStatus('viewing');
+                    return;
+                  }
+
+                  if (_planDataSnapshot != null) {
+                    await provider.rollbackItineraryData(
+                      _planDataSnapshot!,
+                      _snapshotVersion,
+                    );
+                  }
+
                   setState(() {
                     _isEditing = false;
                     _editablePlanData = null;
+                    _planDataSnapshot = null;
                   });
-                  final ItineraryProvider provider =
-                      Provider.of<ItineraryProvider>(context, listen: false);
-                  provider.updatePresenceStatus(
-                    _isEditing ? 'editing' : 'viewing',
-                  );
+                  provider.updatePresenceStatus('viewing');
                 },
                 child: Text(
                   '取消',
@@ -1307,64 +1373,51 @@ JSON 必须严格包含以下 4 个字段：
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: ElevatedButton(
-                onPressed: () async {
-                  // 1. 关闭键盘，防止焦点残留
+                onPressed: (_isSaving || _saveButtonSuccessMark)
+                    ? null
+                    : () async {
                   FocusManager.instance.primaryFocus?.unfocus();
-
-                  // 2. 彻底移除全局 AI 补全拦截，直接进入保存流程
                   final ItineraryProvider provider =
                       Provider.of<ItineraryProvider>(context, listen: false);
                   if (_editablePlanData == null) {
                     return;
                   }
-                  final bool success = await provider
-                      .updateItineraryDataWithLock(_editablePlanData!);
-                  if (!mounted) {
-                    return;
-                  }
-                  if (!success) {
-                    await showDialog<void>(
-                      context: context,
-                      builder: (BuildContext ctx) => AlertDialog(
-                        title: const Row(
-                          children: <Widget>[
-                            Icon(
-                              Icons.warning_amber_rounded,
-                              color: Colors.orange,
-                            ),
-                            SizedBox(width: 8),
-                            Text('保存失败 (版本冲突)'),
-                          ],
-                        ),
-                        content: const Text(
-                          '数据已被其他成员修改。为了防止覆盖他们的心血，请刷新页面获取最新数据后重试！',
-                        ),
-                        actions: <Widget>[
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              setState(() {
-                                _isEditing = false;
-                                _editablePlanData = null;
-                              });
-                              provider.updatePresenceStatus('viewing');
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
-                            ),
-                            child: const Text(
-                              '我知道了',
-                              style: TextStyle(color: Colors.white),
-                            ),
+                  setState(() {
+                    _isSaving = true;
+                    _saveButtonSuccessMark = false;
+                  });
+                  try {
+                    final bool success = await provider
+                        .updateItineraryDataWithLock(_editablePlanData!);
+                    if (!mounted) {
+                      return;
+                    }
+                    if (!success) {
+                      setState(() {
+                        _isSaving = false;
+                        _saveButtonSuccessMark = false;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '🔄 行程已更新为最新版本，请再次点击"完成"保存你的修改',
                           ),
-                        ],
-                      ),
-                    );
-                    return;
-                  }
+                          behavior: SnackBarBehavior.floating,
+                          duration: Duration(seconds: 4),
+                        ),
+                      );
+                      return;
+                    }
 
-                  // 3. 退出编辑态并刷新 UI
-                  if (mounted) {
+                    setState(() {
+                      _isSaving = false;
+                      _saveButtonSuccessMark = true;
+                    });
+                    await Future<void>.delayed(const Duration(milliseconds: 600));
+                    if (!mounted) {
+                      return;
+                    }
+
                     final ItineraryModel? synced =
                         provider.activeItinerary ?? provider.currentItinerary;
                     if (synced != null) {
@@ -1376,37 +1429,90 @@ JSON 必须严格包含以下 4 个字段：
                     setState(() {
                       _isEditing = false;
                       _editablePlanData = null;
+                      _planDataSnapshot = null;
+                      _isSaving = false;
+                      _saveButtonSuccessMark = false;
                     });
-                    provider.updatePresenceStatus(
-                      _isEditing ? 'editing' : 'viewing',
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('✅ 行程已安全保存'),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    provider.updatePresenceStatus('viewing');
+                  } catch (_) {
+                    if (mounted) {
+                      setState(() {
+                        _isSaving = false;
+                        _saveButtonSuccessMark = false;
+                      });
+                    }
                   }
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                style: ButtonStyle(
+                  elevation: const WidgetStatePropertyAll<double>(0),
+                  padding: const WidgetStatePropertyAll<EdgeInsetsGeometry>(
+                    EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                   ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
+                  shape: const WidgetStatePropertyAll<OutlinedBorder>(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(20)),
+                    ),
+                  ),
+                  backgroundColor:
+                      WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+                    if (_saveButtonSuccessMark) {
+                      return Colors.white;
+                    }
+                    return Colors.indigo;
+                  }),
+                  foregroundColor:
+                      WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+                    if (_saveButtonSuccessMark) {
+                      return const Color(0xFF66BB6A);
+                    }
+                    return Colors.white;
+                  }),
+                  overlayColor: WidgetStateProperty.resolveWith(
+                    (Set<WidgetState> states) {
+                      if (_saveButtonSuccessMark) {
+                        return Colors.grey.withValues(alpha: 0.08);
+                      }
+                      return Colors.white.withValues(alpha: 0.12);
+                    },
                   ),
                 ),
-                child: const Text(
-                  '完成',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
+                child: _saveButtonSuccessMark
+                    ? TweenAnimationBuilder<double>(
+                        key: const ValueKey<String>('save_success_check'),
+                        tween: Tween<double>(begin: 0, end: 1),
+                        duration: const Duration(milliseconds: 420),
+                        curve: Curves.elasticOut,
+                        builder: (
+                          BuildContext context,
+                          double scale,
+                          Widget? child,
+                        ) {
+                          return Transform.scale(scale: scale, child: child);
+                        },
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: Color(0xFF66BB6A),
+                          size: 26,
+                          semanticLabel: '已保存',
+                        ),
+                      )
+                    : _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white70,
+                            ),
+                          )
+                        : const Text(
+                            '完成',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
               ),
             ),
           ],
@@ -1453,6 +1559,7 @@ JSON 必须严格包含以下 4 个字段：
       _editablePlanData![storageKey] = days;
       _contentVersion++;
     });
+    _triggerAutoSave();
   }
 
   List<Widget> _buildEditingReorderSlivers() {
@@ -1540,6 +1647,7 @@ JSON 必须严格包含以下 4 个字段：
                         dr[dayIndex] = dm;
                         _editablePlanData![storageKey] = dr;
                       });
+                      _triggerAutoSave();
                     },
                     itemBuilder: (BuildContext context, int index) {
                       final Map<String, dynamic> activity =
@@ -1630,6 +1738,7 @@ JSON 必须严格包含以下 4 个字段：
       _contentVersion++;
     });
     _sortDayActivities(dayIndex);
+    _triggerAutoSave();
   }
 
   Future<void> _deleteActivity(int dayIndex, int activityIndex) async {
@@ -1685,6 +1794,7 @@ JSON 必须严格包含以下 4 个字段：
       }
       _editablePlanData![storageKey] = days;
     });
+    _triggerAutoSave();
   }
 
   Future<void> _deleteWholeDay(int dayIndex) async {
@@ -1729,6 +1839,7 @@ JSON 必须严格包含以下 4 个字段：
         _editablePlanData![storageKey] = days;
       }
     });
+    _triggerAutoSave();
   }
 
   void _addNewDay() {
@@ -1748,6 +1859,7 @@ JSON 必须严格包含以下 4 个字段：
       });
       _editablePlanData![storageKey] = days;
     });
+    _triggerAutoSave();
   }
 
   Future<void> _openInsertActivitySheet(
@@ -2054,6 +2166,7 @@ JSON 必须严格包含以下 4 个字段：
                                 });
                                 _sortDayActivities(dIdx);
                                 Navigator.pop(ctx);
+                                _triggerAutoSave();
                               },
                               child: const Text(
                                 '保存',

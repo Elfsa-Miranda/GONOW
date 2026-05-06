@@ -302,12 +302,23 @@ class ItineraryModel {
 
 class ItineraryProvider extends ChangeNotifier {
   static const String _prefsKey = 'current_itinerary_json';
-  static const String _tableName = 'itineraries';
+  static const String _tableName = 'user_itineraries';
   final SupabaseClient _supabase = Supabase.instance.client;
   RealtimeChannel? _itineraryChannel;
   RealtimeChannel? _presenceChannel;
   List<Map<String, dynamic>> _onlineUsers = <Map<String, dynamic>>[];
   String? _someoneElseEditingName;
+
+  /// 行程 Realtime 推送到达时通知 UI（如编辑态 SnackBar）
+  VoidCallback? _onRemoteUpdate;
+
+  void setRemoteUpdateCallback(VoidCallback cb) {
+    _onRemoteUpdate = cb;
+  }
+
+  void clearRemoteUpdateCallback() {
+    _onRemoteUpdate = null;
+  }
 
   ItineraryModel? _currentItinerary;
   ItineraryModel? _activeItinerary;
@@ -421,13 +432,13 @@ class ItineraryProvider extends ChangeNotifier {
     debugPrint('📡 准备连接 Realtime 频道: 行程 ID $itineraryId');
 
     _itineraryChannel =
-        _supabase.channel('public:user_itineraries:id=eq.$itineraryId');
+        _supabase.channel('public:$_tableName:id=eq.$itineraryId');
 
     _itineraryChannel!
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
-          table: 'user_itineraries',
+          table: _tableName,
           filter: PostgresChangeFilter(
             type: PostgresChangeFilterType.eq,
             column: 'id',
@@ -436,24 +447,32 @@ class ItineraryProvider extends ChangeNotifier {
           callback: (PostgresChangePayload payload) {
             // 🚨 V2 语法：使用 payload.newRecord 获取更新后的完整数据
             final Map<String, dynamic> newData = payload.newRecord;
-            if (newData.isNotEmpty &&
-                _activeItinerary != null &&
-                _activeItinerary!.id == itineraryId) {
-              final ItineraryModel updatedItinerary = sanitizeItineraryImages(
-                ItineraryModel.fromJson(newData),
-              );
-              _activeItinerary = updatedItinerary;
-
-              final int index = _myItineraries.indexWhere(
-                (ItineraryModel e) => e.id == itineraryId,
-              );
-              if (index != -1) {
-                _myItineraries[index] = updatedItinerary;
-              }
-
-              notifyListeners();
-              debugPrint('🔄 监听到好友修改了行程，UI 已实时同步完成！');
+            if (newData.isEmpty ||
+                _activeItinerary == null ||
+                _activeItinerary!.id != itineraryId) {
+              return;
             }
+            final int incomingVersion =
+                (newData['version'] as num?)?.toInt() ?? 0;
+            if (incomingVersion <= _activeItinerary!.version) {
+              return;
+            }
+
+            final ItineraryModel updatedItinerary = sanitizeItineraryImages(
+              ItineraryModel.fromJson(newData),
+            );
+            _activeItinerary = updatedItinerary;
+
+            final int index = _myItineraries.indexWhere(
+              (ItineraryModel e) => e.id == itineraryId,
+            );
+            if (index != -1) {
+              _myItineraries[index] = updatedItinerary;
+            }
+
+            _onRemoteUpdate?.call();
+            notifyListeners();
+            debugPrint('🔄 监听到好友修改了行程，UI 已实时同步完成！');
           },
         )
         .subscribe((RealtimeSubscribeStatus status, [Object? error]) {
@@ -688,13 +707,13 @@ class ItineraryProvider extends ChangeNotifier {
     try {
       // 🚨 核心改造：并发拉取【自己创建的】和【别人邀请我加入的】行程
       final dynamic myFuture = supabase
-          .from('user_itineraries')
+          .from(_tableName)
           .select()
           .eq('user_id', userId);
 
       final dynamic sharedFuture = supabase
           .from('itinerary_members')
-          .select('user_itineraries(*)')
+          .select('$_tableName(*)')
           .eq('user_id', userId);
 
       // 并发执行，节省等待时间
@@ -718,7 +737,7 @@ class ItineraryProvider extends ChangeNotifier {
       // 处理共享的行程
       for (final dynamic data in (results[1] as List<dynamic>)) {
         if (data is! Map<String, dynamic>) continue;
-        final dynamic nested = data['user_itineraries'];
+        final dynamic nested = data[_tableName];
         if (nested is! Map<String, dynamic>) continue;
         final ItineraryModel itinerary = sanitizeItineraryImages(
           ItineraryModel.fromJson(nested),
@@ -877,6 +896,7 @@ class ItineraryProvider extends ChangeNotifier {
       'end_date': model.endDate.toIso8601String(),
       'plan_data': model.planData,
       'created_at': DateTime.now().toIso8601String(),
+      'version': 1,
     });
   }
 
@@ -914,8 +934,24 @@ class ItineraryProvider extends ChangeNotifier {
     await updateItineraryDataWithLock(newPlanData);
   }
 
-  // 🚨 核心重构：带有乐观锁的局部更新机制
-  // 返回值：true 表示保存成功，false 表示遇到并发冲突被拦截
+  /// 本地行程降级保存（无 UUID，无需云端锁）
+  Future<bool> _saveLocalOnly(
+    ItineraryModel base,
+    Map<String, dynamic> newPlanData,
+  ) async {
+    final ItineraryModel updated = sanitizeItineraryImages(
+      base.copyWith(planData: newPlanData, version: base.version + 1),
+    );
+    _activeItinerary = updated;
+    _currentItinerary = updated;
+    _upsertMyItinerary(updated);
+    await _saveToLocal(updated);
+    await _persistMyItinerariesList();
+    notifyListeners();
+    debugPrint('✅ 本地行程保存成功（无需云端锁）');
+    return true;
+  }
+
   Future<bool> updateItineraryDataWithLock(
     Map<String, dynamic> newPlanData,
   ) async {
@@ -925,48 +961,173 @@ class ItineraryProvider extends ChangeNotifier {
     }
 
     final String targetId = base.id;
-    final int currentVersion = base.version;
-    final int nextVersion = currentVersion + 1;
+
+    if (!_isValidUuid(targetId)) {
+      return _saveLocalOnly(base, newPlanData);
+    }
+
     final Map<String, dynamic> sanitizedPlanData =
         sanitizeItineraryImages(base.copyWith(planData: newPlanData)).planData;
 
     try {
+      final Map<String, dynamic>? latestRow = await _supabase
+          .from(_tableName)
+          .select('version')
+          .eq('id', targetId)
+          .maybeSingle();
+
+      if (latestRow == null) {
+        debugPrint('⚠️ 云端找不到行程 $targetId，降级为本地保存');
+        return _saveLocalOnly(base, newPlanData);
+      }
+
+      final int cloudVersion =
+          (latestRow['version'] as num?)?.toInt() ?? 0;
+      final int localVersion = base.version;
+
+      debugPrint('🔒 乐观锁比对：本地=$localVersion，云端=$cloudVersion');
+
+      if (cloudVersion > localVersion) {
+        debugPrint('⚠️ 云端版本更新，执行自动追赶合并（cloudVersion=$cloudVersion）');
+
+        final Map<String, dynamic>? latestFullRow = await _supabase
+            .from(_tableName)
+            .select()
+            .eq('id', targetId)
+            .maybeSingle();
+
+        if (latestFullRow == null) {
+          return _saveLocalOnly(base, newPlanData);
+        }
+
+        final ItineraryModel latestModel = sanitizeItineraryImages(
+          ItineraryModel.fromJson(latestFullRow),
+        );
+        _activeItinerary = latestModel;
+        _currentItinerary = latestModel;
+        _upsertMyItinerary(latestModel);
+        await _saveToLocal(latestModel);
+        notifyListeners();
+
+        final int retryVersion = cloudVersion + 1;
+        final List<dynamic> retryResponse = await _supabase
+            .from(_tableName)
+            .update(<String, dynamic>{
+              'plan_data': sanitizedPlanData,
+              'version': retryVersion,
+            })
+            .eq('id', targetId)
+            .eq('version', cloudVersion)
+            .select();
+
+        if (retryResponse.isEmpty) {
+          debugPrint('⚠️ 追赶重试失败，数据已由 UI 更新至最新，建议用户再次手动保存');
+          return false;
+        }
+
+        final ItineraryModel retried = sanitizeItineraryImages(
+          latestModel.copyWith(
+            planData: sanitizedPlanData,
+            version: retryVersion,
+          ),
+        );
+        _activeItinerary = retried;
+        _currentItinerary = retried;
+        _upsertMyItinerary(retried);
+        await _saveToLocal(retried);
+        await _persistMyItinerariesList();
+        notifyListeners();
+        debugPrint('✅ 追赶合并保存成功（version: $cloudVersion → $retryVersion）');
+        return true;
+      }
+
+      final int nextVersion = cloudVersion + 1;
       final List<dynamic> response = await _supabase
-          .from('user_itineraries')
+          .from(_tableName)
           .update(<String, dynamic>{
             'plan_data': sanitizedPlanData,
             'version': nextVersion,
           })
           .eq('id', targetId)
-          .eq('version', currentVersion)
+          .eq('version', cloudVersion)
           .select();
 
       if (response.isEmpty) {
-        debugPrint('⚠️ 乐观锁拦截：版本冲突！本地版本 $currentVersion 已经过期。');
+        debugPrint('❌ CAS 写入失败：另一成员在此期间修改了行程');
         return false;
       }
 
-      final ItineraryModel updated = base.copyWith(
-        planData: sanitizedPlanData,
-        version: nextVersion,
+      final ItineraryModel updated = sanitizeItineraryImages(
+        base.copyWith(planData: sanitizedPlanData, version: nextVersion),
       );
       _activeItinerary = updated;
       _currentItinerary = updated;
-
-      final int index = _myItineraries.indexWhere(
-        (ItineraryModel e) => e.id == targetId,
-      );
-      if (index != -1) {
-        _myItineraries[index] = updated;
-      }
-
+      _upsertMyItinerary(updated);
       await _saveToLocal(updated);
       await _persistMyItinerariesList();
       notifyListeners();
+
+      debugPrint('✅ 保存成功（version: $cloudVersion → $nextVersion）');
       return true;
     } catch (e) {
-      debugPrint('更新数据失败: $e');
+      debugPrint('❌ 保存失败（异常）: $e');
       return false;
+    }
+  }
+
+  /// 取消编辑时用快照强制覆盖云端，不做 CAS 比对。
+  Future<void> rollbackItineraryData(
+    Map<String, dynamic> snapshotPlanData,
+    int snapshotVersion,
+  ) async {
+    final ItineraryModel? base = _activeItinerary ?? _currentItinerary;
+    if (base == null) {
+      return;
+    }
+    final String targetId = base.id;
+
+    if (!_isValidUuid(targetId)) {
+      final ItineraryModel restored = sanitizeItineraryImages(
+        base.copyWith(
+          planData: snapshotPlanData,
+          version: snapshotVersion,
+        ),
+      );
+      _activeItinerary = restored;
+      _currentItinerary = restored;
+      _upsertMyItinerary(restored);
+      await _saveToLocal(restored);
+      await _persistMyItinerariesList();
+      notifyListeners();
+      return;
+    }
+
+    final Map<String, dynamic> sanitizedSnapshot =
+        sanitizeItineraryImages(
+          base.copyWith(planData: snapshotPlanData),
+        ).planData;
+
+    try {
+      await _supabase.from(_tableName).update(<String, dynamic>{
+        'plan_data': sanitizedSnapshot,
+        'version': snapshotVersion,
+      }).eq('id', targetId);
+
+      final ItineraryModel restored = sanitizeItineraryImages(
+        base.copyWith(
+          planData: sanitizedSnapshot,
+          version: snapshotVersion,
+        ),
+      );
+      _activeItinerary = restored;
+      _currentItinerary = restored;
+      _upsertMyItinerary(restored);
+      await _saveToLocal(restored);
+      await _persistMyItinerariesList();
+      notifyListeners();
+      debugPrint('↩️ 行程已回滚至编辑前快照（version=$snapshotVersion）');
+    } catch (e) {
+      debugPrint('⚠️ 回滚失败: $e');
     }
   }
 
