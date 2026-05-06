@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <application
-        android:label="gonow"
+        android:label="GONOW"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- 高德地图 Android SDK Key 配置（仅用于底图渲染） -->

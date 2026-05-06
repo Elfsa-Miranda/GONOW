@@ -24,6 +24,10 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _rememberMe = false;
   bool _obscurePassword = true;
   bool _prefsLoaded = false;
+  
+  // 添加错误状态
+  String? _emailError;
+  String? _passwordError;
 
   @override
   void initState() {
@@ -67,10 +71,36 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    final AuthProvider auth = context.read<AuthProvider>();
+    // 手动验证
+    setState(() {
+      _emailError = null;
+      _passwordError = null;
+    });
+    
     final String email = _emailController.text.trim();
     final String password = _passwordController.text.trim();
+    
+    bool hasError = false;
+    
+    if (email.isEmpty) {
+      setState(() => _emailError = '请输入邮箱');
+      hasError = true;
+    } else if (!email.contains('@')) {
+      setState(() => _emailError = '邮箱格式不正确');
+      hasError = true;
+    }
+    
+    if (password.isEmpty) {
+      setState(() => _passwordError = '请输入密码');
+      hasError = true;
+    } else if (password.length < 6) {
+      setState(() => _passwordError = '密码至少 6 位');
+      hasError = true;
+    }
+    
+    if (hasError) return;
+    
+    final AuthProvider auth = context.read<AuthProvider>();
 
     if (_isLoginMode) {
       final bool ok = await auth.signIn(email, password, context);
@@ -310,43 +340,33 @@ class _AuthScreenState extends State<AuthScreen> {
                   children: <Widget>[
                     const SizedBox(height: 50),
                     Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: <Color>[Color(0xFF6B8DFF), Color(0xFF8E44FF)],
-                          ),
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        // 使用新的logo图片替换原来的渐变容器
+                        ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: <BoxShadow>[
-                            BoxShadow(
-                              color: const Color(0xFF6B8DFF).withValues(alpha: 0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                          child: Image.asset(
+                            'assets/icon/icon.png',
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                          ),
                         ),
-                        child: const Icon(Icons.location_on, color: Colors.white, size: 32),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'GONOW',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF2D3142),
-                          letterSpacing: -1.0,
+                        const SizedBox(width: 12),
+                        const Text(
+                          'GONOW',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF2D3142),
+                            letterSpacing: -1.0,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 31),
-                  Text(
-                    _isLoginMode ? '欢迎回来' : '创建账号',
+                      ],
+                    ),
+                    const SizedBox(height: 31),
+                    Text(
+                      _isLoginMode ? '欢迎回来' : '创建账号',
                     style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87),
                   ),
                   const SizedBox(height: 9),
@@ -534,63 +554,113 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Widget _buildEmailField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TextFormField(
-        controller: _emailController,
-        keyboardType: TextInputType.emailAddress,
-        decoration: InputDecoration(
-          hintText: 'your@email.com',
-          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-          prefixIcon: Icon(Icons.email_outlined, color: Colors.grey.shade500, size: 20),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: _emailError != null 
+                ? Border.all(color: Colors.red.shade300, width: 1.5)
+                : null,
+          ),
+          child: TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              hintText: 'your@email.com',
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              prefixIcon: Icon(Icons.email_outlined, color: Colors.grey.shade500, size: 20),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            onChanged: (_) {
+              if (_emailError != null) {
+                setState(() => _emailError = null);
+              }
+            },
+          ),
         ),
-        validator: (String? v) {
-          final String s = v?.trim() ?? '';
-          if (s.isEmpty) return '请输入邮箱';
-          if (!s.contains('@')) return '邮箱格式不正确';
-          return null;
-        },
-      ),
+        if (_emailError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.red.shade600, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  _emailError!,
+                  style: TextStyle(
+                    color: Colors.red.shade600,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildPasswordField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TextFormField(
-        controller: _passwordController,
-        obscureText: _obscurePassword,
-        keyboardType: TextInputType.visiblePassword,
-        decoration: InputDecoration(
-          hintText: '••••••••',
-          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-          prefixIcon: Icon(Icons.lock_outline, color: Colors.grey.shade500, size: 20),
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: Colors.grey,
-              size: 20,
-            ),
-            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: _passwordError != null 
+                ? Border.all(color: Colors.red.shade300, width: 1.5)
+                : null,
           ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+          child: TextField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            keyboardType: TextInputType.visiblePassword,
+            decoration: InputDecoration(
+              hintText: '••••••••',
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              prefixIcon: Icon(Icons.lock_outline, color: Colors.grey.shade500, size: 20),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: Colors.grey,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            onChanged: (_) {
+              if (_passwordError != null) {
+                setState(() => _passwordError = null);
+              }
+            },
+          ),
         ),
-        validator: (String? v) {
-          final String s = v ?? '';
-          if (s.isEmpty) return '请输入密码';
-          if (s.length < 6) return '密码至少 6 位';
-          return null;
-        },
-      ),
+        if (_passwordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.red.shade600, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  _passwordError!,
+                  style: TextStyle(
+                    color: Colors.red.shade600,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

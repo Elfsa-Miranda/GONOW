@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:gonow/features/ledger/presentation/screens/ledger_screen.dart';
 import 'package:gonow/features/ootd/presentation/screens/ootd_screen.dart';
@@ -78,13 +77,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(30),
                           child: hasAvatar
-                              ? CachedNetworkImage(
-                                  imageUrl: url,
-                                  fit: BoxFit.cover,
-                                  errorWidget: (_, _, _) => Container(
-                                    color: Colors.grey.shade200,
-                                    child: Icon(Icons.person, color: Colors.grey.shade400),
-                                  ),
+                              ? _AvatarImage(
+                                  key: ValueKey<String>(profile.avatarCacheKey),
+                                  url: url,
+                                  size: 32,
                                 )
                               : Container(
                                   color: Colors.grey.shade200,
@@ -334,6 +330,45 @@ class _LevelBadge extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ✅ 与 profile_settings_screen.dart 共享同一套头像渲染逻辑
+class _AvatarImage extends StatefulWidget {
+  const _AvatarImage({super.key, required this.url, this.size = 32});
+  final String url;
+  final double size;
+
+  @override
+  State<_AvatarImage> createState() => _AvatarImageState();
+}
+
+class _AvatarImageState extends State<_AvatarImage> {
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      widget.url,
+      fit: BoxFit.cover,
+      loadingBuilder: (BuildContext ctx, Widget child, ImageChunkEvent? progress) {
+        if (progress == null) return child;
+        return ColoredBox(
+          color: Colors.grey.shade100,
+          child: Center(
+            child: SizedBox(
+              width: widget.size * 0.6,
+              height: widget.size * 0.6,
+              child: const CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        );
+      },
+      errorBuilder: (BuildContext ctx, Object error, StackTrace? stack) {
+        return Container(
+          color: Colors.grey.shade200,
+          child: Icon(Icons.person, size: widget.size, color: Colors.grey.shade400),
+        );
+      },
     );
   }
 }

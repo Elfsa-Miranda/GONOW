@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:gonow/features/profile/data/profile_provider.dart';
 import 'package:provider/provider.dart';
@@ -155,18 +154,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(50),
+                  // ✅ 终极修复：
+                  // 1. ValueKey(avatarCacheKey) — key 变化时 Flutter 完全销毁
+                  //    旧 element，创建全新 _AvatarImage 实例，不存在 State 复用
+                  // 2. _AvatarImage 用 Image.network，完全绕开
+                  //    CachedNetworkImage 的多层缓存
+                  // 3. avatarUrl 存纯净 URL（不加 ?t= 参数），避免 Supabase 400
                   child: hasUrl
-                      ? CachedNetworkImage(
-                          imageUrl: avatarStr,
-                          fit: BoxFit.cover,
-                          placeholder: (BuildContext c, String u) => const Center(
-                            child: SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                          errorWidget: (BuildContext c, String u, Object e) => const Icon(Icons.person, size: 50),
+                      ? _AvatarImage(
+                          key: ValueKey<String>(provider.avatarCacheKey),
+                          url: avatarStr,
+                          size: 50,
                         )
                       : ColoredBox(
                           color: Colors.grey.shade200,
@@ -600,6 +598,68 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// =============================================================================
+// ✅ 核心：用 Image.network 替代 CachedNetworkImage，配合外部 ValueKey 使用。
+//
+// 使用方式：
+//   _AvatarImage(key: ValueKey<String>(provider.avatarCacheKey), url: avatarUrl)
+//
+// 原理：
+//   - ValueKey 变化 → Flutter 销毁旧 element，创建全新实例
+//   - initState 重新执行，ImageProvider 重新创建
+//   - Image.network 不走 flutter_cache_manager 磁盘缓存
+//   - avatarUrl 是纯净 Supabase URL（不加 ?t= 参数），避免 HTTP 400
+// =============================================================================
+class _AvatarImage extends StatefulWidget {
+  const _AvatarImage({super.key, required this.url, this.size = 50});
+  final String url;
+  final double size;
+
+  @override
+  State<_AvatarImage> createState() => _AvatarImageState();
+}
+
+class _AvatarImageState extends State<_AvatarImage> {
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('🖼️ _AvatarImage initState url=${widget.url}');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      widget.url,
+      fit: BoxFit.cover,
+      loadingBuilder: (BuildContext ctx, Widget child, ImageChunkEvent? progress) {
+        if (progress == null) return child;
+        return ColoredBox(
+          color: Colors.grey.shade100,
+          child: Center(
+            child: SizedBox(
+              width: widget.size * 0.5,
+              height: widget.size * 0.5,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: progress.expectedTotalBytes != null
+                    ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          ),
+        );
+      },
+      errorBuilder: (BuildContext ctx, Object error, StackTrace? stack) {
+        debugPrint('❌ _AvatarImage error: $error');
+        return ColoredBox(
+          color: Colors.grey.shade200,
+          child: Icon(Icons.person, size: widget.size, color: Colors.grey.shade400),
+        );
+      },
     );
   }
 }
