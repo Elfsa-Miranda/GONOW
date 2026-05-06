@@ -37,8 +37,8 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
   late MapZoomPanBehavior _zoomPanBehavior;
 
   // 🚨 核心修复 1：将缓存类型从 Model 列表改为 Map，直接缓存清洗后的安全 GeoJSON
-  static Map<String, dynamic>? _chinaGeoJsonCache;
-  static Map<String, dynamic>? _worldGeoJsonCache;
+  Map<String, dynamic>? _chinaGeoJsonCache;
+  Map<String, dynamic>? _worldGeoJsonCache;
 
   @override
   void initState() {
@@ -59,6 +59,20 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
   }
 
   void _cleanGeoJson(Map<String, dynamic> geoJson) {
+    // 删除 crs 字段——world.json 含有此字段，Syncfusion 解析时会尝试坐标系转换导致渲染失败
+    // china.json 没有此字段所以一直正常，这是 china/world 显示差异的根本原因
+    geoJson.remove('crs');  // ← 加这一行
+
+    if (geoJson['features'] == null) return;
+    final features = geoJson['features'] as List<dynamic>;
+
+    // ✅ 唯一修复：world.json 每个 Feature 缺少 "type":"Feature" 字段
+    // china.json 有此字段所以正常，world.json 没有所以 Syncfusion 全部跳过 → 空白
+    for (final feature in features) {
+      final f = feature as Map<String, dynamic>;
+      f['type'] = 'Feature';  // ← 这一行就是全部修复
+    }
+
     debugPrint('[MAP-DIAG] ===== _cleanGeoJson 开始 =====');
 
     final rawFeatures = geoJson['features'];
@@ -189,14 +203,13 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
       return _MapModel(regionName, isLit ? Colors.indigo.shade500 : Colors.white.withOpacity(0.05));
     }).toList();
 
-    // ✅ 修复根本原因：
-    // memory() 接收的是 shapefile 二进制，不是 GeoJSON 字节流！
-    // GeoJSON 必须用 asset() 加载，传文件路径字符串。
-    // china.json 本身格式正常可直接用；world 用预处理好的 world_fixed.json。
-    final String assetPath = _isChinaView ? 'assets/china.json' : 'assets/world_fixed.json';
+    // _cleanGeoJson 已修复 type:Feature，直接编码成字节流给 memory()
+    final Uint8List mapBytes = Uint8List.fromList(utf8.encode(jsonEncode(geoJson)));
+    debugPrint('[MAP-DIAG-6] mapBytes 大小: ${mapBytes.length}, dataCount: ${_mapData.length}');
+    debugPrint('[MAP-DIAG-6] 第一条 type: ${(geoJson["features"] as List)[0]["type"]}');
 
-    _shapeSource = MapShapeSource.asset(
-      assetPath,
+    _shapeSource = MapShapeSource.memory(
+      mapBytes,
       shapeDataField: 'name',
       dataCount: _mapData.length,
       primaryValueMapper: (int index) => _mapData[index].region,

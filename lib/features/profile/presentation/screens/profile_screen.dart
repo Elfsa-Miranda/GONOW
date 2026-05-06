@@ -35,14 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     '浙江省',
     '新疆维吾尔自治区',
   ];
-  List<String> _visitedWorld = <String>[
-    '中国',
-    '日本',
-    '泰国',
-    '法国',
-    '美国',
-    '英国',
-  ];
+  List<String> _visitedWorld = <String>[];
 
   @override
   Widget build(BuildContext context) {
