@@ -41,6 +41,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.3.6
 
 flutter:
   uses-material-design: true
@@ -51,6 +52,7 @@ flutter:
     - assets/china.json
     - assets/world.json
     - assets/icon/icon.png
+    - assets/icon/logo_transparent_animation.png
 
 # Flutter Launcher Icons 配置
 flutter_launcher_icons:
@@ -61,3 +63,14 @@ flutter_launcher_icons:
   adaptive_icon_background: "#5B7FE8"
   adaptive_icon_foreground: "assets/icon/icon.png"
   remove_alpha_ios: true
+
+# Flutter Native Splash 配置
+flutter_native_splash:
+  color: "#FFFFFF"  # 纯白背景
+  image: assets/icon/logo_transparent_animation.png  # 使用带动画的透明 Logo
+  android_12:
+    image: assets/icon/logo_transparent_animation.png
+    color: "#FFFFFF"  # Android 12+ 也使用纯白背景
+  ios: true
+  android: true
+  web: false

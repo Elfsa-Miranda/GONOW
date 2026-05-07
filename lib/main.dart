@@ -11,6 +11,7 @@ import 'package:gonow/features/ledger/data/ledger_provider.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:gonow/features/profile/data/profile_provider.dart';
+import 'package:gonow/features/splash/presentation/screens/splash_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -19,40 +20,35 @@ import 'features/main_nav/presentation/screens/main_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // ✅ 只做必须的初始化（Supabase 必须在 runApp 前完成）
   await Supabase.initialize(
     url: 'https://axoewadtumvbxzsxpsuc.supabase.co',
     anonKey: 'sb_publishable_Yrg6dWTx3cB5S3OIJafkYA_7uweoExy',
   );
 
+  // ✅ 立即启动 UI，不阻塞任何数据加载
   runApp(
     MultiProvider(
       providers: <ChangeNotifierProvider<dynamic>>[
         ChangeNotifierProvider<MainNavProvider>(
           create: (_) => MainNavProvider(),
         ),
+        // ❌ 移除了 create 时的 fetchCulturalCustoms() 调用
+        // ✅ 改为在需要时懒加载（在对应页面的 initState 中调用）
         ChangeNotifierProvider<TravelProvider>(
-          create: (_) {
-            final TravelProvider provider = TravelProvider();
-            provider.fetchCulturalCustoms();
-            return provider;
-          },
+          create: (_) => TravelProvider(),
         ),
+        // ❌ 移除了 create 时的 fetchActiveItinerary() 调用
         ChangeNotifierProvider<ItineraryProvider>(
-          create: (_) {
-            final ItineraryProvider provider = ItineraryProvider();
-            provider.fetchActiveItinerary();
-            return provider;
-          },
+          create: (_) => ItineraryProvider(),
         ),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(),
         ),
+        // ❌ 移除了 create 时的 fetchProfile() 调用
         ChangeNotifierProvider<ProfileProvider>(
-          create: (_) {
-            final ProfileProvider p = ProfileProvider();
-            p.fetchProfile();
-            return p;
-          },
+          create: (_) => ProfileProvider(),
         ),
         ChangeNotifierProvider<DiaryProvider>(
           create: (_) => DiaryProvider(),
@@ -84,8 +80,38 @@ class GoNowApp extends StatelessWidget {
         Locale('zh', 'CN'),
         Locale('en', 'US'),
       ],
-      home: const AuthGate(),
+      home: const SplashWrapper(),
     );
+  }
+}
+
+/// 启动页包装器：显示启动页 1.5 秒后进入 AuthGate
+class SplashWrapper extends StatefulWidget {
+  const SplashWrapper({super.key});
+
+  @override
+  State<SplashWrapper> createState() => _SplashWrapperState();
+}
+
+class _SplashWrapperState extends State<SplashWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    // 显示启动页 500 毫秒后进入 AuthGate（缩短时间，因为 Logo 已包含动画）
+    Future<void>.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => const AuthGate(),
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const SplashScreen();
   }
 }
 
@@ -137,9 +163,21 @@ class _AuthGateState extends State<AuthGate> {
             );
           }
           if (!mounted) return;
+          
+          // ✅ 在用户登录后，异步加载所有数据（不阻塞 UI）
           final DiaryProvider diaryProvider = context.read<DiaryProvider>();
           diaryProvider.fetchMyData();
           diaryProvider.fetchCommunityDiaries();
+          
+          // ✅ 懒加载其他 Provider 的数据
+          final TravelProvider travelProvider = context.read<TravelProvider>();
+          travelProvider.fetchCulturalCustoms();
+          
+          final ItineraryProvider itineraryProvider = context.read<ItineraryProvider>();
+          itineraryProvider.fetchActiveItinerary();
+          
+          final ProfileProvider profileProvider = context.read<ProfileProvider>();
+          profileProvider.fetchProfile();
         }
       } else {
         _recoveryDialogScheduled = false;
