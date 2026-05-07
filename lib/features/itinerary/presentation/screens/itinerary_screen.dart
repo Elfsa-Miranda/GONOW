@@ -79,6 +79,11 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   int? _uploadingActIdx;
   final ImagePicker _imagePicker = ImagePicker();
 
+  // --- 缓存字段：避免重复构建 timeline 数据 ---
+  List<Map<String, dynamic>>? _cachedTimelineData;
+  String? _cachedTimelineModelId;
+  int _cachedTimelineVersion = -1;
+
   // --- 沉浸式编辑态 ---
   bool _isEditing = false;
   Map<String, dynamic>? _editablePlanData;
@@ -862,6 +867,7 @@ JSON 必须严格包含以下 4 个字段：
         item['type'] = 'scenic';
         _refreshFromEditableData();
         _contentVersion++;
+        _cachedTimelineData = null;
       });
       _triggerAutoSave();
 
@@ -921,6 +927,7 @@ JSON 必须严格包含以下 4 个字段：
     }
     setState(() {
       _contentVersion++;
+      _cachedTimelineData = null;
     });
   }
 
@@ -1040,6 +1047,7 @@ JSON 必须严格包含以下 4 个字段：
       _editablePlanData = _clonePlanData(model.planData);
       _planDataSnapshot = _clonePlanData(model.planData);
       _snapshotVersion = model.version;
+      _cachedTimelineData = null;
     });
     final ItineraryProvider provider = Provider.of<ItineraryProvider>(
       context,
@@ -1289,6 +1297,7 @@ JSON 必须严格包含以下 4 个字段：
                       _isEditing = false;
                       _editablePlanData = null;
                       _planDataSnapshot = null;
+                      _cachedTimelineData = null;
                     });
                     provider.updatePresenceStatus('viewing');
                     return;
@@ -1305,6 +1314,7 @@ JSON 必须严格包含以下 4 个字段：
                     _isEditing = false;
                     _editablePlanData = null;
                     _planDataSnapshot = null;
+                    _cachedTimelineData = null;
                   });
                   provider.updatePresenceStatus('viewing');
                 },
@@ -1432,6 +1442,7 @@ JSON 必须严格包含以下 4 个字段：
                       _planDataSnapshot = null;
                       _isSaving = false;
                       _saveButtonSuccessMark = false;
+                      _cachedTimelineData = null;
                     });
                     provider.updatePresenceStatus('viewing');
                   } catch (_) {
@@ -1558,6 +1569,7 @@ JSON 必须严格包含以下 4 个字段：
       days[dayIndex] = dm;
       _editablePlanData![storageKey] = days;
       _contentVersion++;
+      _cachedTimelineData = null;
     });
     _triggerAutoSave();
   }
@@ -1736,6 +1748,7 @@ JSON 必须严格包含以下 4 个字段：
       days[dayIndex] = dm;
       _editablePlanData![storageKey] = days;
       _contentVersion++;
+      _cachedTimelineData = null;
     });
     _sortDayActivities(dayIndex);
     _triggerAutoSave();
@@ -2161,6 +2174,7 @@ JSON 必须严格包含以下 4 个字段：
                                       item['duration'] = act['duration'];
                                       _refreshFromEditableData();
                                       _contentVersion++;
+                                      _cachedTimelineData = null;
                                     }
                                   }
                                 });
@@ -3783,9 +3797,10 @@ JSON 必须严格包含以下 4 个字段：
             _timelineTransitOverride[itemKey] = Map<String, dynamic>.from(
               writableTransit,
             );
+            // 清除缓存，让下次 build 重新计算 timeline（transit 数据已更新）
+            _cachedTimelineData = null;
           });
         }
-        setState(() {}); // 每拿到一段即时刷新折线
       }
     }
 
@@ -5242,6 +5257,22 @@ JSON 必须严格包含以下 4 个字段：
   }
 
   List<Map<String, dynamic>> _buildTravelingTimelineData(ItineraryModel model) {
+    // ── 缓存命中：相同 model.id + contentVersion 直接返回缓存，避免重复遍历 ──
+    final String cacheKey = model.id;
+    if (_cachedTimelineData != null &&
+        _cachedTimelineModelId == cacheKey &&
+        _cachedTimelineVersion == _contentVersion) {
+      return _cachedTimelineData!;
+    }
+    // 原有逻辑完全不变，执行完后存入缓存
+    final List<Map<String, dynamic>> result = _buildTravelingTimelineDataImpl(model);
+    _cachedTimelineData = result;
+    _cachedTimelineModelId = cacheKey;
+    _cachedTimelineVersion = _contentVersion;
+    return result;
+  }
+
+  List<Map<String, dynamic>> _buildTravelingTimelineDataImpl(ItineraryModel model) {
     final List<dynamic> rawDays =
         (model.planData['days'] as List<dynamic>?) ??
         (model.planData['daily_schedules'] as List<dynamic>?) ??
@@ -5393,29 +5424,17 @@ JSON 必须严格包含以下 4 个字段：
   List<String> _timelineImages(Map<String, dynamic> activity) {
     final Object? rawImages = activity['images'];
     
-    // 🐛 DEBUG: 打印原始数据
-    debugPrint('🔍 _timelineImages 处理: ${activity['title']} - rawImages类型=${rawImages.runtimeType}');
-    
     if (rawImages is List && rawImages.isNotEmpty) {
-      // ✅ 移除 .take(2) 限制，返回所有照片
-      final List<String> result = rawImages
+      return rawImages
           .map((Object? item) => item.toString().trim())
           .where((String url) => url.isNotEmpty)
           .toList();
-      debugPrint('  ✅ 返回 ${result.length} 张照片');
-      return result;
     }
     final String imageUrl = _stringValue(
       activity['imageUrl'] ?? activity['image_url'],
       '',
     );
-    // 如果没有 images 数组，返回 imageUrl（如果存在）
-    if (imageUrl.isNotEmpty) {
-      debugPrint('  ✅ 返回 imageUrl: $imageUrl');
-      return <String>[imageUrl];
-    }
-    // 如果都没有，返回空数组
-    debugPrint('  ⚠️ 无照片数据');
+    if (imageUrl.isNotEmpty) return <String>[imageUrl];
     return <String>[];
   }
 

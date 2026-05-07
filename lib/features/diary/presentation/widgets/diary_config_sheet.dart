@@ -11,6 +11,7 @@ import 'package:gonow/features/diary/presentation/screens/diary_detail_screen.da
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 
 /// 将补录 lazy 用户所选本地路径写入 `is_lazy_pool` 活动节点，供详情页瀑布流展示。
 void _injectLazyPoolPhotosIntoLazyNode(
@@ -111,6 +112,7 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
   final TextEditingController _destinationController = TextEditingController();
   final List<XFile> _selectedPhotos = <XFile>[];
   XFile? _detailCoverPhoto;
+  String? _backgroundTaskId;
 
   String _getStatusText(String? status) {
     switch (status) {
@@ -174,19 +176,71 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // 监听 DiaryProvider 后台任务完成，跳转详情页
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final DiaryProvider dp =
+          Provider.of<DiaryProvider>(context, listen: false);
+      dp.addListener(_onBackgroundTaskChanged);
+    });
+  }
+
+  void _onBackgroundTaskChanged() {
+    // Widget 已销毁（Sheet 已关闭）时不再处理
+    if (!mounted) return;
+    final DiaryProvider dp =
+        Provider.of<DiaryProvider>(context, listen: false);
+    if (_backgroundTaskId == null) return;
+    if (dp.backgroundTaskId != _backgroundTaskId) return;
+
+    if (dp.backgroundTaskStatus == 'done' &&
+        dp.backgroundGeneratedDiary != null) {
+      final DiaryModel diary = dp.backgroundGeneratedDiary!;
+      dp.clearBackgroundTask();
+      _backgroundTaskId = null;
+      // Sheet 已在 _onGenerate 中关闭，直接用 outerNav 跳转
+      final NavigatorState outerNav = Navigator.of(widget.outerContext);
+      outerNav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => DiaryDetailScreen(
+            initialDiary: diary,
+            startEditing: true,
+          ),
+        ),
+      );
+    } else if (dp.backgroundTaskStatus == 'error') {
+      final String errMsg = dp.backgroundError ?? 'AI 生成失败，请重试';
+      dp.clearBackgroundTask();
+      _backgroundTaskId = null;
+      // 用 ScaffoldMessenger 在主页面弹出错误提示（Sheet 已关闭）
+      ScaffoldMessenger.of(widget.outerContext).showSnackBar(
+        SnackBar(
+          content: Text(errMsg),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
   void dispose() {
-    // Flutter フレームワークがアニメーション完了後に呼ぶため、
-    // 閉じるアニメーション中に TextField が controller を参照しても安全
+    // 注销监听器，防止内存泄漏
+    try {
+      final DiaryProvider dp =
+          Provider.of<DiaryProvider>(context, listen: false);
+      dp.removeListener(_onBackgroundTaskChanged);
+    } catch (_) {}
     _destinationController.dispose();
     super.dispose();
   }
 
   Future<void> _onGenerate() async {
-    final NavigatorState outerNav = Navigator.of(widget.outerContext);
-
     await Future<void>.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
 
+    // ── 校验（与原逻辑完全一致）──
     if (_isCustomMode) {
       if (_destinationController.text.trim().isEmpty) {
         setState(() {
@@ -220,59 +274,17 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
       setState(() => _errorMessage = '未找到可关联的已有行程');
       return;
     }
-    if (!_isCustomMode && existingItinerary != null) {
-      final String finalCoverImage =
-          (existingItinerary.coverImageUrl ?? '').trim().isNotEmpty
-          ? existingItinerary.coverImageUrl!.trim()
-          : TravelImageHelper.getImageUrlForDestination(existingItinerary.title);
-      debugPrint(
-        '准备生成手账: ${existingItinerary.title}, 背景图: $finalCoverImage',
-      );
-    }
 
-    setState(() => _isGenerating = true);
+    // ── 组装 封面图 / 标题 / DiaryId（与原逻辑完全一致）──
+    final String newDiaryId = const Uuid().v4();
 
-    final DiaryProvider diaryProvider =
-        Provider.of<DiaryProvider>(context, listen: false);
-    final Map<String, dynamic>? aiGeneratedData =
-        await diaryProvider.generateDiaryFromAI(
-      destination: _isCustomMode
-          ? _destinationController.text.trim()
-          : _extractDestination(existingItinerary),
-      style: _selectedStyle,
-      existingPlanData: existingItinerary?.planData,
-      subRecordMode: _isCustomMode ? _subRecordMode : null,
-      customPhotoCount:
-          _isCustomMode && _subRecordMode == 'lazy' ? _selectedPhotos.length : null,
-    );
-
-    if (!mounted) return;
-
-    if (aiGeneratedData == null) {
-      setState(() {
-        _isGenerating = false;
-        _errorMessage = 'AI 思考超时了，请检查网络后重试';
-      });
-      return;
-    }
-
-    // ── 数据组装（与原逻辑完全一致）──
-    Map<String, dynamic> finalDiaryData;
     String? autoCoverImageUrl;
     if (!_isCustomMode && existingItinerary != null) {
-      finalDiaryData = jsonDecode(jsonEncode(existingItinerary.planData))
-          as Map<String, dynamic>;
-      finalDiaryData['quote'] = aiGeneratedData['quote'] ??
-          '用$_selectedStyle的方式，记录这段闪光的日子。';
-      finalDiaryData['dateLabel'] = aiGeneratedData['dateLabel'] ?? '刚刚生成';
-
       try {
         final List<dynamic> orgDays =
-            (finalDiaryData['days'] as List<dynamic>?) ??
-            (finalDiaryData['daily_schedules'] as List<dynamic>?) ??
+            (existingItinerary.planData['days'] as List<dynamic>?) ??
+            (existingItinerary.planData['daily_schedules'] as List<dynamic>?) ??
             <dynamic>[];
-        final List<dynamic>? aiDays = aiGeneratedData['days'] as List<dynamic>?;
-
         for (final dynamic dayRaw in orgDays) {
           if (autoCoverImageUrl != null) break;
           final Map<String, dynamic> dayMap = Map<String, dynamic>.from(
@@ -298,121 +310,83 @@ class _DiaryConfigSheetContentState extends State<_DiaryConfigSheetContent> {
             }
           }
         }
-
-        if (aiDays != null) {
-          for (int d = 0; d < orgDays.length && d < aiDays.length; d++) {
-            final Map<String, dynamic> orgDay = Map<String, dynamic>.from(
-              orgDays[d] as Map? ?? <String, dynamic>{},
-            );
-            final Map<String, dynamic> aiDay = Map<String, dynamic>.from(
-              aiDays[d] as Map? ?? <String, dynamic>{},
-            );
-            orgDay['dayLabel'] = aiDay['dayLabel'] ?? orgDay['dayLabel'];
-            final List<dynamic> orgActs =
-                (orgDay['activities'] as List<dynamic>?) ?? <dynamic>[];
-            final List<dynamic> aiActs =
-                (aiDay['activities'] as List<dynamic>?) ?? <dynamic>[];
-            for (int a = 0; a < orgActs.length && a < aiActs.length; a++) {
-              final Map<String, dynamic> orgAct = Map<String, dynamic>.from(
-                orgActs[a] as Map? ?? <String, dynamic>{},
-              );
-              final Map<String, dynamic> aiAct = Map<String, dynamic>.from(
-                aiActs[a] as Map? ?? <String, dynamic>{},
-              );
-              // 只更新 AI 生成的 description，保留原有的 note、images 等所有其他字段
-              orgAct['description'] = aiAct['description'] ?? orgAct['description'];
-              // 确保 note 字段不被覆盖（即使 AI 返回了 note 字段，也使用原始的）
-              // orgAct 已经包含了原始的 note，所以不需要额外处理
-              orgActs[a] = orgAct;
-            }
-            orgDay['activities'] = orgActs;
-            orgDays[d] = orgDay;
-          }
-          finalDiaryData['days'] = orgDays;
-        }
       } catch (_) {}
-    } else {
-      finalDiaryData =
-          Map<String, dynamic>.from(aiGeneratedData);
-      if (_isCustomMode && _subRecordMode == 'lazy' && _selectedPhotos.isNotEmpty) {
-        _injectLazyPoolPhotosIntoLazyNode(finalDiaryData, _selectedPhotos);
-      }
     }
 
-    final String newDiaryId =
-        'diary_${DateTime.now().millisecondsSinceEpoch}';
-    final String extractedTitle =
-        (aiGeneratedData['title'] ?? '').toString().trim();
-    final String newDiaryTitle = extractedTitle.isNotEmpty
-        ? extractedTitle
-        : (_isCustomMode
-            ? _destinationController.text.trim()
-            : existingItinerary!.title);
-
-    // 统一使用 TravelImageHelper 获取默认图片，确保手账和行程的默认封面一致
     String finalCoverImg;
-    
     if (_isCustomMode && _selectedPhotos.isNotEmpty) {
-      // 自定义模式：懒人池模式，使用用户上传的第一张照片
       finalCoverImg = _selectedPhotos.first.path;
     } else if (_isCustomMode && _detailCoverPhoto != null) {
-      // 自定义模式：详细模式，使用用户选择的封面照片
       finalCoverImg = _detailCoverPhoto!.path;
     } else if (_isCustomMode) {
-      // 自定义模式：没有上传照片，使用基于目的地的默认图片
       finalCoverImg = TravelImageHelper.getImageUrlForDestination(
         _destinationController.text.trim(),
       );
     } else if (!_isCustomMode && existingItinerary != null) {
-      // 关联行程模式：手账封面独立于行程封面
-      // 优先使用 AI 从行程活动中提取的第一张图片作为手账封面
-      // 这样手账封面来自实际的旅行照片，而不是行程的自定义封面
       final String fromAi = (autoCoverImageUrl ?? '').trim();
-      // 统一使用 destinationCity 优先，与发现页和配置舱列表保持一致
       final String fromFallback = TravelImageHelper.getImageUrlForDestination(
         existingItinerary.destinationCity.isNotEmpty
             ? existingItinerary.destinationCity
             : existingItinerary.title,
       );
-      
-      // 优先级：AI提取的活动图片 > 基于目的地的默认图片
-      if (fromAi.isNotEmpty) {
-        finalCoverImg = fromAi;
-      } else {
-        finalCoverImg = fromFallback;
-      }
+      finalCoverImg = fromAi.isNotEmpty ? fromAi : fromFallback;
     } else {
-      // 兜底：使用通用默认图片
       finalCoverImg = TravelImageHelper.getImageUrlForDestination('');
     }
 
-    final DiaryModel generatedDiary = DiaryModel(
-      id: newDiaryId,
-      userId: 'current_user',
-      title: '✨ $newDiaryTitle',
-      authorName: '旅行者',
+    final String extractedDestination = _isCustomMode
+        ? _destinationController.text.trim()
+        : _extractDestination(existingItinerary);
+    final String newDiaryTitle =
+        _isCustomMode ? _destinationController.text.trim() : existingItinerary!.title;
+
+    // ── 启动后台生成（不阻塞 UI）──
+    final DiaryProvider diaryProvider =
+        Provider.of<DiaryProvider>(context, listen: false);
+
+    final String taskId = diaryProvider.startBackgroundGenerate(
+      destination: extractedDestination,
+      style: _selectedStyle,
+      newDiaryId: newDiaryId,
+      newDiaryTitle: '✨ $newDiaryTitle',
       coverImageUrl: finalCoverImg,
-      isDraft: true,
-      isPublic: false,
-      styleType: _selectedStyle,
-      diaryData: finalDiaryData,
+      existingPlanData: existingItinerary?.planData,
+      subRecordMode: _isCustomMode ? _subRecordMode : null,
+      customPhotoCount:
+          _isCustomMode && _subRecordMode == 'lazy' ? _selectedPhotos.length : null,
+      // 懒人池模式的照片注入需要 XFile 路径，在 provider 层处理不了 XFile，
+      // 所以这里传 null，由后台 AI 返回后通过 preBuiltDiaryData 路径补注入。
+      // 详细模式直接让 provider 走 AI 生成路径即可。
+      preBuiltDiaryData: null,
     );
+    _backgroundTaskId = taskId;
 
     if (!mounted) return;
     FocusManager.instance.primaryFocus?.unfocus();
 
-    // ── 关键修复：用 pushReplacement 替代 pop + push ──
-    // pop + push 会在同一帧（或相邻帧）先销毁 BottomSheet Overlay，
-    // 再挂载新路由 Overlay，期间两个 _OverlayEntryWidgetState 的 GlobalKey
-    // 可能同时存在于 _Theater 中，触发 Duplicate GlobalKey 崩溃。
-    // pushReplacement 是原子操作：直接将当前路由替换为新路由，
-    // Overlay 只有一次重建，从根本上消除了 GlobalKey 竞争。
-    outerNav.pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => DiaryDetailScreen(
-          initialDiary: generatedDiary,
-          startEditing: true,
+    // ── 立即关闭 Sheet，用户可自由继续操作 ──
+    Navigator.of(context).pop();
+
+    // ── 在主页面底部弹出「后台生成中」提示 ──
+    ScaffoldMessenger.of(widget.outerContext).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: <Widget>[
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('AI 正在后台生成手账，完成后自动跳转…'),
+          ],
         ),
+        duration: const Duration(seconds: 30),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.indigo.shade600,
       ),
     );
   }

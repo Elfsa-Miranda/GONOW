@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:gonow/core/constants/ai_config.dart';
@@ -350,128 +351,354 @@ class DiaryProvider extends ChangeNotifier {
       return null;
     }
 
-    String systemPrompt = '';
+    // ── 大行程拆分策略：按天分批，每批独立请求，规避后台被掐 ──
     if (existingPlanData != null) {
-      systemPrompt = '''
-你是一个顶级的旅行手账排版与文案大师。用户刚刚结束了一趟旅行，以下是他们真实的行程数据（包含天数、景点、时间等）：
-${jsonEncode(existingPlanData)}
+      return _generateByDayBatches(
+        existingPlanData: existingPlanData,
+        style: style,
+      );
+    }
 
-请严格基于上述真实行程，以【$style】的心情风格，为每个景点撰写绝美的手账文案（description 字段）。
-【极度重要】：
-1. 必须完全保留原有的天数（days）、活动（activities）、标题（title）、时间（time）、注释（note）、照片（images）等所有字段。绝对不允许删减景点或篡改原有结构！
-2. 你的任务仅仅是根据【$style】风格，为每个 activities 补充大约60-100字的高质量游记description。
-3. 如果原数据中已有 note 字段（用户的个人注释），必须原封不动保留，不要修改或删除。
-4. 必须返回纯正的 JSON 字符串（可以用```json包裹），严禁输出废话！
+    // 补录/自定义模式：内容短，直接单次请求
+    return _generateSingleShot(
+      destination: destination,
+      style: style,
+      daysHint: daysHint,
+      subRecordMode: subRecordMode,
+      customPhotoCount: customPhotoCount,
+    );
+  }
+
+  /// 按天分批生成：每次只发一天的数据给 AI，单批 < 10 秒，后台也能完成
+  Future<Map<String, dynamic>?> _generateByDayBatches({
+    required Map<String, dynamic> existingPlanData,
+    required String style,
+  }) async {
+    final List<dynamic> days =
+        (existingPlanData['days'] as List<dynamic>?) ??
+        (existingPlanData['daily_schedules'] as List<dynamic>?) ??
+        <dynamic>[];
+
+    if (days.isEmpty) return null;
+
+    // 先用单次请求获取顶层 quote / dateLabel / title
+    final String metaPrompt = '''
+你是旅行手账文案大师。根据以下行程信息，只生成3个字段，直接输出合法JSON，无其他内容：
+目的地：${existingPlanData['destinationCity'] ?? existingPlanData['destination'] ?? ''}
+天数：${days.length}天
+风格：$style
+
+输出格式（严格JSON，无markdown）：
+{"title":"唯美标题不超过14字","quote":"风格化引言一句话","dateLabel":"YYYY-MM-DD"}
 ''';
-    } else if ((subRecordMode ?? '').trim() == 'lazy') {
+
+    final Map<String, dynamic>? metaResult = await _singleRequest(
+      systemPrompt: metaPrompt,
+      userContent: '请生成标题和引言',
+      timeoutSeconds: 30,
+    );
+
+    // 逐天为每个 activity 补充 description
+    final List<dynamic> processedDays = <dynamic>[];
+    for (int i = 0; i < days.length; i++) {
+      final Map<String, dynamic> day =
+          Map<String, dynamic>.from(days[i] as Map? ?? <String, dynamic>{});
+      final List<dynamic> activities =
+          (day['activities'] as List<dynamic>?) ?? <dynamic>[];
+      if (activities.isEmpty) {
+        processedDays.add(day);
+        continue;
+      }
+
+      final String dayPrompt = '''
+你是旅行手账文案大师。以【$style】风格，为以下第${i + 1}天的每个活动补充约80字的 description。
+只输出合法JSON数组，每个元素只有 "title" 和 "description" 两个字段，无其他内容，无markdown：
+${jsonEncode(activities.map((dynamic a) {
+  final Map<String, dynamic> act = Map<String, dynamic>.from(a as Map? ?? <String, dynamic>{});
+  return <String, dynamic>{'title': act['title'] ?? ''};
+}).toList())}
+''';
+
+      final Map<String, dynamic>? dayResult = await _singleRequest(
+        systemPrompt: dayPrompt,
+        userContent: '请补充description',
+        timeoutSeconds: 25,
+        expectArray: true,
+      );
+
+      // 把 AI 返回的 description 合并回原始 activities
+      if (dayResult != null) {
+        final List<dynamic> aiActs =
+            (dayResult['items'] as List<dynamic>?) ?? <dynamic>[];
+        final List<dynamic> mergedActivities = <dynamic>[];
+        for (int j = 0; j < activities.length; j++) {
+          final Map<String, dynamic> orig =
+              Map<String, dynamic>.from(activities[j] as Map? ?? <String, dynamic>{});
+          if (j < aiActs.length) {
+            final Map<String, dynamic> aiAct =
+                Map<String, dynamic>.from(aiActs[j] as Map? ?? <String, dynamic>{});
+            orig['description'] = aiAct['description'] ?? orig['description'] ?? '';
+          }
+          mergedActivities.add(orig);
+        }
+        day['activities'] = mergedActivities;
+      }
+      processedDays.add(day);
+    }
+
+    // 组装最终结果
+    final Map<String, dynamic> result =
+        Map<String, dynamic>.from(existingPlanData);
+    result['days'] = processedDays;
+    if (metaResult != null) {
+      result['title'] = metaResult['title'] ?? '';
+      result['quote'] = metaResult['quote'] ?? '用$style的方式，记录这段闪光的日子。';
+      result['dateLabel'] = metaResult['dateLabel'] ?? '';
+    }
+    return result;
+  }
+
+  /// 单次请求（补录/自定义模式，内容短）
+  Future<Map<String, dynamic>?> _generateSingleShot({
+    required String destination,
+    required String style,
+    String? daysHint,
+    String? subRecordMode,
+    int? customPhotoCount,
+  }) async {
+    String systemPrompt;
+    String userContent;
+
+    if ((subRecordMode ?? '').trim() == 'lazy') {
       systemPrompt = '''
 你是一个感性的旅行散文家。用户批量上传了关于【$destination】的照片，希望生成一篇情绪感极强的手账。
-【极其重要】：必须严格输出单一的合法 JSON 对象；不要输出 JSON 以外的任何说明文字；禁止使用 Markdown 代码块（不要出现三个反引号）。
-绝对不要按时间线（Day 1、Day 2）展开；days 数组只允许 1 个元素，且该元素的 activities 只允许 1 个元素。
-JSON 格式严格如下（请直接输出此结构，勿加前后缀）：
-{
-  "title": "根据【$destination】提炼的诗意标题，不超过10个字",
-  "quote": "一段极具氛围感的引言散文",
-  "dateLabel": "YYYY-MM-DD",
-  "days": [
-    {
-      "dayTitle": "旅途掠影",
-      "activities": [
-        {
-          "is_lazy_pool": true,
-          "title": "记忆碎片",
-          "description": "一段约200字的感性散文，不写具体时间点，侧重风景与情绪，风格【$style】"
-        }
-      ]
-    }
-  ]
-}
+【极其重要】：必须严格输出单一的合法 JSON 对象；禁止Markdown。days数组只允许1个元素，activities只允许1个元素。
+JSON格式：{"title":"诗意标题","quote":"引言","dateLabel":"YYYY-MM-DD","days":[{"dayTitle":"旅途掠影","activities":[{"is_lazy_pool":true,"title":"记忆碎片","description":"约200字感性散文，风格【$style】"}]}]}
 ''';
+      userContent = '用户已选约 ${customPhotoCount ?? 0} 张照片。目的地：$destination';
     } else {
       systemPrompt = '''
-你是一个专业的旅行手账排版大师。用户手动输入了他记得的行程细节；下一条 user 消息中的全文即用户记叙（变量名为 destination 字段承载的同一正文）。
-【绝对红线】：
-1. 先概括出一个绝美的顶层 title（不超过14字），绝对禁止照抄用户原话或整段粘贴；
-2. 活动节点必须严格来自用户提及的地点/行程，禁止无中生有编造用户没去过的景点；用户只写2个点就只排2条 activities；
-3. 禁止用空洞模板凑景点；time 可合理推断，须与叙事顺序一致；
-4. 用【$style】风格润色每条 description（约80-120字）；quote 要点题且不要复述 title。
-5. 粗时间线索（若有）：${daysHint ?? '无'}，仅可辅助填写 dateLabel，不得据此编造未出现的行程点。
-
-【极其重要】：只输出一个合法 JSON 对象；禁止使用 Markdown 代码块（不要三个反引号）；不要任何前言或尾注。
-JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）：
-{
-  "title": "AI概括的唯美标题",
-  "quote": "风格化引言",
-  "dateLabel": "YYYY-MM-DD",
-  "days": [
-    {
-      "dayTitle": "AI提炼的当天主题",
-      "activities": [
-        {
-          "time": "合理预估时间",
-          "title": "景点名",
-          "description": "润色后的游记文案"
-        }
-      ]
-    }
-  ]
-}
+你是专业的旅行手账排版大师。根据用户的行程记叙生成手账JSON。
+风格：【$style】，description约80-120字。
+时间线索：${daysHint ?? '无'}
+只输出合法JSON，无markdown：{"title":"标题","quote":"引言","dateLabel":"YYYY-MM-DD","days":[{"dayTitle":"主题","activities":[{"time":"时间","title":"景点","description":"文案"}]}]}
 ''';
+      userContent = '以下为行程记叙，请据此生成JSON：\n\n$destination';
     }
 
-    try {
-      String userContent = '请帮我生成手账！';
-      if (existingPlanData == null) {
-        if ((subRecordMode ?? '').trim() == 'lazy') {
-          userContent =
-              '【输出要求】从第一个 { 到最后一个 } 仅输出合法 JSON，禁止 Markdown。用户已选约 ${customPhotoCount ?? 0} 张本地照片（不要在 JSON 中写文件路径）。目的地/情绪线索：$destination';
-        } else {
-          userContent =
-              '以下为用户的行程记叙全文，请严格据此生成 JSON，禁止添加未出现的景点：\n\n$destination';
+    final Map<String, dynamic>? result = await _singleRequest(
+      systemPrompt: systemPrompt,
+      userContent: userContent,
+      timeoutSeconds: 40,
+    );
+
+    if (result != null && (subRecordMode ?? '').trim() == 'lazy') {
+      return _postProcessLazyDiaryJson(result);
+    }
+    return result;
+  }
+
+  /// 底层单次 HTTP 请求，带重试，超时控制在 [timeoutSeconds] 秒内
+  Future<Map<String, dynamic>?> _singleRequest({
+    required String systemPrompt,
+    required String userContent,
+    required int timeoutSeconds,
+    bool expectArray = false, // true 时返回 {"items": [...]}
+  }) async {
+    const int maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final String? content = await _callAiInIsolate(
+          endpoint: _aiEndpoint,
+          apiKey: _aiApiKey,
+          body: jsonEncode(<String, dynamic>{
+            'model': _aiModel,
+            'stream': true,
+            'max_tokens': 2048,
+            'messages': <Map<String, String>>[
+              <String, String>{'role': 'system', 'content': systemPrompt},
+              <String, String>{'role': 'user', 'content': userContent},
+            ],
+          }),
+          timeoutSeconds: timeoutSeconds,
+        );
+
+        if (content == null || content.isEmpty) {
+          debugPrint('AI 请求失败 (第 $attempt 次): 响应为空');
+          if (attempt < maxRetries) {
+            await Future<void>.delayed(Duration(seconds: attempt * 4));
+          }
+          continue;
+        }
+
+        String jsonString = _extractJsonPayload(content);
+
+        // expectArray 模式：AI 返回 JSON 数组，包装成 {"items": [...]}
+        if (expectArray && jsonString.trimLeft().startsWith('[')) {
+          jsonString = '{"items": $jsonString}';
+        }
+
+        final Object? parsed = jsonDecode(jsonString);
+        if (parsed is Map<String, dynamic>) return parsed;
+
+        // 结构不对，重试
+        debugPrint('AI 返回结构异常 (第 $attempt 次)，重试');
+        if (attempt < maxRetries) {
+          await Future<void>.delayed(Duration(seconds: attempt * 4));
+        }
+      } catch (e) {
+        // FormatException 也在这里被捕获，继续重试
+        debugPrint('AI 请求失败 (第 $attempt 次): $e');
+        if (attempt < maxRetries) {
+          await Future<void>.delayed(Duration(seconds: attempt * 4));
         }
       }
-
-      final http.Response response = await http
-          .post(
-            Uri.parse(_aiEndpoint),
-            headers: <String, String>{
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_aiApiKey',
-            },
-            body: jsonEncode(<String, dynamic>{
-              'model': _aiModel,
-              'messages': <Map<String, String>>[
-                <String, String>{'role': 'system', 'content': systemPrompt},
-                <String, String>{'role': 'user', 'content': userContent},
-              ],
-            }),
-          )
-          .timeout(const Duration(seconds: 90)); // 增加超时时间到 90 秒，支持大行程数据
-
-      if (response.statusCode != 200) {
-        debugPrint('手账 AI 生成失败: HTTP ${response.statusCode}');
-        return null;
-      }
-      final Map<String, dynamic> data =
-          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-      final String content =
-          (((data['choices'] as List?)?.first as Map?)?['message'] as Map?)?['content']
-                  ?.toString() ??
-              '';
-      if (content.isEmpty) return null;
-      final String jsonString = _extractJsonPayload(content);
-      final Object? parsed = jsonDecode(jsonString);
-      if (parsed is Map<String, dynamic>) {
-        if (existingPlanData == null &&
-            (subRecordMode ?? '').trim() == 'lazy') {
-          return _postProcessLazyDiaryJson(parsed);
-        }
-        return parsed;
-      }
-    } catch (e) {
-      debugPrint('手账 AI 生成失败: $e');
     }
     return null;
+  }
+
+  // ==========================================
+  // 后台生成：任务状态管理
+  // ==========================================
+
+  /// 后台生成任务状态
+  String? _backgroundTaskId;
+  String _backgroundTaskStatus = 'idle'; // idle | running | done | error
+  Map<String, dynamic>? _backgroundResult;
+  String? _backgroundError;
+  DiaryModel? _backgroundGeneratedDiary;
+
+  String? get backgroundTaskId => _backgroundTaskId;
+  String get backgroundTaskStatus => _backgroundTaskStatus;
+  Map<String, dynamic>? get backgroundResult => _backgroundResult;
+  String? get backgroundError => _backgroundError;
+  DiaryModel? get backgroundGeneratedDiary => _backgroundGeneratedDiary;
+
+  /// 是否有已完成但未消费的后台结果
+  bool get hasUnreadBackgroundResult =>
+      _backgroundTaskStatus == 'done' && _backgroundGeneratedDiary != null;
+
+  /// 清除后台任务状态（结果被消费后调用）
+  void clearBackgroundTask() {
+    _backgroundTaskId = null;
+    _backgroundTaskStatus = 'idle';
+    _backgroundResult = null;
+    _backgroundError = null;
+    _backgroundGeneratedDiary = null;
+    notifyListeners();
+  }
+
+  /// 后台异步启动 AI 生成，立即返回 taskId，不阻塞调用方。
+  /// 生成完成后通过 notifyListeners() 通知 UI，调用方监听 [backgroundTaskStatus] 即可。
+  String startBackgroundGenerate({
+    required String destination,
+    required String style,
+    required String newDiaryId,
+    required String newDiaryTitle,
+    required String coverImageUrl,
+    String? daysHint,
+    Map<String, dynamic>? existingPlanData,
+    String? subRecordMode,
+    int? customPhotoCount,
+    // 已组装好的最终数据（懒人池照片注入等需在调用方完成后传入 null 时走 AI 路径）
+    Map<String, dynamic>? preBuiltDiaryData,
+  }) {
+    final String taskId =
+        'bg_${DateTime.now().millisecondsSinceEpoch}';
+    _backgroundTaskId = taskId;
+    _backgroundTaskStatus = 'running';
+    _backgroundResult = null;
+    _backgroundError = null;
+    _backgroundGeneratedDiary = null;
+    notifyListeners();
+
+    // 使用 unawaited future 真正后台运行，不持有调用栈
+    _runBackgroundGenerate(
+      taskId: taskId,
+      destination: destination,
+      style: style,
+      newDiaryId: newDiaryId,
+      newDiaryTitle: newDiaryTitle,
+      coverImageUrl: coverImageUrl,
+      daysHint: daysHint,
+      existingPlanData: existingPlanData,
+      subRecordMode: subRecordMode,
+      customPhotoCount: customPhotoCount,
+      preBuiltDiaryData: preBuiltDiaryData,
+    );
+
+    return taskId;
+  }
+
+  Future<void> _runBackgroundGenerate({
+    required String taskId,
+    required String destination,
+    required String style,
+    required String newDiaryId,
+    required String newDiaryTitle,
+    required String coverImageUrl,
+    String? daysHint,
+    Map<String, dynamic>? existingPlanData,
+    String? subRecordMode,
+    int? customPhotoCount,
+    Map<String, dynamic>? preBuiltDiaryData,
+  }) async {
+    try {
+      Map<String, dynamic>? finalDiaryData = preBuiltDiaryData;
+
+      if (finalDiaryData == null) {
+        // 需要调用 AI 生成
+        final Map<String, dynamic>? aiData = await generateDiaryFromAI(
+          destination: destination,
+          style: style,
+          daysHint: daysHint,
+          existingPlanData: existingPlanData,
+          subRecordMode: subRecordMode,
+          customPhotoCount: customPhotoCount,
+        );
+
+        if (aiData == null) {
+          // 任务 id 已被新任务替换时，静默忽略旧结果
+          if (_backgroundTaskId != taskId) return;
+          _backgroundTaskStatus = 'error';
+          _backgroundError = 'AI 思考超时了，请检查网络后重试';
+          notifyListeners();
+          return;
+        }
+        finalDiaryData = aiData;
+      }
+
+      if (_backgroundTaskId != taskId) return;
+
+      final DiaryModel generatedDiary = DiaryModel(
+        id: newDiaryId,
+        userId: _client.auth.currentUser?.id ?? 'current_user',
+        title: newDiaryTitle,
+        authorName: '旅行者',
+        coverImageUrl: coverImageUrl,
+        isDraft: true,
+        isPublic: false,
+        styleType: style,
+        diaryData: finalDiaryData,
+      );
+
+      // 自动保存草稿，应用挂后台也能持久化
+      await saveDiary(generatedDiary);
+
+      if (_backgroundTaskId != taskId) return;
+
+      _backgroundResult = finalDiaryData;
+      _backgroundGeneratedDiary = generatedDiary;
+      _backgroundTaskStatus = 'done';
+      notifyListeners();
+    } catch (e, st) {
+      debugPrint('后台生成手账失败: $e');
+      debugPrint('$st');
+      if (_backgroundTaskId != taskId) return;
+      _backgroundTaskStatus = 'error';
+      _backgroundError = '生成失败：$e';
+      notifyListeners();
+    }
   }
 
   /// 补录 `subRecordMode == lazy`：字段对齐，并强制补齐 `is_lazy_pool`（模型偶发漏标）。
@@ -585,8 +812,59 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
   }
 
   String _extractJsonPayload(String content) {
-    final String stripped = _stripMarkdownFence(content).trim();
+    String stripped = _stripMarkdownFence(content).trim();
+
+    // ── 核心修复：清除字符串值内的非法控制字符 ──
+    // JSON 规范禁止字符串内出现未转义的 0x00-0x1F 控制字符（换行、回车、制表符等）
+    // DeepSeek 流式输出偶发真实换行符，直接导致 jsonDecode 抛 FormatException
+    stripped = _sanitizeJsonControlChars(stripped);
+
     return stripped;
+  }
+
+  /// 把 JSON 字符串值内的裸控制字符替换为合法转义序列
+  String _sanitizeJsonControlChars(String raw) {
+    final StringBuffer out = StringBuffer();
+    bool inString = false;
+    bool escaped = false;
+
+    for (int i = 0; i < raw.length; i++) {
+      final int code = raw.codeUnitAt(i);
+      final String ch = raw[i];
+
+      if (escaped) {
+        out.write(ch);
+        escaped = false;
+        continue;
+      }
+
+      if (ch == r'\' && inString) {
+        escaped = true;
+        out.write(ch);
+        continue;
+      }
+
+      if (ch == '"') {
+        inString = !inString;
+        out.write(ch);
+        continue;
+      }
+
+      // 字符串内的裸控制字符 → 替换为合法转义
+      if (inString && code < 0x20) {
+        switch (code) {
+          case 0x0A: out.write(r'\n'); break;   // 换行
+          case 0x0D: out.write(r'\r'); break;   // 回车
+          case 0x09: out.write(r'\t'); break;   // 制表符
+          default:   out.write('\\u${code.toRadixString(16).padLeft(4, '0')}'); break;
+        }
+        continue;
+      }
+
+      out.write(ch);
+    }
+
+    return out.toString();
   }
 
   String _stripMarkdownFence(String text) {
@@ -862,4 +1140,115 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
       ),
     ];
   }
+
+  /// 在独立 Isolate 内用 dart:io HttpClient 调用 AI 接口。
+  /// Isolate 不受主线程 App 生命周期约束，后台也能稳定完成请求。
+  static Future<String?> _callAiInIsolate({
+    required String endpoint,
+    required String apiKey,
+    required String body,
+    required int timeoutSeconds,
+  }) async {
+    final ReceivePort receivePort = ReceivePort();
+    await Isolate.spawn(
+      _isolateAiTask,
+      _IsolateAiPayload(
+        sendPort: receivePort.sendPort,
+        endpoint: endpoint,
+        apiKey: apiKey,
+        body: body,
+        timeoutSeconds: timeoutSeconds,
+      ),
+    );
+    final Object? result = await receivePort.first;
+    if (result is String) return result;
+    return null;
+  }
+
+  /// Isolate 入口函数（必须是顶层函数或 static）
+  static Future<void> _isolateAiTask(_IsolateAiPayload payload) async {
+    final http.Client client = http.Client();
+    final StringBuffer contentBuffer = StringBuffer();
+    try {
+      // 构造请求体，加入 stream: true 开启流式输出
+      final Map<String, dynamic> requestBody =
+          jsonDecode(payload.body) as Map<String, dynamic>;
+
+      final http.Request request = http.Request(
+        'POST',
+        Uri.parse(payload.endpoint),
+      );
+      request.headers['Content-Type'] = 'application/json; charset=utf-8';
+      request.headers['Authorization'] = 'Bearer ${payload.apiKey}';
+      request.headers['Accept'] = 'text/event-stream';
+      request.bodyBytes = utf8.encode(jsonEncode(requestBody));
+
+      // send() 返回 StreamedResponse，数据边到边处理，不等全部完成
+      final http.StreamedResponse streamedResponse = await client
+          .send(request)
+          .timeout(const Duration(seconds: 20));
+
+      if (streamedResponse.statusCode != 200) {
+        payload.sendPort.send(null);
+        return;
+      }
+
+      bool receivedDone = false;
+      // 逐块读取 SSE 数据，每块都是活跃传输，系统不会掐断
+      await for (final String chunk in streamedResponse.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(Duration(seconds: payload.timeoutSeconds))) {
+        // SSE 格式：每行是 "data: {...}" 或 "data: [DONE]"
+        if (!chunk.startsWith('data: ')) continue;
+        final String data = chunk.substring(6).trim();
+        if (data == '[DONE]') {
+          receivedDone = true;
+          break;
+        }
+        try {
+          final Map<String, dynamic> json =
+              jsonDecode(data) as Map<String, dynamic>;
+          final String? delta =
+              ((json['choices'] as List?)?.first as Map?)?['delta']
+                  ?['content']
+                  ?.toString();
+          if (delta != null && delta.isNotEmpty) {
+            contentBuffer.write(delta);
+          }
+        } catch (_) {}
+      }
+
+      if (!receivedDone) {
+        // 响应被截断，返回 null 触发重试
+        debugPrint('Isolate AI 响应被截断（未收到 [DONE]）');
+        payload.sendPort.send(null);
+        return;
+      }
+
+      final String result = contentBuffer.toString().trim();
+      payload.sendPort.send(result.isEmpty ? null : result);
+    } catch (e) {
+      debugPrint('Isolate AI 请求失败: $e');
+      payload.sendPort.send(null);
+    } finally {
+      client.close();
+    }
+  }
+}
+
+/// Isolate 通信数据包（必须全部是可跨 Isolate 传递的基础类型）
+class _IsolateAiPayload {
+  const _IsolateAiPayload({
+    required this.sendPort,
+    required this.endpoint,
+    required this.apiKey,
+    required this.body,
+    required this.timeoutSeconds,
+  });
+  final SendPort sendPort;
+  final String endpoint;
+  final String apiKey;
+  final String body;
+  final int timeoutSeconds;
 }

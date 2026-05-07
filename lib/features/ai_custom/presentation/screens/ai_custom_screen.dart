@@ -48,8 +48,8 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   final FocusNode _inputFocusNode = FocusNode();
   String? _hintPrompt;
   bool _showAllHistory = false;
-  /// 防止同一帧内多次 register PostFrameCallback 导致重复发送。
-  bool _autoSendPostFrameScheduled = false;
+  /// 标记自动发送是否已执行，保证整个 widget 生命周期内只自动发送一次。
+  bool _autoSendDone = false;
   http.Client? _activeClient;
   int _requestSeq = 0;
   int? _activeRequestId;
@@ -783,11 +783,9 @@ $currentPlanJson
     if (widget.autoSend &&
         widget.initialPrompt != null &&
         widget.initialPrompt!.isNotEmpty &&
-        !isGlobalLoading &&
-        !_autoSendPostFrameScheduled) {
-      _autoSendPostFrameScheduled = true;
+        !_autoSendDone) {
+      _autoSendDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _autoSendPostFrameScheduled = false;
         if (!mounted) return;
         if (context.read<MainNavProvider>().isAiPlanning) return;
         _textController.text = widget.initialPrompt!;
