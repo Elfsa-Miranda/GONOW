@@ -446,7 +446,7 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
               ],
             }),
           )
-          .timeout(const Duration(seconds: 90)); // 增加超时时间到 90 秒，支持大行程数据
+          .timeout(const Duration(seconds: 180)); // 延长至 180 秒，支持大行程数据后台生成
 
       if (response.statusCode != 200) {
         debugPrint('手账 AI 生成失败: HTTP ${response.statusCode}');
