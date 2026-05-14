@@ -1925,7 +1925,7 @@ class _VisaCard extends StatelessWidget {
         fit: StackFit.expand,
         children: <Widget>[
           CachedNetworkImage(
-            imageUrl: _normalizeImageUrl(country['img'] ?? ''),
+            imageUrl: _normalizeImageUrl(country['image_url'] ?? ''),
             fit: BoxFit.cover,
             httpHeaders: const <String, String>{
               'User-Agent':
@@ -1951,7 +1951,7 @@ class _VisaCard extends StatelessWidget {
             left: 10,
             bottom: 10,
             child: Text(
-              '${country['flag'] ?? ''} ${country['name'] ?? ''}',
+              '${country['flag_emoji'] ?? ''} ${country['name'] ?? ''}',
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w800,
@@ -1968,7 +1968,7 @@ class _VisaCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                _normalizeVisaTypeLabel(country['type']?.toString() ?? ''),
+                _normalizeVisaTypeLabel(country['visa_type']?.toString() ?? ''),
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,

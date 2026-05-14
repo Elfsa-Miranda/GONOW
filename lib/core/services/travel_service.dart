@@ -45,7 +45,9 @@ class TravelService {
           <String, List<Map<String, dynamic>>>{};
       for (final dynamic row in rows) {
         if (row is! Map<String, dynamic>) continue;
-        final String continent = (row['continent'] ?? '其他').toString();
+        String continent = (row['continent'] ?? '其他').toString();
+        // 将"特别免签区"的济州岛、富国岛合并进亚洲
+        if (continent == '特别免签区') continent = '亚洲';
         grouped.putIfAbsent(continent, () => <Map<String, dynamic>>[]).add(row);
       }
       return grouped;
