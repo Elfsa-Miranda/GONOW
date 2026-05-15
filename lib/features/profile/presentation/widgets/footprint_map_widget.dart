@@ -2,7 +2,30 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart'; // 用于 compute
 import 'package:syncfusion_flutter_maps/maps.dart';
+import 'package:gonow/core/data/city_to_province_map.dart';
+
+// 顶层函数供 compute 使用：返回简单类型避免 isolate 私有类问题
+List<List<dynamic>> _buildMapDataIsolate(Map<String, dynamic> args) {
+  final features = args['features'] as List<dynamic>;
+  final visitedSet = Set<String>.from(args['visited'] as List);
+  final isProvince = args['isProvince'] as bool;
+  final litProvinces = Set<String>.from(args['litProvinces'] as List);
+  
+  return features.map((feature) {
+    final String regionName = feature['properties']['name'].toString();
+    bool isLit;
+    if (isProvince) {
+      isLit = litProvinces.any(
+        (p) => regionName.startsWith(p) || p.startsWith(regionName),
+      );
+    } else {
+      isLit = visitedSet.contains(regionName);
+    }
+    return [regionName, isLit];
+  }).toList();
+}
 
 class FootprintMapWidget extends StatefulWidget {
   final List<String> visitedChina;
@@ -31,7 +54,8 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
   late MapShapeSource _shapeSource;
   List<_MapModel> _mapData = [];
   
-  late Set<String> _localVisitedChina;
+  late Set<String> _localVisitedProvinces; // 省份视图点亮的省份名
+  late Set<String> _localVisitedCities;    // 城市视图点亮的城市名
   late Set<String> _localVisitedWorld;
 
   late MapZoomPanBehavior _zoomPanBehavior;
@@ -39,12 +63,33 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
   // 🚨 核心修复 1：将缓存类型从 Model 列表改为 Map，直接缓存清洗后的安全 GeoJSON
   Map<String, dynamic>? _chinaGeoJsonCache;
   Map<String, dynamic>? _worldGeoJsonCache;
+  
+  // 预编码的字节缓存，避免每次 _buildMapSource 都重复 jsonEncode（解决城市地图卡顿）
+  Uint8List? _chinaProvinceBytes;
+  Uint8List? _chinaCityBytes;
+  Uint8List? _worldBytes;
+  
+  // ── 语义缩放新增字段 ──
+  Map<String, dynamic>? _chinaCityGeoJsonCache;  // 城市级 GeoJSON 缓存
+  bool _isShowingCities = false;                  // 当前是否显示城市视图
+  static const double _zoomThreshold = 3.5;       // 缩放阈值，可在真机上微调
+  bool _pendingZoomSwitch = false;                // 防止 postFrameCallback 重复注册
 
   @override
   void initState() {
     super.initState();
     _isChinaView = widget.initialIsChinaView;
-    _localVisitedChina = Set.from(widget.visitedChina);
+    
+    // visitedChina 里可能混有城市名和省份名，按 cityToProvinceMap 分类
+    _localVisitedCities = <String>{};
+    _localVisitedProvinces = <String>{};
+    for (final name in widget.visitedChina) {
+      if (cityToProvinceMap.containsKey(name)) {
+        _localVisitedCities.add(name);
+      } else {
+        _localVisitedProvinces.add(name);
+      }
+    }
     _localVisitedWorld = Set.from(widget.visitedWorld);
     
     _zoomPanBehavior = MapZoomPanBehavior(
@@ -149,86 +194,175 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
 
   // 异步读取解析 GeoJSON
   Future<void> _initMapData() async {
-    debugPrint('[MAP-DIAG] ===== _initMapData 开始，isChinaView=$_isChinaView =====');
     setState(() => _isLoading = true);
-
     try {
-      if (_isChinaView && _chinaGeoJsonCache == null) {
-        debugPrint('[MAP-DIAG-2] 开始加载 assets/china.json ...');
-        final jsonString = await rootBundle.loadString('assets/china.json');
-        debugPrint('[MAP-DIAG-2] ✅ china.json 加载成功，字符数: ${jsonString.length}');
-        final geoJson = jsonDecode(jsonString) as Map<String, dynamic>;
-        debugPrint('[MAP-DIAG-1] ✅ china.json jsonDecode 成功，顶层 keys: ${geoJson.keys.toList()}');
-        _cleanGeoJson(geoJson);
-        _chinaGeoJsonCache = geoJson;
-      } else if (_isChinaView) {
-        debugPrint('[MAP-DIAG-8] china 使用缓存，features 数: ${(_chinaGeoJsonCache!["features"] as List).length}');
+      if (_isChinaView) {
+        // 省份数据
+        if (_chinaGeoJsonCache == null) {
+          final jsonString = await rootBundle.loadString('assets/china_provinces.json');
+          final geoJson = jsonDecode(jsonString) as Map<String, dynamic>;
+          _cleanGeoJson(geoJson);
+          _chinaGeoJsonCache = geoJson;
+          _chinaProvinceBytes = Uint8List.fromList(utf8.encode(jsonEncode(geoJson)));
+        }
+        // 城市数据后台静默预加载（不阻塞省份显示）
+        if (_chinaCityGeoJsonCache == null) {
+          rootBundle.loadString('assets/china_cities.json').then((jsonString) {
+            if (!mounted) return;
+            final geoJson = jsonDecode(jsonString) as Map<String, dynamic>;
+            _cleanGeoJson(geoJson);
+            _chinaCityGeoJsonCache = geoJson;
+            _chinaCityBytes = Uint8List.fromList(utf8.encode(jsonEncode(geoJson)));
+            debugPrint('[MAP] 城市数据后台加载完成');
+            // ★ 关键：加载完成后，如果当前缩放级别已经超过阈值，立刻切换到城市视图
+            if (mounted && _isChinaView && _zoomPanBehavior.zoomLevel >= _zoomThreshold && !_isShowingCities) {
+              setState(() {
+                _isShowingCities = true;
+              });
+              _buildMapSource();
+            }
+          }).catchError((e) {
+            debugPrint('[MAP] 城市数据加载失败: $e');
+          });
+        }
+      } else {
+        if (_worldGeoJsonCache == null) {
+          final jsonString = await rootBundle.loadString('assets/world.json');
+          final geoJson = jsonDecode(jsonString) as Map<String, dynamic>;
+          _cleanGeoJson(geoJson);
+          _worldGeoJsonCache = geoJson;
+          _worldBytes = Uint8List.fromList(utf8.encode(jsonEncode(geoJson)));
+        }
       }
-
-      if (!_isChinaView && _worldGeoJsonCache == null) {
-        debugPrint('[MAP-DIAG-2] 开始加载 assets/world.json ...');
-        final jsonString = await rootBundle.loadString('assets/world.json');
-        debugPrint('[MAP-DIAG-2] ✅ world.json 加载成功，字符数: ${jsonString.length}');
-        final geoJson = jsonDecode(jsonString) as Map<String, dynamic>;
-        debugPrint('[MAP-DIAG-1] ✅ world.json jsonDecode 成功，顶层 keys: ${geoJson.keys.toList()}');
-        _cleanGeoJson(geoJson);
-        _worldGeoJsonCache = geoJson;
-      } else if (!_isChinaView) {
-        debugPrint('[MAP-DIAG-8] world 使用缓存，features 数: ${(_worldGeoJsonCache!["features"] as List).length}');
-      }
-
-      debugPrint('[MAP-DIAG] 调用 _buildMapSource ...');
       _buildMapSource();
-      debugPrint('[MAP-DIAG-6] mapBytes 已生成，dataCount: ${_mapData.length}');
     } catch (e, stack) {
-      debugPrint('[MAP-DIAG] ❌❌❌ 异常: $e');
-      debugPrint('[MAP-DIAG] 堆栈: $stack');
+      debugPrint('[MAP] ❌ 异常: $e\n$stack');
     } finally {
-      debugPrint('[MAP-DIAG-7] finally: mounted=$mounted，即将 setState isLoading=false');
       if (mounted) setState(() => _isLoading = false);
-      debugPrint('[MAP-DIAG-7] ✅ _isLoading 已设为 false');
     }
   }
 
-  // 🚨 核心修复 3：直接删除原本的 _extractMapData 方法，完全用不上了！
-
-  // 构建数据源，包含动态地名显示逻辑
-  void _buildMapSource() {
-    final geoJson = _isChinaView ? _chinaGeoJsonCache! : _worldGeoJsonCache!;
-    final currentVisited = _isChinaView ? _localVisitedChina : _localVisitedWorld;
-
-    _mapData = (geoJson['features'] as List<dynamic>).map((feature) {
-      final String regionName = feature['properties']['name'].toString();
-      final bool isLit = currentVisited.contains(regionName);
-      return _MapModel(regionName, isLit ? Colors.indigo.shade500 : Colors.white.withOpacity(0.05));
-    }).toList();
-
-    // _cleanGeoJson 已修复 type:Feature，直接编码成字节流给 memory()
-    final Uint8List mapBytes = Uint8List.fromList(utf8.encode(jsonEncode(geoJson)));
-    debugPrint('[MAP-DIAG-6] mapBytes 大小: ${mapBytes.length}, dataCount: ${_mapData.length}');
-    debugPrint('[MAP-DIAG-6] 第一条 type: ${(geoJson["features"] as List)[0]["type"]}');
-
-    _shapeSource = MapShapeSource.memory(
-      mapBytes,
-      shapeDataField: 'name',
-      dataCount: _mapData.length,
-      primaryValueMapper: (int index) => _mapData[index].region,
-      shapeColorValueMapper: (int index) => _mapData[index].color,
-      dataLabelMapper: (int index) => _mapData[index].region,
-    );
+  /// 监听缩放级别，动态切换省份/城市数据源（仅在中国视图下生效）
+  void _handleZoomChanged(double zoom) {
+    if (!_isChinaView) return;
+    
+    final bool shouldShowCities = zoom >= _zoomThreshold;
+    
+    // 状态没变化，直接跳过
+    if (shouldShowCities == _isShowingCities) return;
+    // 要切城市但数据没好，跳过
+    if (shouldShowCities && _chinaCityBytes == null) return;
+    // 已经有一个 postFrameCallback 在排队了，不重复注册
+    if (_pendingZoomSwitch) return;
+    
+    _pendingZoomSwitch = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingZoomSwitch = false;
+      if (!mounted) return;
+      // 再次校验，防止 postFrameCallback 执行时状态已被其他操作改变
+      final bool stillShouldShow = _zoomPanBehavior.zoomLevel >= _zoomThreshold;
+      if (stillShouldShow == _isShowingCities) return;
+      if (stillShouldShow && _chinaCityBytes == null) return;
+      
+      setState(() {
+        _isShowingCities = stillShouldShow;
+      });
+      _buildMapSource();
+    });
   }
 
-  // 🚨 极速响应的点亮功能！
+  // 构建数据源，包含动态地名显示逻辑
+  Future<void> _buildMapSource() async {
+    final bool showCities = _isChinaView && _isShowingCities && _chinaCityGeoJsonCache != null;
+    
+    // 选择数据源（优先用预编码字节，完全避免重复 jsonEncode）
+    final Uint8List? bytes = showCities
+        ? _chinaCityBytes
+        : (_isChinaView ? _chinaProvinceBytes : _worldBytes);
+        
+    final Map<String, dynamic>? geoJson = showCities
+        ? _chinaCityGeoJsonCache
+        : (_isChinaView ? _chinaGeoJsonCache : _worldGeoJsonCache);
+    
+    if (bytes == null || geoJson == null) return;
+    
+    final features = geoJson['features'] as List<dynamic>;
+    
+    List<_MapModel> newData;
+    if (showCities) {
+      // 城市数量大，丢到 isolate 避免卡主线程
+      final rawData = await compute(_buildMapDataIsolate, {
+        'features': features,
+        'visited': _localVisitedCities.toList(),
+        'isProvince': false,
+        'litProvinces': <String>[],
+      });
+      newData = rawData.map((e) => _MapModel(
+        e[0] as String,
+        (e[1] as bool) ? Colors.indigo.shade500 : Colors.white.withOpacity(0.05),
+      )).toList();
+    } else if (_isChinaView) {
+      final litProvinces = <String>{..._localVisitedProvinces};
+      for (final city in _localVisitedCities) {
+        final p = cityToProvinceMap[city];
+        if (p != null) litProvinces.add(p);
+      }
+      final rawData = _buildMapDataIsolate({
+        'features': features,
+        'visited': <String>[],
+        'isProvince': true,
+        'litProvinces': litProvinces.toList(),
+      });
+      newData = rawData.map((e) => _MapModel(
+        e[0] as String,
+        (e[1] as bool) ? Colors.indigo.shade500 : Colors.white.withOpacity(0.05),
+      )).toList();
+    } else {
+      final rawData = _buildMapDataIsolate({
+        'features': features,
+        'visited': _localVisitedWorld.toList(),
+        'isProvince': false,
+        'litProvinces': <String>[],
+      });
+      newData = rawData.map((e) => _MapModel(
+        e[0] as String,
+        (e[1] as bool) ? Colors.indigo.shade500 : Colors.white.withOpacity(0.05),
+      )).toList();
+    }
+    
+    if (!mounted) return;
+    setState(() {
+      _mapData = newData;
+      _shapeSource = MapShapeSource.memory(
+        bytes,
+        shapeDataField: 'name',
+        dataCount: _mapData.length,
+        primaryValueMapper: (int index) => _mapData[index].region,
+        shapeColorValueMapper: (int index) => _mapData[index].color,
+        dataLabelMapper: (int index) => _mapData[index].region,
+      );
+    });
+  }
+
   void _handleRegionTapped(int index) {
     final String tappedRegion = _mapData[index].region;
-    
+
     setState(() {
-      // 维护点亮与取消点亮的集合状态，并立刻修改颜色的 MapModel
       if (_isChinaView) {
-        if (_localVisitedChina.contains(tappedRegion)) {
-          _localVisitedChina.remove(tappedRegion);
+        if (_isShowingCities) {
+          // 城市视图：写入城市 Set
+          if (_localVisitedCities.contains(tappedRegion)) {
+            _localVisitedCities.remove(tappedRegion);
+          } else {
+            _localVisitedCities.add(tappedRegion);
+          }
         } else {
-          _localVisitedChina.add(tappedRegion);
+          // 省份视图：写入省份 Set
+          if (_localVisitedProvinces.contains(tappedRegion)) {
+            _localVisitedProvinces.remove(tappedRegion);
+          } else {
+            _localVisitedProvinces.add(tappedRegion);
+          }
         }
       } else {
         if (_localVisitedWorld.contains(tappedRegion)) {
@@ -237,31 +371,31 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
           _localVisitedWorld.add(tappedRegion);
         }
       }
-      
-      // 重新构建数据源以刷新地图视图
-      _buildMapSource();
     });
+    _buildMapSource();
 
     HapticFeedback.lightImpact();
-    // 数据回传到上一层状态
-    widget.onDataChanged?.call(_localVisitedChina.toList(), _localVisitedWorld.toList());
+    // 合并两个集合回传给上层（保持接口不变）
+    widget.onDataChanged?.call(
+      [..._localVisitedProvinces, ..._localVisitedCities],
+      _localVisitedWorld.toList(),
+    );
   }
 
   void _switchView() {
-    if (_isLoading) return; // 防连点
+    if (_isLoading) return;
     setState(() {
       _isChinaView = !_isChinaView;
-      // 🚨 核心修复：不要直接修改 _zoomPanBehavior.zoomLevel (会引发销毁冲突崩溃)
-      // 直接重新实例化一个全新的控制器，彻底切断与旧图层（即将被 loading 销毁）的联系
+      _isShowingCities = false; // 切换视图时重置城市/省份状态
       _zoomPanBehavior = MapZoomPanBehavior(
         enableDoubleTapZooming: true,
         enablePanning: true,
         enablePinching: true,
-        zoomLevel: _isChinaView ? 1.0 : 1.2, 
-        maxZoomLevel: 30.0, 
+        zoomLevel: _isChinaView ? 1.0 : 1.2,
+        maxZoomLevel: 30.0,
       );
     });
-    _initMapData(); 
+    _initMapData();
   }
 
   void _toggleFullScreen() {
@@ -278,16 +412,25 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
               child: Scaffold(
                 backgroundColor: Colors.black,
                 body: FootprintMapWidget(
-                  visitedChina: _localVisitedChina.toList(),
+                  visitedChina: [..._localVisitedProvinces, ..._localVisitedCities],
                   visitedWorld: _localVisitedWorld.toList(),
                   isFullScreen: true,
                   initialIsChinaView: _isChinaView,
                   onDataChanged: (newChina, newWorld) {
                     setState(() {
-                      _localVisitedChina = Set.from(newChina);
+                      // 重新分类
+                      _localVisitedCities.clear();
+                      _localVisitedProvinces.clear();
+                      for (final name in newChina) {
+                        if (cityToProvinceMap.containsKey(name)) {
+                          _localVisitedCities.add(name);
+                        } else {
+                          _localVisitedProvinces.add(name);
+                        }
+                      }
                       _localVisitedWorld = Set.from(newWorld);
-                      _buildMapSource();
                     });
+                    _buildMapSource();
                     widget.onDataChanged?.call(newChina, newWorld);
                   },
                 ),
@@ -342,6 +485,15 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
                         strokeColor: Colors.transparent,
                       ),
                       onSelectionChanged: _handleRegionTapped,
+                      // 使用 onWillZoom 回调监听缩放变化
+                      onWillZoom: (MapZoomDetails details) {
+                        // details.newZoomLevel 是缩放后的目标级别
+                        final double? newZoom = details.newZoomLevel;
+                        if (newZoom != null) {
+                          _handleZoomChanged(newZoom);
+                        }
+                        return true; // 返回 true 表示允许本次缩放
+                      },
                     ),
                   ],
                 ),
@@ -404,7 +556,7 @@ class _FootprintMapWidgetState extends State<FootprintMapWidget> {
                   children: [
                     Padding(padding: const EdgeInsets.only(bottom: 4), child: Text("已点亮", style: TextStyle(fontSize: 12, color: Colors.grey.shade400))),
                     const SizedBox(width: 8),
-                    Text("${_isChinaView ? _localVisitedChina.length : _localVisitedWorld.length}", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.indigo.shade400, height: 1.0)),
+                    Text("${_isChinaView ? (_localVisitedProvinces.length + _localVisitedCities.length) : _localVisitedWorld.length}", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.indigo.shade400, height: 1.0)),
                     const SizedBox(width: 8),
                     Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(_isChinaView ? "个省市" : "个国家", style: TextStyle(fontSize: 12, color: Colors.grey.shade400))),
                   ],
