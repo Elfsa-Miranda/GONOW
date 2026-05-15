@@ -753,19 +753,22 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     }
     final String title = (item['title'] ?? '未知景点').toString();
     final String originalDesc = (item['description'] ?? '').toString();
+    final String existingTime = (item['time'] ?? '').toString().trim();
     final String systemPrompt = '''
 你是一个顶级的私人旅行管家。用户刚刚在行程中手动添加了一个新节点：【$title】。
 请你发挥专业知识，帮用户把这个节点的信息补全，使其看起来专业详尽。
 
 【原稿参考】：$originalDesc
+【当前安排时间】：${existingTime.isNotEmpty ? existingTime : '未设置'}
 
 【绝对红线】：必须且只能返回一个合法的 JSON 对象，不包含任何 Markdown 标记 (如 ```json)！
-JSON 必须严格包含以下 4 个字段：
+JSON 必须严格包含以下 5 个字段：
 {
+  "time": "建议的游览开始时间，格式 HH:mm（如：09:30）。若原时间已合理则原样返回；若为空则根据景点信息和整体行程的时间规划给出合理建议时间安排",
   "openTime": "景点的真实开放时间 (如：09:00-18:00 开放 或 全天开放)",
   "recommended_duration": "建议游玩时长 (如：预计游玩 1.5小时)",
   "tag": "提炼精准的标签 (如：地标 · 必打卡)",
-  "description": "用温暖、专业的旅游管家口吻撰写的游玩攻略或避坑指南，约60-100字"
+  "description": "用专业的旅游管家口吻撰写简短精要且全面细节的游玩攻略或避坑指南，"
 }
 ''';
     _showAiLoadingDialog();
@@ -836,12 +839,20 @@ JSON 必须严格包含以下 4 个字段：
         }
         final Map<String, dynamic> activity =
             Map<String, dynamic>.from(acts[aIdx] as Map);
+        final String aiTime = (aiResult['time'] ?? '').toString().trim();
         final String openTime = (aiResult['openTime'] ?? '').toString().trim();
         final String recommendedDuration =
             (aiResult['recommended_duration'] ?? '').toString().trim();
         final String tag = (aiResult['tag'] ?? '').toString().trim();
         final String description =
             (aiResult['description'] ?? '').toString().trim();
+        
+        // 新增：回写 AI 建议的时间（仅当 AI 返回了合法时间时）
+        final RegExp hhMmStrict = RegExp(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$');
+        if (aiTime.isNotEmpty && hhMmStrict.hasMatch(aiTime)) {
+          activity['time'] = aiTime;
+        }
+        
         activity['openTime'] = openTime;
         activity['recommended_duration'] = recommendedDuration;
         activity['duration'] = recommendedDuration;
@@ -853,6 +864,12 @@ JSON 必须严格包含以下 4 个字段：
         dayMap['activities'] = acts;
         days[dIdx] = dayMap;
         _editablePlanData![storageKey] = days;
+        
+        // 同步更新 item
+        if (aiTime.isNotEmpty && hhMmStrict.hasMatch(aiTime)) {
+          item['time'] = aiTime;
+        }
+        
         item['openTime'] = openTime;
         item['recommended_duration'] = recommendedDuration;
         item['duration'] = recommendedDuration;
@@ -864,6 +881,8 @@ JSON 必须严格包含以下 4 个字段：
         _contentVersion++;
       });
       _triggerAutoSave();
+      // AI 补全后重新排序，确保时间轴顺序正确
+      _sortDayActivities(dIdx);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1413,19 +1432,15 @@ JSON 必须严格包含以下 4 个字段：
                       _isSaving = false;
                       _saveButtonSuccessMark = true;
                     });
+                    
+                    // 显示成功动画后立即退出
                     await Future<void>.delayed(const Duration(milliseconds: 600));
                     if (!mounted) {
                       return;
                     }
-
-                    final ItineraryModel? synced =
-                        provider.activeItinerary ?? provider.currentItinerary;
-                    if (synced != null) {
-                      await _fetchAllRoutesAndSync(synced);
-                    }
-                    if (!mounted) {
-                      return;
-                    }
+                    
+                    // 🚀 性能优化：移除完成按钮时的路线同步，避免阻塞界面
+                    // 路线数据会在查看行程时按需加载，无需在保存时同步
                     setState(() {
                       _isEditing = false;
                       _editablePlanData = null;
@@ -1700,6 +1715,66 @@ JSON 必须严格包含以下 4 个字段：
     if (_editablePlanData == null) {
       return;
     }
+
+    // ── 智能推算插入位置的默认时间 ──────────────────────────────────
+    String resolvedTime = time.trim();
+    if (resolvedTime.isEmpty) {
+      final List<dynamic> days =
+          (_editablePlanData![storageKey] as List<dynamic>?) ?? <dynamic>[];
+      if (dayIndex < days.length) {
+        final Map<String, dynamic> dm =
+            Map<String, dynamic>.from(days[dayIndex] as Map);
+        final List<dynamic> acts = List<dynamic>.from(
+          (dm['activities'] as List<dynamic>?) ?? <dynamic>[],
+        );
+        final RegExp hhMm = RegExp(r'^([01]?[0-9]|2[0-3]):([0-5][0-9])$');
+        int? prevMinutes;
+        int? nextMinutes;
+
+        // 前驱：afterIndex 及之前，找最近一个有效时间
+        for (int i = afterIndex; i >= 0; i--) {
+          final String t =
+              (acts[i] is Map ? (acts[i] as Map)['time'] : '')?.toString().trim() ?? '';
+          final Match? m = hhMm.firstMatch(t);
+          if (m != null) {
+            prevMinutes = int.parse(m.group(1)!) * 60 + int.parse(m.group(2)!);
+            break;
+          }
+        }
+        // 后继：afterIndex+1 及之后，找最近一个有效时间
+        for (int i = afterIndex + 1; i < acts.length; i++) {
+          final String t =
+              (acts[i] is Map ? (acts[i] as Map)['time'] : '')?.toString().trim() ?? '';
+          final Match? m = hhMm.firstMatch(t);
+          if (m != null) {
+            nextMinutes = int.parse(m.group(1)!) * 60 + int.parse(m.group(2)!);
+            break;
+          }
+        }
+
+        int? targetMinutes;
+        if (prevMinutes != null && nextMinutes != null) {
+          // 前后都有时间：取中间值
+          targetMinutes = ((prevMinutes + nextMinutes) / 2).round();
+        } else if (prevMinutes != null) {
+          // 只有前驱：+60 分钟
+          targetMinutes = (prevMinutes + 60).clamp(0, 23 * 60 + 59);
+        } else if (nextMinutes != null) {
+          // 只有后继：-60 分钟
+          targetMinutes = (nextMinutes - 60).clamp(0, 23 * 60 + 59);
+        }
+        // 前后均无有效时间则保持空字符串，显示"时间待定"
+
+        if (targetMinutes != null) {
+          final int h = targetMinutes ~/ 60;
+          final int min = targetMinutes % 60;
+          resolvedTime =
+              '${h.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')}';
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────────
+
     setState(() {
       final List<dynamic> days =
           (_editablePlanData![storageKey] as List<dynamic>?) ?? <dynamic>[];
@@ -1719,7 +1794,7 @@ JSON 必须严格包含以下 4 个字段：
         <String, dynamic>{
           'id': newId,
           'title': title,
-          'time': time,
+          'time': resolvedTime,          // ← 使用推算后的时间
           'type': type,
           'tag': '自定义添加',
           'recommended_duration': '时长待定',
@@ -5076,6 +5151,18 @@ JSON 必须严格包含以下 4 个字段：
             })
             .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
             .toList(growable: false);
+        
+        // 新增：按 time 升序排序，时间为空的沉底
+        final RegExp timeReg = RegExp(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$');
+        activities.sort((ActivityItem a, ActivityItem b) {
+          final bool validA = timeReg.hasMatch(a.time ?? '');
+          final bool validB = timeReg.hasMatch(b.time ?? '');
+          if (validA && validB) return (a.time ?? '').compareTo(b.time ?? '');
+          if (validA) return -1;
+          if (validB) return 1;
+          return 0;
+        });
+        
         parsed.add(
           _DayRoute(
             dayTitle: (day['dayTitle'] ?? day['day_title'] ?? '第${i + 1}天')
@@ -5093,12 +5180,25 @@ JSON 必须严格包含以下 4 个字段：
 
     return List<_DayRoute>.generate(model.days.length, (int i) {
       final DayPlan day = model.days[i];
+      final List<ActivityItem> sortedActivities = day.activities
+          .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
+          .toList(growable: false);
+      
+      // 新增：按 time 升序排序，时间为空的沉底
+      final RegExp timeReg = RegExp(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$');
+      sortedActivities.sort((ActivityItem a, ActivityItem b) {
+        final bool validA = timeReg.hasMatch(a.time ?? '');
+        final bool validB = timeReg.hasMatch(b.time ?? '');
+        if (validA && validB) return (a.time ?? '').compareTo(b.time ?? '');
+        if (validA) return -1;
+        if (validB) return 1;
+        return 0;
+      });
+      
       return _DayRoute(
         dayTitle: day.dayTitle,
         themeColor: _palette[i % _palette.length],
-        activities: day.activities
-            .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
-            .toList(growable: false),
+        activities: sortedActivities,
       );
     });
   }
@@ -5280,7 +5380,7 @@ JSON 必须严格包含以下 4 个字段：
             'day': dayNumber,
             'dayIndex': dayIndex,
             'activityIndex': activityIndex,
-            'scheduledTime': _stringValue(activity['time'], '09:00'),
+            'scheduledTime': _stringValue(activity['time'], ''),
             'title': _stringValue(activity['title'], '未命名活动'),
             'openTime': _stringValue(
               activity['openTime'] ?? activity['open_time'],
@@ -5602,7 +5702,7 @@ JSON 必须严格包含以下 4 个字段：
         (item['images'] as List<dynamic>?) ?? <dynamic>[];
     return ActivityItem(
       id: _timelineItemKey(item),
-      time: item['scheduledTime']?.toString() ?? '09:00',
+      time: item['scheduledTime']?.toString() ?? '',
       title: item['title']?.toString() ?? '未命名活动',
       type: 'scenic',
       lat: (item['lat'] as num?)?.toDouble() ?? 0,
