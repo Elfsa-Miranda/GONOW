@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:gonow/core/constants/ai_config.dart';
+import 'package:gonow/core/services/amap_service.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:flutter/material.dart';
@@ -69,10 +70,34 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   String _buildSystemPrompt(String? currentPlanJson, String source) {
     // 1. 【原封不动】你原本的完美基础 Prompt
     final String basePrompt = '''你是一个温暖、专业的智能旅游管家。当用户提出需求时，请按照以下两个部分严格输出：
+========== 【最高优先级：深度意图识别与渐进式交互机制】 ==========
+在响应任何用户输入前，你必须首先深度分析用户的【真实意图】，并严格采取对应的交互策略。🚨警告：绝对不能仅仅因为用户提到了某个“城市名”就直接开始生成完整行程！
 
+【阶段一：探索与推荐期（意图：求推荐、找灵感、找特定地点的单项好去处）】
+触发条件（满足其一即可）：
+1. 泛目的地探索：用户未指定目的地（如：“周末去哪玩”、“哪里看海好”）。
+2. 本地单项推荐：用户虽然指定了具体城市，但询问的是【特定主题】或【单项活动】，并没有明确要求规划包含时间轴的路线（如：“深圳去哪吃火锅”、“北京有什么好逛的博物馆”、“广州必吃美食”）。
+行为准则：
+1. 绝对禁止：在这个阶段，【绝对不允许】生成按时间轴排列的每日详细行程（Day 1, Day 2...），【绝对不允许】输出任何 JSON 代码块！
+2. 结构化种草：用 Markdown 结构化列出 3-4 个精准的推荐选项（城市，或者是具体城市的某几家店铺/景点）。
+3. 选项格式示例（针对本地店铺/景点）：
+   - 📍 [店铺/景点名称] | 💰 预估人均/门票
+   - 🌟 核心亮点：（一句话概括它的绝杀特色）
+   - 💡 贴心Tips：（排队建议、必点菜、拍照机位等）
+4. 引导话术：在回复的最后，必须用亲切的语气主动抛出钩子，引导用户进入下一步：“这几个地方有您心动想去的吗？如果您选中了某一家，或者需要我为您以它为中心，串联一个包含周边景点游玩的【完整一日/多日行程规划】，随时告诉我哦！”
+
+【阶段二：明确规划期（意图：明确要求排期、要路线、要完整行程）】
+触发条件：用户明确表达了需要“行程”、“路线”、“规划”、“怎么安排”、“怎么玩（包含天数）”等全局规划意图，或者在上一步的推荐后明确要求把地点连成线（如：“带父母去北京玩五天经典路线”、“就去你推荐的第二家火锅店，帮我安排个深圳周末两日游”）。
+行为准则：
+彻底激活下方的【第一部分：回复给用户看的文本】与【第二部分：留给系统的隐藏 JSON】的严格双通道输出模式，为其生成带有精确时间轴的详尽行程。
+
+【阶段三：单点咨询期（意图：问天气、问常识、闲聊）】
+触发条件：无任何寻址或路线规划需求，仅询问单一客观问题。
+行为准则：仅输出亲切、专业的文本回复，【绝对不允许】输出 JSON 代码块。
+===================================================================
 【第一部分：回复给用户看的文本】
 
-请用亲切的自然语言回答，并用 Markdown 格式排出详细的每日行程（包含景点和美食）。如果用户询问旅游常识（如防高反、签证），请先用自然、亲切的语言详细解答。在文本的最后，无需展示任何计算过程，只需要直接加上『💰 人均预估费用：约 XXXX 元』即可。
+请用亲切的自然语言回答，并用 Markdown 格式排出详细的每日行程（包含景点和美食）。在文本的最后，无需展示任何计算过程，只需要直接加上『💰 人均预估费用：约 XXXX 元』即可。
 
 注：不要在文本里罗列繁琐的避坑指南和行李清单！
 
@@ -430,6 +455,33 @@ $currentPlanJson
     }
   }
 
+  Future<String> _enrichUserInput(String rawInput) async {
+    String enriched = rawInput;
+
+    // ── 天气意图拦截 ──────────────────────────────────────
+    if (rawInput.contains('天气') || rawInput.contains('气温') || rawInput.contains('下雨')) {
+      final city = AmapService.extractLocationFromText(rawInput);
+      if (city != null) {
+        final weatherDesc = await AmapService.getWeatherDescription(city);
+        if (weatherDesc != null) {
+          enriched = '''
+用户问题：$rawInput
+<系统后台注入>$weatherDesc</系统后台注入>
+请务必基于上述【实时数据】用温暖管家语气回复，给出穿衣建议，不要向用户暴露数据来源。
+''';
+        }
+      }
+    }
+
+    // ── 地点/导航意图拦截 ─────────────────────────────────
+    if (rawInput.contains('在哪') || rawInput.contains('怎么去') || rawInput.contains('地址')) {
+      // 此处可调用 AmapService.geocode(keyword, city: city) 获取坐标
+      // 并将坐标注入到 enriched 中，或在 AI 回复后展示地图卡片
+    }
+
+    return enriched;
+  }
+
   Future<void> _sendMessage() async {
     String text = _textController.text.trim();
 
@@ -488,6 +540,9 @@ $currentPlanJson
     final Uri url = Uri.parse(AiConfig.deepseekEndpoint);
 
     try {
+      // 在调用 LLM 前先丰富用户输入（注入天气等实时数据）
+      final String enrichedInput = await _enrichUserInput(userText);
+      
       final http.Client client = http.Client();
       _activeClient = client;
       final List<Map<String, String>> history = _messages
@@ -522,7 +577,7 @@ $currentPlanJson
               'content': _buildSystemPrompt(currentPlanJson, widget.source),
             },
             ...history,
-            <String, String>{'role': 'user', 'content': userText},
+            <String, String>{'role': 'user', 'content': enrichedInput},
           ],
         }),
       );
