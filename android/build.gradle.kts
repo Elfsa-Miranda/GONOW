@@ -1,5 +1,10 @@
 allprojects {
     repositories {
+        // 1. 阿里云公共库 (完全替代 mavenCentral，必须放第一位！)
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        // 2. 阿里云 Google 库
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        // 3. 官方源作为最后的兜底备份
         google()
         mavenCentral()
     }

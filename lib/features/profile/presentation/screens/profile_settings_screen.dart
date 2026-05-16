@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gonow/core/services/notification_service.dart';
 import 'package:gonow/features/profile/data/profile_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -68,6 +69,19 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       title: provider.isAnonymous ? '绑定邮箱' : '已绑定邮箱',
                       subtitle: provider.isAnonymous ? '绑定后可跨设备同步数据' : _maskEmail(provider.currentUserEmail),
                       onTap: provider.isAnonymous ? () => _showBindEmailSheet(context) : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                _buildSectionTitle('通知设置'),
+                _buildCard(
+                  children: <Widget>[
+                    _buildSettingsTile(
+                      icon: Icons.notifications_active_rounded,
+                      iconColor: Colors.amber.shade600,
+                      title: '出行提醒',
+                      subtitle: '航班/高铁出发前6小时、酒店入住当天早8点推送',
+                      onTap: () => _showNotificationSettingsSheet(context),
                     ),
                   ],
                 ),
@@ -375,6 +389,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     );
   }
 
+  void _showNotificationSettingsSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetCtx) {
+        return _NotificationSettingsSheet();
+      },
+    );
+  }
+
   /// 大气宽敞的邮箱绑定底部面板（OTP + 密码）。
   void _showBindEmailSheet(BuildContext context) {
     final BuildContext pageContext = context;
@@ -660,6 +685,196 @@ class _AvatarImageState extends State<_AvatarImage> {
           child: Icon(Icons.person, size: widget.size, color: Colors.grey.shade400),
         );
       },
+    );
+  }
+}
+
+
+// =============================================================================
+// 通知设置 Sheet
+// =============================================================================
+class _NotificationSettingsSheet extends StatefulWidget {
+  @override
+  State<_NotificationSettingsSheet> createState() =>
+      _NotificationSettingsSheetState();
+}
+
+class _NotificationSettingsSheetState
+    extends State<_NotificationSettingsSheet> {
+  int _hoursAhead = 6;
+  bool _permissionGranted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAndRequest();
+  }
+
+  Future<void> _checkAndRequest() async {
+    final bool granted =
+        await NotificationService.instance.requestPermission();
+    if (mounted) setState(() => _permissionGranted = granted);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottom = MediaQuery.paddingOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: <Widget>[
+                Icon(Icons.notifications_active_rounded,
+                    color: Colors.amber.shade600),
+                const SizedBox(width: 8),
+                const Text(
+                  '出行提醒设置',
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // 权限状态卡
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _permissionGranted
+                    ? Colors.green.shade50
+                    : Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: _permissionGranted
+                      ? Colors.green.shade200
+                      : Colors.orange.shade200,
+                ),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    _permissionGranted
+                        ? Icons.check_circle_rounded
+                        : Icons.warning_amber_rounded,
+                    color: _permissionGranted
+                        ? Colors.green.shade600
+                        : Colors.orange.shade600,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _permissionGranted
+                          ? '通知权限已开启，提醒功能正常运行'
+                          : '通知权限未授予，请前往系统设置手动开启',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _permissionGranted
+                            ? Colors.green.shade700
+                            : Colors.orange.shade700,
+                      ),
+                    ),
+                  ),
+                  if (!_permissionGranted)
+                    TextButton(
+                      onPressed: _checkAndRequest,
+                      child: const Text('重试'),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              '提前提醒时间（航班 / 高铁）',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            // 提前时间选择
+            Row(
+              children: <int>[1, 2, 3, 6].map((int h) {
+                final bool selected = _hoursAhead == h;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _hoursAhead = h),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? Colors.indigo.shade600
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '$h 小时',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: selected
+                                ? Colors.white
+                                : Colors.black54,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '酒店提醒将固定在入住当天早上 8:00 推送',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+            ),
+            const SizedBox(height: 28),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo,
+                minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                '完成',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

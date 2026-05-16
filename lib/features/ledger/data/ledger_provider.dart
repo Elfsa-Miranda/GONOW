@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:gonow/core/services/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -325,6 +327,9 @@ class LedgerProvider extends ChangeNotifier {
     _tickets.insert(0, normalized);
     notifyListeners();
 
+    // ✅ 只保留定时提醒（添加时不弹即时通知）
+    unawaited(NotificationService.instance.scheduleTicketReminder(normalized));
+
     try {
       await _db.from('ledger_tickets').insert(<String, dynamic>{
         'id': normalized.id,
@@ -352,6 +357,10 @@ class LedgerProvider extends ChangeNotifier {
     _tickets[index] = updated;
     notifyListeners();
 
+    // ✅ 新增：取消旧通知 + 重新安排
+    unawaited(NotificationService.instance.cancelTicketNotifications(id));
+    unawaited(NotificationService.instance.scheduleTicketReminder(updated));
+
     // 2. 静默同步云端。
     try {
       await _db.from('ledger_tickets').update(<String, dynamic>{
@@ -373,6 +382,9 @@ class LedgerProvider extends ChangeNotifier {
     // 1. 乐观删除本地。
     _tickets.removeWhere((OrderTicket t) => t.id == id);
     notifyListeners();
+
+    // ✅ 新增：取消该票务的所有通知
+    unawaited(NotificationService.instance.cancelTicketNotifications(id));
 
     // 2. 静默同步云端。
     try {

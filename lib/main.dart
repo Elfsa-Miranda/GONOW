@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:gonow/core/providers/travel_provider.dart';
+import 'package:gonow/core/services/notification_service.dart';
 import 'package:gonow/features/auth/data/auth_provider.dart';
 import 'package:gonow/features/auth/presentation/auth_screen.dart';
 import 'package:gonow/features/diary/data/diary_provider.dart';
@@ -26,6 +27,9 @@ Future<void> main() async {
     url: 'https://axoewadtumvbxzsxpsuc.supabase.co',
     anonKey: 'sb_publishable_Yrg6dWTx3cB5S3OIJafkYA_7uweoExy',
   );
+
+  // ✅ 初始化本地通知服务
+  await NotificationService.instance.init();
 
   // ✅ 立即启动 UI，不阻塞任何数据加载
   runApp(

@@ -1568,14 +1568,38 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: <Widget>[
-                          Text(
-                            ticket.timeB,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 36,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -1,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                ticket.timeB,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -1,
+                                ),
+                              ),
+                              // 跨天角标：到达时间小于出发时间则判定为跨天
+                              if (_isCrossDay(ticket.timeA, ticket.timeB))
+                                Container(
+                                  margin: const EdgeInsets.only(top: 4, left: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    '+1天',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           Text(
                             ticket.locationB,
@@ -1917,24 +1941,349 @@ class _LedgerScreenState extends State<LedgerScreen> {
     );
   }
 
+  /// 统一的日期+时间分步选择器 (完美解决远期航班选择困难)
+  Future<void> showModernDateTimePicker({
+    required BuildContext context,
+    required DateTime initialTime,
+    required Function(DateTime) onConfirm,
+  }) async {
+    // ================= 第一步：选日期（原生日历，轻松跨越几十年） =================
+    final DateTime? selectedDate = await showDatePicker(
+      context: context,
+      initialDate: initialTime,
+      firstDate: DateTime(2000), // 允许录入早年的足迹
+      lastDate: DateTime(2100),
+      helpText: '第一步：选择航班日期',
+      cancelText: '取消',
+      confirmText: '下一步 (选时间)',
+      builder: (BuildContext context, Widget? child) {
+        // 深度定制主题，匹配你界面的深蓝色调 (Indigo)
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.indigo,
+              onPrimary: Colors.white,
+              onSurface: Colors.black87,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.indigo,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (selectedDate == null) return; // 用户点击了取消，直接打断
+    if (!context.mounted) return;
+
+    // ================= 第二步：选时间（24小时制，精准无歧义） =================
+    final TimeOfDay? selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialTime),
+      helpText: '第二步：选择准确时间',
+      cancelText: '取消',
+      confirmText: '确定保存',
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.indigo,
+            ),
+          ),
+          child: MediaQuery(
+            // 🚀 核心细节：强制使用 24 小时制（航班绝对不能用上下午，容易出错）
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+            child: child!,
+          ),
+        );
+      },
+    );
+    if (selectedTime == null) return; // 用户在第二步取消了
+
+    // ================= 第三步：智能合并 =================
+    final DateTime finalDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    // 传回给你的 UI 刷新
+    onConfirm(finalDateTime);
+  }
+
+  /// 计算跨了几天 (利用跨越的午夜次数，而不是单纯的 24 小时)
+  int _getCrossDay(DateTime start, DateTime end) {
+    // 将时分秒抹零，只比对日期
+    DateTime startDate = DateTime(start.year, start.month, start.day);
+    DateTime endDate = DateTime(end.year, end.month, end.day);
+    return endDate.difference(startDate).inDays;
+  }
+
+  /// 格式化飞行耗时（例如：2h 30m）
+  String _calculateDuration(DateTime start, DateTime end) {
+    Duration diff = end.difference(start);
+    if (diff.isNegative) return '时间错误'; // 如果降落比出发还早
+    int hours = diff.inHours;
+    int minutes = diff.inMinutes.remainder(60);
+    return '${hours}h ${minutes}m';
+  }
+
+  /// 解析票务数据为 DateTime 对象
+  DateTime? _parseTicketDateTime(String? dateStr, String? timeStr) {
+    if (dateStr == null || timeStr == null) return null;
+    try {
+      final int year = DateTime.now().year;
+      
+      // 解析时间 "HH:mm"
+      final RegExp timeReg = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? timeMatch = timeReg.firstMatch(timeStr);
+      if (timeMatch == null) return null;
+      final int hour = int.parse(timeMatch.group(1)!);
+      final int minute = int.parse(timeMatch.group(2)!);
+
+      // 解析日期 "MM月DD日" / "MM.DD" / "YYYY-MM-DD"
+      final RegExp mdReg1 = RegExp(r'(\d{1,2})月(\d{1,2})日');
+      final RegExp mdReg2 = RegExp(r'(\d{1,2})[.\-/](\d{1,2})');
+      final RegExp mdReg3 = RegExp(r'(\d{4})-(\d{2})-(\d{2})');
+
+      int month = 0, day = 0;
+
+      final RegExpMatch? m3 = mdReg3.firstMatch(dateStr);
+      final RegExpMatch? m1 = mdReg1.firstMatch(dateStr);
+      final RegExpMatch? m2 = mdReg2.firstMatch(dateStr);
+
+      if (m3 != null) {
+        month = int.parse(m3.group(2)!);
+        day = int.parse(m3.group(3)!);
+      } else if (m1 != null) {
+        month = int.parse(m1.group(1)!);
+        day = int.parse(m1.group(2)!);
+      } else if (m2 != null) {
+        month = int.parse(m2.group(1)!);
+        day = int.parse(m2.group(2)!);
+      } else {
+        return null;
+      }
+
+      return DateTime(year, month, day, hour, minute);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 判断是否跨天：到达时间（HH:mm）小于出发时间（HH:mm）即为跨天
+  bool _isCrossDay(String timeA, String timeB) {
+    try {
+      final RegExp r = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? ma = r.firstMatch(timeA);
+      final RegExpMatch? mb = r.firstMatch(timeB);
+      if (ma == null || mb == null) return false;
+      final int minutesA = int.parse(ma.group(1)!) * 60 + int.parse(ma.group(2)!);
+      final int minutesB = int.parse(mb.group(1)!) * 60 + int.parse(mb.group(2)!);
+      return minutesB < minutesA;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 弹出日期+时间二合一选择器，返回格式化字符串
+  Future<String?> _pickDateTime(
+    BuildContext context, {
+    String? initialDateStr,   // 已有日期字符串，如 "10.01"
+    String? initialTimeStr,   // 已有时间字符串，如 "23:00"
+  }) async {
+    // 解析初始值
+    DateTime initial = DateTime.now();
+    if (initialDateStr != null && initialDateStr.isNotEmpty) {
+      final RegExp r = RegExp(r'(\d{1,2})[.\-月/](\d{1,2})');
+      final RegExpMatch? m = r.firstMatch(initialDateStr);
+      if (m != null) {
+        initial = DateTime(
+          DateTime.now().year,
+          int.parse(m.group(1)!),
+          int.parse(m.group(2)!),
+          initial.hour,
+          initial.minute,
+        );
+      }
+    }
+    if (initialTimeStr != null && initialTimeStr.isNotEmpty) {
+      final RegExp r = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? m = r.firstMatch(initialTimeStr);
+      if (m != null) {
+        initial = DateTime(
+          initial.year, initial.month, initial.day,
+          int.parse(m.group(1)!),
+          int.parse(m.group(2)!),
+        );
+      }
+    }
+
+    // 第一步：选日期
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(DateTime.now().year - 1),
+      lastDate: DateTime(DateTime.now().year + 3),
+      locale: const Locale('zh', 'CN'),
+      helpText: '选择日期',
+      confirmText: '下一步',
+      cancelText: '取消',
+      builder: (BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Colors.indigo,
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (pickedDate == null) return null;
+
+    // 第二步：选时间
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
+      helpText: '选择时间',
+      confirmText: '确定',
+      cancelText: '返回',
+      builder: (BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Colors.indigo,
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (pickedTime == null) return null;
+
+    final DateTime result = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+
+    // 返回格式：日期部分 "MM月DD日"，时间部分 "HH:mm"，用 | 分隔传回
+    return '${result.month}月${result.day}日|'
+        '${result.hour.toString().padLeft(2, '0')}:'
+        '${result.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 只选时间（用于到达时间/退房时间，日期跟随出发日期）
+  Future<String?> _pickTimeOnly(
+    BuildContext context, {
+    String? initialTimeStr,
+  }) async {
+    TimeOfDay initial = TimeOfDay.now();
+    if (initialTimeStr != null && initialTimeStr.isNotEmpty) {
+      final RegExp r = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? m = r.firstMatch(initialTimeStr);
+      if (m != null) {
+        initial = TimeOfDay(
+          hour: int.parse(m.group(1)!),
+          minute: int.parse(m.group(2)!),
+        );
+      }
+    }
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      helpText: '选择时间',
+      confirmText: '确定',
+      cancelText: '取消',
+      builder: (BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Colors.indigo,
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return null;
+    return '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 到达时间选择：选完时间后询问是否次日到达
+  Future<void> _pickTimeBWithCrossDay(
+    BuildContext context, {
+    required String? initialTimeStr,
+    required StateSetter setModalState,
+    required TextEditingController timeBController,
+  }) async {
+    final String? t = await _pickTimeOnly(
+      context,
+      initialTimeStr: initialTimeStr,
+    );
+    if (t == null) return;
+
+    // 询问是否次日到达
+    if (!context.mounted) return;
+    final bool? isCrossDay = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('到达日期', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(
+          '到达时间 $t 是当日还是次日？',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('当日', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('+1天（次日）', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (isCrossDay == null) return;
+    // 次日到达在时间后加标记，卡片显示时用 _isCrossDay 判断，这里仅存原始时间
+    // 如果用户选了次日，在显示时通过时间比较自动识别，无需额外存储
+    setModalState(() => timeBController.text = t);
+  }
+
   void _showAddTicketSheet(BuildContext context, {OrderTicket? existingTicket}) {
     final LedgerProvider provider = context.read<LedgerProvider>();
     String selectedType = existingTicket?.type ?? 'flight';
 
     final TextEditingController titleController =
         TextEditingController(text: existingTicket?.title ?? '');
-    final TextEditingController dateController =
-        TextEditingController(text: existingTicket?.dateStr ?? '');
-    final TextEditingController timeAController =
-        TextEditingController(text: existingTicket?.timeA ?? '');
-    final TextEditingController timeBController =
-        TextEditingController(text: existingTicket?.timeB ?? '');
     final TextEditingController locAController =
         TextEditingController(text: existingTicket?.locationA ?? '');
     final TextEditingController locBController =
         TextEditingController(text: existingTicket?.locationB ?? '');
     final TextEditingController passengerController =
         TextEditingController(text: existingTicket?.passenger.isNotEmpty == true ? existingTicket!.passenger : '我');
+
+    // ✅ 新方案：使用完整的 DateTime 对象
+    DateTime departureTime = _parseTicketDateTime(
+      existingTicket?.dateStr,
+      existingTicket?.timeA,
+    ) ?? DateTime.now();
+    
+    DateTime arrivalTime = _parseTicketDateTime(
+      existingTicket?.dateStr,
+      existingTicket?.timeB,
+    ) ?? DateTime.now().add(const Duration(hours: 2));
 
     showModalBottomSheet<void>(
       context: context,
@@ -2006,73 +2355,241 @@ class _LedgerScreenState extends State<LedgerScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 16),
+                      // ✅ 新方案：专业航旅时间选择卡片
+                      if (selectedType != 'hotel')
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: <Widget>[
+                              // ================= 左侧：起飞时间 =================
+                              GestureDetector(
+                                onTap: () {
+                                  showModernDateTimePicker(
+                                    context: context,
+                                    initialTime: departureTime,
+                                    onConfirm: (DateTime time) {
+                                      setModalState(() {
+                                        departureTime = time;
+                                        // 智能联动：如果起飞时间改了，自动把降落时间往后顺延2小时，防止用户填错
+                                        if (arrivalTime.isBefore(departureTime)) {
+                                          arrivalTime = departureTime.add(const Duration(hours: 2));
+                                        }
+                                      });
+                                    },
+                                  );
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    const Text(
+                                      '出发时间',
+                                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${departureTime.month}月${departureTime.day}日',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${departureTime.hour.toString().padLeft(2, '0')}:${departureTime.minute.toString().padLeft(2, '0')}',
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.indigo,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // ================= 中间：飞机图标及耗时 =================
+                              Column(
+                                children: <Widget>[
+                                  Icon(
+                                    selectedType == 'train' ? Icons.train : Icons.flight_takeoff,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // 计算总耗时
+                                  Text(
+                                    _calculateDuration(departureTime, arrivalTime),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                              // ================= 右侧：降落时间（带跨天提示） =================
+                              GestureDetector(
+                                onTap: () {
+                                  showModernDateTimePicker(
+                                    context: context,
+                                    initialTime: arrivalTime,
+                                    onConfirm: (DateTime time) {
+                                      setModalState(() {
+                                        arrivalTime = time;
+                                      });
+                                    },
+                                  );
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: <Widget>[
+                                    const Text(
+                                      '到达时间',
+                                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${arrivalTime.month}月${arrivalTime.day}日',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        Text(
+                                          '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}',
+                                          style: const TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.indigo,
+                                          ),
+                                        ),
+                                        // 🌟 核心：跨天逻辑计算与显示
+                                        if (_getCrossDay(departureTime, arrivalTime) > 0)
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 2, top: 4),
+                                            child: Text(
+                                              '+${_getCrossDay(departureTime, arrivalTime)}天',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.redAccent,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      // ✅ 酒店类型：简化的入住/退房时间选择
+                      if (selectedType == 'hotel')
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    showModernDateTimePicker(
+                                      context: context,
+                                      initialTime: departureTime,
+                                      onConfirm: (DateTime time) {
+                                        setModalState(() => departureTime = time);
+                                      },
+                                    );
+                                  },
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      const Text(
+                                        '入住时间',
+                                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${departureTime.month}月${departureTime.day}日',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${departureTime.hour.toString().padLeft(2, '0')}:${departureTime.minute.toString().padLeft(2, '0')}',
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.indigo,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    showModernDateTimePicker(
+                                      context: context,
+                                      initialTime: arrivalTime,
+                                      onConfirm: (DateTime time) {
+                                        setModalState(() => arrivalTime = time);
+                                      },
+                                    );
+                                  },
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      const Text(
+                                        '退房时间',
+                                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${arrivalTime.month}月${arrivalTime.day}日',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}',
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.indigo,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: TextField(
-                              controller: dateController,
-                              decoration: InputDecoration(
-                                hintText: '日期 (如 10.01)',
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                            ),
+                      // 出行人
+                      TextField(
+                        controller: passengerController,
+                        decoration: InputDecoration(
+                          hintText: selectedType == 'hotel' ? '入住人' : '出行人',
+                          prefixIcon: const Icon(Icons.person, size: 20),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: passengerController,
-                              decoration: InputDecoration(
-                                hintText: selectedType == 'hotel' ? '入住人' : '出行人',
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: TextField(
-                              controller: timeAController,
-                              decoration: InputDecoration(
-                                hintText: selectedType == 'hotel' ? '入住时间' : '出发时间',
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: timeBController,
-                              decoration: InputDecoration(
-                                hintText: selectedType == 'hotel' ? '退房时间' : '到达时间',
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -2129,14 +2646,19 @@ class _LedgerScreenState extends State<LedgerScreen> {
                             return;
                           }
 
+                          // ✅ 从 DateTime 对象格式化为存储格式
+                          final String dateStr = '${departureTime.month}月${departureTime.day}日';
+                          final String timeA = '${departureTime.hour.toString().padLeft(2, '0')}:${departureTime.minute.toString().padLeft(2, '0')}';
+                          final String timeB = '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}';
+
                           final OrderTicket newTicket = OrderTicket(
                             id: existingTicket?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
                             ledgerId: lid,
                             type: selectedType,
                             title: titleController.text.trim(),
-                            dateStr: dateController.text.trim(),
-                            timeA: timeAController.text.trim(),
-                            timeB: timeBController.text.trim(),
+                            dateStr: dateStr,
+                            timeA: timeA,
+                            timeB: timeB,
                             locationA: locAController.text.trim(),
                             locationB: locBController.text.trim(),
                             passenger: passengerController.text.trim().isEmpty
