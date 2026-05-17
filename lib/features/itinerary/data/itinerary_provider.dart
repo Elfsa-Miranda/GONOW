@@ -962,9 +962,18 @@ class ItineraryProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final SupabaseClient client = Supabase.instance.client;
+      final String? userId = client.auth.currentUser?.id;
+      
+      // ✅ 未登录时直接读本地
+      if (userId == null) {
+        await loadFromPrefs();
+        return;
+      }
+      
       final List<dynamic> rows = await client
           .from(_tableName)
           .select()
+          .eq('user_id', userId)               // ✅ 只查当前用户的行程
           .order('start_date', ascending: false)
           .limit(1);
       if (rows.isNotEmpty && rows.first is Map<String, dynamic>) {
@@ -995,16 +1004,45 @@ class ItineraryProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> saveToSupabase(ItineraryModel model) async {
+  Future<ItineraryModel?> saveToSupabase(ItineraryModel model) async {
     final SupabaseClient client = Supabase.instance.client;
-    await client.from(_tableName).insert(<String, dynamic>{
+    final String? userId = client.auth.currentUser?.id;
+    
+    // 未登录则跳过云端保存
+    if (userId == null) {
+      debugPrint('⚠️ 用户未登录，跳过云端保存');
+      return null;
+    }
+    
+    final Map<String, dynamic> data = <String, dynamic>{
+      'user_id': userId,                                          // ✅ 修复核心：写入 user_id
       'title': model.title,
       'start_date': model.startDate.toIso8601String(),
       'end_date': model.endDate.toIso8601String(),
+      'destination_city': model.destinationCity,                  // ✅ 同步写入 destination_city
       'plan_data': model.planData,
-      'created_at': DateTime.now().toIso8601String(),
-      'version': 1,
-    });
+      'created_at': (model.createdAt ?? DateTime.now()).toIso8601String(),
+      'version': model.version,
+    };
+    
+    // 有合法 UUID 则 upsert（防止重复插入）；否则 insert 让数据库生成新 id
+    List<dynamic> rows;
+    if (model.remoteId != null && _isValidUuid(model.remoteId!)) {
+      data['id'] = model.remoteId;
+      rows = await client.from(_tableName).upsert(data).select();
+    } else {
+      rows = await client.from(_tableName).insert(data).select();
+    }
+    
+    // ✅ 将数据库生成的 UUID 写回 model，后续编辑才能走云端 CAS 锁
+    if (rows.isNotEmpty && rows.first is Map<String, dynamic>) {
+      final String? newId = (rows.first as Map<String, dynamic>)['id']?.toString();
+      if (newId != null && _isValidUuid(newId)) {
+        debugPrint('✅ 行程已上云，remoteId=$newId');
+        return model.copyWith(remoteId: newId);
+      }
+    }
+    return null;
   }
 
   Future<void> _saveToLocal(ItineraryModel model) async {
@@ -1018,10 +1056,22 @@ class ItineraryProvider extends ChangeNotifier {
     _upsertMyItinerary(model);
     notifyListeners();
     try {
-      await saveToSupabase(model);
-      await _saveToLocal(model);
-      await _persistMyItinerariesList();
-    } catch (_) {
+      // ✅ 接收云端返回的带 remoteId 的新 model
+      final ItineraryModel? savedModel = await saveToSupabase(model);
+      if (savedModel != null && savedModel.remoteId != model.remoteId) {
+        // remoteId 有变化，用云端版本覆盖内存和本地缓存
+        _currentItinerary = savedModel;
+        _activeItinerary = savedModel;
+        _upsertMyItinerary(savedModel);
+        await _saveToLocal(savedModel);
+        await _persistMyItinerariesList();
+        notifyListeners();
+      } else {
+        await _saveToLocal(model);
+        await _persistMyItinerariesList();
+      }
+    } catch (e) {
+      debugPrint('⚠️ 云端保存失败，降级到本地: $e');
       try {
         await _saveToLocal(model);
         await _persistMyItinerariesList();

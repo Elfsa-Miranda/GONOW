@@ -31,7 +31,18 @@ class AuthProvider with ChangeNotifier {
           });
         } catch (_) {}
         if (context.mounted) {
-          _showToast(context, '注册成功！欢迎开启探索之旅。', duration: 3);
+          // 🌟 优化：更友好的成功提示，明确告知用户需要激活邮箱
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                '🎉 注册成功！请前往邮箱点击确认链接激活账号。',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 5),
+            ),
+          );
         }
         return true;
       }

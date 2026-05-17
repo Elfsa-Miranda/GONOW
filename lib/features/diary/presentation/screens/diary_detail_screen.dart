@@ -2731,7 +2731,53 @@ class _DiaryDetailScreenState extends State<DiaryDetailScreen>
       context,
       photos,
       initialIndex,
-      imageBuilder: _buildNodeImage,
+      imageBuilder: _buildFullScreenImage,
+    );
+  }
+
+  Widget _buildFullScreenImage(String pathOrUrl) {
+    final String p = pathOrUrl.trim();
+    if (p.startsWith('http://') || p.startsWith('https://')) {
+      return CachedNetworkImage(
+        imageUrl: p,
+        fit: BoxFit.contain,
+        errorWidget: (_, _, _) => const Icon(
+          Icons.broken_image_outlined,
+          color: Colors.white54,
+          size: 56,
+        ),
+      );
+    }
+    if (p.startsWith('blob:')) {
+      return Image.network(
+        p,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => const Icon(
+          Icons.broken_image_outlined,
+          color: Colors.white54,
+          size: 56,
+        ),
+      );
+    }
+    if (kIsWeb) {
+      return Image.network(
+        p,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => const Icon(
+          Icons.broken_image_outlined,
+          color: Colors.white54,
+          size: 56,
+        ),
+      );
+    }
+    return Image.file(
+      File(p),
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => const Icon(
+        Icons.broken_image_outlined,
+        color: Colors.white54,
+        size: 56,
+      ),
     );
   }
 

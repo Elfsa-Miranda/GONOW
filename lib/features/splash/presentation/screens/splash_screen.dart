@@ -17,7 +17,7 @@ class SplashScreen extends StatelessWidget {
           children: [
             // 你的抠图 Logo，确保位置和静态页尽量一致
             Image.asset(
-              'assets/icon/icon.png',
+              'assets/icon/logo_transparent_animation.png',
               height: 220, // 进一步放大 Logo（从 180 增加到 220）
             ),
             const SizedBox(height: 4), // Logo 与文字的间距（从 8 减小到 4）

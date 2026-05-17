@@ -84,7 +84,13 @@ class _FullScreenPhotoGalleryOverlayState
                 minScale: 0.8,
                 maxScale: 4.0,
                 child: Center(
-                  child: widget.imageBuilder(pathOrUrl),
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width,
+                      maxHeight: MediaQuery.of(context).size.height,
+                    ),
+                    child: widget.imageBuilder(pathOrUrl),
+                  ),
                 ),
               );
             },

@@ -11,6 +11,7 @@ import 'package:gonow/features/diary/data/diary_provider.dart';
 import 'package:gonow/features/ledger/data/ledger_provider.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
+import 'package:gonow/features/profile/data/footprint_provider.dart';
 import 'package:gonow/features/profile/data/profile_provider.dart';
 import 'package:gonow/features/splash/presentation/screens/splash_screen.dart';
 import 'package:provider/provider.dart';
@@ -53,6 +54,9 @@ Future<void> main() async {
         // ❌ 移除了 create 时的 fetchProfile() 调用
         ChangeNotifierProvider<ProfileProvider>(
           create: (_) => ProfileProvider(),
+        ),
+        ChangeNotifierProvider<FootprintProvider>(
+          create: (_) => FootprintProvider(),
         ),
         ChangeNotifierProvider<DiaryProvider>(
           create: (_) => DiaryProvider(),
@@ -182,6 +186,9 @@ class _AuthGateState extends State<AuthGate> {
           
           final ProfileProvider profileProvider = context.read<ProfileProvider>();
           profileProvider.fetchProfile();
+          
+          final FootprintProvider footprintProvider = context.read<FootprintProvider>();
+          footprintProvider.fetchFootprint();
         }
       } else {
         _recoveryDialogScheduled = false;

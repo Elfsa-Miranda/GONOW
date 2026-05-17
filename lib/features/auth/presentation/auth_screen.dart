@@ -113,6 +113,7 @@ class _AuthScreenState extends State<AuthScreen> {
         }
       }
     } else {
+      // 🌟 优化：注册成功后自动切换回登录界面
       final bool ok = await auth.signUp(email, password, context);
       if (!mounted) return;
       if (ok) {
@@ -121,6 +122,14 @@ class _AuthScreenState extends State<AuthScreen> {
         } else {
           await _clearRememberMe();
         }
+        // 🌟 核心优化：注册成功后自动切换到登录模式
+        // 延迟一小段时间，让用户看到成功提示
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (!mounted) return;
+        setState(() {
+          _isLoginMode = true;
+          _passwordController.clear(); // 清空密码，让用户重新输入
+        });
       }
     }
   }

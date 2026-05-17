@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gonow/features/ledger/presentation/screens/ledger_screen.dart';
 import 'package:gonow/features/ootd/presentation/screens/ootd_screen.dart';
+import 'package:gonow/features/profile/data/footprint_provider.dart';
 import 'package:gonow/features/profile/data/profile_provider.dart';
 import 'package:gonow/features/profile/presentation/screens/profile_settings_screen.dart';
 import 'package:gonow/features/profile/presentation/widgets/footprint_map_widget.dart';
@@ -24,18 +25,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<ProfileProvider>().fetchProfile();
+      context.read<FootprintProvider>().fetchFootprint();
     });
   }
-
-  List<String> _visitedChina = <String>[
-    '北京市',
-    '上海市',
-    '广东省',
-    '四川省',
-    '浙江省',
-    '新疆维吾尔自治区',
-  ];
-  List<String> _visitedWorld = <String>[];
 
   @override
   Widget build(BuildContext context) {
@@ -123,14 +115,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: FootprintMapWidget(
-                visitedChina: _visitedChina,
-                visitedWorld: _visitedWorld,
-                onDataChanged: (List<String> newChina, List<String> newWorld) {
-                  setState(() {
-                    _visitedChina = newChina;
-                    _visitedWorld = newWorld;
-                  });
+              child: Consumer<FootprintProvider>(
+                builder: (context, footprint, _) {
+                  return FootprintMapWidget(
+                    visitedChina: footprint.visitedChina,
+                    visitedWorld: footprint.visitedWorld,
+                    onDataChanged: (List<String> newChina, List<String> newWorld) {
+                      footprint.updateFootprints(newChina, newWorld);
+                    },
+                  );
                 },
               ),
             ),

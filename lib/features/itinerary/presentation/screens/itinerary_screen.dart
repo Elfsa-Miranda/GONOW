@@ -5178,6 +5178,57 @@ JSON 必须严格包含以下 5 个字段：
       return parsed.where((_DayRoute r) => r.activities.isNotEmpty).toList();
     }
 
+    // ② 新增：读取 planData['days']（AI 生成的标准 JSON 格式）
+    final List<dynamic> rawDays =
+        (model.planData['days'] as List<dynamic>?) ?? <dynamic>[];
+    if (rawDays.isNotEmpty) {
+      final List<_DayRoute> parsed = <_DayRoute>[];
+      for (int i = 0; i < rawDays.length; i++) {
+        final dynamic rawDay = rawDays[i];
+        if (rawDay is! Map) continue;
+        final Map<String, dynamic> day = Map<String, dynamic>.from(rawDay);
+        final List<dynamic> activitiesRaw =
+            (day['activities'] as List<dynamic>?) ??
+            (day['items'] as List<dynamic>?) ??
+            <dynamic>[];
+        int idx = 0;
+        final List<ActivityItem> activities = activitiesRaw
+            .whereType<Map<String, dynamic>>()
+            .map((Map<String, dynamic> map) {
+              idx++;
+              return ActivityItem.fromJson(
+                map,
+                fallbackId: 'days_d${i + 1}_a$idx',
+              );
+            })
+            .where((ActivityItem a) => a.lat != 0 && a.lng != 0)
+            .toList(growable: false);
+        final RegExp timeReg = RegExp(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$');
+        activities.sort((ActivityItem a, ActivityItem b) {
+          final bool validA = timeReg.hasMatch(a.time ?? '');
+          final bool validB = timeReg.hasMatch(b.time ?? '');
+          if (validA && validB) return (a.time ?? '').compareTo(b.time ?? '');
+          if (validA) return -1;
+          if (validB) return 1;
+          return 0;
+        });
+        if (activities.isEmpty) continue;
+        parsed.add(
+          _DayRoute(
+            dayTitle:
+                (day['dayTitle'] ?? day['day_title'] ?? '第${i + 1}天').toString(),
+            themeColor: _parseHexColor(
+              day['theme_color']?.toString() ?? '',
+              _palette[i % _palette.length],
+            ),
+            activities: activities,
+          ),
+        );
+      }
+      if (parsed.isNotEmpty) return parsed;
+    }
+
+    // ③ 原有兜底保持不变
     return List<_DayRoute>.generate(model.days.length, (int i) {
       final DayPlan day = model.days[i];
       final List<ActivityItem> sortedActivities = day.activities
@@ -5203,12 +5254,39 @@ JSON 必须严格包含以下 5 个字段：
     });
   }
 
+  // 31 色均匀分布色相环，覆盖最长 31 天旅行，相邻天色相差 > 25°
   static const List<Color> _palette = <Color>[
-    Color(0xFF4F6DFF),
-    Color(0xFF00A28A),
-    Color(0xFFF59E0B),
-    Color(0xFFE11D48),
-    Color(0xFF8B5CF6),
+    Color(0xFF4F6DFF), // Day 1  蓝
+    Color(0xFFE11D48), // Day 2  玫红
+    Color(0xFF00A28A), // Day 3  青绿
+    Color(0xFFF59E0B), // Day 4  琥珀
+    Color(0xFF8B5CF6), // Day 5  紫
+    Color(0xFF0891B2), // Day 6  青蓝
+    Color(0xFFEA580C), // Day 7  橙红
+    Color(0xFF16A34A), // Day 8  草绿
+    Color(0xFFDB2777), // Day 9  粉红
+    Color(0xFF7C3AED), // Day 10 深紫
+    Color(0xFF0D9488), // Day 11 水鸭绿
+    Color(0xFFD97706), // Day 12 深琥珀
+    Color(0xFF7C2D12), // Day 13 砖红
+    Color(0xFF1D4ED8), // Day 14 深蓝
+    Color(0xFF059669), // Day 15 翠绿
+    Color(0xFFC026D3), // Day 16 洋红
+    Color(0xFF0369A1), // Day 17 海蓝
+    Color(0xFFB45309), // Day 18 棕橙
+    Color(0xFF4D7C0F), // Day 19 橄榄绿
+    Color(0xFF9D174D), // Day 20 深玫红
+    Color(0xFF1E40AF), // Day 21 皇室蓝
+    Color(0xFF065F46), // Day 22 森林绿
+    Color(0xFFB91C1C), // Day 23 深红
+    Color(0xFF6D28D9), // Day 24 靛紫
+    Color(0xFF0F766E), // Day 25 深青绿
+    Color(0xFFC2410C), // Day 26 深橙
+    Color(0xFF166534), // Day 27 深绿
+    Color(0xFF831843), // Day 28 酒红
+    Color(0xFF1E3A8A), // Day 29 午夜蓝
+    Color(0xFF713F12), // Day 30 深棕
+    Color(0xFF4C1D95), // Day 31 深紫罗兰
   ];
 
   Color _parseHexColor(String raw, Color fallback) {
@@ -5584,13 +5662,13 @@ JSON 必须严格包含以下 5 个字段：
       }
     }
 
-    // 2. 如果 JSON 没有颜色，使用固定伪随机算法兜底，保证每次生成一致
-    final Random random = Random(dayIndex * 999);
-    double hue = random.nextDouble() * 360;
-    if (hue > 50 && hue < 160) {
-      hue = (hue + 150) % 360;
-    }
-    return HSVColor.fromAHSV(1.0, hue, 0.85, 0.9).toColor();
+    // 2. 无 theme_color 时，从色相环均匀取色，彻底杜绝撞色
+    // 黄金角 137.508° 分割，任意相邻天数色相差均 > 30°
+    const double goldenAngle = 137.508;
+    // 起始色相错开 210°，让 Day 1 落在蓝色区，视觉更舒适
+    final double hue = (210.0 + dayIndex * goldenAngle) % 360;
+    // 饱和度和亮度固定，保证颜色鲜明统一
+    return HSVColor.fromAHSV(1.0, hue, 0.80, 0.88).toColor();
   }
 
   Widget _buildTimelineItemCard({
