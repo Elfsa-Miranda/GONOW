@@ -36,9 +36,9 @@ class NotificationService {
 
     const DarwinInitializationSettings iosSettings =
         DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
 
     const InitializationSettings settings = InitializationSettings(
@@ -90,8 +90,8 @@ class NotificationService {
       debugPrint('[NotificationService] 通知权限: $notifGranted');
 
       // ✅ 关键：精确闹钟权限，华为/小米等设备 zonedSchedule 必须有这个才能触发
-      await androidPlugin?.requestExactAlarmsPermission();
-      debugPrint('[NotificationService] 精确闹钟权限已请求');
+      final bool? exactAlarmGranted = await androidPlugin?.requestExactAlarmsPermission();
+      debugPrint('[NotificationService] 精确闹钟权限: $exactAlarmGranted');
 
       return notifGranted ?? false;
     }
@@ -100,7 +100,10 @@ class NotificationService {
 
   // ─── 发送即时通知（添加票务时立即推送）─────────────────────────
   Future<void> sendTicketAddedNotification(OrderTicket ticket) async {
-    if (!_initialized) return;
+    if (!_initialized) {
+      debugPrint('[NotificationService] 未初始化，跳过即时通知');
+      return;
+    }
 
     final _TicketNotifContent content = _buildContent(ticket, isReminder: false);
 
@@ -131,6 +134,7 @@ class NotificationService {
           presentSound: true,
         ),
       ),
+      payload: ticket.id,  // ✅ 添加 payload 用于点击跳转
     );
     debugPrint('[NotificationService] 即时通知已发送: ${ticket.title}');
   }
@@ -172,8 +176,8 @@ class NotificationService {
     final tz.TZDateTime scheduledDate =
         tz.TZDateTime.from(reminderTime, tz.local);
 
-    // 计算距出发剩余分钟数（用于动态文案）
-    final int minutesLeft = departureTime.difference(now).inMinutes;
+    // ✅ 计算提醒触发时的剩余分钟数（而不是当前时刻的剩余时间）
+    final int minutesLeft = departureTime.difference(reminderTime).inMinutes;
     final _TicketNotifContent content = _buildContent(
       ticket,
       isReminder: true,
@@ -187,35 +191,59 @@ class NotificationService {
       summaryText: 'GoNow 旅行助手',
     );
 
-    await _plugin.zonedSchedule(
-      _notifIdForTicket(ticket.id, suffix: 1),
-      content.title,
-      content.collapsedBody,
-      scheduledDate,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: _channelDesc,
-          importance: Importance.max,   // 定时提醒用最高级，触发横幅弹出
-          priority: Priority.high,
-          styleInformation: bigText,
-          ticker: content.collapsedBody,
-          icon: '@mipmap/ic_launcher',
-        ),
-        iOS: const DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDesc,
+        importance: Importance.max,
+        priority: Priority.high,
+        styleInformation: bigText,
+        ticker: content.collapsedBody,
+        icon: '@mipmap/ic_launcher',
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
     );
-    debugPrint(
-      '[NotificationService] 定时提醒已安排: ${ticket.title} @ $reminderTime',
-    );
+
+    // ✅ 改进点：放弃不存在的 API 检查，直接使用"捕获异常并自动降级"的策略
+    try {
+      // 第一次尝试：直接使用"精确闹钟"模式
+      await _plugin.zonedSchedule(
+        _notifIdForTicket(ticket.id, suffix: 1),
+        content.title,
+        content.collapsedBody,
+        scheduledDate,
+        platformChannelSpecifics,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: ticket.id,  // ✅ 添加 payload 用于点击跳转
+      );
+      debugPrint('✅ [NotificationService] 成功安排【精确】定时提醒: ${ticket.title} @ $reminderTime');
+    } catch (e) {
+      debugPrint('⚠️ [NotificationService] 精确闹钟被系统拦截，正在降级处理: $e');
+      try {
+        // 第二次尝试：降级使用"非精确闹钟"模式（无需任何特殊权限，绝对能发出去）
+        await _plugin.zonedSchedule(
+          _notifIdForTicket(ticket.id, suffix: 1),
+          content.title,
+          content.collapsedBody,
+          scheduledDate,
+          platformChannelSpecifics,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          payload: ticket.id,  // ✅ 添加 payload 用于点击跳转
+        );
+        debugPrint('✅ [NotificationService] 成功安排【非精确】定时提醒: ${ticket.title} @ $reminderTime');
+      } catch (e2) {
+        debugPrint('❌ [NotificationService] 降级排期依然失败: $e2');
+      }
+    }
   }
 
   // ─── 取消指定票务的所有通知 ──────────────────────────────────
@@ -233,11 +261,25 @@ class NotificationService {
     // 可在此处导航到对应页面（通过 payload 传递 ticketId）
   }
 
-  /// 根据 ticketId 哈希生成稳定的整型通知 ID。
+  /// 格式化剩余时间为人类可读文案
+  String _formatTimeLeft(int minutesLeft) {
+    if (minutesLeft <= 0) return '即将';
+    if (minutesLeft < 60) return '约 $minutesLeft 分钟';
+    final int h = minutesLeft ~/ 60;
+    final int m = minutesLeft % 60;
+    return m == 0 ? '约 $h 小时' : '约 $h 小时 $m 分钟';
+  }
+
+  /// 根据 ticketId 生成稳定的整型通知 ID。
   /// suffix=0 即时通知，suffix=1 定时提醒。
+  /// ✅ 使用更安全的哈希方法避免碰撞
   int _notifIdForTicket(String ticketId, {required int suffix}) {
-    final int hash = ticketId.hashCode.abs() % 100000;
-    return hash * 10 + suffix;
+    // 使用字符串的多个字符计算更稳定的哈希
+    int hash = 0;
+    for (int i = 0; i < ticketId.length; i++) {
+      hash = ((hash << 5) - hash + ticketId.codeUnitAt(i)) & 0x7FFFFFFF;
+    }
+    return (hash % 1000000) * 10 + suffix;
   }
 
   // ─── 通知内容数据类 ──────────────────────────────────────────
@@ -289,9 +331,12 @@ class NotificationService {
         ? '⚠️ 请立即前往安检口，切勿延误！'
         : '🧳 建议现在出发前往机场，提前办理值机。';
 
+    // ✅ 使用动态计算的剩余时间，而不是固定的 hoursAhead
+    final String timeLeftText = _formatTimeLeft(minutesLeft);
+
     return _TicketNotifContent(
       title: '🛫 行程提醒：您的航班即将起飞！',
-      collapsedBody: '${ticket.locationA} ➔ ${ticket.locationB} | ${ticket.timeA} 起飞，距起飞还有约 $hoursAhead 小时',
+      collapsedBody: '${ticket.locationA} ➔ ${ticket.locationB} | ${ticket.timeA} 起飞，距起飞还有$timeLeftText',
       expandedBody:
           '✈️  ${ticket.locationA}  ➔  ${ticket.locationB}\n'
           '🕒 起飞时间：${ticket.dateStr}  ${ticket.timeA}\n'
@@ -325,9 +370,12 @@ class NotificationService {
         ? '⚠️ 请立即前往候车厅，高铁不等人！'
         : '🧳 建议现在动身前往火车站，提前取票进站。';
 
+    // ✅ 使用动态计算的剩余时间，而不是固定的 hoursAhead
+    final String timeLeftText = _formatTimeLeft(minutesLeft);
+
     return _TicketNotifContent(
       title: '🚄 行程提醒：您的高铁即将发车！',
-      collapsedBody: '${ticket.locationA} ➔ ${ticket.locationB} | ${ticket.timeA} 发车，距发车还有约 $hoursAhead 小时',
+      collapsedBody: '${ticket.locationA} ➔ ${ticket.locationB} | ${ticket.timeA} 发车，距发车还有$timeLeftText',
       expandedBody:
           '🚄  ${ticket.locationA}  ➔  ${ticket.locationB}\n'
           '🕒 发车时间：${ticket.dateStr}  ${ticket.timeA}\n'
@@ -370,46 +418,68 @@ class NotificationService {
   }
 
   /// 解析 OrderTicket 中的出发/入住日期时间。
-  /// dateStr 示例："10月1日 · 去程" 或 "10月1日" 或 "10.01"
+  /// dateStr 示例："10月1日 · 去程" 或 "10月1日" 或 "10.01" 或 "2024-10-01"
   /// timeA 示例："10:30"
   DateTime? _parseDepartureTime(OrderTicket ticket) {
     try {
-      final int year = DateTime.now().year;
+      int year = DateTime.now().year;
 
       // 解析 timeA: "HH:mm"
       final RegExp timeReg = RegExp(r'(\d{1,2}):(\d{2})');
       final RegExpMatch? timeMatch = timeReg.firstMatch(ticket.timeA);
-      if (timeMatch == null) return null;
+      if (timeMatch == null) {
+        debugPrint('❌ [NotificationService] 时间解析失败：无法匹配时间格式 timeA=${ticket.timeA}');
+        return null;
+      }
       final int hour = int.parse(timeMatch.group(1)!);
       final int minute = int.parse(timeMatch.group(2)!);
 
       // 解析 dateStr 中的月日
       // 支持 "10月1日" / "10.01" / "2024-10-01"
-      final RegExp mdReg1 = RegExp(r'(\d{1,2})月(\d{1,2})日');
-      final RegExp mdReg2 = RegExp(r'(\d{1,2})[.\-/](\d{1,2})');
-      final RegExp mdReg3 = RegExp(r'(\d{4})-(\d{2})-(\d{2})');
+      // ✅ 修复：按优先级顺序匹配，避免歧义
+      final RegExp mdReg1 = RegExp(r'(\d{1,2})月(\d{1,2})日');  // "10月1日"
+      final RegExp mdReg2 = RegExp(r'^(\d{1,2})[.\-/](\d{1,2})$');  // "10.01" 或 "10-01"（加边界约束）
+      final RegExp mdReg3 = RegExp(r'(\d{4})-(\d{2})-(\d{2})');  // "2024-10-01"
 
       int month = 0, day = 0;
 
-      final RegExpMatch? m1 = mdReg1.firstMatch(ticket.dateStr);
+      // ✅ 优先匹配完整日期格式（包含年份）
       final RegExpMatch? m3 = mdReg3.firstMatch(ticket.dateStr);
-      final RegExpMatch? m2 = mdReg2.firstMatch(ticket.dateStr);
-
       if (m3 != null) {
+        year = int.parse(m3.group(1)!);  // ✅ 使用票据中的年份
         month = int.parse(m3.group(2)!);
         day = int.parse(m3.group(3)!);
-      } else if (m1 != null) {
-        month = int.parse(m1.group(1)!);
-        day = int.parse(m1.group(2)!);
-      } else if (m2 != null) {
-        month = int.parse(m2.group(1)!);
-        day = int.parse(m2.group(2)!);
       } else {
-        return null;
+        // 其次匹配中文格式
+        final RegExpMatch? m1 = mdReg1.firstMatch(ticket.dateStr);
+        if (m1 != null) {
+          month = int.parse(m1.group(1)!);
+          day = int.parse(m1.group(2)!);
+        } else {
+          // 最后匹配简短格式
+          final RegExpMatch? m2 = mdReg2.firstMatch(ticket.dateStr);
+          if (m2 != null) {
+            month = int.parse(m2.group(1)!);
+            day = int.parse(m2.group(2)!);
+          } else {
+            debugPrint('❌ [NotificationService] 时间解析失败：无法匹配日期格式 dateStr=${ticket.dateStr}');
+            return null;
+          }
+        }
       }
 
-      return DateTime(year, month, day, hour, minute);
-    } catch (_) {
+      DateTime result = DateTime(year, month, day, hour, minute);
+      
+      // ✅ 修复跨年问题：如果解析出的日期在过去（超过1天），则认为是明年
+      if (result.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
+        result = DateTime(year + 1, month, day, hour, minute);
+        debugPrint('⚠️ [NotificationService] 检测到跨年行程，年份已调整为 ${year + 1}');
+      }
+
+      debugPrint('✅ [NotificationService] 时间解析成功: ${ticket.title} → $result');
+      return result;
+    } catch (e) {
+      debugPrint('❌ [NotificationService] 时间解析发生异常：$e, dateStr=${ticket.dateStr}, timeA=${ticket.timeA}');
       return null;
     }
   }
