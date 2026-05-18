@@ -737,6 +737,34 @@ class ItineraryProvider extends ChangeNotifier {
   Future<void> loadFromPrefs() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final SupabaseClient supabase = Supabase.instance.client;
+      final String userId = supabase.auth.currentUser?.id ?? 'guest';
+      
+      // ✅ 优先读多行程缓存（my_itineraries_cache_$userId）
+      final String? multiRaw = prefs.getString('my_itineraries_cache_$userId');
+      if (multiRaw != null && multiRaw.trim().isNotEmpty) {
+        try {
+          final List<dynamic> localJson = jsonDecode(multiRaw) as List<dynamic>;
+          final List<ItineraryModel> loaded = localJson
+              .whereType<Map<String, dynamic>>()
+              .map((Map<String, dynamic> data) =>
+                  sanitizeItineraryImages(ItineraryModel.fromJson(data)))
+              .toList();
+          if (loaded.isNotEmpty) {
+            _myItineraries
+              ..clear()
+              ..addAll(loaded);
+            _currentItinerary ??= _myItineraries.first;
+            _activeItinerary ??= _myItineraries.first;
+            notifyListeners();
+            return; // ✅ 多行程缓存有效，直接返回，不再读单条 _prefsKey
+          }
+        } catch (e) {
+          debugPrint('多行程缓存解析失败: $e');
+        }
+      }
+      
+      // fallback：读旧的单条 _prefsKey（兼容旧数据）
       final String? raw = prefs.getString(_prefsKey);
       if (raw == null || raw.trim().isEmpty) {
         _currentItinerary = null;
@@ -746,8 +774,11 @@ class ItineraryProvider extends ChangeNotifier {
       }
       final Object? decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        _currentItinerary = sanitizeItineraryImages(ItineraryModel.fromJson(decoded));
-        _activeItinerary = _currentItinerary;
+        final ItineraryModel model =
+            sanitizeItineraryImages(ItineraryModel.fromJson(decoded));
+        _currentItinerary = model;
+        _activeItinerary = model;
+        _upsertMyItinerary(model);
       } else {
         _currentItinerary = null;
         _activeItinerary = null;
@@ -756,7 +787,6 @@ class ItineraryProvider extends ChangeNotifier {
       _currentItinerary = null;
       _activeItinerary = null;
     }
-    await _syncMyItinerariesFromStorage();
     notifyListeners();
   }
 
@@ -797,65 +827,67 @@ class ItineraryProvider extends ChangeNotifier {
     if (supabase.auth.currentUser == null) return;
 
     try {
-      // 🚨 核心改造：并发拉取【自己创建的】和【别人邀请我加入的】行程
-      final dynamic myFuture = supabase
+      // ✅ 修复：分开执行，shared查询失败不影响自己的行程
+      // 第一步：拉取自己创建的行程（核心，不能失败）
+      final List<dynamic> myRows = await supabase
           .from(_tableName)
           .select()
           .eq('user_id', userId);
-
-      final dynamic sharedFuture = supabase
-          .from('itinerary_members')
-          .select('$_tableName(*)')
-          .eq('user_id', userId);
-
-      // 并发执行，节省等待时间
-      final List<dynamic> results = await Future.wait(<Future<dynamic>>[
-        myFuture as Future<dynamic>,
-        sharedFuture as Future<dynamic>,
-      ]);
-
-      // 🚨 核心改造：合并与去重
+      
+      // 合并去重 map
       final Map<String, ItineraryModel> mergedMap = <String, ItineraryModel>{};
-
-      // 处理我的行程
-      for (final dynamic data in (results[0] as List<dynamic>)) {
+      
+      for (final dynamic data in myRows) {
         if (data is! Map<String, dynamic>) continue;
         final ItineraryModel itinerary = sanitizeItineraryImages(
           ItineraryModel.fromJson(data),
         );
         mergedMap[itinerary.id] = itinerary;
       }
-
-      // 处理共享的行程
-      for (final dynamic data in (results[1] as List<dynamic>)) {
-        if (data is! Map<String, dynamic>) continue;
-        final dynamic nested = data[_tableName];
-        if (nested is! Map<String, dynamic>) continue;
-        final ItineraryModel itinerary = sanitizeItineraryImages(
-          ItineraryModel.fromJson(nested),
-        );
-        mergedMap[itinerary.id] = itinerary;
+      
+      // 第二步：拉取协作行程（可选，失败静默跳过，不影响自己的行程展示）
+      try {
+        final List<dynamic> sharedRows = await supabase
+            .from('itinerary_members')
+            .select('$_tableName(*)')
+            .eq('user_id', userId);
+        
+        for (final dynamic data in sharedRows) {
+          if (data is! Map<String, dynamic>) continue;
+          final dynamic nested = data[_tableName];
+          if (nested is! Map<String, dynamic>) continue;
+          final ItineraryModel itinerary = sanitizeItineraryImages(
+            ItineraryModel.fromJson(nested),
+          );
+          mergedMap[itinerary.id] = itinerary;
+        }
+      } catch (e) {
+        // 协作行程查询失败不影响主流程
+        debugPrint('ℹ️ 协作行程查询失败（不影响自己的行程）: $e');
       }
-
-      // 转为 List 并排序 (降序排列，由于 ID 是时间戳字符串，可以直接按 ID 降序对比)
+      
+      // 排序：按 start_date 降序（UUID 无法直接比较时间）
       final List<ItineraryModel> cloudItineraries = mergedMap.values.toList();
-      cloudItineraries.sort((ItineraryModel a, ItineraryModel b) => b.id.compareTo(a.id));
-
-      // 步骤 C：比对并覆写。
+      cloudItineraries.sort(
+        (ItineraryModel a, ItineraryModel b) =>
+            b.startDate.compareTo(a.startDate), // ✅ 改为按 startDate 排序，UUID 不含时间信息
+      );
+      
+      // 步骤 C：覆写内存列表
       _myItineraries
         ..clear()
         ..addAll(cloudItineraries);
       if (_myItineraries.isNotEmpty) {
         _activeItinerary = _myItineraries.first;
       }
-
-      // 刷新磁盘缓存
+      
+      // 写磁盘缓存
       final String freshJsonStr =
           jsonEncode(_myItineraries.map((ItineraryModel e) => e.toJson()).toList());
       await prefs.setString('my_itineraries_cache_$userId', freshJsonStr);
-
+      
       notifyListeners();
-      debugPrint('☁️ 云端行程数据(含协作)同步完成并写入本地缓存');
+      debugPrint('☁️ 云端行程同步完成，共 ${_myItineraries.length} 条');
     } catch (e) {
       debugPrint('⚠️ 云端同步失败，继续使用本地缓存: $e');
     }
@@ -1011,33 +1043,22 @@ class ItineraryProvider extends ChangeNotifier {
       final SupabaseClient client = Supabase.instance.client;
       final String? userId = client.auth.currentUser?.id;
       
-      // ✅ 未登录时直接读本地
       if (userId == null) {
         await loadFromPrefs();
         return;
       }
       
-      final List<dynamic> rows = await client
-          .from(_tableName)
-          .select()
-          .eq('user_id', userId)               // ✅ 只查当前用户的行程
-          .order('start_date', ascending: false)
-          .limit(1);
-      if (rows.isNotEmpty && rows.first is Map<String, dynamic>) {
-        final Map<String, dynamic> map = rows.first as Map<String, dynamic>;
-        // ✅ 修复：直接传整个 map，与 loadMyItineraries 保持一致，不会漏字段
-        final ItineraryModel model = sanitizeItineraryImages(
-          ItineraryModel.fromJson(map),
-        );
-        _currentItinerary = model;
-        _activeItinerary = model;
-        _upsertMyItinerary(model);
-        await _saveToLocal(model);
-        await _persistMyItinerariesList();
-      } else {
-        await loadFromPrefs();
+      // ✅ 不再 limit(1)，直接调 loadMyItineraries 拉全量
+      // loadMyItineraries 内部已处理：本地秒开 → 云端对账 → 写缓存
+      await loadMyItineraries();
+      
+      // 确保 _currentItinerary 有值
+      if (_currentItinerary == null && _myItineraries.isNotEmpty) {
+        _currentItinerary = _myItineraries.first;
+        _activeItinerary = _myItineraries.first;
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('⚠️ fetchActiveItinerary 失败，降级本地: $e');
       await loadFromPrefs();
     } finally {
       _isBusy = false;
