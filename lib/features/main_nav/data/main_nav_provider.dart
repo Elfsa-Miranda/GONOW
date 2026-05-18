@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 class MainNavProvider extends ChangeNotifier {
   int _currentIndex = 0;
   int _openAiRequestToken = 0;
+  int _aiSheetClosedToken = 0;
   String? pendingAiPrompt;
   String? pendingAiSource;
   bool shouldAutoSendAi = false;
@@ -10,6 +11,7 @@ class MainNavProvider extends ChangeNotifier {
 
   int get currentIndex => _currentIndex;
   int get openAiRequestToken => _openAiRequestToken;
+  int get aiSheetClosedToken => _aiSheetClosedToken;
 
   void setTab(int index) {
     if (_currentIndex == index) {
@@ -79,6 +81,11 @@ class MainNavProvider extends ChangeNotifier {
       return;
     }
     isAiPlanning = value;
+    notifyListeners();
+  }
+
+  void notifyAiSheetClosed() {
+    _aiSheetClosedToken++;
     notifyListeners();
   }
 }

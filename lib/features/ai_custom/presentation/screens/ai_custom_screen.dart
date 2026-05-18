@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:gonow/core/constants/ai_config.dart';
@@ -48,6 +49,23 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
   String? _hintPrompt;
+  
+  // 与发现页同源的 hint 列表
+  static const List<String> _searchHints = <String>[
+    '下个月看海，人少一点',
+    '带父母去北京玩五天',
+    '去新疆看雪需要准备什么',
+    '周末去哪能吃地道火锅',
+    '预算3000元，适合情侣去哪',
+    '江浙沪 2 天自驾游',
+    '曼谷+普吉岛 7天避坑',
+    '独自旅行，治安好的古镇',
+    '带 5 岁小孩去哪度假',
+    '川西自驾需要防高反吗',
+  ];
+  int _hintIndex = 0;
+  Timer? _hintTimer;
+  
   bool _showAllHistory = false;
   /// 标记自动发送是否已执行，保证整个 widget 生命周期内只自动发送一次。
   bool _autoSendDone = false;
@@ -222,6 +240,31 @@ $currentPlanJson
   @override
   void initState() {
     super.initState();
+    // 以 initialPrompt 在列表中的位置为起点，找不到则从 0 开始
+    final int startIndex = widget.initialPrompt != null
+        ? _searchHints.indexOf(widget.initialPrompt!)
+        : -1;
+    _hintIndex = startIndex >= 0 ? startIndex : 0;
+    _hintPrompt = _searchHints[_hintIndex];
+    
+    // 每 7s 轮换一次，与发现页节奏一致
+    _hintTimer = Timer.periodic(const Duration(seconds: 7), (_) {
+      if (mounted) {
+        setState(() {
+          _hintIndex = (_hintIndex + 1) % _searchHints.length;
+          _hintPrompt = _searchHints[_hintIndex];
+        });
+      }
+    });
+    
+    // 点击输入框时锁定当前 hint，停止轮换
+    _inputFocusNode.addListener(() {
+      if (_inputFocusNode.hasFocus) {
+        _hintTimer?.cancel();
+        _hintTimer = null;
+      }
+    });
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _bootstrapChat();
     });
@@ -229,6 +272,7 @@ $currentPlanJson
 
   @override
   void dispose() {
+    _hintTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     _inputFocusNode.dispose();
@@ -238,16 +282,6 @@ $currentPlanJson
   Future<void> _bootstrapChat() async {
     await loadChatHistory();
     _forceScrollToBottom();
-
-    if (!mounted) return;
-    final MainNavProvider navProvider = context.read<MainNavProvider>();
-    final String? pending = navProvider.pendingAiPrompt?.trim();
-    final String hintPrompt = pending != null && pending.isNotEmpty
-        ? pending
-        : '带父母去北京玩五天经典路线';
-    setState(() {
-      _hintPrompt = hintPrompt;
-    });
   }
 
   Future<void> loadChatHistory() async {
@@ -486,10 +520,10 @@ $currentPlanJson
     String text = _textController.text.trim();
 
     if (text.isEmpty) {
-      if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
-        text = widget.initialPrompt!;
-      } else if (_hintPrompt != null && _hintPrompt!.isNotEmpty) {
+      if (_hintPrompt != null && _hintPrompt!.isNotEmpty) {
         text = _hintPrompt!;
+      } else if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
+        text = widget.initialPrompt!;
       } else {
         text = '帮我规划一次旅行';
       }
@@ -1297,6 +1331,10 @@ $currentPlanJson
                   onSubmitted: (String value) => _sendMessage(),
                   decoration: InputDecoration(
                     hintText: _hintPrompt ?? '例如：日本关西 7天特种兵打卡',
+                    hintStyle: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 14,
+                    ),
                     border: InputBorder.none,
                   ),
                 ),

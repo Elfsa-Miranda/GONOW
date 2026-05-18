@@ -247,6 +247,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         );
       },
     );
+    if (mounted) {
+      context.read<MainNavProvider>().notifyAiSheetClosed();
+    }
     if (shouldOpenItinerary == true && mounted) {
       context.read<MainNavProvider>().goToItineraryTab();
     }

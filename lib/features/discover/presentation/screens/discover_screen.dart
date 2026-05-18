@@ -34,6 +34,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   int _currentHintIndex = 0;
   Timer? _hintTimer;
   bool _isLocked = false;
+  int _handledAiSheetClosedToken = 0;
 
   int _selectedFilterIndex = 0;
   static const List<String> _filterTabs = <String>[
@@ -62,7 +63,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   void _startTimer() {
     _hintTimer?.cancel();
-    _hintTimer = Timer.periodic(const Duration(seconds: 15), (Timer timer) {
+    _hintTimer = Timer.periodic(const Duration(seconds: 7), (Timer timer) {
       if (mounted && !_isLocked) {
         setState(() {
           _currentHintIndex = (_currentHintIndex + 1) % _searchHints.length;
@@ -135,6 +136,15 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final MainNavProvider navProvider = context.watch<MainNavProvider>();
+    if (navProvider.aiSheetClosedToken > _handledAiSheetClosedToken) {
+      _handledAiSheetClosedToken = navProvider.aiSheetClosedToken;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _isLocked = false);
+        _startTimer();
+      });
+    }
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
@@ -919,19 +929,63 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final TextEditingController actualCostCtrl = TextEditingController(
       text: planData['actual_cost']?.toString() ?? '',
     );
+    // ✅ 修复：兼容 AI 生成时可能用的多种字段名
     List<String> existingTags = <String>[];
-    if (planData['tags'] != null && planData['tags'] is List) {
-      existingTags = List<String>.from(planData['tags'] as List<dynamic>);
-    } else if (planData['tags'] == null) {
+    final dynamic rawTags = planData['tags'] ??
+        planData['trip_tags'] ??
+        planData['labels'] ??
+        planData['keywords'];
+    if (rawTags is List && rawTags.isNotEmpty) {
+      existingTags = rawTags
+          .map((dynamic e) => e.toString().trim())
+          .where((String e) => e.isNotEmpty)
+          .toList();
+    } else if (rawTags is String && rawTags.trim().isNotEmpty) {
+      // 有些 AI 返回逗号分隔字符串
+      existingTags = rawTags
+          .split(RegExp(r'[,，]'))
+          .map((String e) => e.trim())
+          .where((String e) => e.isNotEmpty)
+          .toList();
+    }
+    // 只在真正没有标签时才给默认值
+    if (existingTags.isEmpty) {
       existingTags = <String>['AI 定制', '专属'];
     }
     final TextEditingController tagsCtrl = TextEditingController(
       text: existingTags.join(', '),
     );
-    String selectedStartDateStr =
-        planData['start_date']?.toString().split('T')[0] ?? '';
-    String selectedEndDateStr =
-        planData['end_date']?.toString().split('T')[0] ?? '';
+    // ✅ 修复：优先从 model.startDate/endDate 读（已解析的真实DateTime）
+    // fallback 到 planData，确保 AI 导入的行程日期能正确回填
+    String selectedStartDateStr = (() {
+      // 先尝试 planData 里的原始字段
+      final String fromPlan =
+          (planData['start_date'] ?? planData['startDate'] ?? '')
+              .toString()
+              .split('T')[0]
+              .trim();
+      if (fromPlan.isNotEmpty && fromPlan != 'null') return fromPlan;
+      // fallback 到 model 的 DateTime 字段（卡片显示用的就是这个）
+      final DateTime d = itinerary.startDate;
+      if (d.year > 2000) {
+        return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      }
+      return '';
+    })();
+
+    String selectedEndDateStr = (() {
+      final String fromPlan =
+          (planData['end_date'] ?? planData['endDate'] ?? '')
+              .toString()
+              .split('T')[0]
+              .trim();
+      if (fromPlan.isNotEmpty && fromPlan != 'null') return fromPlan;
+      final DateTime d = itinerary.endDate;
+      if (d.year > 2000) {
+        return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      }
+      return '';
+    })();
 
     showModalBottomSheet<void>(
       context: context,
@@ -1069,7 +1123,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                               .where((String e) => e.isNotEmpty)
                               .toList();
 
-                          await Provider.of<ItineraryProvider>(
+                          // ✅ 先关闭弹窗，用户感知零延迟
+                          Navigator.pop(context);
+                          
+                          // ✅ 后台异步执行，不 await
+                          Provider.of<ItineraryProvider>(
                             context,
                             listen: false,
                           ).updateItineraryBasicInfo(
@@ -1086,7 +1144,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           );
 
                           if (context.mounted) {
-                            Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('✅ 行程信息已更新')),
                             );

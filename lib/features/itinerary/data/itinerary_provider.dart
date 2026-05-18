@@ -400,6 +400,20 @@ class ItineraryProvider extends ChangeNotifier {
     return uuidRegex.hasMatch(id);
   }
 
+  /// 将 model 映射为数据库顶层字段（不含 id/user_id，由调用方按需附加）
+  Map<String, dynamic> _modelToDbRow(ItineraryModel model, {int? overrideVersion}) {
+    String _fmt(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    return <String, dynamic>{
+      'title': model.title,
+      'start_date': _fmt(model.startDate),
+      'end_date': _fmt(model.endDate),
+      'destination_city': model.destinationCity,
+      'plan_data': model.planData,
+      'version': overrideVersion ?? model.version,
+    };
+  }
+
   Future<void> _persistMyItinerariesList() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -452,7 +466,14 @@ class ItineraryProvider extends ChangeNotifier {
 
   void _upsertMyItinerary(ItineraryModel model) {
     final String mid = model.id;
-    final int idx = _myItineraries.indexWhere((ItineraryModel e) => e.id == mid);
+    // ✅ 同时按 id 和 remoteId 查找，防止 local_xxx 和 uuid 同时存在
+    final int idx = _myItineraries.indexWhere(
+      (ItineraryModel e) =>
+          e.id == mid ||
+          (model.remoteId != null &&
+              model.remoteId!.isNotEmpty &&
+              e.remoteId == model.remoteId),
+    );
     if (idx >= 0) {
       _myItineraries[idx] = model;
     } else {
@@ -637,6 +658,21 @@ class ItineraryProvider extends ChangeNotifier {
 
   /// 删除行程：本地列表 + 缓存；已登录且 id 为 UUID 时同步删除云端 [_tableName] 行。
   Future<void> deleteItinerary(String id) async {
+    // ✅ 修复：先从内存找到完整 model，取出 remoteId 备用
+    // 因为传入的 id 可能是 local_xxx，但 model.remoteId 才是真实的数据库 UUID
+    ItineraryModel? target;
+    try {
+      target = _myItineraries.firstWhere(
+        (ItineraryModel e) => e.id == id,
+        orElse: () => _myItineraries.firstWhere(
+          (ItineraryModel e) => e.remoteId == id,
+        ),
+      );
+    } catch (_) {
+      target = null;
+    }
+    final String? cloudId = target?.remoteId;  // 真实数据库 UUID
+    
     _myItineraries.removeWhere((ItineraryModel e) => e.id == id);
     if (_activeItinerary?.id == id) {
       _activeItinerary =
@@ -664,13 +700,24 @@ class ItineraryProvider extends ChangeNotifier {
     await _persistMyItinerariesList();
 
     final String? userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId != null && _isValidUuid(id)) {
+    // ✅ 优先用 remoteId（真实 UUID），fallback 到传入的 id（兼容已有 UUID 行程）
+    final String? deleteTargetId =
+        (cloudId != null && _isValidUuid(cloudId)) ? cloudId :
+        (_isValidUuid(id) ? id : null);
+    
+    if (userId != null && deleteTargetId != null) {
       try {
-        await Supabase.instance.client.from(_tableName).delete().eq('id', id);
-        debugPrint('✅ 行程已从云端彻底删除');
+        await Supabase.instance.client
+            .from(_tableName)
+            .delete()
+            .eq('id', deleteTargetId)
+            .eq('user_id', userId);  // ✅ 加 user_id 二次校验，防止误删他人数据
+        debugPrint('✅ 行程已从云端彻底删除: $deleteTargetId');
       } catch (e) {
         debugPrint('⚠️ 云端删除失败: $e');
       }
+    } else {
+      debugPrint('ℹ️ 本地行程（无云端 UUID），仅删除本地缓存');
     }
   }
 
@@ -978,15 +1025,9 @@ class ItineraryProvider extends ChangeNotifier {
           .limit(1);
       if (rows.isNotEmpty && rows.first is Map<String, dynamic>) {
         final Map<String, dynamic> map = rows.first as Map<String, dynamic>;
+        // ✅ 修复：直接传整个 map，与 loadMyItineraries 保持一致，不会漏字段
         final ItineraryModel model = sanitizeItineraryImages(
-          ItineraryModel.fromJson(<String, dynamic>{
-          'id': map['id'],
-          'title': map['title'],
-          'start_date': map['start_date'],
-          'end_date': map['end_date'],
-          'plan_data': map['plan_data'],
-          'created_at': map['created_at'],
-          }),
+          ItineraryModel.fromJson(map),
         );
         _currentItinerary = model;
         _activeItinerary = model;
@@ -1014,15 +1055,11 @@ class ItineraryProvider extends ChangeNotifier {
       return null;
     }
     
+    // ✅ 使用辅助方法构建数据库字段
     final Map<String, dynamic> data = <String, dynamic>{
       'user_id': userId,                                          // ✅ 修复核心：写入 user_id
-      'title': model.title,
-      'start_date': model.startDate.toIso8601String(),
-      'end_date': model.endDate.toIso8601String(),
-      'destination_city': model.destinationCity,                  // ✅ 同步写入 destination_city
-      'plan_data': model.planData,
+      ..._modelToDbRow(model),
       'created_at': (model.createdAt ?? DateTime.now()).toIso8601String(),
-      'version': model.version,
     };
     
     // 有合法 UUID 则 upsert（防止重复插入）；否则 insert 让数据库生成新 id
@@ -1059,10 +1096,17 @@ class ItineraryProvider extends ChangeNotifier {
       // ✅ 接收云端返回的带 remoteId 的新 model
       final ItineraryModel? savedModel = await saveToSupabase(model);
       if (savedModel != null && savedModel.remoteId != model.remoteId) {
+        // ✅ 关键修复：云端分配了新 UUID，旧的 local_xxx 条目必须先移除
+        // 否则 _upsertMyItinerary(savedModel) 用 uuid-yyy 找不到 local_xxx，会再 add 一条
+        if (model.remoteId == null || !_isValidUuid(model.remoteId!)) {
+          // 旧条目是本地占位 ID，直接按旧 id 删掉
+          _myItineraries.removeWhere((ItineraryModel e) => e.id == model.id);
+        }
+        
         // remoteId 有变化，用云端版本覆盖内存和本地缓存
         _currentItinerary = savedModel;
         _activeItinerary = savedModel;
-        _upsertMyItinerary(savedModel);
+        _upsertMyItinerary(savedModel);  // 此时列表里没有旧条目，安全 add
         await _saveToLocal(savedModel);
         await _persistMyItinerariesList();
         notifyListeners();
@@ -1170,8 +1214,8 @@ class ItineraryProvider extends ChangeNotifier {
         final List<dynamic> retryResponse = await _supabase
             .from(_tableName)
             .update(<String, dynamic>{
-              'plan_data': sanitizedPlanData,
-              'version': retryVersion,
+              ..._modelToDbRow(base, overrideVersion: retryVersion),
+              'plan_data': sanitizedPlanData,  // 覆盖为 sanitized 版本
             })
             .eq('id', targetId)
             .eq('version', cloudVersion)
@@ -1202,8 +1246,8 @@ class ItineraryProvider extends ChangeNotifier {
       final List<dynamic> response = await _supabase
           .from(_tableName)
           .update(<String, dynamic>{
-            'plan_data': sanitizedPlanData,
-            'version': nextVersion,
+            ..._modelToDbRow(base, overrideVersion: nextVersion),
+            'plan_data': sanitizedPlanData,  // 覆盖为 sanitized 版本
           })
           .eq('id', targetId)
           .eq('version', cloudVersion)
@@ -1289,6 +1333,7 @@ class ItineraryProvider extends ChangeNotifier {
   }
 
   // 更新行程的基础信息（标题、地点、日期、标签、预算）
+  // ✅ 乐观更新：立即更新 UI，后台异步持久化，不阻塞调用方
   Future<void> updateItineraryBasicInfo({
     required String id,
     required String newTitle,
@@ -1307,14 +1352,8 @@ class ItineraryProvider extends ChangeNotifier {
     final Map<String, dynamic> updatedPlanData = Map<String, dynamic>.from(
       oldItinerary.planData,
     );
-    updatedPlanData['start_date'] = newStartDate;
-    updatedPlanData['end_date'] = newEndDate;
-    updatedPlanData['estimated_budget_per_person'] = newBudget;
-    updatedPlanData['actual_cost'] = newActualCost;
-    updatedPlanData['tags'] = newTags;
-    updatedPlanData['destination_city'] = newDestination;
-    updatedPlanData['destinationCity'] = newDestination;
 
+    // 2. 先解析日期
     DateTime parsedStartDate = oldItinerary.startDate;
     if (newStartDate.trim().isNotEmpty) {
       parsedStartDate = DateTime.tryParse(newStartDate) ?? oldItinerary.startDate;
@@ -1329,17 +1368,32 @@ class ItineraryProvider extends ChangeNotifier {
       parsedEndDate = parsedStartDate.add(tripDuration);
     }
 
-    // 2. 重组新的 Model
-    final ItineraryModel updatedItinerary = sanitizeItineraryImages(
-      oldItinerary.copyWith(
-        title: newTitle,
-        startDate: _toDayStart(parsedStartDate),
-        endDate: _toDayStart(parsedEndDate),
-        planData: updatedPlanData,
-      ),
+    // 3. 用解析后的格式统一写入 planData（同时写多个别名保证兼容）
+    final String normalizedStart =
+        '${parsedStartDate.year}-${parsedStartDate.month.toString().padLeft(2, '0')}-${parsedStartDate.day.toString().padLeft(2, '0')}';
+    final String normalizedEnd =
+        '${parsedEndDate.year}-${parsedEndDate.month.toString().padLeft(2, '0')}-${parsedEndDate.day.toString().padLeft(2, '0')}';
+
+    updatedPlanData['start_date'] = normalizedStart;
+    updatedPlanData['startDate'] = normalizedStart;   // 兼容别名
+    updatedPlanData['end_date'] = normalizedEnd;
+    updatedPlanData['endDate'] = normalizedEnd;         // 兼容别名
+    updatedPlanData['estimated_budget_per_person'] = newBudget;
+    updatedPlanData['actual_cost'] = newActualCost;
+    updatedPlanData['tags'] = newTags;
+    updatedPlanData['trip_tags'] = newTags;   // ✅ 同步写别名，保证 AI 字段也更新
+    updatedPlanData['destination_city'] = newDestination;
+    updatedPlanData['destinationCity'] = newDestination;
+
+    // 2. 重组新的 Model（不再调用 sanitizeItineraryImages 防止图片被误删）
+    final ItineraryModel updatedItinerary = oldItinerary.copyWith(
+      title: newTitle,
+      startDate: _toDayStart(parsedStartDate),
+      endDate: _toDayStart(parsedEndDate),
+      planData: updatedPlanData,
     );
 
-    // 3. 乐观更新 UI
+    // 3. ✅ 乐观更新 UI —— 立即生效，UI 无需等待网络
     _myItineraries[index] = updatedItinerary;
     if (_activeItinerary?.id == id) {
       _activeItinerary = updatedItinerary;
@@ -1349,35 +1403,46 @@ class ItineraryProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    // 4. 持久化到本地和云端
+    // 4. ✅ 后台异步持久化，不阻塞调用方
     final String? userId = Supabase.instance.client.auth.currentUser?.id;
     final String fallbackUserId = userId ?? 'guest';
 
-    try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+    // 本地持久化（后台，不 await）
+    SharedPreferences.getInstance().then((SharedPreferences prefs) {
       final String freshJsonStr = jsonEncode(
         _myItineraries.map((ItineraryModel e) => e.toJson()).toList(),
       );
-      await prefs.setString('my_itineraries_cache_$fallbackUserId', freshJsonStr);
+      prefs.setString('my_itineraries_cache_$fallbackUserId', freshJsonStr);
       if (_currentItinerary?.id == id) {
-        await prefs.setString(_prefsKey, jsonEncode(updatedItinerary.toJson()));
+        prefs.setString(_prefsKey, jsonEncode(updatedItinerary.toJson()));
       }
-    } catch (e) {
-      debugPrint('本地缓存更新失败: $e');
-    }
+    }).catchError((Object e) => debugPrint('本地缓存更新失败: $e'));
 
-    if (userId != null && _isValidUuid(id)) {
-      try {
-        await Supabase.instance.client.from(_tableName).update(<String, dynamic>{
-          'title': newTitle,
-          'start_date': newStartDate,
-          'destination_city': newDestination,
-          'plan_data': updatedPlanData,
-        }).eq('id', id);
-      } catch (e) {
-        debugPrint('云端更新行程信息失败: $e');
-      }
+    // 云端持久化（后台，不 await）
+    // ✅ 关键修复：优先用 oldItinerary.remoteId 作为云端主键
+    // 传入的 id 可能是 local_xxx（AI导入行程在 saveToSupabase 返回前的状态）
+    final String? cloudId =
+        (oldItinerary.remoteId != null && _isValidUuid(oldItinerary.remoteId!))
+            ? oldItinerary.remoteId
+            : (_isValidUuid(id) ? id : null);
+    
+    if (userId != null && cloudId != null) {
+      Supabase.instance.client.from(_tableName).update(<String, dynamic>{
+        'title': newTitle,
+        'start_date': '${parsedStartDate.year}-${parsedStartDate.month.toString().padLeft(2, '0')}-${parsedStartDate.day.toString().padLeft(2, '0')}',
+        'end_date': '${parsedEndDate.year}-${parsedEndDate.month.toString().padLeft(2, '0')}-${parsedEndDate.day.toString().padLeft(2, '0')}',
+        'destination_city': newDestination,
+        'plan_data': updatedPlanData,   // ✅ 包含 tags / budget / actual_cost 全部字段
+        'version': updatedItinerary.version,
+      }).eq('id', cloudId).eq('user_id', userId).then((_) {
+        debugPrint('✅ 云端行程信息更新成功（含标签）: cloudId=$cloudId');
+      }).catchError((Object e) {
+        debugPrint('⚠️ 云端更新失败（本地已保存）: $e');
+      });
+    } else {
+      debugPrint('ℹ️ 无有效云端 UUID，仅本地保存 (id=$id, remoteId=${oldItinerary.remoteId})');
     }
+    // ✅ 方法在此立即返回，UI 已刷新，弹窗可以立即关闭
   }
 
   ItineraryModel sanitizeItineraryImages(ItineraryModel model) {
@@ -1385,13 +1450,19 @@ class ItineraryProvider extends ChangeNotifier {
       final Map<String, dynamic> next = Map<String, dynamic>.from(activity);
       final List<dynamic> imagesRaw =
           (next['images'] as List<dynamic>?) ?? <dynamic>[];
+      // ✅ 只过滤无效 URL，不删除任何用户图片
       final List<dynamic> cleaned = imagesRaw
           .map((dynamic e) => e.toString().trim())
-          .where((String e) => e.isNotEmpty)
+          .where((String url) {
+            if (url.isEmpty) return false;
+            final Uri? uri = Uri.tryParse(url);
+            return uri != null &&
+                (uri.scheme == 'http' || uri.scheme == 'https') &&
+                uri.host.isNotEmpty;
+          })
           .toList(growable: true);
-      if (cleaned.length > 1) {
-        cleaned.removeAt(0);
-      }
+      // ✅ 删除了 if (cleaned.length > 1) { cleaned.removeAt(0); } 
+      // 原逻辑会误删用户上传的第一张图片
       next['images'] = cleaned;
       if (cleaned.isNotEmpty) {
         next['imageUrl'] = cleaned.first.toString();
