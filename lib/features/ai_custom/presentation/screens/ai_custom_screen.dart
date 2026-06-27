@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:gonow/core/constants/ai_config.dart';
+import 'package:gonow/core/ai/react_planning_agent.dart';
 import 'package:gonow/core/services/amap_service.dart';
 import 'package:gonow/core/validation/spatial_temporal_validator.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
@@ -602,39 +603,81 @@ $currentPlanJson
       final String? currentPlanJson = currentPlanData != null
           ? jsonEncode(currentPlanData)
           : null;
-      final http.Response response = await client.post(
-        url,
-        headers: <String, String>{
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $normalizedApiKey',
-        },
-        body: jsonEncode(<String, dynamic>{
-          'model': AiConfig.deepseekModel,
-          'messages': <Map<String, String>>[
-            <String, String>{
-              'role': 'system',
-              'content': _buildSystemPrompt(currentPlanJson, widget.source),
-            },
-            ...history,
-            <String, String>{'role': 'user', 'content': enrichedInput},
-          ],
-        }),
+      final String systemPrompt = _buildSystemPrompt(
+        currentPlanJson,
+        widget.source,
       );
-
-      if (response.statusCode == 200) {
-        final String decodedBody = utf8.decode(response.bodyBytes);
-        final Map<String, dynamic> data =
-            jsonDecode(decodedBody) as Map<String, dynamic>;
-        final List<dynamic>? choices = data['choices'] as List<dynamic>?;
-        String? aiText;
-        if (choices != null && choices.isNotEmpty) {
-          final Map<String, dynamic>? firstChoice =
-              choices.first as Map<String, dynamic>?;
-          final Map<String, dynamic>? message =
-              firstChoice?['message'] as Map<String, dynamic>?;
-          aiText = message?['content'] as String?;
+      String? aiText;
+      if (ReactPlanningAgent.isPlanningIntent(userText)) {
+        final List<Map<String, dynamic>> historyForAgent = history
+            .map(
+              (Map<String, String> message) => <String, dynamic>{
+                'role': message['role'],
+                'content': message['content'],
+              },
+            )
+            .toList(growable: false);
+        final ReactAgentResult agentResult = await ReactPlanningAgent.run(
+          systemPrompt: systemPrompt,
+          messages: historyForAgent,
+          userInput: enrichedInput,
+          client: client,
+          onStep: (AgentStep step) {
+            debugPrint('ReAct: ${step.toolName}(${step.argsJson})');
+          },
+        );
+        aiText = agentResult.finalText;
+        if (agentResult.isFallback) {
+          debugPrint('ReAct fallback, steps: ${agentResult.steps.length}');
         }
-        if (aiText != null && aiText.trim().isNotEmpty) {
+      } else {
+        final http.Response response = await client.post(
+          url,
+          headers: <String, String>{
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $normalizedApiKey',
+          },
+          body: jsonEncode(<String, dynamic>{
+            'model': AiConfig.deepseekModel,
+            'messages': <Map<String, String>>[
+              <String, String>{'role': 'system', 'content': systemPrompt},
+              ...history,
+              <String, String>{'role': 'user', 'content': enrichedInput},
+            ],
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          final String decodedBody = utf8.decode(response.bodyBytes);
+          final Map<String, dynamic> data =
+              jsonDecode(decodedBody) as Map<String, dynamic>;
+          final List<dynamic>? choices = data['choices'] as List<dynamic>?;
+          if (choices != null && choices.isNotEmpty) {
+            final Map<String, dynamic>? firstChoice =
+                choices.first as Map<String, dynamic>?;
+            final Map<String, dynamic>? message =
+                firstChoice?['message'] as Map<String, dynamic>?;
+            aiText = message?['content'] as String?;
+          }
+        } else {
+          final String err =
+              'HTTP ${response.statusCode}: ${response.reasonPhrase ?? 'unknown'}';
+          final String shortErr = err.length > 20 ? err.substring(0, 20) : err;
+          if (mounted) {
+            setState(() {
+              _messages.add(
+                ChatMessage(
+                  role: 'ai',
+                  text: '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
+                  isError: true,
+                ),
+              );
+            });
+          }
+          return;
+        }
+      }
+      if (aiText != null && aiText.trim().isNotEmpty) {
           String chatText = aiText;
           String jsonString = '';
           Map<String, dynamic>? parsedItinerary;
@@ -712,22 +755,6 @@ $currentPlanJson
               );
             });
           }
-        }
-      } else {
-        final String err =
-            'HTTP ${response.statusCode}: ${response.reasonPhrase ?? 'unknown'}';
-        final String shortErr = err.length > 20 ? err.substring(0, 20) : err;
-        if (mounted) {
-          setState(() {
-            _messages.add(
-              ChatMessage(
-                role: 'ai',
-                text: '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
-                isError: true,
-              ),
-            );
-          });
-        }
       }
     } catch (e) {
       if (_activeRequestId != requestId) {
