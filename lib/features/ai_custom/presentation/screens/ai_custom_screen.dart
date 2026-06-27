@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:gonow/core/constants/ai_config.dart';
 import 'package:gonow/core/services/amap_service.dart';
+import 'package:gonow/core/validation/spatial_temporal_validator.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +81,8 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
       isError: false,
     ),
   ];
+  final Map<int, ValidationReport> _validationReports =
+      <int, ValidationReport>{};
 
   // 常量控制最大保留条数
   static const int _maxHistoryCount = 50;
@@ -537,6 +540,8 @@ $currentPlanJson
     FocusScope.of(context).unfocus();
     _textController.clear();
     final MainNavProvider navProvider = context.read<MainNavProvider>();
+    final ItineraryProvider itineraryProvider = context
+        .read<ItineraryProvider>();
     navProvider.setAiPlanning(true);
     setState(() {
       _messages.add(ChatMessage(role: 'user', text: userText));
@@ -591,8 +596,6 @@ $currentPlanJson
             },
           )
           .toList(growable: false);
-      final ItineraryProvider itineraryProvider = context
-          .read<ItineraryProvider>();
       final Map<String, dynamic>? currentPlanData =
           itineraryProvider.activeItinerary?.planData ??
           itineraryProvider.currentItinerary?.planData;
@@ -654,6 +657,26 @@ $currentPlanJson
                 debugPrint('JSON 解析失败: $e');
               }
             }
+          }
+          if (parsedItinerary != null) {
+            final int capturedIdx = _messages.length;
+            final Map<String, dynamic> itineraryForValidation =
+                parsedItinerary;
+            unawaited(() async {
+              try {
+                final ValidationReport report =
+                    await SpatialTemporalValidator.validate(
+                      itineraryForValidation,
+                    );
+                if (mounted) {
+                  setState(() {
+                    _validationReports[capturedIdx] = report;
+                  });
+                }
+              } catch (e) {
+                debugPrint('时空校验失败: $e');
+              }
+            }());
           }
           final String finalChatText = chatText.trim().isEmpty
               ? '我已经准备好继续帮你优化路线。'
@@ -923,6 +946,10 @@ $currentPlanJson
                   final int msgIndex = hasHiddenHistory && index > 1
                       ? index - 1
                       : index;
+                  final int sourceMessageIndex =
+                      hasHiddenHistory && index > 1
+                      ? _messages.length - (displayThreshold - 1) + msgIndex - 1
+                      : msgIndex;
                   final ChatMessage message = renderMessages[msgIndex];
                   if (message.role == 'system') {
                     return _buildSystemHint(message.text);
@@ -939,6 +966,7 @@ $currentPlanJson
                     text,
                     isError: isError,
                     itineraryData: itineraryData,
+                    messageIndex: sourceMessageIndex,
                   );
                 },
               ),
@@ -1109,6 +1137,7 @@ $currentPlanJson
     String text, {
     required bool isError,
     Map<String, dynamic>? itineraryData,
+    int? messageIndex,
   }) {
     final String title = (itineraryData?['title'] ?? '专属行程草案').toString();
     final List<dynamic> days =
@@ -1156,6 +1185,11 @@ $currentPlanJson
                         ),
                       ),
                       const SizedBox(height: 10),
+                      if (messageIndex != null &&
+                          _validationReports.containsKey(messageIndex))
+                        _buildValidationBanner(
+                          _validationReports[messageIndex]!,
+                        ),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton(
@@ -1178,6 +1212,78 @@ $currentPlanJson
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildValidationBanner(ValidationReport report) {
+    final Color accentColor;
+    final IconData icon;
+    final String title;
+    if (report.score >= 80) {
+      accentColor = Colors.green;
+      icon = Icons.check_circle_outline;
+      title = '行程质量 ${report.score}/100';
+    } else if (report.score >= 60) {
+      accentColor = Colors.orange;
+      icon = Icons.warning_amber_rounded;
+      title = '行程质量 ${report.score}/100 · 有 ${report.issues.length} 处需注意';
+    } else {
+      accentColor = Colors.red;
+      icon = Icons.error_outline;
+      title = '行程质量 ${report.score}/100 · 建议调整后导入';
+    }
+    final List<ValidationIssue> visibleIssues = report.issues
+        .take(3)
+        .toList(growable: false);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: accentColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: accentColor.withValues(alpha: 0.22)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(icon, color: accentColor, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            for (final ValidationIssue issue in visibleIssues)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '• ${issue.message}',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                ),
+              ),
+            if (report.issues.length > 3)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '…共 ${report.issues.length} 条提示',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                ),
+              ),
           ],
         ),
       ),
