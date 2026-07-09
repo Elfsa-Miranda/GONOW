@@ -48,8 +48,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # 🚨 核心修复：资源声明
-  # 注意：assets 前面必须有 2 个空格，- 前面必须有 4 个空格
   assets:
     - assets/china.json
     - assets/world.json
