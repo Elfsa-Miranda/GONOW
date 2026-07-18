@@ -40,23 +40,27 @@
 
 5.手账有两种展示形式：第一种是时间轴模式，用户可直接导入之前的行程一键生成手账。AI会根据用户在行程中记录的照片与备注，结合景点信息润色文案生成行程手账。若想生成未在app内进行规划过的行程可自行上传照片并ai辅助生成手账。AI可润色内容。
 
-<img width="400" height="845" alt="_-ezgif com-optimize (1)" src="https://github.com/user-attachments/assets/141e52f9-eb32-4de2-82b6-40d3e2ec6e31" />
+
+
 
 
 6.手账：第二种是照片池模式，用于不想精细化记录时间信息，以瀑布流的形式直观优美地展示多张照片
 
 
-<img width="400" height="845" alt="2_-ezgif com-optimize" src="https://github.com/user-attachments/assets/d1e26cdb-ec9c-4a43-b6e3-b529ae475f40" />
+
+
 
 
 7.旅行账本：记录旅行开销并一键结算。十分方便高效地进行资产管理
 
-<img width="300" height="634" alt="旅行账本_" src="https://github.com/user-attachments/assets/60ecadbd-b7c5-4ca4-bd1c-5007399476c9" />
+<img width="300" height="634" alt="旅行账本_" src="https://github.com/user-attachments/assets/3ec410f8-1d24-45e9-ac83-31043d25f6c9" />
+
 
 
 8.足迹地图：可点亮踏足过的地方，记录在中国/世界旅行的足迹
 
-<img width="300" height="634" alt="足迹地图_" src="https://github.com/user-attachments/assets/990628a9-2d2b-4a7b-9223-e5f80745f397" />
+<img width="300" height="634" alt="足迹地图_" src="https://github.com/user-attachments/assets/92630fee-be15-4624-8014-35c26d70a7bc" />
+
 
 
 
