@@ -1,4 +1,4 @@
-<img width="500" height="1057" alt="地图2_" src="https://github.com/user-attachments/assets/04d24e67-9748-437e-bbff-1ff07c83d535" />
+
 # **🌍 GoNow 寻迹**
 
 **「 让每次出发都有迹可循 / Never lose track of your journey 」**
