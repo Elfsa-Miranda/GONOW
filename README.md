@@ -19,7 +19,9 @@
 
 2.入乡随俗：用于科普世界各地的法律习俗冷知识      免签直飞：展示所有对中国免签的国家，让旅行说走就走
 
-<img width="300" height="634" alt="入乡随俗_" src="https://github.com/user-attachments/assets/e9d228b2-0e9a-4ed2-836b-dd22d62966ae" />
+<img width="300" height="634" alt="入乡随俗_" src="https://github.com/user-attachments/assets/62ff3e0a-23c5-4857-86ab-b6524fa91691" />
+<img width="377" height="795" alt="image" src="https://github.com/user-attachments/assets/557ed0c4-7d94-4954-af6d-f059cb565a4e" />
+
 
 
 3.行程：从我的行程卡片中选取一个进入行程。在**规划模式**中AI会根据行程搜集相关信息，总结并列出三个模块用于行程前的准备与提醒，并且粗略列出每一天的景点安排，此模式下的地图景点之间的连线是直连飞线模式，清晰明了地展示景点之间的游玩顺序与位置。点击景点坐标可以在地图上展示景点粗略信息，并且地图下方自动跳转到对应的景点卡片处。滑动行程时上方地图会自动追踪当前卡片并跳转到对应景点处展示；
