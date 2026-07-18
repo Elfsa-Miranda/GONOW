@@ -20,7 +20,8 @@
 2.入乡随俗：用于科普世界各地的法律习俗冷知识      免签直飞：展示所有对中国免签的国家，让旅行说走就走
 
 <img width="300" height="634" alt="入乡随俗_" src="https://github.com/user-attachments/assets/62ff3e0a-23c5-4857-86ab-b6524fa91691" />
-<img width="377" height="795" alt="image" src="https://github.com/user-attachments/assets/557ed0c4-7d94-4954-af6d-f059cb565a4e" />
+<img width="300" height="634" alt="免签直飞" src="https://github.com/user-attachments/assets/b9d09b14-b052-490d-b6c1-a17ee74a8fe2" />
+
 
 
 
@@ -29,6 +30,8 @@
 在**行程中模式**中地图之间的连线切换为实际的路线，真实展示具体如何穿梭于各景点之间，行程卡片详细展示各景点的开放时间、预计游玩时间、游玩攻略与景点标签。卡片设计：用户可上传自己在景点记录的照片，并且记录自己的所见所闻，这并非收集信息作为未来的信息库用于推荐给他人游玩，而是用于后续为用户生成独特专属的旅游手账。
 
 <img width="400" height="845" alt="_-ezgif com-optimize" src="https://github.com/user-attachments/assets/73a2e968-273a-4abf-82f2-1ae97f29e4b4" />
+
+
 
 
 4. 行程可分享给同伴进行多人编辑。点击行程卡片的标记到达地图景点坐标也会随之暗淡。新添加的行程只需填入景点名称，时间可选填，AI可一键添加景点背景信息并进行安排。未经过AI润色的景点会自动高亮。
