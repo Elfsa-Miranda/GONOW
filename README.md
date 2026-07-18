@@ -1,4 +1,4 @@
-
+<img width="500" height="1057" alt="地图2_" src="https://github.com/user-attachments/assets/04d24e67-9748-437e-bbff-1ff07c83d535" />
 # **🌍 GoNow 寻迹**
 
 **「 让每次出发都有迹可循 / Never lose track of your journey 」**
@@ -29,17 +29,19 @@
 
 在**行程中模式**中地图之间的连线切换为实际的路线，真实展示具体如何穿梭于各景点之间，行程卡片详细展示各景点的开放时间、预计游玩时间、游玩攻略与景点标签。卡片设计：用户可上传自己在景点记录的照片，并且记录自己的所见所闻，这并非收集信息作为未来的信息库用于推荐给他人游玩，而是用于后续为用户生成独特专属的旅游手账。
 
-<img width="400" height="845" alt="_-ezgif com-optimize" src="https://github.com/user-attachments/assets/73a2e968-273a-4abf-82f2-1ae97f29e4b4" />
 
-
-
+<img width="300" height="634" alt="地图_" src="https://github.com/user-attachments/assets/26ec70ea-badd-4c9d-bd95-621b71613df9" />
 
 4. 行程可分享给同伴进行多人编辑。点击行程卡片的标记到达地图景点坐标也会随之暗淡。新添加的行程只需填入景点名称，时间可选填，AI可一键添加景点背景信息并进行安排。未经过AI润色的景点会自动高亮。
-<img width="400" height="845" alt="地图2_" src="https://github.com/user-attachments/assets/a390e28e-b11b-425b-94a3-b0b8e6043c14" />
+
+
+<img width="500" height="1057" alt="地图2_" src="https://github.com/user-attachments/assets/0e4753c1-6357-4984-a58d-0afc0c4b845e" />
 
 
 5.手账有两种展示形式：第一种是时间轴模式，用户可直接导入之前的行程一键生成手账。AI会根据用户在行程中记录的照片与备注，结合景点信息润色文案生成行程手账。若想生成未在app内进行规划过的行程可自行上传照片并ai辅助生成手账。AI可润色内容。
 
+
+<img width="300" height="634" alt="手账" src="https://github.com/user-attachments/assets/6b404132-f1c1-4715-9748-2be416adbeb2" />
 
 
 
@@ -47,6 +49,7 @@
 6.手账：第二种是照片池模式，用于不想精细化记录时间信息，以瀑布流的形式直观优美地展示多张照片
 
 
+<img width="294" height="621" alt="手账2" src="https://github.com/user-attachments/assets/78731d75-2779-4f3f-a10c-eda44c532da6" />
 
 
 
