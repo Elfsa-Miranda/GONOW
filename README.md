@@ -13,7 +13,8 @@
 
 1.盲盒功能：点击抽取周末/国际盲盒随机旅游目的地，并且一键询问AI规划旅游路线。规划若有不满意之处可继续询问AI进行改进，直至满意即可一键导入行程。给AI的系统prompt经精心设计，综合考虑多因素规划路线，实现住宿-景点-交通-餐饮的全面高质量安排。
 
-<img width="300" height="634" alt="盲盒" src="https://github.com/user-attachments/assets/897ca344-0ae7-49d0-8ea2-0d8c683ee1b2" />
+<img width="300" height="634" alt="盲盒" src="https://github.com/user-attachments/assets/c581ff49-67d0-4e0a-8ee3-7b39d4d9de6c" />
+
 
 
 2.入乡随俗：用于科普世界各地的法律习俗冷知识      免签直飞：展示所有对中国免签的国家，让旅行说走就走
