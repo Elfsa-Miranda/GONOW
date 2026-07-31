@@ -396,6 +396,29 @@ function Set-TaskStatus {
   Write-AtomicJson -LiteralPath $StatusPath -Value $Record
 }
 
+function Set-ReadyForReviewStatus {
+  param([Parameter(Mandatory = $true)][string]$EvidenceSha256)
+  $StatusPath = Join-Path $script:RepositoryRoot ([string]$script:Task.status_file)
+  if (-not (Test-Path -LiteralPath $StatusPath -PathType Leaf)) {
+    Set-TaskStatus -Status 'ready_for_review' -EvidenceSha256 $EvidenceSha256
+    return
+  }
+  $ExpectedRecordHash = Get-Sha256 -LiteralPath $StatusPath
+  $Record = Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  if ([string]$Record.status -cne 'ready_for_review') {
+    Set-TaskStatus -Status 'ready_for_review' -EvidenceSha256 $EvidenceSha256
+    return
+  }
+  if ((Get-Sha256 -LiteralPath $StatusPath) -cne $ExpectedRecordHash) { throw 'Task status CAS conflict during evidence refresh' }
+  $Record.head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $Record.updated_at = [DateTimeOffset]::Now.ToString('o')
+  $Record.evidence_sha256 = $EvidenceSha256
+  $Record.evidence_paths = [object[]]@($script:GatePath.Replace($script:RepositoryRoot + '\', '').Replace('\', '/'))
+  $Record.blocker_path = $null
+  $Record.transition_reason = 'task-gate:evidence-refresh-without-status-transition'
+  Write-AtomicJson -LiteralPath $StatusPath -Value $Record
+}
+
 function New-PassedResult {
   param([object]$Checks)
   return [ordered]@{ status = 'passed'; reason_code = ''; checks = $Checks }
@@ -3835,17 +3858,17 @@ try {
     $ModeState = Get-P01GateModeState -IncludeVerify
     if ([bool]$Projection.local_projection_passed -and [bool]$ModeState.passed) {
       Write-P01LocalProjectionEvidence -ReadyForReview $true
-      Set-TaskStatus -Status 'ready_for_review' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
+      Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
     }
   } elseif ($TaskId -ceq 'TASK-P00-990' -and $ExitCode -eq 0) {
     $Projection = Get-P00LocalProjection
     $ModeState = Get-P00GateModeState -IncludeVerify
     if ([bool]$Projection.local_projection_passed -and [bool]$ModeState.passed) {
       Write-P00LocalProjectionEvidence -ReadyForReview $true
-      Set-TaskStatus -Status 'ready_for_review' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
+      Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
     }
   } elseif ($Mode -ceq 'Evidence' -and $ExitCode -eq 0) {
-    Set-TaskStatus -Status 'ready_for_review' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
+    Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
   } elseif ($ExitCode -ne 0 -and $Mode -ne 'BootstrapToolchainRevalidation') {
     $BlockerPath = Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode ([string]$Result.reason_code)
     Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath

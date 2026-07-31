@@ -89,4 +89,8 @@ if ($RunnerText -notmatch "TASK-P01-089" -or
     $RunnerText -notmatch "Phase 1 freezes contract/schema semantics and owns no implemented harness transition") {
   throw 'negative: P01-089 must archive its handoff without fabricating harness implementation'
 }
+if ($RunnerText -notmatch 'function Set-ReadyForReviewStatus' -or
+    $RunnerText -notmatch 'evidence-refresh-without-status-transition') {
+  throw 'negative: regenerated gate evidence must refresh the ready status hash without forging a status transition'
+}
 exit 0
