@@ -121,4 +121,9 @@ if ($RunnerText -notmatch 'test_32_secrets_provider' -or
     $RunnerText -notmatch 'harness-status-fragment.json') {
   throw 'negative: P02-002 must execute and bind the SecretsProvider S/I/D harness'
 }
+if ($RunnerText -notmatch 'function New-P02HarnessControlRecord' -or
+    $RunnerText -notmatch 'catalog_sha256=\$script:CatalogSha256' -or
+    $RunnerText -notmatch 'p02_003_auth_context_verification_failed') {
+  throw 'negative: Phase 2 Harness fragments and the P02-003 auth corpus must be schema-bound'
+}
 exit 0
