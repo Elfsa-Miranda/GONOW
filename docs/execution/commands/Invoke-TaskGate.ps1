@@ -27,6 +27,15 @@ function Get-GitObjectFormat {
 }
 
 function Get-PhaseBaseOid {
+  if ($null -ne $script:Task -and -not [string]::IsNullOrWhiteSpace([string]$script:Task.phase_runtime_manifest_path)) {
+    $ManifestPath = Join-Path $script:RepositoryRoot ([string]$script:Task.phase_runtime_manifest_path)
+    if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) {
+      $Manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+      if (-not [string]::IsNullOrWhiteSpace([string]$Manifest.phase_base_oid)) {
+        return [string]$Manifest.phase_base_oid
+      }
+    }
+  }
   if ([string]$script:Task.phase -ceq 'BOOT') {
     $ReceiptPath = Join-Path $script:CommonGitDirectory 'gonow-bootstrap\BOOT-001.native.json'
     if (Test-Path -LiteralPath $ReceiptPath -PathType Leaf) {
