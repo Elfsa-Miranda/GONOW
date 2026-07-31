@@ -1249,22 +1249,35 @@ function Write-P00LocalProjectionEvidence {
 function Get-P02TaskPathRules {
   $Exact = @()
   $Prefixes = @()
+  $DirectoryRules = @()
   foreach ($RawPath in @($script:Task.file_allowlist) + @($script:Task.evidence_outputs) + @([string]$script:Task.status_file)) {
     $Normalized = ([string]$RawPath).Replace('\','/')
     if ([string]::IsNullOrWhiteSpace($Normalized)) { continue }
     if ($Normalized.EndsWith('/')) { $Prefixes += $Normalized } else { $Exact += $Normalized }
   }
   foreach ($RawPath in @($script:Task.directory_allowlist)) {
-    $Normalized = ([string]$RawPath).Replace('\','/').TrimEnd('/') + '/'
-    if ($Normalized -ne '/') { $Prefixes += $Normalized }
+    $DirectoryPath = if ($RawPath -is [Collections.IDictionary]) { [string]$RawPath['path'] } else { [string]$RawPath.path }
+    $NameRegex = if ($RawPath -is [Collections.IDictionary]) { [string]$RawPath['name_regex'] } else { [string]$RawPath.name_regex }
+    $Normalized = $DirectoryPath.Replace('\','/').TrimEnd('/') + '/'
+    if ($Normalized -ne '/') {
+      $Prefixes += $Normalized
+      $DirectoryRules += [ordered]@{path=$Normalized;name_regex=$NameRegex}
+    }
   }
   $Prefixes += "docs/execution/evidence/phase-02/$($TaskId.Substring(5))/"
-  return [ordered]@{ exact=@($Exact|Sort-Object -Unique);prefixes=@($Prefixes|Sort-Object -Unique) }
+  return [ordered]@{ exact=@($Exact|Sort-Object -Unique);prefixes=@($Prefixes|Sort-Object -Unique);directory_rules=$DirectoryRules }
 }
 
 function Test-P02TaskPathAllowed {
   param([Parameter(Mandatory=$true)][string]$RelativePath,[Parameter(Mandatory=$true)][object]$Rules)
   if (@($Rules.exact) -contains $RelativePath) { return $true }
+  foreach ($DirectoryRule in @($Rules.directory_rules)) {
+    $Prefix=[string]$DirectoryRule.path
+    if($RelativePath.StartsWith($Prefix,[StringComparison]::Ordinal)){
+      $Leaf=$RelativePath.Substring($Prefix.Length)
+      return (-not $Leaf.Contains('/')) -and ($Leaf -cmatch [string]$DirectoryRule.name_regex)
+    }
+  }
   foreach ($Prefix in @($Rules.prefixes)) {
     if ($RelativePath.StartsWith([string]$Prefix,[StringComparison]::Ordinal)) { return $true }
   }
@@ -1283,6 +1296,14 @@ function Get-P02TaskDeliverableFiles {
       $Files += @(Get-ChildItem -LiteralPath $FullPath -Recurse -File | ForEach-Object {
         $_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/')
       })
+    }
+  }
+  foreach ($RawRule in @($script:Task.directory_allowlist)) {
+    $DirectoryPath=if($RawRule-is[Collections.IDictionary]){[string]$RawRule['path']}else{[string]$RawRule.path}
+    $NameRegex=if($RawRule-is[Collections.IDictionary]){[string]$RawRule['name_regex']}else{[string]$RawRule.name_regex}
+    $FullDirectory=Join-Path $script:RepositoryRoot $DirectoryPath
+    if(Test-Path -LiteralPath $FullDirectory -PathType Container){
+      $Files+=@(Get-ChildItem -LiteralPath $FullDirectory -File|Where-Object{$_.Name-cmatch$NameRegex}|ForEach-Object{$_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/')})
     }
   }
   return @($Files | Sort-Object -Unique)
@@ -3235,6 +3256,12 @@ function Invoke-ModeWorksetVerify {
     foreach($RawPath in @($script:Task.file_allowlist)){
       $FullPath=Join-Path $script:RepositoryRoot ([string]$RawPath)
       if(-not(Test-Path -LiteralPath $FullPath)){$Missing++}
+    }
+    foreach($RawRule in @($script:Task.directory_allowlist)){
+      $DirectoryPath=if($RawRule-is[Collections.IDictionary]){[string]$RawRule['path']}else{[string]$RawRule.path}
+      $NameRegex=if($RawRule-is[Collections.IDictionary]){[string]$RawRule['name_regex']}else{[string]$RawRule.name_regex}
+      $FullDirectory=Join-Path $script:RepositoryRoot $DirectoryPath
+      if(-not(Test-Path -LiteralPath $FullDirectory -PathType Container)-or @(Get-ChildItem -LiteralPath $FullDirectory -File|Where-Object{$_.Name-cmatch$NameRegex}).Count-eq 0){$Missing++}
     }
     $CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$RecoveredDiagnostics=0
     if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){

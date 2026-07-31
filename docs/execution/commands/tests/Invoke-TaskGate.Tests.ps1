@@ -112,6 +112,10 @@ if ($RunnerText -notmatch 'function Get-P02TaskPathRules' -or
     $RunnerText -notmatch 'p02_workset_failed') {
   throw 'negative: Phase 2 task gates must share strict path and locked-project-environment enforcement'
 }
+if ($RunnerText -notmatch 'directory_rules=\$DirectoryRules' -or
+    $RunnerText -notmatch 'name_regex') {
+  throw 'negative: Phase 2 directory allowlists must enforce their Catalog filename regex'
+}
 if ($RunnerText -notmatch 'test_32_secrets_provider' -or
     $RunnerText -notmatch 'missing_secret_readiness_false' -or
     $RunnerText -notmatch 'harness-status-fragment.json') {
