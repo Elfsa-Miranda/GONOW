@@ -1178,6 +1178,61 @@ function Invoke-ModeEvidence {
 }
 
 function Invoke-ModePreflight {
+  if ($TaskId -ceq 'TASK-P00-001') {
+    $ManifestPath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-00\phase-runtime-manifest.json'
+    $ManifestState = 'existing_exact'
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+      $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      $PhaseEntryResult = Invoke-RedactedExternal -Executable 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -Arguments @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+        (Join-Path $script:RepositoryRoot 'docs\execution\commands\Invoke-PhaseEntryRegression.ps1'),
+        '-TaskId', $TaskId,
+        '-SourceRecordPath', (Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-BOOT-003.json'),
+        '-ExpectedHeadOid', $Head,
+        '-OutputPath', $ManifestPath,
+        '-ExecutionMode', $ExecutionMode
+      )
+      if ([int]$PhaseEntryResult.exit_code -ne 0) {
+        return New-BlockedResult 'phase_entry_regression_failed' ([ordered]@{
+          phase_entry_exit_code = [int]$PhaseEntryResult.exit_code
+          prior_phase_regression_failures = 1
+          unexpected_paths = 0
+          base_drift = 1
+        })
+      }
+      $ManifestState = 'created'
+    }
+    $Manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $SourcePath = Join-Path $script:RepositoryRoot ([string]$Manifest.source_record_path)
+    $SourceHashDrift = if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) { 1 } elseif (
+      (Get-Sha256 -LiteralPath $SourcePath) -cne [string]$Manifest.source_record_sha256
+    ) { 1 } else { 0 }
+    & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) HEAD 2>$null
+    $BaseDrift = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+    $Checks = [ordered]@{
+      task_id_match = ([string]$Manifest.task_id -ceq $TaskId)
+      dependency_failures = 0
+      status_cas_conflict = 0
+      unexpected_paths = 0
+      base_drift = $BaseDrift
+      source_hash_drift = $SourceHashDrift
+      prior_phase_regression_failures = [int]$Manifest.prior_phase_regression_failures
+      phase_runtime_manifest = $ManifestState
+      phase_base_oid = [string]$Manifest.phase_base_oid
+      bootstrap_stage = [string]$Catalog.BootstrapStage
+      boot003_mechanical_pass = ([string]$Manifest.source_status -in @('ready_for_review', 'accepted'))
+      boot005_mechanical_revalidation = [string]$Manifest.boot005_mechanical_revalidation
+      local_dependency_projection_valid = [bool]$Manifest.local_dependency_projection_valid
+      formal_dependency_pending = ($ExecutionMode -ceq 'local_provisional')
+    }
+    if (-not [bool]$Checks.task_id_match -or [int]$Checks.base_drift -ne 0 -or
+        [int]$Checks.source_hash_drift -ne 0 -or [int]$Checks.prior_phase_regression_failures -ne 0 -or
+        -not [bool]$Checks.boot003_mechanical_pass -or
+        [string]$Checks.boot005_mechanical_revalidation -cne 'passed') {
+      return New-BlockedResult 'phase_entry_manifest_validation_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   $DependencyFailures = 0
   foreach ($Dependency in @($Task.prerequisite_task_ids)) {
     $DependencyPath = Join-Path $script:RepositoryRoot "docs\execution\status\$Dependency.json"
