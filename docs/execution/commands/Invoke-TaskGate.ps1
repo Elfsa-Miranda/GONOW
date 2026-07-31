@@ -6121,7 +6121,7 @@ function Invoke-ModeBuildAcceptance {
       '## Rollback and repair closure','',
       ('The isolated rollback drill covered idle state, three in-flight Runs, and an old-reader projection over the new runtime schema; local duration seconds: `{0}`.' -f $RollbackSeconds),
       'The migration restore rehearsal preserved eight logical rows and identical logical hashes, rejected downgrade under the forward-fix policy, and revalidated CT-007. RPO and RTO remain `unknown_not_claimed` until production-like owner evidence exists.','',
-      'Resolved blockers: `BLK-P03-001-license-metadata-normalization` (dependency metadata root cause) and `BLK-P03-089-security-self-scan` (scanner self-match root cause). Both retain reproduction, full repair, regression, and rollback evidence.','',
+      'Resolved blockers: `BLK-P03-001-license-metadata-normalization` (dependency metadata root cause), `BLK-P03-089-security-self-scan` (scanner self-match root cause), and `BLK-P03-990-blocker-final-state-aggregation` (terminal-state normalization root cause). All retain reproduction, full repair, regression, and rollback evidence.','',
       '## Formal-only pending boundaries','',
       '- Independent Engineering, Security, and SRE approvals bound to the immutable candidate.','- Formal governance adoption and authorized landing merge.','- Production database role/grant/backup/retention inventory.','- Production same-configuration rollback drill with measured RPO and RTO.','',
       'These external boundaries do not block safe local implementation, but they prevent accepted status, P03-999, remote push/merge, deployment, production migration, and production operations.',''
@@ -6423,16 +6423,20 @@ function Invoke-ModeDocumentation {
     $Handoff=if(Test-Path -LiteralPath $HandoffPath){Get-Content -LiteralPath $HandoffPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
     $Threat=if(Test-Path -LiteralPath $ThreatPath){Get-Content -LiteralPath $ThreatPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
     $BlockerRoot=Join-Path $script:RepositoryRoot 'docs\execution\blockers\phase-03'
-    $UnresolvedBlockers=0
+    $UnresolvedBlockers=0;$ResolvedBlockers=0;$BlockerStates=@()
     foreach($Blocker in @(Get-ChildItem -LiteralPath $BlockerRoot -File -ErrorAction SilentlyContinue)){
       $BlockerText=Get-Content -LiteralPath $Blocker.FullName -Raw -Encoding UTF8
-      if($BlockerText-notmatch'(?i)(Status:\s*resolved locally|最终状态：`resolved_local`)'){$UnresolvedBlockers++}
+      $ResolvedByEnglish=$BlockerText.ToLowerInvariant().Contains('status: resolved locally')
+      $ResolvedByCanonical=@($BlockerText-split"`r?`n"|Where-Object{$_.Contains('`resolved_local`')-and$_.Contains('`pending_external`')}).Count-gt0
+      $NormalizedState=if($ResolvedByEnglish-or$ResolvedByCanonical){'resolved_local'}else{'unresolved'}
+      if($NormalizedState-ceq'resolved_local'){$ResolvedBlockers++}else{$UnresolvedBlockers++}
+      $BlockerStates+=[ordered]@{name=$Blocker.Name;normalized_state=$NormalizedState;english_marker=$ResolvedByEnglish;canonical_marker=$ResolvedByCanonical}
     }
     $Checks=[ordered]@{
       document_review_passed=[bool]$Projection.local_projection_passed;kt_sections=@([regex]::Matches($KnowledgeText,'(?m)^##\s+')).Count
       handoff_journey_passed=($null-ne$Handoff-and[bool]$Handoff.local_journey_passed)
       reviewer_is_implementer=if($null-eq$Threat){$true}else{[bool]$Threat.reviewer_is_implementer}
-      threat_model_review_missing=if($null-eq$Threat){1}else{0};unresolved_blocker_final_state=$UnresolvedBlockers
+      threat_model_review_missing=if($null-eq$Threat){1}else{0};blocker_file_count=$BlockerStates.Count;resolved_blocker_count=$ResolvedBlockers;unresolved_blocker_final_state=$UnresolvedBlockers;blocker_states=$BlockerStates
       formal_document_review_status='pending_external';accepted=$false;production_write_count=0
     }
     if(-not[bool]$Checks.document_review_passed-or[int]$Checks.kt_sections-lt5-or-not[bool]$Checks.handoff_journey_passed-or[int]$Checks.threat_model_review_missing+[int]$Checks.unresolved_blocker_final_state-ne0){return New-BlockedResult 'p03_990_documentation_failed' $Checks}
