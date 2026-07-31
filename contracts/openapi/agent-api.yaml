@@ -1,0 +1,145 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GoNow Agent API",
+    "version": "1.0.0",
+    "description": "Phase 2 public process, health, and contract boundary. Run execution is not implemented."
+  },
+  "x-contract-name": "agent-api",
+  "x-baseline-status": "initial",
+  "x-error-codes": [
+    "auth.forbidden",
+    "auth.invalid_token",
+    "context.invalid",
+    "internal.error",
+    "rate.limit",
+    "schema.unsupported",
+    "service.unavailable",
+    "tenant.scope_missing"
+  ],
+  "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "description": "The process event loop is live.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/HealthProbe"},
+                "example": {"status": "live", "reason_codes": []}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "description": "All mandatory local dependencies are ready.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/HealthProbe"},
+                "example": {"status": "ready", "reason_codes": []}
+              }
+            }
+          },
+          "503": {
+            "description": "At least one mandatory dependency is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/HealthProbe"},
+                "example": {"status": "not_ready", "reason_codes": ["dependency.database_unavailable"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/contracts/{name}/{major}": {
+      "get": {
+        "operationId": "getContractDescriptor",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "name", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[a-z][a-z0-9-]+$"}},
+          {"name": "major", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}
+        ],
+        "responses": {
+          "200": {
+            "description": "A supported immutable contract descriptor.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ContractDescriptor"},
+                "example": {"name": "agent-api", "major": 1, "version": "1.0.0", "spec_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/AuthenticationError"},
+          "404": {"$ref": "#/components/responses/UnsupportedSchema"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
+    },
+    "schemas": {
+      "HealthProbe": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "reason_codes"],
+        "properties": {
+          "status": {"type": "string", "enum": ["live", "ready", "not_ready"]},
+          "reason_codes": {"type": "array", "items": {"type": "string"}, "maxItems": 8}
+        }
+      },
+      "ContractDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "major", "version", "spec_sha256"],
+        "properties": {
+          "name": {"type": "string", "const": "agent-api"},
+          "major": {"type": "integer", "const": 1},
+          "version": {"type": "string", "const": "1.0.0"},
+          "spec_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      },
+      "PublicError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "request_id"],
+        "properties": {
+          "code": {"type": "string", "enum": ["auth.forbidden", "auth.invalid_token", "context.invalid", "internal.error", "rate.limit", "schema.unsupported", "service.unavailable", "tenant.scope_missing"]},
+          "message": {"type": "string", "minLength": 1, "maxLength": 160},
+          "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "retry_after_seconds": {"type": "integer", "minimum": 1, "maximum": 86400}
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {"error": {"$ref": "#/components/schemas/PublicError"}}
+      }
+    },
+    "responses": {
+      "AuthenticationError": {
+        "description": "Authentication failed.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}, "example": {"error": {"code": "auth.invalid_token", "message": "Authentication failed.", "request_id": "req-example"}}}}
+      },
+      "UnsupportedSchema": {
+        "description": "The requested schema major is unsupported.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}, "example": {"error": {"code": "schema.unsupported", "message": "The requested schema is unsupported.", "request_id": "req-example"}}}}
+      },
+      "ServiceUnavailable": {
+        "description": "The registry is unavailable.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}, "example": {"error": {"code": "service.unavailable", "message": "The service is temporarily unavailable.", "request_id": "req-example"}}}}
+      }
+    }
+  }
+}
