@@ -3063,7 +3063,7 @@ function Invoke-ModeWorksetVerify {
     if (Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf) {
       $Ledger = Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8 | ConvertFrom-Json
       $RecoveredDiagnostics = @($Ledger.commands | Where-Object { [int]$_.exit_code -ne 0 }).Count
-      foreach ($ModeGroup in @($Ledger.commands | Group-Object mode)) {
+      foreach ($ModeGroup in @($Ledger.commands | Group-Object description)) {
         if ([int]@($ModeGroup.Group)[-1].exit_code -ne 0) { $LatestNonzero++ }
       }
     }

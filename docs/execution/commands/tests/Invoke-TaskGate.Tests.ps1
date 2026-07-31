@@ -104,7 +104,7 @@ if ($RunnerText -notmatch 'p02_001_entrypoint_verification_failed' -or
   throw 'negative: P02-001 must have task-specific build, supply-chain, and security gates'
 }
 if ($RunnerText -notmatch 'recovered_diagnostic_failure_count=\$RecoveredDiagnostics' -or
-    $RunnerText -notmatch 'Group-Object mode') {
+    $RunnerText -notmatch 'Group-Object description') {
   throw 'negative: P02-001 must distinguish a resolved diagnostic from the latest gate result'
 }
 exit 0
