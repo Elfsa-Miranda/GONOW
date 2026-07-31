@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "scanner_name": "gonow-redacted-secret-scan",
+  "scanner_version": "1.0.0",
+  "implementation_source": "project-internal",
+  "implementation_license_class": "project-source-not-third-party",
+  "files": [
+    {
+      "path": "tool/security/secret-scan/Invoke-SecretScan.ps1",
+      "size": 12965,
+      "sha256": "0dec41921f54976ea407066667c7534ed2c1920177b0fe9530aa3f71fc12ed8c"
+    },
+    {
+      "path": "tool/security/secret-scan/rules.toml",
+      "size": 519,
+      "sha256": "6d51bdf11ce515af24b95dd3eeaf81e95c699e56044273ea7a95f57caadb770e"
+    },
+    {
+      "path": "tool/security/secret-scan/test_secret_scan.py",
+      "size": 4431,
+      "sha256": "9c7925b9129692816699e85f7af1344325a94e4a4284f6613a3454cc9ec9ebd7"
+    },
+    {
+      "path": "tool/security/secret-scan/README.md",
+      "size": 1210,
+      "sha256": "3fb1b6293b615e4da2e09ba91ca60604637d92c948edac4996908f22ea1df848"
+    }
+  ],
+  "runtime": {
+    "python": {
+      "version": "3.13.9",
+      "source": "https://www.python.org/downloads/release/python-3139/",
+      "license": "PSF-2.0",
+      "usage": "standard-library-only black-box tests"
+    },
+    "powershell": {
+      "minimum_version": "5.1",
+      "source": "windows-platform-runtime",
+      "license": "platform-component",
+      "usage": "scanner runtime; no downloaded module"
+    }
+  },
+  "ci_actions": [
+    {
+      "name": "actions/checkout",
+      "version_tag": "v4.2.2",
+      "commit_sha": "11bd71901bbe5b1630ceea73d27597364c9af683",
+      "source": "https://github.com/actions/checkout",
+      "license": "MIT"
+    },
+    {
+      "name": "actions/setup-python",
+      "version_tag": "v5.4.0",
+      "commit_sha": "42375524e23c412d93fb67b49958b491fce71c38",
+      "source": "https://github.com/actions/setup-python",
+      "license": "MIT"
+    },
+    {
+      "name": "actions/upload-artifact",
+      "version_tag": "v4.6.2",
+      "commit_sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "source": "https://github.com/actions/upload-artifact",
+      "license": "MIT"
+    }
+  ],
+  "direct_package_dependencies": [],
+  "unpinned_direct": 0,
+  "unknown_license": 0,
+  "critical_cve": 0,
+  "high_cve": 0,
+  "stale_without_adr": 0
+}
