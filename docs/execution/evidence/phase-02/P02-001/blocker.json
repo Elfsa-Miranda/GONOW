@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.1",
+  "task_id": "TASK-P02-001",
+  "mode": "Preflight",
+  "initial_reason_code": "dependency_not_ready",
+  "status": "resolved_local_provisional",
+  "reproduction": "The generic prerequisite resolver required formal TASK-P01-999 and blocked TASK-BOOT-005 status even though the sealed 1.4.0 contract permits P01-990 plus BOOT-005 mechanical projection for safe local Phase 2 work.",
+  "root_cause": "The task runner had no Phase 2 local-provisional dependency projection and used the formal dependency rule for every execution mode.",
+  "impact_surface": [
+    "TASK-P02-001 Preflight",
+    "Phase 2 runtime manifest creation",
+    "safe local Phase 2 entry only"
+  ],
+  "excluded_paths": [
+    "formal acceptance",
+    "remote push or merge",
+    "production deployment or write"
+  ],
+  "reversible_fix": "Use the sealed P01-990 ready_for_review status and hash-bound gate results plus BOOT-005 mechanical revalidation only in local_provisional mode; preserve formal dependency checks unchanged.",
+  "affected_regression": {
+    "phase_entry_regression": "passed",
+    "source_status_hash_drift": 0,
+    "source_gate_hash_drift": 0,
+    "prior_phase_regression_failures": 0
+  },
+  "formal_external_boundary": "pending",
+  "production_write_count": 0,
+  "resolved_at": "2026-08-01T03:36:00+08:00"
+}

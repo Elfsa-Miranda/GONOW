@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P02-001",
+  "source": "installed_distribution_metadata",
+  "approved_policy": [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT"
+  ],
+  "direct_dependencies": [
+    {"name": "cryptography", "license": "Apache-2.0 OR BSD-3-Clause", "approved": true},
+    {"name": "fastapi", "license": "MIT", "approved": true},
+    {"name": "httpx", "license": "BSD-3-Clause", "approved": true},
+    {"name": "opentelemetry-api", "license": "Apache-2.0", "approved": true},
+    {"name": "opentelemetry-sdk", "license": "Apache-2.0", "approved": true},
+    {"name": "pydantic", "license": "MIT", "approved": true},
+    {"name": "PyJWT", "license": "MIT", "approved": true},
+    {"name": "uvicorn", "license": "BSD-3-Clause", "approved": true}
+  ],
+  "development_dependencies": [
+    {"name": "cyclonedx-bom", "license": "Apache-2.0", "approved": true},
+    {"name": "pytest", "license": "MIT", "approved": true},
+    {"name": "pytest-asyncio", "license": "Apache-2.0", "approved": true}
+  ],
+  "unknown_license_count": 0,
+  "unapproved_license_count": 0
+}
