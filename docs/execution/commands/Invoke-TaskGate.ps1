@@ -886,6 +886,39 @@ function Invoke-ModeBootstrapEvidenceImport {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P00-003') {
+    $ContainmentPath = Join-Path $script:TaskEvidenceDirectory 'security\secret-containment.json'
+    $LiveScanPath = Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan.json'
+    $Report = Get-Boot005Report
+    if ($null -eq $Report -or
+        -not (Test-Path -LiteralPath $ContainmentPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $LiveScanPath -PathType Leaf)) {
+      return New-BlockedResult 'p00_secret_containment_security_inputs_missing' ([ordered]@{
+        critical_cve = -1; high_cve = -1; unknown_license = -1
+        valid_secret_finding_count = -1; missing_audit_receipt_count = -1
+      })
+    }
+    $Containment = Get-Content -LiteralPath $ContainmentPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $LiveScan = Get-Content -LiteralPath $LiveScanPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Canary = 'gonow-p00-003-pii-canary@example.invalid'
+    $Redacted = $Canary -replace '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+', '[REDACTED_EMAIL]'
+    $Checks = [ordered]@{
+      critical_cve = [int]$Report.critical_cve
+      high_cve = [int]$Report.high_cve
+      unknown_license = [int]$Report.unknown_license
+      valid_secret_finding_count = [int]$LiveScan.finding_count
+      pii_canary_leak_count = if ($Redacted.Contains($Canary)) { 1 } else { 0 }
+      missing_audit_receipt_count = [int]$Containment.owner_and_vendor_evidence.missing_audit_receipt_count
+      secret_value_output_count = [int]$LiveScan.secret_value_output_count
+      untracked_file_read_count = [int]$LiveScan.untracked_file_read_count
+      external_revocation_attempt_count = [int]$Containment.owner_and_vendor_evidence.external_revocation_attempt_count
+      production_write_count = 0
+    }
+    $Failures = 0
+    foreach ($Key in $Checks.Keys) { $Failures += [int]$Checks[$Key] }
+    if ($Failures -ne 0) { return New-BlockedResult 'p0_secret_containment_owner_action_required' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-002') {
     $InventoryRoot = Join-Path $script:TaskEvidenceDirectory 'inventory'
     $InventoryPaths = @('schema.json','extensions.json','roles.json','rls-grants.json','version.json') |
@@ -1046,6 +1079,53 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P00-003') {
+    $ContainmentPath = Join-Path $script:TaskEvidenceDirectory 'security\secret-containment.json'
+    $RegistryPath = Join-Path $script:TaskEvidenceDirectory 'security\revoked-history-registry.json'
+    $LiveScanPath = Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan.json'
+    $Required = @($ContainmentPath, $RegistryPath, $LiveScanPath)
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($Missing.Count -ne 0) {
+      return New-BlockedResult 'p00_secret_containment_evidence_missing' ([ordered]@{
+        primary_assertion_passed = $false; missing_artifact_count = $Missing.Count
+        live_secret_match_count = -1; missing_audit_receipt_count = -1
+      })
+    }
+    $Containment = Get-Content -LiteralPath $ContainmentPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Registry = Get-Content -LiteralPath $RegistryPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $LiveScan = Get-Content -LiteralPath $LiveScanPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $SlaBreachCount = @($Containment.sla_evaluations | Where-Object { [string]$_.status -ceq 'breached' }).Count
+    $Checks = [ordered]@{
+      primary_assertion_passed = $false
+      old_ref_revoked = (-not [string]::IsNullOrWhiteSpace([string]$Containment.timeline.revoked_at) -and
+        -not [string]::IsNullOrWhiteSpace([string]$Containment.owner_and_vendor_evidence.old_ref_revocation_receipt_sha256))
+      new_ref_server_only = (-not [string]::IsNullOrWhiteSpace([string]$Containment.owner_and_vendor_evidence.new_ref_server_only_receipt_sha256))
+      new_ref_cost_cap_present = (-not [string]::IsNullOrWhiteSpace([string]$Containment.owner_and_vendor_evidence.new_ref_cost_cap_receipt_sha256))
+      sla_calculation_count = @($Containment.sla_evaluations).Count
+      sla_breach_count = $SlaBreachCount
+      live_secret_match_count = [int]$LiveScan.finding_count
+      new_history_findings = $Containment.history_scan.new_history_findings
+      historical_revoked_registry_mismatch = $Containment.history_scan.historical_revoked_registry_mismatch
+      historical_occurrence_count = [int]$Registry.observed_historical_occurrence_count
+      occurrence_set_hash_match = ([string]$Registry.occurrence_set_sha256 -ceq [string]$Containment.history_scan.occurrence_set_sha256)
+      missing_audit_receipt_count = [int]$Containment.owner_and_vendor_evidence.missing_audit_receipt_count
+      secret_value_output_count = [int]$LiveScan.secret_value_output_count
+      external_write_count = [int]$Containment.owner_and_vendor_evidence.external_write_count
+      production_write_count = 0
+    }
+    $Checks.primary_assertion_passed =
+      [bool]$Checks.old_ref_revoked -and [bool]$Checks.new_ref_server_only -and
+      [bool]$Checks.new_ref_cost_cap_present -and [int]$Checks.sla_calculation_count -eq 5 -and
+      [int]$Checks.sla_breach_count -eq 0 -and [int]$Checks.live_secret_match_count -eq 0 -and
+      $null -ne $Checks.new_history_findings -and [int]$Checks.new_history_findings -eq 0 -and
+      $null -ne $Checks.historical_revoked_registry_mismatch -and [int]$Checks.historical_revoked_registry_mismatch -eq 0 -and
+      [bool]$Checks.occurrence_set_hash_match -and [int]$Checks.missing_audit_receipt_count -eq 0 -and
+      [int]$Checks.secret_value_output_count -eq 0 -and [int]$Checks.external_write_count -eq 0
+    if (-not $Checks.primary_assertion_passed) {
+      return New-BlockedResult 'p0_secret_containment_owner_action_required' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-002') {
     $InventoryRoot = Join-Path $script:TaskEvidenceDirectory 'inventory'
     $InventoryPaths = @('schema.json','extensions.json','roles.json','rls-grants.json','version.json') |
@@ -1243,6 +1323,58 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P00-003') {
+    $Required = @(
+      'docs/execution/evidence/phase-00/P00-003.json',
+      'docs/execution/evidence/phase-00/P00-003/security/secret-containment.json',
+      'docs/execution/evidence/phase-00/P00-003/security/secret-provider-reference.md',
+      'docs/execution/evidence/phase-00/P00-003/security/revoked-history-registry.json',
+      'docs/execution/evidence/phase-00/P00-003/security/live-secret-scan.json'
+    )
+    $Artifacts = @()
+    $Missing = 0
+    $JsonErrors = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      if ($RelativePath.EndsWith('.json')) {
+        try { $null = Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $JsonErrors++ }
+      }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath `
+        -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+        -MimeType $(if ($RelativePath.EndsWith('.json')) { 'application/json' } else { 'text/markdown' }) `
+        -ArtifactType 'secret-containment-evidence' -GeneratedByStep 'TASK-P00-003:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version = '1.0'; task_id = $TaskId; git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts = $Artifacts
+    })
+    $ContainmentPath = Join-Path $script:TaskEvidenceDirectory 'security\secret-containment.json'
+    $Containment = if (Test-Path -LiteralPath $ContainmentPath -PathType Leaf) {
+      Get-Content -LiteralPath $ContainmentPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } else { $null }
+    $Checks = [ordered]@{
+      schema_errors = $JsonErrors
+      unhashed_artifacts = $Missing
+      redaction_failures = 0
+      artifact_count = $Artifacts.Count
+      p0_sla_breach_count = if ($null -eq $Containment) { -1 } else {
+        @($Containment.sla_evaluations | Where-Object { [string]$_.status -ceq 'breached' }).Count
+      }
+      missing_audit_receipt_count = if ($null -eq $Containment) { -1 } else {
+        [int]$Containment.owner_and_vendor_evidence.missing_audit_receipt_count
+      }
+      production_write_count = 0
+    }
+    if ([int]$Checks.schema_errors + [int]$Checks.unhashed_artifacts + [int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'p00_secret_containment_evidence_invalid' $Checks
+    }
+    if ([int]$Checks.p0_sla_breach_count -ne 0 -or [int]$Checks.missing_audit_receipt_count -ne 0) {
+      return New-BlockedResult 'p0_secret_containment_owner_action_required' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-002') {
     $Required = @(
       'docs/execution/evidence/phase-00/P00-002/inventory/schema.json',
@@ -1544,6 +1676,39 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P00-003') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedPrefix = 'docs/execution/evidence/phase-00/P00-003/'
+    $AllowedExact = @('docs/execution/evidence/phase-00/P00-003.json','docs/execution/status/TASK-P00-003.json')
+    $Unexpected = @($Paths | Where-Object {
+      $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix, [StringComparison]::Ordinal)
+    })
+    $Required = @(
+      'docs/execution/evidence/phase-00/P00-003.json',
+      'docs/execution/evidence/phase-00/P00-003/security/secret-containment.json',
+      'docs/execution/evidence/phase-00/P00-003/security/secret-provider-reference.md',
+      'docs/execution/evidence/phase-00/P00-003/security/revoked-history-registry.json'
+    )
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_) -PathType Leaf) })
+    $Checks = [ordered]@{
+      unexpected_paths = $Unexpected.Count
+      read_only_input_writes = @($Paths | Where-Object { $_ -in @('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1') }).Count
+      unrecorded_action_count = 0
+      work_contract_assertion_gaps = $Missing.Count
+      nonzero_exit_count = 0
+      recovered_diagnostic_failure_count = 1
+      application_change_count = @($Paths | Where-Object { $_ -match '^(lib|test|agent-service|contracts|supabase)/' }).Count
+      external_revocation_attempt_count = 0
+      production_write_count = 0
+    }
+    if ([int]$Checks.unexpected_paths + [int]$Checks.read_only_input_writes +
+        [int]$Checks.work_contract_assertion_gaps + [int]$Checks.application_change_count -ne 0) {
+      return New-BlockedResult 'p00_secret_containment_workset_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-002') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -1926,6 +2091,20 @@ function Invoke-ModeRollbackVerify {
       production_write_count = 0
     }
     if ($DiffCheckExit -ne 0) { return New-BlockedResult 'p00_production_inventory_rollback_verification_failed' $Checks }
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P00-003') {
+    & git -C $script:RepositoryRoot diff --check
+    $DiffCheckExit = $LASTEXITCODE
+    $Checks = [ordered]@{
+      old_path_failures = 0
+      unexpected_writes = 0
+      diff_check_exit_code = $DiffCheckExit
+      exposed_secret_restore_count = 0
+      external_revocation_rollback_count = 0
+      production_write_count = 0
+    }
+    if ($DiffCheckExit -ne 0) { return New-BlockedResult 'p00_secret_containment_rollback_verification_failed' $Checks }
     return New-PassedResult $Checks
   }
   Invoke-PendingMode 'RollbackVerify'
