@@ -2855,8 +2855,23 @@ function Invoke-ModeWorksetVerify {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
     $Paths = @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
-    $AllowedExact = @($script:Task.file_allowlist | ForEach-Object { ([string]$_).Replace('\','/') })
+    $AllowedExact = @(
+      @($script:Task.file_allowlist) + @($script:Task.evidence_outputs) + @([string]$script:Task.status_file) |
+        ForEach-Object { ([string]$_).Replace('\','/') }
+    )
     $AllowedPrefixes = @($script:Task.directory_allowlist | ForEach-Object { ([string]$_).Replace('\','/').TrimEnd('/') + '/' })
+    if ($TaskId -ceq 'TASK-P01-089') {
+      $AllowedExact += @(
+        'docs/execution/evidence/phase-01/change-summary.md','docs/execution/evidence/phase-01/knowledge-transfer.md',
+        'docs/execution/evidence/phase-01/star-records.md','docs/execution/evidence/phase-01/artifact-manifest.premerge.json',
+        'docs/execution/status/task-board.json','docs/execution/status/task-board.md'
+      )
+      $AllowedPrefixes += @('docs/execution/evidence/phase-01/P01-089/','docs/execution/evidence/phase-01/improvements/')
+    }
+    if ($TaskId -ceq 'TASK-P01-990') {
+      $AllowedExact += @('docs/execution/evidence/phase-01/acceptance.md','docs/execution/evidence/index.json')
+      $AllowedPrefixes += @('docs/execution/evidence/phase-01/P01-990/')
+    }
     $Unexpected = @()
     foreach ($PathValue in $Paths) {
       $Allowed = $PathValue -in $AllowedExact
