@@ -1,0 +1,1 @@
+{"checks":{"deploy_clock_gate_present":true,"offset_over_5_fail_closed":true},"failure_count":0,"failures":[],"mode":"clock-contract","passed":true,"schema_version":"1.0"}
