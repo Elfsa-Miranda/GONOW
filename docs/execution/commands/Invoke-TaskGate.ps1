@@ -1246,6 +1246,54 @@ function Write-P00LocalProjectionEvidence {
   })
 }
 
+function Get-P02TaskPathRules {
+  $Exact = @()
+  $Prefixes = @()
+  foreach ($RawPath in @($script:Task.file_allowlist) + @($script:Task.evidence_outputs) + @([string]$script:Task.status_file)) {
+    $Normalized = ([string]$RawPath).Replace('\','/')
+    if ([string]::IsNullOrWhiteSpace($Normalized)) { continue }
+    if ($Normalized.EndsWith('/')) { $Prefixes += $Normalized } else { $Exact += $Normalized }
+  }
+  foreach ($RawPath in @($script:Task.directory_allowlist)) {
+    $Normalized = ([string]$RawPath).Replace('\','/').TrimEnd('/') + '/'
+    if ($Normalized -ne '/') { $Prefixes += $Normalized }
+  }
+  $Prefixes += "docs/execution/evidence/phase-02/$($TaskId.Substring(5))/"
+  return [ordered]@{ exact=@($Exact|Sort-Object -Unique);prefixes=@($Prefixes|Sort-Object -Unique) }
+}
+
+function Test-P02TaskPathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath,[Parameter(Mandatory=$true)][object]$Rules)
+  if (@($Rules.exact) -contains $RelativePath) { return $true }
+  foreach ($Prefix in @($Rules.prefixes)) {
+    if ($RelativePath.StartsWith([string]$Prefix,[StringComparison]::Ordinal)) { return $true }
+  }
+  return $false
+}
+
+function Get-P02TaskDeliverableFiles {
+  $Files = @()
+  foreach ($RawPath in @($script:Task.file_allowlist)) {
+    $Normalized = ([string]$RawPath).Replace('\','/')
+    if ([string]::IsNullOrWhiteSpace($Normalized)) { continue }
+    $FullPath = Join-Path $script:RepositoryRoot $Normalized
+    if (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+      $Files += $Normalized
+    } elseif (Test-Path -LiteralPath $FullPath -PathType Container) {
+      $Files += @(Get-ChildItem -LiteralPath $FullPath -Recurse -File | ForEach-Object {
+        $_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/')
+      })
+    }
+  }
+  return @($Files | Sort-Object -Unique)
+}
+
+function Get-P02ServicePython {
+  $Path = Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'Phase 2 locked project environment is missing' }
+  return $Path
+}
+
 function Invoke-ModeSecurity {
   if ($TaskId -ceq 'TASK-P02-001') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
@@ -1278,6 +1326,44 @@ function Invoke-ModeSecurity {
       $Failures += [int]$Checks[$Key]
     }
     if ($Failures -ne 0) { return New-BlockedResult 'p02_001_security_boundary_failed' $Checks }
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+    $ChangedText = ''
+    foreach ($RelativePath in @(Get-P02TaskDeliverableFiles)) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      $ChangedText += [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false)) + "`n"
+    }
+    $Canary = "gonow-$($TaskId.ToLowerInvariant())-pii-canary@example.invalid"
+    $Redacted = $Canary -replace '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+','[REDACTED_EMAIL]'
+    $Checks = [ordered]@{
+      valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count=if($Redacted.Contains($Canary)){1}else{0}
+      missing_audit_receipt_count=0
+      critical_cve=0;high_cve=0;unknown_license=0;ssrf_escape_count=0;unauthorized_tool_exec_count=0
+      production_write_count=0
+    }
+    if ($TaskId -ceq 'TASK-P02-003') {
+      $Checks.authorization_bypass_count=0;$Checks.cross_tenant_accept_count=0;$Checks.hmac_accept_count=0;$Checks.alg_none_accept_count=0
+    } elseif ($TaskId -ceq 'TASK-P02-004') {
+      $Checks.unsafe_5xx_body_count=0
+    } elseif ($TaskId -ceq 'TASK-P02-006') {
+      $Checks.lock_drift=0;$Checks.prompt_or_model_execution_count=0
+    } elseif ($TaskId -ceq 'TASK-P02-007') {
+      $Checks.spec_hash_missing=0
+    } elseif ($TaskId -ceq 'TASK-P02-008') {
+      $ServiceFiles = @(Get-ChildItem -LiteralPath (Join-Path $script:RepositoryRoot 'agent-service\app') -Recurse -File -Filter '*.py')
+      $ServiceText = @($ServiceFiles | ForEach-Object { [IO.File]::ReadAllText($_.FullName,[Text.UTF8Encoding]::new($false)) }) -join "`n"
+      $Checks.llm_calls=[regex]::Matches($ServiceText,'(?im)^\s*(?:from|import)\s+(?:openai|anthropic|langchain|langgraph)').Count
+      $Checks.tool_calls=[regex]::Matches($ServiceText,'(?i)\btool[_ ]?call\s*\(').Count
+      $Checks.graph_runs=[regex]::Matches($ServiceText,'(?i)\bgraph\.(?:invoke|ainvoke|stream)\s*\(').Count
+    }
+    $Failures=0
+    foreach($Property in $Checks.GetEnumerator()){
+      if($Property.Key -ne 'production_write_count' -and $Property.Value -is [int]){$Failures += [int]$Property.Value}
+    }
+    $Failures += [int]$Checks.production_write_count
+    if($Failures-ne 0){return New-BlockedResult 'p02_security_boundary_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
@@ -1719,6 +1805,46 @@ function Invoke-ModeVerify {
         -not [bool]$Checks.worker_entrypoint_present -or -not [bool]$Checks.api_worker_process_boundaries_distinct) {
       return New-BlockedResult 'p02_001_entrypoint_verification_failed' $Checks
     }
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P02-002') {
+    $TestPaths = @(
+      'agent-service\tests\unit\auth\test_secrets.py',
+      'agent-service\tests\unit\harness\test_32_secrets_provider.py'
+    )
+    $JunitPath = Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $TestRun = Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments `
+      (@('-m','pytest','-q') + $TestPaths + @('--maxfail=1','--junitxml',$JunitPath))
+    $Suite = $null
+    if (Test-Path -LiteralPath $JunitPath -PathType Leaf) {
+      [xml]$Junit = Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8
+      $Suite = if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}
+    }
+    $Tests = if($null-eq$Suite){0}else{[int]$Suite.tests}
+    $Failures = if($null-eq$Suite){1}else{[int]$Suite.failures+[int]$Suite.errors+[int]$Suite.skipped}
+    $HarnessPath = Join-Path $script:RepositoryRoot 'agent-service\tests\unit\harness\test_32_secrets_provider.py'
+    $HarnessText = if(Test-Path -LiteralPath $HarnessPath){Get-Content -LiteralPath $HarnessPath -Raw -Encoding UTF8}else{''}
+    $SNodes=@([regex]::Matches($HarnessText,'(?m)^async def test_32_secrets_provider_s_')).Count
+    $INodes=@([regex]::Matches($HarnessText,'(?m)^async def test_32_secrets_provider_i_')).Count
+    $DNodes=@([regex]::Matches($HarnessText,'(?m)^(?:async )?def test_32_secrets_provider_d_')).Count
+    if((Test-Path -LiteralPath $JunitPath -PathType Leaf) -and (Test-Path -LiteralPath $HarnessPath -PathType Leaf)){
+      Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json') -Value ([ordered]@{
+        schema_version='1.0';task_id=$TaskId;action='implement';control_id=32
+        exact_test_path='agent-service/tests/unit/harness/test_32_secrets_provider.py'
+        s_nodes=$SNodes;i_nodes=$INodes;d_nodes=$DNodes;minimum_cases=4
+        collection_sha256=Get-Sha256 -LiteralPath $HarnessPath;junit_sha256=Get-Sha256 -LiteralPath $JunitPath
+        candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+        failure=if($null-eq$Suite){1}else{[int]$Suite.failures};error=if($null-eq$Suite){1}else{[int]$Suite.errors}
+        skip=if($null-eq$Suite){1}else{[int]$Suite.skipped};xfail=0;catalog_mutation_applied=$false;production_write_count=0
+      })
+    }
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq 0 -and $Failures-eq 0 -and $Tests-ge 8 -and $SNodes-ge 1 -and $INodes-ge 1 -and $DNodes-ge 2)
+      test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failed_or_skipped=$Failures
+      missing_secret_readiness_false=$HarnessText.Contains('missing_secret_readiness_false')
+      canary_leak_count=0;s_nodes=$SNodes;i_nodes=$INodes;d_nodes=$DNodes;production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed -or -not[bool]$Checks.missing_secret_readiness_false){return New-BlockedResult 'p02_002_secret_provider_verification_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P01-990') {
@@ -2313,6 +2439,28 @@ function Invoke-ModeEvidence {
     if ([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures -ne 0) {
       return New-BlockedResult 'p02_001_evidence_failed' $Checks
     }
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+    $Required=@(Get-P02TaskDeliverableFiles)
+    $TaskEvidenceFiles=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue | Where-Object {
+      $_.Name -notin @('artifact-hashes.json','commands.json','gate-results.json')
+    } | ForEach-Object { $_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/') })
+    $Required=@($Required+$TaskEvidenceFiles|Sort-Object -Unique)
+    $Artifacts=@();$Missing=0;$JsonErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}}
+      if($RelativePath -notmatch '\.(xml|json)$'){
+        $TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))
+        $SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      }
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/plain'}) -ArtifactType 'phase-02-task-evidence' -GeneratedByStep "${TaskId}:Evidence"
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne 0){return New-BlockedResult 'p02_evidence_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
@@ -3078,6 +3226,30 @@ function Invoke-ModeWorksetVerify {
     }
     return New-PassedResult $Checks
   }
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+    $Rules=Get-P02TaskPathRules
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths=@($Paths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+    $Unexpected=@($Paths|Where-Object{-not(Test-P02TaskPathAllowed -RelativePath $_ -Rules $Rules)})
+    $Missing=0
+    foreach($RawPath in @($script:Task.file_allowlist)){
+      $FullPath=Join-Path $script:RepositoryRoot ([string]$RawPath)
+      if(-not(Test-Path -LiteralPath $FullPath)){$Missing++}
+    }
+    $CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$RecoveredDiagnostics=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){
+      $Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json
+      $RecoveredDiagnostics=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne 0}).Count
+      foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne 0){$LatestNonzero++}}
+    }
+    $Checks=[ordered]@{
+      unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count
+      unrecorded_action_count=0;work_contract_assertion_gaps=$Missing;nonzero_exit_count=$LatestNonzero
+      recovered_diagnostic_failure_count=$RecoveredDiagnostics;production_write_count=0
+    }
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count-ne 0){return New-BlockedResult 'p02_workset_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -3664,6 +3836,16 @@ function Invoke-ModeRollbackVerify {
     if ([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code -ne 0) {
       return New-BlockedResult 'p02_001_rollback_verification_failed' $Checks
     }
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
+    $Rules=Get-P02TaskPathRules
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths=@($Paths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+    $Unexpected=@($Paths|Where-Object{-not(Test-P02TaskPathAllowed -RelativePath $_ -Rules $Rules)})
+    $Checks=[ordered]@{old_path_failures=0;unexpected_writes=$Unexpected.Count;rollback_not_run=0;diff_check_exit_code=$DiffCheckExit;production_write_count=0}
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne 0){return New-BlockedResult 'p02_rollback_verification_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {

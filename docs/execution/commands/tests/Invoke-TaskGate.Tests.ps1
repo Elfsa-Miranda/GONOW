@@ -107,4 +107,14 @@ if ($RunnerText -notmatch 'recovered_diagnostic_failure_count=\$RecoveredDiagnos
     $RunnerText -notmatch 'Group-Object description') {
   throw 'negative: P02-001 must distinguish a resolved diagnostic from the latest gate result'
 }
+if ($RunnerText -notmatch 'function Get-P02TaskPathRules' -or
+    $RunnerText -notmatch 'function Get-P02ServicePython' -or
+    $RunnerText -notmatch 'p02_workset_failed') {
+  throw 'negative: Phase 2 task gates must share strict path and locked-project-environment enforcement'
+}
+if ($RunnerText -notmatch 'test_32_secrets_provider' -or
+    $RunnerText -notmatch 'missing_secret_readiness_false' -or
+    $RunnerText -notmatch 'harness-status-fragment.json') {
+  throw 'negative: P02-002 must execute and bind the SecretsProvider S/I/D harness'
+}
 exit 0
