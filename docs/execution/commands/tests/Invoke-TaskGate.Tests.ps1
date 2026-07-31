@@ -168,4 +168,14 @@ if ($RunnerText -notmatch "TASK-P02-089'.*artifact-manifest\.premerge" -and
     $RunnerText -notmatch "TASK-P02-089[\s\S]+STAR-\[a-z0-9-\]") {
   throw 'negative: the P02-089 execplan/Catalog omissions must remain narrowly projected'
 }
+if ($RunnerText -notmatch 'function Get-P02LocalProjection' -or
+    $RunnerText -notmatch 'function Get-P02GateModeState' -or
+    $RunnerText -notmatch 'Write-P02LocalProjectionEvidence -ReadyForReview \$true') {
+  throw 'negative: P02-990 must bind every local acceptance mode before Phase 3 entry'
+}
+if ($RunnerText -notmatch 'pending_independent_phase_02_approvals' -or
+    $RunnerText -notmatch 'formal_same_configuration_drill_status' -or
+    $RunnerText -notmatch "formal_acceptance_status='pending_external'") {
+  throw 'negative: local Phase 2 completion must not fabricate formal approvals or production drill evidence'
+}
 exit 0

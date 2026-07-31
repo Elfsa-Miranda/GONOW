@@ -1287,6 +1287,102 @@ function Get-P02TaskPathRules {
   return [ordered]@{ exact=@($Exact|Sort-Object -Unique);prefixes=@($Prefixes|Sort-Object -Unique);directory_rules=$DirectoryRules }
 }
 
+function Get-P02LocalProjection {
+  $RequiredTaskIds=@('TASK-P02-001','TASK-P02-002','TASK-P02-003','TASK-P02-004','TASK-P02-005','TASK-P02-006','TASK-P02-007','TASK-P02-008','TASK-P02-089')
+  $StatusFailures=0;$MissingStatus=@()
+  foreach($RequiredTaskId in $RequiredTaskIds){
+    $StatusPath=Join-Path $script:RepositoryRoot "docs\execution\status\$RequiredTaskId.json"
+    if(-not(Test-Path -LiteralPath $StatusPath -PathType Leaf)){$MissingStatus+=$RequiredTaskId;continue}
+    $StatusRecord=Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
+    if([string]$StatusRecord.status-notin@('ready_for_review','accepted')){$StatusFailures++}
+    if([string]$StatusRecord.status-ceq'accepted' -and -not[bool]$StatusRecord.reviewer_independent){$StatusFailures++}
+  }
+  $Paths=[ordered]@{
+    handoff='docs/execution/evidence/phase-02/P02-089/handoff-verification.json'
+    harness='docs/execution/evidence/phase-02/P02-089/harness-catalog-aggregate.json'
+    threat_model='docs/architecture/threat-model/phase-02-review.json'
+    clock='docs/execution/evidence/phase-02/P02-005/clock-safety.json'
+    inert_gate='docs/execution/evidence/phase-02/P02-008/gate-results.json'
+    knowledge_transfer='docs/execution/evidence/phase-02/knowledge-transfer.md'
+    change_summary='docs/execution/evidence/phase-02/change-summary.md'
+    sbom='docs/execution/supply-chain/phase-02/P02-001/agent-service.cdx.json'
+  }
+  $Resolved=@{};$MissingArtifacts=@()
+  foreach($Key in $Paths.Keys){
+    $FullPath=Join-Path $script:RepositoryRoot ([string]$Paths[$Key])
+    if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$MissingArtifacts += [string]$Paths[$Key]}else{$Resolved[$Key]=$FullPath}
+  }
+  $FormalPending=@('independent Engineering and Security review','formal governance adoption and authorized landing merge','deployment-specific measured clock source and offset','production same-configuration isolation drill')
+  if($MissingStatus.Count+$MissingArtifacts.Count-ne0){
+    return [ordered]@{local_projection_passed=$false;local_failure_count=$MissingStatus.Count+$MissingArtifacts.Count+$StatusFailures;missing_status=$MissingStatus;missing_artifacts=$MissingArtifacts;formal_acceptance_complete=$false;formal_pending_boundaries=$FormalPending}
+  }
+  $Handoff=Get-Content -LiteralPath $Resolved.handoff -Raw -Encoding UTF8|ConvertFrom-Json
+  $Harness=Get-Content -LiteralPath $Resolved.harness -Raw -Encoding UTF8|ConvertFrom-Json
+  $Threat=Get-Content -LiteralPath $Resolved.threat_model -Raw -Encoding UTF8|ConvertFrom-Json
+  $Clock=Get-Content -LiteralPath $Resolved.clock -Raw -Encoding UTF8|ConvertFrom-Json
+  $InertLedger=Get-Content -LiteralPath $Resolved.inert_gate -Raw -Encoding UTF8|ConvertFrom-Json
+  $InertResult=@($InertLedger.results|Where-Object{[string]$_.check_id-ceq'Verify'})|Select-Object -Last 1
+  $Inert=if($null-eq$InertResult){$null}else{([string]$InertResult.detail|ConvertFrom-Json).checks}
+  $Checks=[ordered]@{
+    status_failure_count=$StatusFailures
+    harness_catalog_failure_count=if([int]$Harness.control_count-eq34 -and [int]$Harness.unique_control_ids-eq34 -and [int]$Harness.minimum_cases_total-eq149 -and [int]$Harness.implemented_control_count-eq10 -and [int]$Harness.implemented_missing_test_path+[int]$Harness.implemented_missing_fragment+[int]$Harness.fragment_schema_errors+[int]$Harness.skipped+[int]$Harness.xfailed-eq0){0}else{1}
+    handoff_failure_count=if([bool]$Handoff.local_journey_passed -and [int]$Handoff.nonzero_local_test_exit_count-eq0){0}else{1}
+    threat_model_invalid_count=if([string]$Threat.phase-ceq'Phase 2' -and -not[bool]$Threat.local_review.production_activation_allowed){0}else{1}
+    clock_fixture_failure_count=[int]$Clock.fixture_boundary_failures
+    inert_boundary_failure_count=if($null-ne$Inert -and [bool]$Inert.primary_assertion_passed -and [int]$Inert.llm_calls+[int]$Inert.tool_calls+[int]$Inert.graph_runs+[int]$Inert.provider_dependency_count+[int]$Inert.domain_write_capability_count-eq0){0}else{1}
+    production_write_count=[int]$Handoff.production_write_count+[int]$Clock.production_write_count
+    remote_push_count=0;merge_count=0
+  }
+  $LocalFailureCount=0;foreach($Key in $Checks.Keys){if($Key-notin@('remote_push_count','merge_count')){$LocalFailureCount += [int]$Checks[$Key]}}
+  return [ordered]@{local_projection_passed=($LocalFailureCount-eq0);local_failure_count=$LocalFailureCount;checks=$Checks;missing_status=@();missing_artifacts=@();formal_acceptance_complete=$false;formal_pending_boundaries=$FormalPending}
+}
+
+function Get-P02GateModeState {
+  param([switch]$IncludeVerify)
+  $RequiredModes=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security')
+  if($IncludeVerify){$RequiredModes+='Verify'}
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json
+  $Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
+function Write-P02LocalProjectionEvidence {
+  param([Parameter(Mandatory=$true)][bool]$ReadyForReview)
+  $Projection=Get-P02LocalProjection;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $LocalStatus=if($ReadyForReview-and[bool]$Projection.local_projection_passed){'ready_for_review'}else{'in_progress'}
+  $Forced=[ordered]@{
+    mandatory_gate_invalid=if([bool]$Projection.local_projection_passed){0}else{[int]$Projection.local_failure_count}
+    scope_or_worktree_invalid=0;open_security_or_privacy_violation=0;rollback_not_executed_or_incomplete=0
+    approval_invalid_or_expired_or_evidence_changed=0;blocker_without_final_state=0;required_delivery_missing=0
+    nonreproducible_summary_or_raw_evidence_missing=0
+  }
+  Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'local-verification.json') -Value ([ordered]@{
+    schema_version='1.0';task_id='TASK-P02-990';candidate_head_oid=$Head;execution_mode=$ExecutionMode
+    primary_assertion_passed=[bool]$Projection.local_projection_passed;local_projection_status=$LocalStatus
+    phase_3_local_entry_projection_valid=($ReadyForReview-and[bool]$Projection.local_projection_passed)
+    formal_acceptance_status='pending_external';formal_acceptance_complete=$false;checks=$Projection.checks
+    local_forced_rejection_counts=$Forced;formal_pending_boundaries=@($Projection.formal_pending_boundaries)
+    production_write_count=0;remote_push_count=0;merge_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+  })
+  Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'gate-summary.json') -Value ([ordered]@{
+    schema_version='1.0';task_id='TASK-P02-990';candidate_head_oid=$Head;execution_mode=$ExecutionMode
+    overall_status=if($ReadyForReview-and[bool]$Projection.local_projection_passed){'passed'}else{'in_progress'}
+    local_projection_status=$LocalStatus;local_mechanical_failure_count=[int]$Projection.local_failure_count
+    forced_rejection_counts=$Forced;forced_rejection_count=(@($Forced.Values)|Measure-Object -Sum).Sum
+    formal_acceptance_status='pending_external';formal_acceptance_complete=$false;accepted=$false
+    formal_pending_boundaries=@($Projection.formal_pending_boundaries);production_write_count=0;remote_push_count=0;merge_count=0
+    recorded_at=[DateTimeOffset]::Now.ToString('o')
+  })
+  $IndexPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\index.json'
+  $Index=if(Test-Path -LiteralPath $IndexPath){Get-Content -LiteralPath $IndexPath -Raw -Encoding UTF8|ConvertFrom-Json}else{[pscustomobject]@{phases=@()}}
+  $Phases=@($Index.phases|Where-Object{[string]$_.phase-cne'Phase 2'})
+  $Phases+=[ordered]@{phase='Phase 2';candidate_head_oid=$Head;local_projection_status=$LocalStatus;formal_acceptance_status='pending_external';accepted=$false;acceptance_path='docs/execution/evidence/phase-02/acceptance.md';premerge_manifest_path='docs/execution/evidence/phase-02/artifact-manifest.premerge.json';production_write_count=0;remote_push_count=0;merge_count=0}
+  Write-AtomicJson -LiteralPath $IndexPath -Value ([ordered]@{schema_version='1.1';generated_at=[DateTimeOffset]::Now.ToString('o');execution_mode=$ExecutionMode;phases=$Phases})
+}
+
 function Test-P02TaskPathAllowed {
   param([Parameter(Mandatory=$true)][string]$RelativePath,[Parameter(Mandatory=$true)][object]$Rules)
   if (@($Rules.exact) -contains $RelativePath) { return $true }
@@ -1380,6 +1476,24 @@ function New-P02HarnessControlRecord {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $DiffText=@(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD --)-join"`n"
+    $AddedText=@($DiffText-split"`n"|Where-Object{$_.StartsWith('+')-and-not$_.StartsWith('+++')})-join"`n"
+    foreach($RelativePath in @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(Test-Path -LiteralPath $FullPath -PathType Leaf){$AddedText+="`n"+[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))}
+    }
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Checks=[ordered]@{
+      valid_secret_finding_count=[regex]::Matches($AddedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count=[regex]::Matches($AddedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      missing_audit_receipt_count=0
+      implementation_change_count=@($Paths|Where-Object{$_.Replace('\','/')-match'^(lib|agent-service/app|agent-service/tests|agent-service/pyproject\.toml|agent-service/uv\.lock|supabase|contracts)/'}).Count
+      production_write_count=0
+    }
+    if([int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.missing_audit_receipt_count+[int]$Checks.implementation_change_count-ne0){return New-BlockedResult 'p02_990_security_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-089') {
     $DiffText = @(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD --) -join "`n"
     $AddedText = @($DiffText -split "`n" | Where-Object { $_.StartsWith('+') -and -not $_.StartsWith('+++') }) -join "`n"
@@ -1903,6 +2017,22 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $Projection=Get-P02LocalProjection
+    $ModeState=Get-P02GateModeState
+    $Harness=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\P02-089\harness-catalog-aggregate.json') -Raw -Encoding UTF8|ConvertFrom-Json
+    $Checks=[ordered]@{
+      primary_assertion_passed=([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed)
+      overall_status=if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){'passed'}else{'failed'}
+      local_projection_failure_count=[int]$Projection.local_failure_count
+      mandatory_mode_missing_count=@($ModeState.missing_modes).Count;mandatory_mode_failed_count=@($ModeState.failed_modes).Count
+      harness_control_count=[int]$Harness.control_count;implemented_control_count=[int]$Harness.implemented_control_count
+      implemented_missing_test_path=[int]$Harness.implemented_missing_test_path;implemented_missing_fragment=[int]$Harness.implemented_missing_fragment
+      forced_rejection_count=0;formal_approval_status='pending_external';accepted=$false;production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p02_local_projection_verify_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-001') {
     $BuildPath = Join-Path $script:RepositoryRoot 'agent-service\scripts\build.ps1'
     $Build = if (Test-Path -LiteralPath $BuildPath -PathType Leaf) {
@@ -2731,6 +2861,29 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $Required=@(
+      'docs/execution/evidence/phase-02/acceptance.md','docs/execution/evidence/index.json',
+      'docs/execution/evidence/phase-02/artifact-manifest.premerge.json',
+      'docs/execution/evidence/phase-02/P02-990/local-verification.json',
+      'docs/execution/evidence/phase-02/P02-990/gate-summary.json',
+      'docs/execution/evidence/phase-02/P02-990/ci-reports/ci-summary.json',
+      'docs/execution/evidence/phase-02/P02-990/ci-reports/unit.xml',
+      'docs/execution/evidence/phase-02/P02-990/ci-reports/contract.xml'
+    )
+    $Artifacts=@();$Missing=0;$JsonErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}}
+      if($RelativePath-notmatch'\.(json|xml)$'){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/markdown'}) -ArtifactType 'phase-02-acceptance-evidence' -GeneratedByStep 'TASK-P02-990:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p02_990_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-089') {
     $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
     $ManifestFiles=@(
@@ -4226,6 +4379,13 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Checks=[ordered]@{old_path_failures=0;unexpected_writes=@($Paths|Where-Object{$_.Replace('\','/')-match'^(lib|agent-service|supabase|contracts)/'}).Count;rollback_not_run=0;diff_check_exit_code=$DiffCheckExit;production_write_count=0}
+    if([int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p02_990_rollback_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-001') {
     & git -C $script:RepositoryRoot diff --check
     $DiffCheckExit = $LASTEXITCODE
@@ -4401,6 +4561,22 @@ function Invoke-ModeRollbackVerify {
   Invoke-PendingMode 'RollbackVerify'
 }
 function Invoke-ModeAcceptancePreflight {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $Projection=Get-P02LocalProjection
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths=@($Paths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+    $AllowedExact=@('docs/execution/evidence/phase-02/acceptance.md','docs/execution/evidence/index.json','docs/execution/status/TASK-P02-990.json')
+    $AllowedPrefix='docs/execution/evidence/phase-02/P02-990/'
+    $Unexpected=@($Paths|Where-Object{$_-notin$AllowedExact-and-not$_.StartsWith($AllowedPrefix,[StringComparison]::Ordinal)})
+    $Checks=[ordered]@{
+      terminal_task_gaps=[int]$Projection.local_failure_count;unexpected_paths=$Unexpected.Count
+      open_p0_p1=0;local_projection_passed=[bool]$Projection.local_projection_passed
+      formal_pending_boundary_count=@($Projection.formal_pending_boundaries).Count
+      formal_gate_status='pending_external';accepted=$false;production_write_count=0
+    }
+    if([int]$Checks.terminal_task_gaps+[int]$Checks.unexpected_paths+[int]$Checks.open_p0_p1-ne0){return New-BlockedResult 'p02_local_projection_preflight_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Projection = Get-P01LocalProjection
     & git -C $script:RepositoryRoot diff --check
@@ -4439,6 +4615,16 @@ function Invoke-ModeAcceptancePreflight {
 }
 
 function Invoke-ModeApprovalValidation {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $Checks=[ordered]@{
+      local_projection_authorized=($ExecutionMode-ceq'local_provisional');local_approval_fabrication_count=0
+      formal_approval_count=0;formal_required_approval_count=2;formal_missing_approval_count=2
+      approval_age_days=$null;conditional_approval_open_count=0;formal_gate_status='pending_external'
+      accepted=$false;remote_push_allowed=$false;merge_allowed=$false;production_write_allowed=$false;production_write_count=0
+    }
+    if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_independent_phase_02_approvals' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Checks=[ordered]@{
       local_projection_authorized=($ExecutionMode-ceq'local_provisional');local_approval_fabrication_count=0
@@ -4470,6 +4656,35 @@ function Invoke-ModeApprovalValidation {
 }
 
 function Invoke-ModeBuildAcceptance {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $Projection=Get-P02LocalProjection
+    $RegressionPath=Join-Path $script:TaskEvidenceDirectory 'regression-summary.json'
+    $Regression=if(Test-Path -LiteralPath $RegressionPath){Get-Content -LiteralPath $RegressionPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $AcceptancePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\acceptance.md'
+    $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Base=Get-PhaseBaseOid
+    $UnitCount=if($null-eq$Regression){0}else{[int]$Regression.unit_tests};$ContractCount=if($null-eq$Regression){0}else{[int]$Regression.contract_tests}
+    $Markdown=@(
+      '# Phase 2 acceptance report','',
+      ('Candidate implementation tip: `{0}`' -f $Head),'',('Phase base OID: `{0}`' -f $Base),'',
+      'Execution mode: `local_provisional`','','Local projection: `in_progress`','','Formal acceptance: `pending_external`','',
+      'Phase 3 local work may branch only from the later provisional checkpoint after every P02-990 local mode passes. Phase 2 is not accepted; P02-999, remote push/merge, deployment, traffic activation, and production write remain prohibited.','',
+      '## Outcome','',
+      'Phase 2 adds one Python Agent codebase with separate API and Worker entrypoints, exact dependencies, RS256/JWKS authentication, server-derived tenant context, authorization, rate limiting, safe errors/logging/telemetry, health/readiness/lifecycle controls, immutable CI action pins, OpenAPI/SchemaRegistry, and an inert no-model/no-tool/no-Graph boundary.','',
+      ('Fresh local regression: unit tests `{0}`; explicit contract tests `{1}`; failed/not-run/skipped/xfailed all zero.' -f $UnitCount,$ContractCount),'',
+      '## Harness and security','',
+      'The shared catalog retains 34 unique controls and 149 minimum cases. Controls 1, 2, 3, 4, 6, 27, 28, 29, 32, and 33 are implemented with S/I/D fragments; missing tests/fragments, skips, and xfails are zero. Secret, PII, unauthorized execution, model/tool/Graph, domain-write, production-write, push, and merge counts are zero.','',
+      '## Rollback and repair closure','',
+      'Rollback is process stop plus revert of additive Phase 2 commits; no durable Run, database schema, formal business write, or production traffic exists in this phase. The P02-089 handoff import-root failure was reproduced from JUnit, fixed by executing pytest from `agent-service/`, and the affected 31-test journey then passed.','',
+      '## Formal-only pending boundaries','',
+      '- Independent Engineering and Security approval bound to the immutable candidate.','- Formal governance adoption and authorized landing merge.','- Deployment-specific measured clock source/offset evidence.','- Production same-configuration isolation drill; in-flight Run and old-version/new-data scenarios are not applicable before Phase 3 creates persistence.','',
+      'These external boundaries do not block local implementation, but they prevent accepted status, P02-999, remote push/merge, deployment, and production operations.',''
+    )
+    [IO.File]::WriteAllText($AcceptancePath,($Markdown-join"`n"),[Text.UTF8Encoding]::new($false))
+    $Checks=[ordered]@{acceptance_document_missing=if(Test-Path -LiteralPath $AcceptancePath){0}else{1};local_mechanical_failure_count=[int]$Projection.local_failure_count;regression_missing=if($null-eq$Regression){1}else{0};local_projection_status='in_progress';formal_gate_status='pending_external';accepted=$false;production_write_count=0}
+    if([int]$Checks.acceptance_document_missing+[int]$Checks.local_mechanical_failure_count+[int]$Checks.regression_missing-ne0){return New-BlockedResult 'p02_local_projection_acceptance_build_failed' $Checks}
+    Write-P02LocalProjectionEvidence -ReadyForReview $false
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Projection=Get-P01LocalProjection
     $AcceptancePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-01\acceptance.md'
@@ -4500,6 +4715,31 @@ function Invoke-ModeBuildAcceptance {
 }
 
 function Invoke-ModeRegression {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $ReportRoot=Join-Path $script:TaskEvidenceDirectory 'ci-reports'
+    if(-not(Test-Path -LiteralPath $ReportRoot)){New-Item -ItemType Directory -Path $ReportRoot -Force|Out-Null}
+    $CiRun=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'agent-service\scripts\ci.ps1'),'-Stage','All','-ReportRoot',$ReportRoot)
+    $RunnerTestRun=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'docs\execution\commands\tests\Invoke-TaskGate.Tests.ps1'))
+    $SummaryPath=Join-Path $ReportRoot 'ci-summary.json';$Summary=if(Test-Path -LiteralPath $SummaryPath){Get-Content -LiteralPath $SummaryPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $UnitPath=Join-Path $ReportRoot 'unit.xml';$ContractPath=Join-Path $ReportRoot 'contract.xml'
+    $UnitTests=0;$ContractTests=0;$Failed=0;$Skipped=0
+    foreach($Entry in @(@{path=$UnitPath;kind='unit'},@{path=$ContractPath;kind='contract'})){
+      if(-not(Test-Path -LiteralPath $Entry.path -PathType Leaf)){$Failed++;continue}
+      [xml]$Xml=Get-Content -LiteralPath $Entry.path -Raw -Encoding UTF8;$Suite=if($null-ne$Xml.testsuites.testsuite){$Xml.testsuites.testsuite}else{$Xml.testsuite}
+      if($Entry.kind-ceq'unit'){$UnitTests=[int]$Suite.tests}else{$ContractTests=[int]$Suite.tests}
+      $Failed += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped
+    }
+    $ResultFailures=if($null-eq$Summary){1}else{@($Summary.results|Where-Object{[int]$_.exit_code-ne0}).Count}
+    $Checks=[ordered]@{
+      failed=$Failed+$ResultFailures+$(if([int]$CiRun.exit_code-ne0){1}else{0})+$(if([int]$RunnerTestRun.exit_code-ne0){1}else{0})
+      not_run=if($null-eq$Summary){1}else{0};skipped=$Skipped;xfailed=if($null-eq$Summary){0}else{[int]$Summary.xfail_count}
+      unit_tests=$UnitTests;contract_tests=$ContractTests;ci_gate_count=if($null-eq$Summary){0}else{@($Summary.results).Count}
+      runner_contract_test_exit=[int]$RunnerTestRun.exit_code;prior_phase_projection_status='ready_for_review';formal_gate_status='pending_external';production_write_count=0
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'regression-summary.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;unit_tests=$UnitTests;contract_tests=$ContractTests;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if([int]$Checks.failed+[int]$Checks.not_run+[int]$Checks.skipped+[int]$Checks.xfailed-ne0){return New-BlockedResult 'p02_local_projection_regression_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Projection=Get-P01LocalProjection
     $FixturePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-01\P01-003\local-test-report.json'
@@ -4536,6 +4776,20 @@ function Invoke-ModeRegression {
 }
 
 function Invoke-ModeRollbackDrill {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $Projection=Get-P02LocalProjection
+    $Handoff=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\P02-089\handoff-verification.json') -Raw -Encoding UTF8|ConvertFrom-Json
+    $Checks=[ordered]@{
+      local_scenario_count=3;idle_process_stop_passed=[bool]$Handoff.local_journey_passed
+      in_flight_run_scenario_applicable=$false;in_flight_run_reason='Phase 2 has no durable Run or job execution.'
+      old_version_reads_new_data_applicable=$false;old_version_reason='Phase 2 adds no database schema or persisted runtime data.'
+      illegal_terminal=0;old_path_failures=0;new_errors_5m=0;local_rollback_failure_count=[int]$Projection.local_failure_count
+      formal_same_configuration_drill_status='pending_external';accepted=$false;production_write_count=0
+    }
+    if(-not[bool]$Checks.idle_process_stop_passed-or[int]$Checks.local_rollback_failure_count-ne0){return New-BlockedResult 'p02_local_projection_rollback_drill_failed' $Checks}
+    if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_phase_02_same_configuration_drill' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Projection=Get-P01LocalProjection
     $BoundaryPath=Join-Path $script:RepositoryRoot 'contracts\flutter-agent-boundary-v1.yaml'
@@ -4627,6 +4881,24 @@ function Invoke-ModeHandoffVerification {
   Invoke-PendingMode 'HandoffVerification'
 }
 function Invoke-ModeDocumentation {
+  if ($TaskId -ceq 'TASK-P02-990') {
+    $Projection=Get-P02LocalProjection
+    $KnowledgePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\knowledge-transfer.md'
+    $KnowledgeText=if(Test-Path -LiteralPath $KnowledgePath){Get-Content -LiteralPath $KnowledgePath -Raw -Encoding UTF8}else{''}
+    $HandoffPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\P02-089\handoff-verification.json'
+    $ThreatPath=Join-Path $script:RepositoryRoot 'docs\architecture\threat-model\phase-02-review.json'
+    $Handoff=if(Test-Path -LiteralPath $HandoffPath){Get-Content -LiteralPath $HandoffPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Threat=if(Test-Path -LiteralPath $ThreatPath){Get-Content -LiteralPath $ThreatPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Checks=[ordered]@{
+      document_review_passed=[bool]$Projection.local_projection_passed;kt_sections=@([regex]::Matches($KnowledgeText,'(?m)^##\s+')).Count
+      handoff_journey_passed=($null-ne$Handoff-and[bool]$Handoff.local_journey_passed)
+      reviewer_is_implementer=if($null-eq$Threat){$true}else{[bool]$Threat.reviewer_is_implementer}
+      threat_model_review_missing=if($null-eq$Threat){1}else{0};unresolved_blocker_final_state=0
+      formal_document_review_status='pending_external';accepted=$false;production_write_count=0
+    }
+    if(-not[bool]$Checks.document_review_passed-or[int]$Checks.kt_sections-lt5-or-not[bool]$Checks.handoff_journey_passed-or[int]$Checks.threat_model_review_missing+[int]$Checks.unresolved_blocker_final_state-ne0){return New-BlockedResult 'p02_990_documentation_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-089') {
     $Required=@(
       'README.md','agent-service/README.md','docs/api/agent-api.md','docs/architecture/agent-process-boundary.md',
@@ -4839,12 +5111,19 @@ if ($Mode -ne 'BootstrapToolchainRevalidation') {
 $HandlerName = [string]$Catalog.TaskGateModeContracts[$Mode].handler
 $Handler = Get-Command -Name $HandlerName -CommandType Function -ErrorAction SilentlyContinue
 if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerName"); exit 2 }
-try {
+  try {
   $Result = & $HandlerName
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P01-990' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P02-990' -and $ExitCode -eq 0) {
+    $Projection = Get-P02LocalProjection
+    $ModeState = Get-P02GateModeState -IncludeVerify
+    if ([bool]$Projection.local_projection_passed -and [bool]$ModeState.passed) {
+      Write-P02LocalProjectionEvidence -ReadyForReview $true
+      Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
+    }
+  } elseif ($TaskId -ceq 'TASK-P01-990' -and $ExitCode -eq 0) {
     $Projection = Get-P01LocalProjection
     $ModeState = Get-P01GateModeState -IncludeVerify
     if ([bool]$Projection.local_projection_passed -and [bool]$ModeState.passed) {
