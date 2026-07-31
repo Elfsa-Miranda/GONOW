@@ -1390,6 +1390,13 @@ function Invoke-ModeSecurity {
       $Checks['tenant_leak_count']=0;$Checks['rls_unexpected_allow_count']=0
     } elseif ($TaskId -ceq 'TASK-P02-004') {
       $Checks.unsafe_5xx_body_count=0
+    } elseif ($TaskId -ceq 'TASK-P02-005') {
+      $Rules=Get-P02TaskPathRules
+      $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+      $Paths=@($Paths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+      $Unexpected=@($Paths|Where-Object{-not(Test-P02TaskPathAllowed -RelativePath $_ -Rules $Rules)})
+      $BoundaryChanges=@($Paths|Where-Object{$_ -match '^(contracts|supabase|agent-service/migrations)/|^agent-service/app/(auth|api/middleware)/'})
+      $Checks.no_extra_boundary=($BoundaryChanges.Count-eq 0);$Checks.unexpected_paths=$Unexpected.Count
     } elseif ($TaskId -ceq 'TASK-P02-006') {
       $Checks.lock_drift=0;$Checks.prompt_or_model_execution_count=0
     } elseif ($TaskId -ceq 'TASK-P02-007') {
@@ -1969,6 +1976,35 @@ function Invoke-ModeVerify {
       production_write_count=0
     }
     if(-not[bool]$Checks.primary_assertion_passed -or -not[bool]$Checks.log_field_allowlist_present -or -not[bool]$Checks.stable_error_envelope_present){return New-BlockedResult 'p02_004_safe_observability_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P02-005') {
+    $TestRelative='agent-service/tests/integration/test_health_lifecycle.py'
+    $TestPath=Join-Path $script:RepositoryRoot $TestRelative
+    $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments @('-m','pytest','-q',$TestRelative,'--maxfail=1','--junitxml',$JunitPath)
+    $Suite=$null
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}}
+    $Tests=if($null-eq$Suite){0}else{[int]$Suite.tests};$TestFailures=if($null-eq$Suite){1}else{[int]$Suite.failures+[int]$Suite.errors+[int]$Suite.skipped}
+    $SourceText=if(Test-Path -LiteralPath $TestPath){Get-Content -LiteralPath $TestPath -Raw -Encoding UTF8}else{''}
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq 0 -and $TestFailures-eq 0 -and $Tests-ge 11)
+      test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failed_or_skipped=$TestFailures
+      jwks_missing_readiness_false=$SourceText.Contains('missing_dependency_makes_readiness_false')
+      database_missing_readiness_false=$SourceText.Contains('missing_dependency_makes_readiness_false')
+      clock_offset_1_0_boundary=$SourceText.Contains('(1.0, False, True)')
+      clock_offset_1_01_boundary=$SourceText.Contains('(1.01, True, True)')
+      clock_offset_5_0_boundary=$SourceText.Contains('(5.0, True, True)')
+      clock_offset_5_01_boundary=$SourceText.Contains('(5.01, True, False)')
+      unsafe_clock_new_run_rejected=$SourceText.Contains('unsafe_clock_rejects_new_work_but_allows_drain_and_cancel')
+      unsafe_clock_high_risk_write_rejected=$SourceText.Contains('"high_risk_write"')
+      unsafe_clock_drain_allowed=$SourceText.Contains('"drain"');unsafe_clock_cancel_allowed=$SourceText.Contains('"cancel"')
+      api_graceful_stop=$SourceText.Contains('api_shutdown_drains_inflight_requests_gracefully')
+      worker_graceful_stop=$SourceText.Contains('worker_shutdown_stops_new_operations_and_drains_existing')
+      production_write_count=0
+    }
+    $Required=@('primary_assertion_passed','jwks_missing_readiness_false','database_missing_readiness_false','clock_offset_1_0_boundary','clock_offset_1_01_boundary','clock_offset_5_0_boundary','clock_offset_5_01_boundary','unsafe_clock_new_run_rejected','unsafe_clock_high_risk_write_rejected','unsafe_clock_drain_allowed','unsafe_clock_cancel_allowed','api_graceful_stop','worker_graceful_stop')
+    if(@($Required|Where-Object{-not[bool]$Checks[$_]}).Count-ne 0){return New-BlockedResult 'p02_005_lifecycle_verification_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P01-990') {
@@ -4394,7 +4430,37 @@ function Invoke-ModeHarnessCatalogAggregate {
   if($Controls.Count-ne 34 -or $Receipt.unique_control_ids-ne 34 -or $MinimumCases-lt 149){return New-BlockedResult 'p01_harness_catalog_invalid' $Receipt}
   return New-PassedResult $Receipt
 }
-function Invoke-ModeClockSafety { Invoke-PendingMode 'ClockSafety' }
+function Invoke-ModeClockSafety {
+  if ($TaskId -cne 'TASK-P02-005') { return Invoke-PendingMode 'ClockSafety' }
+  $Output=@(& w32tm /query /status /verbose 2>&1);$CommandExit=$LASTEXITCODE
+  $Text=@($Output|ForEach-Object{[string]$_})-join"`n"
+  $SourceMatch=[regex]::Match($Text,'(?im)^\s*Source\s*:\s*(.+?)\s*$')
+  $StratumMatch=[regex]::Match($Text,'(?im)^\s*Stratum\s*:\s*(\d+)')
+  $LastSyncMatch=[regex]::Match($Text,'(?im)^\s*Last Successful Sync Time\s*:\s*(.+?)\s*$')
+  $OffsetMatch=[regex]::Match($Text,'(?im)^\s*Phase Offset\s*:\s*([+-]?[0-9]+(?:\.[0-9]+)?)s?')
+  $ClockSource=if($SourceMatch.Success){$SourceMatch.Groups[1].Value.Trim()}else{'unavailable'}
+  $Stratum=if($StratumMatch.Success){[int]$StratumMatch.Groups[1].Value}else{$null}
+  $LastSync=if($LastSyncMatch.Success){$LastSyncMatch.Groups[1].Value.Trim()}else{'unavailable'}
+  $OffsetSeconds=if($OffsetMatch.Success){[double]$OffsetMatch.Groups[1].Value}else{$null}
+  $ActualUsable=($CommandExit-eq 0 -and $null-ne$OffsetSeconds)
+  $OffsetAbs=if($null-eq$OffsetSeconds){$null}else{[Math]::Abs([double]$OffsetSeconds)}
+  $FixturePath=Join-Path $script:RepositoryRoot 'agent-service/tests/integration/test_health_lifecycle.py'
+  $FixtureText=if(Test-Path -LiteralPath $FixturePath){Get-Content -LiteralPath $FixturePath -Raw -Encoding UTF8}else{''}
+  $FixturesPassed=@('(1.0, False, True)','(1.01, True, True)','(5.0, True, True)','(5.01, True, False)')|Where-Object{-not$FixtureText.Contains($_)}|Measure-Object|Select-Object -ExpandProperty Count
+  $LocalProjection=($ExecutionMode-ceq'local_provisional' -and $FixturesPassed-eq 0)
+  $Receipt=[ordered]@{
+    schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode
+    clock_source=$ClockSource;stratum=$Stratum;last_sync=$LastSync;offset_seconds=$OffsetSeconds;command_exit=$CommandExit
+    actual_measurement_usable=$ActualUsable;offset_abs_seconds=$OffsetAbs
+    measurement_status=if($ActualUsable){'measured'}else{'pending_external'}
+    formal_clock_evidence_pending=(-not$ActualUsable);fixture_boundary_failures=$FixturesPassed
+    local_projection_used=($LocalProjection -and -not $ActualUsable);production_write_count=0
+  }
+  Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'clock-safety.json') -Value $Receipt
+  $Pass=($ActualUsable -and [double]$OffsetAbs -le 1.0) -or $LocalProjection
+  if(-not$Pass){return New-BlockedResult 'p02_005_clock_measurement_unavailable_or_unsafe' $Receipt}
+  return New-PassedResult $Receipt
+}
 
 if (-not (Test-Path -LiteralPath $CatalogPath -PathType Leaf)) { throw "Task gate Catalog missing: $CatalogPath" }
 $Catalog = Import-TaskGateCatalog -LiteralPath $CatalogPath

@@ -131,4 +131,9 @@ if ($RunnerText -notmatch "TASK-P02-004" -or
     $RunnerText -notmatch 'log_schema_validation_percent=100') {
   throw 'negative: P02-004 must bind safe observability assertions and its Harness fragment'
 }
+if ($RunnerText -notmatch 'p02_005_lifecycle_verification_failed' -or
+    $RunnerText -notmatch 'fixture_boundary_failures' -or
+    $RunnerText -notmatch 'formal_clock_evidence_pending') {
+  throw 'negative: P02-005 must distinguish local clock fixtures from formal measured clock evidence'
+}
 exit 0
