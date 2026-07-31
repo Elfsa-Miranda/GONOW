@@ -47,4 +47,16 @@ if ($RunnerText -notmatch 'foreach \(\$Key in \$Checks\.Keys\)') {
 if ($RunnerText -notmatch 'function Write-TaskBlockerEvidence') {
   throw 'negative: blocked task status must reference materialized task evidence'
 }
+if ($RunnerText -notmatch "function Get-P00LocalProjection") {
+  throw 'positive: P00-990 must mechanically separate local projection from formal acceptance'
+}
+if ($RunnerText -notmatch "formal_acceptance_status = 'pending_external'") {
+  throw 'negative: P00-990 local projection must preserve the formal acceptance boundary'
+}
+if ($RunnerText -match "Set-TaskStatus -Status 'accepted'") {
+  throw 'negative: the task runner must never self-approve accepted status'
+}
+if ($RunnerText -notmatch "Get-P00GateModeState -IncludeVerify") {
+  throw 'negative: P00-990 must not become ready_for_review before all registered local modes pass'
+}
 exit 0

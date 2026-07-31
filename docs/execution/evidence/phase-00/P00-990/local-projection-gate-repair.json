@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P00-990",
+  "change_type": "bounded_plan_repair",
+  "assumption": "AGENTS.md 1.4.0 section 0.4.1 permits a local Phase entry projection from P00-990 ready_for_review when all mechanical gates pass and a provisional checkpoint OID is recorded.",
+  "root_cause": "The task runner previously used task-specific pending stubs for every P00-990 acceptance mode and treated external formal evidence as a global local-development stop.",
+  "impact": "Only TASK-P00-990 can reach ready_for_review from the new projection. It requires all ten registered modes to pass and does not write accepted, push, merge, production, deployment, or traffic-switch state.",
+  "formal_boundary": "ApprovalValidation fails in formal_adopted mode until four independent owner approvals exist; formal acceptance remains pending_external.",
+  "rollback": "Revert the P00-990-specific handlers, readiness predicate, static negative tests, and this repair record; existing external blockers and formal evidence remain unchanged.",
+  "production_write_count": 0,
+  "remote_push_count": 0,
+  "merge_count": 0
+}

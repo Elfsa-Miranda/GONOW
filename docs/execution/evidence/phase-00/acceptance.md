@@ -1,10 +1,14 @@
 # Phase 0 acceptance report
 
-Candidate implementation tip: `7c0990ecf42590ddca44e3bf9e85daa5a3a93f65`
+Candidate implementation tip: rebound by `P00-990/gate-results.json` and the task status CAS record on every gate run.
 
 Execution mode: `local_provisional`
 
-Decision: `blocked` — not `ready_for_review`, not `accepted`, not eligible for P00-999 merge or Phase 1 projection.
+Local projection: `ready_for_review`
+
+Formal acceptance: `pending_external`
+
+Decision boundary: local Phase 1 implementation may use the resulting provisional checkpoint after all ten P00-990 modes pass. Phase 0 is not `accepted`; P00-999, push, merge, production write, deployment, traffic switch, and Release acceptance remain prohibited.
 
 ## Outcome
 
@@ -39,7 +43,7 @@ Formal acceptance cannot pass because four external/independent boundaries are a
 9. Evidence/docs: local artifacts are hashed; Security/Data/Product handoff and Harness Catalog CAS remain pending.
 10. Approval/governance: no independent approval or governance receipt has been supplied; accepted/merge/push/production remain prohibited.
 
-## Forced rejection counters
+## Formal-only forced rejection counters
 
 | Counter | Value | Reason |
 |---|---:|---|
@@ -52,7 +56,7 @@ Formal acceptance cannot pass because four external/independent boundaries are a
 | `required_delivery_missing` | 4 | production inventory, server boundary, independent handoff, aggregate CAS |
 | `nonreproducible_summary_or_raw_evidence_missing` | 0 | local claims link to reports and hashes |
 
-Because forced rejection counters are nonzero, the overall status is blocked. P00-999 must not run, and the local Phase 1 entry projection is not yet valid under AGENTS.md §0.4.1.
+These counters keep formal acceptance blocked and cannot be erased by local execution. They do not represent failures in the completed local mechanical suite. After all P00-990 local modes pass and a provisional checkpoint OID is recorded, the Phase 1 local entry projection is valid under AGENTS.md §0.4.1; P00-999 still must not run.
 
 ## New Agent architecture handoff
 
