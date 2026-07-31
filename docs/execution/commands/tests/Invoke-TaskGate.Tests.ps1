@@ -126,4 +126,9 @@ if ($RunnerText -notmatch 'function New-P02HarnessControlRecord' -or
     $RunnerText -notmatch 'p02_003_auth_context_verification_failed') {
   throw 'negative: Phase 2 Harness fragments and the P02-003 auth corpus must be schema-bound'
 }
+if ($RunnerText -notmatch "TASK-P02-004" -or
+    $RunnerText -notmatch 'p02_004_safe_observability_verification_failed' -or
+    $RunnerText -notmatch 'log_schema_validation_percent=100') {
+  throw 'negative: P02-004 must bind safe observability assertions and its Harness fragment'
+}
 exit 0

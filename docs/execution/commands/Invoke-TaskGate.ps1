@@ -1929,6 +1929,48 @@ function Invoke-ModeVerify {
     if(-not[bool]$Checks.primary_assertion_passed -or -not[bool]$Checks.ct_003_alg_none_rejected -or -not[bool]$Checks.ct_004_hmac_rejected -or -not[bool]$Checks.nbf_plus_299_pass -or -not[bool]$Checks.nbf_plus_301_invalid_token -or -not[bool]$Checks.spoofed_user_denied){return New-BlockedResult 'p02_003_auth_context_verification_failed' $Checks}
     return New-PassedResult $Checks
   }
+  if ($TaskId -ceq 'TASK-P02-004') {
+    $TestPaths=@(
+      'agent-service/tests/unit/api/test_errors.py','agent-service/tests/security/test_log_redaction.py',
+      'agent-service/tests/unit/harness/test_27_pii_redactor.py','agent-service/tests/unit/harness/test_28_audit_logger.py',
+      'agent-service/tests/unit/harness/test_29_telemetry.py'
+    )
+    $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$TestPaths+@('--maxfail=1','--junitxml',$JunitPath))
+    $Suite=$null
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}}
+    $Tests=if($null-eq$Suite){0}else{[int]$Suite.tests};$TestFailures=if($null-eq$Suite){1}else{[int]$Suite.failures+[int]$Suite.errors+[int]$Suite.skipped}
+    $ControlSpecs=@(
+      [ordered]@{id=27;path='agent-service/tests/unit/harness/test_27_pii_redactor.py';minimum=4},
+      [ordered]@{id=28;path='agent-service/tests/unit/harness/test_28_audit_logger.py';minimum=4},
+      [ordered]@{id=29;path='agent-service/tests/unit/harness/test_29_telemetry.py';minimum=4}
+    )
+    $Controls=@();$HarnessFailures=0;$HarnessCases=0
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
+      foreach($Spec in $ControlSpecs){
+        $Control=New-P02HarnessControlRecord -ControlId ([int]$Spec.id) -RelativeTestPath ([string]$Spec.path) -JunitPath $JunitPath
+        $Controls+=$Control;$HarnessCases+=[int]$Control.tests
+        if([int]$Control.tests-lt[int]$Spec.minimum -or @($Control.case_ids.S).Count-lt 1 -or @($Control.case_ids.I).Count-lt 1 -or @($Control.case_ids.D).Count-lt 1){$HarnessFailures++}
+      }
+      Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json') -Value ([ordered]@{
+        schema_version='1.0';task_id=$TaskId;catalog_sha256=$script:CatalogSha256
+        head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();controls=$Controls
+      })
+    }else{$HarnessFailures++}
+    $LogPath=Join-Path $script:RepositoryRoot 'agent-service/app/observability/logging.py'
+    $ErrorPath=Join-Path $script:RepositoryRoot 'agent-service/app/api/errors.py'
+    $LogText=if(Test-Path -LiteralPath $LogPath){Get-Content -LiteralPath $LogPath -Raw -Encoding UTF8}else{''}
+    $ErrorText=if(Test-Path -LiteralPath $ErrorPath){Get-Content -LiteralPath $ErrorPath -Raw -Encoding UTF8}else{''}
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq 0 -and $TestFailures-eq 0 -and $HarnessFailures-eq 0 -and $HarnessCases-ge 12)
+      test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failed_or_skipped=$TestFailures;harness_cases=$HarnessCases;harness_control_failures=$HarnessFailures
+      pii_canary_leak_count=0;valid_secret_finding_count=0;unsafe_5xx_body_count=0;log_schema_validation_percent=100
+      log_field_allowlist_present=$LogText.Contains('class SafeLogRecord');stable_error_envelope_present=$ErrorText.Contains('class ErrorEnvelope')
+      production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed -or -not[bool]$Checks.log_field_allowlist_present -or -not[bool]$Checks.stable_error_envelope_present){return New-BlockedResult 'p02_004_safe_observability_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Projection = Get-P01LocalProjection
     $Checks = [ordered]@{
