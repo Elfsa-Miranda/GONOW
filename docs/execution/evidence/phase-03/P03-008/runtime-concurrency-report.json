@@ -1,0 +1,19 @@
+{
+  "event_race_callers": 50,
+  "event_sequence_gap_count": 0,
+  "event_sequence_max": 50,
+  "event_sequence_min": 1,
+  "event_sequence_unique_count": 50,
+  "exactly_one_legal_winner": true,
+  "next_event_seq": 51,
+  "persisted_event_count": 50,
+  "post_terminal_event_rejection_count": 1,
+  "production": false,
+  "revision": "p03_007_runtime_rls",
+  "schema_version": "1.0",
+  "task_id": "TASK-P03-008",
+  "terminal_conflict_count": 1,
+  "terminal_race_callers": 2,
+  "terminal_version": 3,
+  "terminal_winner_count": 1
+}
