@@ -2056,6 +2056,8 @@ function Invoke-ModePreflight {
       (Get-Sha256 -LiteralPath $SourcePath) -cne [string]$Manifest.source_record_sha256
     ) { 1 } else { 0 }
     $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+    & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) $Head 2>$null
+    $BaseDrift = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
     $Checks = [ordered]@{
       task_id_match = ([string]$Manifest.task_id -ceq $TaskId)
       phase_match = ([string]$Manifest.phase -ceq 'Phase 1')
@@ -2063,7 +2065,7 @@ function Invoke-ModePreflight {
       dependency_failures = 0
       status_cas_conflict = 0
       unexpected_paths = 0
-      base_drift = if ([string]$Manifest.phase_base_oid -ceq $Head) { 0 } else { 1 }
+      base_drift = $BaseDrift
       source_hash_drift = $SourceHashDrift
       prior_phase_regression_failures = [int]$Manifest.prior_phase_regression_failures
       phase_runtime_manifest = $ManifestState

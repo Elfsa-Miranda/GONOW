@@ -67,4 +67,7 @@ if ($RunnerText -notmatch 'manifest_execution_mode_match' -or
     $RunnerText -notmatch 'formal_dependency_satisfied') {
   throw 'negative: a local phase-entry manifest must not satisfy formal mode'
 }
+if ($RunnerText -notmatch 'merge-base --is-ancestor \(\[string\]\$Manifest\.phase_base_oid\) \$Head') {
+  throw 'negative: phase base must remain an ancestor rather than equal every later task HEAD'
+}
 exit 0
