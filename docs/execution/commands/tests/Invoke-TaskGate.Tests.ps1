@@ -74,6 +74,9 @@ if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'
 }
+if ($RunnerText -notmatch "TASK-P01-003" -or $RunnerText -notmatch 'orphan_contract') {
+  throw 'negative: P01-003 must reject orphan contract cases and non-deterministic test reports'
+}
 if ($RunnerText -notmatch 'DependencyStatus\.status -ceq ''accepted'' -and \[bool\]\$DependencyStatus\.reviewer_independent') {
   throw 'negative: formal task dependencies must be independently accepted'
 }

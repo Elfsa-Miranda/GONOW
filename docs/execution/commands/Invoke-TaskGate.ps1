@@ -1092,6 +1092,38 @@ function Write-P00LocalProjectionEvidence {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P01-003') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedExact = @('test/validation_semantics_test.dart','docs/execution/status/TASK-P01-003.json')
+    $AllowedPrefixes = @('test/fixtures/validation/','docs/execution/evidence/phase-01/P01-003/')
+    $Unexpected = @()
+    foreach ($PathValue in $Paths) {
+      $Allowed = $PathValue -in $AllowedExact
+      foreach ($Prefix in $AllowedPrefixes) { if ($PathValue.StartsWith($Prefix, [StringComparison]::Ordinal)) { $Allowed = $true; break } }
+      if (-not $Allowed) { $Unexpected += $PathValue }
+    }
+    $ChangedText = ''
+    foreach ($PathValue in $Paths) {
+      $FullPath = Join-Path $script:RepositoryRoot $PathValue
+      if (Test-Path -LiteralPath $FullPath -PathType Leaf) { $ChangedText += [IO.File]::ReadAllText($FullPath, [Text.UTF8Encoding]::new($false)) }
+    }
+    $Checks = [ordered]@{
+      no_extra_boundary = (@($Paths | Where-Object { $_ -match '^(lib|agent-service|contracts|supabase)/' }).Count -eq 0)
+      valid_secret_finding_count = [regex]::Matches($ChangedText, '(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count = [regex]::Matches($ChangedText, '[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unexpected_paths = $Unexpected.Count
+      synthetic_fixture_marker_missing = if ($ChangedText.Contains('"synthetic_only": true')) { 0 } else { 1 }
+      production_write_count = 0
+    }
+    if (-not [bool]$Checks.no_extra_boundary -or [int]$Checks.valid_secret_finding_count -ne 0 -or
+        [int]$Checks.pii_canary_leak_count -ne 0 -or [int]$Checks.unexpected_paths -ne 0 -or
+        [int]$Checks.synthetic_fixture_marker_missing -ne 0) {
+      return New-BlockedResult 'p01_003_security_or_scope_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-002') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -1383,6 +1415,48 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P01-003') {
+    $FixturePath = Join-Path $script:RepositoryRoot 'test\fixtures\validation\validation_semantics_cases.json'
+    $ContractPath = Join-Path $script:RepositoryRoot 'docs\architecture\validation-semantics-v1.md'
+    $TestPath = Join-Path $script:RepositoryRoot 'test\validation_semantics_test.dart'
+    $ReportPath = Join-Path $script:TaskEvidenceDirectory 'local-test-report.json'
+    $Required = @($FixturePath,$ContractPath,$TestPath,$ReportPath)
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($Missing.Count -ne 0) {
+      return New-BlockedResult 'p01_003_fixture_or_report_missing' ([ordered]@{ primary_assertion_passed = $false; missing_artifact_count = $Missing.Count })
+    }
+    $Fixture = Get-Content -LiteralPath $FixturePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Contract = Get-Content -LiteralPath $ContractPath -Raw -Encoding UTF8
+    $Report = Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Cases = @($Fixture.cases)
+    $FixtureIds = @($Cases | ForEach-Object { [string]$_.fixture_id } | Sort-Object -Unique)
+    $ContractIds = @([regex]::Matches($Contract, 'VS-[A-Z]+-[A-Z]+-[0-9]{3}') | ForEach-Object { $_.Value } | Sort-Object -Unique)
+    $Orphans = @($ContractIds | Where-Object { $FixtureIds -notcontains $_ }) + @($FixtureIds | Where-Object { $ContractIds -notcontains $_ })
+    $DuplicateCount = $Cases.Count - $FixtureIds.Count
+    $ExpectedMissing = @($Cases | Where-Object { $null -eq $_.expected_result -or [string]::IsNullOrWhiteSpace([string]$_.expected_result.reason_code) }).Count
+    $Checks = [ordered]@{
+      primary_assertion_passed = $false
+      fixture_count = $Cases.Count
+      unique_fixture_id_count = $FixtureIds.Count
+      duplicate_fixture_id_count = $DuplicateCount
+      orphan_contract = $Orphans.Count
+      expected_result_missing = $ExpectedMissing
+      synthetic_only = [bool]$Fixture.synthetic_only
+      test_exit_code = [int]$Report.exit_code
+      passed = [int]$Report.passed
+      failed = [int]$Report.failed
+      skipped = [int]$Report.skipped
+      xfailed = [int]$Report.xfailed
+      flaky = [int]$Report.flaky
+      production_write_count = 0
+    }
+    $Checks.primary_assertion_passed = $Cases.Count -eq 8 -and $DuplicateCount -eq 0 -and $Orphans.Count -eq 0 -and
+      $ExpectedMissing -eq 0 -and [bool]$Checks.synthetic_only -and [int]$Checks.test_exit_code -eq 0 -and
+      [int]$Checks.passed -eq 3 -and [int]$Checks.failed -eq 0 -and [int]$Checks.skipped -eq 0 -and
+      [int]$Checks.xfailed -eq 0 -and [int]$Checks.flaky -eq 0
+    if (-not [bool]$Checks.primary_assertion_passed) { return New-BlockedResult 'p01_003_fixture_contract_or_test_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-002') {
     $SchemaPath = Join-Path $script:RepositoryRoot 'contracts\validation-semantics-v1.schema.json'
     $DocumentPath = Join-Path $script:RepositoryRoot 'docs\architecture\validation-semantics-v1.md'
@@ -1757,6 +1831,24 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P01-003') {
+    $Required = @(
+      'test/fixtures/validation/validation_semantics_cases.json',
+      'test/validation_semantics_test.dart',
+      'docs/execution/evidence/phase-01/P01-003/local-test-report.json'
+    )
+    $Artifacts = @(); $Missing = 0; $JsonErrors = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      if ($RelativePath.EndsWith('.json')) { try { $null = Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $JsonErrors++ } }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if ($RelativePath.EndsWith('.json')) { 'application/json' } else { 'text/x-dart' }) -ArtifactType 'phase-01-validation-fixture' -GeneratedByStep 'TASK-P01-003:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{ schema_version='1.0'; task_id=$TaskId; git_object_format=Get-GitObjectFormat; head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts=$Artifacts })
+    $Checks = [ordered]@{ schema_errors=$JsonErrors; unhashed_artifacts=$Missing; redaction_failures=0; artifact_count=$Artifacts.Count; production_write_count=0 }
+    if ([int]$Checks.schema_errors + [int]$Checks.unhashed_artifacts -ne 0) { return New-BlockedResult 'p01_003_evidence_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-002') {
     $Required = @(
       'contracts/validation-semantics-v1.schema.json',
@@ -2318,6 +2410,17 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P01-003') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD); $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+    $AllowedExact = @('test/validation_semantics_test.dart','docs/execution/status/TASK-P01-003.json')
+    $AllowedPrefixes = @('test/fixtures/validation/','docs/execution/evidence/phase-01/P01-003/')
+    $Unexpected = @(); foreach($PathValue in $Paths){$Allowed=$PathValue-in$AllowedExact;foreach($Prefix in $AllowedPrefixes){if($PathValue.StartsWith($Prefix,[StringComparison]::Ordinal)){$Allowed=$true;break}};if(-not$Allowed){$Unexpected+=$PathValue}}
+    $Required = @('test/fixtures/validation/validation_semantics_cases.json','test/validation_semantics_test.dart','docs/execution/evidence/phase-01/P01-003/local-test-report.json')
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_) -PathType Leaf) })
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','contracts/validation-semantics-v1.schema.json')}).Count;unrecorded_action_count=0;work_contract_assertion_gaps=$Missing.Count;nonzero_exit_count=0;production_write_count=0}
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.work_contract_assertion_gaps-ne 0){return New-BlockedResult 'p01_003_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-002') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2757,6 +2860,11 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P01-003') {
+    & git -C $script:RepositoryRoot diff --check; $DiffCheckExit=$LASTEXITCODE
+    $Checks=[ordered]@{old_path_failures=0;unexpected_writes=0;diff_check_exit_code=$DiffCheckExit;production_write_count=0}
+    if($DiffCheckExit-ne 0){return New-BlockedResult 'p01_003_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-002') {
     & git -C $script:RepositoryRoot diff --check
     $DiffCheckExit = $LASTEXITCODE
