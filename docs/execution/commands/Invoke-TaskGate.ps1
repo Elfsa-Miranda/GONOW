@@ -2049,6 +2049,9 @@ function Invoke-ModePreflight {
     }
     $Manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
     $SourcePath = Join-Path $script:RepositoryRoot ([string]$Manifest.source_record_path)
+    $SourceRecord = if (Test-Path -LiteralPath $SourcePath -PathType Leaf) {
+      Get-Content -LiteralPath $SourcePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } else { $null }
     $SourceHashDrift = if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) { 1 } elseif (
       (Get-Sha256 -LiteralPath $SourcePath) -cne [string]$Manifest.source_record_sha256
     ) { 1 } else { 0 }
@@ -2056,6 +2059,7 @@ function Invoke-ModePreflight {
     $Checks = [ordered]@{
       task_id_match = ([string]$Manifest.task_id -ceq $TaskId)
       phase_match = ([string]$Manifest.phase -ceq 'Phase 1')
+      manifest_execution_mode_match = ([string]$Manifest.execution_mode -ceq $ExecutionMode)
       dependency_failures = 0
       status_cas_conflict = 0
       unexpected_paths = 0
@@ -2069,16 +2073,25 @@ function Invoke-ModePreflight {
       source_status = [string]$Manifest.source_status
       boot005_mechanical_revalidation = [string]$Manifest.boot005_mechanical_revalidation
       local_dependency_projection_valid = [bool]$Manifest.local_dependency_projection_valid
+      formal_dependency_satisfied = ($null -ne $SourceRecord -and
+        [string]$SourceRecord.status -ceq 'accepted' -and [bool]$SourceRecord.reviewer_independent -and
+        -not [string]::IsNullOrWhiteSpace([string]$Manifest.formal_phase_base_oid))
       formal_dependency_pending = ($ExecutionMode -ceq 'local_provisional')
       production_write_count = 0
     }
+    $DependencyProjectionSatisfied = if ($ExecutionMode -ceq 'formal_adopted') {
+      [bool]$Checks.formal_dependency_satisfied
+    } else {
+      [bool]$Checks.local_dependency_projection_valid
+    }
     if (-not [bool]$Checks.task_id_match -or -not [bool]$Checks.phase_match -or
+        -not [bool]$Checks.manifest_execution_mode_match -or
         [int]$Checks.base_drift -ne 0 -or [int]$Checks.source_hash_drift -ne 0 -or
         [int]$Checks.prior_phase_regression_failures -ne 0 -or
         [string]$Checks.source_task_id -cne 'TASK-P00-990' -or
         [string]$Checks.source_status -notin @('ready_for_review', 'accepted') -or
         [string]$Checks.boot005_mechanical_revalidation -cne 'passed' -or
-        -not [bool]$Checks.local_dependency_projection_valid) {
+        -not $DependencyProjectionSatisfied) {
       return New-BlockedResult 'phase_01_entry_manifest_validation_failed' $Checks
     }
     return New-PassedResult $Checks

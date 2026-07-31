@@ -14,4 +14,8 @@ if ($Text -notmatch 'phase = \$TargetPhaseLabel' -or
     $Text -notmatch 'phase-base-source:\$\(\$TargetPhaseCode') {
   throw 'negative: phase entry identity must be derived from TaskId'
 }
+if ($Text -notmatch "ExecutionMode -ceq 'formal_adopted'" -or
+    $Text -notmatch '\$FormalAccepted') {
+  throw 'negative: formal phase entry must remain bound to an independently accepted source'
+}
 exit 0

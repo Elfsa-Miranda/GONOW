@@ -63,4 +63,8 @@ if ($RunnerText -notmatch "TASK-P01-001" -or
     $RunnerText -notmatch 'incomplete_source_sink_fallback_count') {
   throw 'negative: P01-001 must verify every mapped source, sink, and fallback'
 }
+if ($RunnerText -notmatch 'manifest_execution_mode_match' -or
+    $RunnerText -notmatch 'formal_dependency_satisfied') {
+  throw 'negative: a local phase-entry manifest must not satisfy formal mode'
+}
 exit 0
