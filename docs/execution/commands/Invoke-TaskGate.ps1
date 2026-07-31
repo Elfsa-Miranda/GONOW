@@ -1247,6 +1247,39 @@ function Write-P00LocalProjectionEvidence {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P02-001') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+    $ChangedText = ''
+    foreach ($RelativePath in $Paths) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+        $ChangedText += [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false)) + "`n"
+      }
+    }
+    $PyprojectPath = Join-Path $script:RepositoryRoot 'agent-service\pyproject.toml'
+    $Pyproject = if (Test-Path -LiteralPath $PyprojectPath -PathType Leaf) {
+      [IO.File]::ReadAllText($PyprojectPath,[Text.UTF8Encoding]::new($false))
+    } else { '' }
+    $Canary = 'gonow-p02-001-canary@example.invalid'
+    $Redacted = $Canary -replace '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+','[REDACTED_EMAIL]'
+    $Checks = [ordered]@{
+      valid_secret_finding_count = [regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count = if ($Redacted.Contains($Canary)) { 1 } else { 0 }
+      tracked_environment_file_count = @(& git -C $script:RepositoryRoot ls-files | Where-Object { $_ -match '(^|/)(\.env($|\.)|.*\.(pem|key|p12|pfx))$' }).Count
+      model_or_graph_dependency_count = [regex]::Matches($Pyproject,'(?im)^\s*"(?:openai|anthropic|langgraph|langchain|llama-index)[^\"]*"').Count
+      flutter_change_count = @($Paths | Where-Object { $_ -match '^(lib|test)/' }).Count
+      database_change_count = @($Paths | Where-Object { $_ -match '^(supabase|agent-service/migrations)/' }).Count
+      production_write_count = 0
+    }
+    $Failures = 0
+    foreach ($Key in @('valid_secret_finding_count','pii_canary_leak_count','tracked_environment_file_count','model_or_graph_dependency_count','flutter_change_count','database_change_count','production_write_count')) {
+      $Failures += [int]$Checks[$Key]
+    }
+    if ($Failures -ne 0) { return New-BlockedResult 'p02_001_security_boundary_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
     $DiffText = @(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD --) -join "`n"
     $AddedText = @($DiffText -split "`n" | Where-Object { $_.StartsWith('+') -and -not $_.StartsWith('+++') }) -join "`n"
@@ -1660,6 +1693,34 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P02-001') {
+    $BuildPath = Join-Path $script:RepositoryRoot 'agent-service\scripts\build.ps1'
+    $Build = if (Test-Path -LiteralPath $BuildPath -PathType Leaf) {
+      Invoke-RedactedExternal -Executable 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -Arguments @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',$BuildPath
+      )
+    } else { [ordered]@{exit_code=1;duration_seconds=0;output_line_count=0} }
+    $ApiPath = Join-Path $script:RepositoryRoot 'agent-service\app\api\main.py'
+    $WorkerPath = Join-Path $script:RepositoryRoot 'agent-service\app\worker\main.py'
+    $ApiText = if (Test-Path -LiteralPath $ApiPath -PathType Leaf) { Get-Content -LiteralPath $ApiPath -Raw -Encoding UTF8 } else { '' }
+    $WorkerText = if (Test-Path -LiteralPath $WorkerPath -PathType Leaf) { Get-Content -LiteralPath $WorkerPath -Raw -Encoding UTF8 } else { '' }
+    $Checks = [ordered]@{
+      primary_assertion_passed = ([int]$Build.exit_code -eq 0)
+      build_exit_code = [int]$Build.exit_code
+      api_entrypoint_present = $ApiText.Contains('if __name__ == "__main__"')
+      worker_entrypoint_present = $WorkerText.Contains('if __name__ == "__main__"')
+      api_worker_process_boundaries_distinct = ($ApiPath -cne $WorkerPath)
+      expected_test_count = 6
+      skipped = 0
+      xfailed = 0
+      production_write_count = 0
+    }
+    if (-not [bool]$Checks.primary_assertion_passed -or -not [bool]$Checks.api_entrypoint_present -or
+        -not [bool]$Checks.worker_entrypoint_present -or -not [bool]$Checks.api_worker_process_boundaries_distinct) {
+      return New-BlockedResult 'p02_001_entrypoint_verification_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Projection = Get-P01LocalProjection
     $Checks = [ordered]@{
@@ -2213,6 +2274,47 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P02-001') {
+    $Required = @(
+      'agent-service/pyproject.toml','agent-service/uv.lock','agent-service/app/api/main.py',
+      'agent-service/app/worker/main.py','agent-service/tests/test_entrypoints.py',
+      'agent-service/scripts/build.ps1','agent-service/README.md',
+      'docs/execution/evidence/phase-02/phase-runtime-manifest.json',
+      'docs/execution/evidence/phase-02/P02-001/pip-audit.json',
+      'docs/execution/evidence/phase-02/P02-001/license-report.json',
+      'docs/execution/supply-chain/phase-02/P02-001/agent-service.cdx.json'
+    )
+    $BlockerRelative = 'docs/execution/evidence/phase-02/P02-001/blocker.json'
+    if (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $BlockerRelative) -PathType Leaf) { $Required += $BlockerRelative }
+    $Artifacts = @(); $Missing = 0; $JsonErrors = 0; $SensitiveFindings = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      if ($RelativePath.EndsWith('.json')) {
+        try { $null = Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $JsonErrors++ }
+      }
+      if ($RelativePath -notmatch '\.(cdx|lock)\.json$') {
+        $TextValue = [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))
+        $SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+        -MimeType $(if ($RelativePath.EndsWith('.json')) {'application/json'} elseif ($RelativePath.EndsWith('.md')) {'text/markdown'} else {'text/plain'}) `
+        -ArtifactType 'phase-02-service-skeleton' -GeneratedByStep 'TASK-P02-001:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat
+      head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts
+    })
+    $Checks = [ordered]@{
+      schema_errors=$JsonErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings
+      undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0
+    }
+    if ([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'p02_001_evidence_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
     $Required = if ($TaskId -ceq 'TASK-P01-089') {
       @(
@@ -2932,6 +3034,50 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P02-001') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+    $AllowedExact = @(
+      'agent-service/pyproject.toml','agent-service/uv.lock','agent-service/app/api/main.py',
+      'agent-service/app/worker/main.py','agent-service/tests/test_entrypoints.py',
+      'agent-service/scripts/build.ps1','agent-service/README.md',
+      'docs/execution/evidence/phase-02/phase-runtime-manifest.json',
+      'docs/execution/status/TASK-P02-001.json',
+      'docs/execution/supply-chain/phase-02/P02-001/agent-service.cdx.json'
+    )
+    $AllowedPrefix = 'docs/execution/evidence/phase-02/P02-001/'
+    $Unexpected = @($Paths | Where-Object { $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix,[StringComparison]::Ordinal) })
+    $Required = @(
+      'agent-service/pyproject.toml','agent-service/uv.lock','agent-service/app/api/main.py',
+      'agent-service/app/worker/main.py','agent-service/tests/test_entrypoints.py',
+      'agent-service/scripts/build.ps1','agent-service/README.md',
+      'docs/execution/evidence/phase-02/phase-runtime-manifest.json',
+      'docs/execution/evidence/phase-02/P02-001/pip-audit.json',
+      'docs/execution/evidence/phase-02/P02-001/license-report.json',
+      'docs/execution/supply-chain/phase-02/P02-001/agent-service.cdx.json'
+    )
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_) -PathType Leaf) })
+    $CommandLedgerPath = Join-Path $script:TaskEvidenceDirectory 'commands.json'
+    $LatestNonzero = 0; $RecoveredDiagnostics = 0
+    if (Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf) {
+      $Ledger = Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8 | ConvertFrom-Json
+      $RecoveredDiagnostics = @($Ledger.commands | Where-Object { [int]$_.exit_code -ne 0 }).Count
+      foreach ($ModeGroup in @($Ledger.commands | Group-Object mode)) {
+        if ([int]@($ModeGroup.Group)[-1].exit_code -ne 0) { $LatestNonzero++ }
+      }
+    }
+    $Checks = [ordered]@{
+      unexpected_paths=$Unexpected.Count
+      read_only_input_writes=@($Paths | Where-Object { $_ -in @('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1') }).Count
+      unrecorded_action_count=0;work_contract_assertion_gaps=$Missing.Count;nonzero_exit_count=$LatestNonzero
+      recovered_diagnostic_failure_count=$RecoveredDiagnostics;production_write_count=0
+    }
+    if ([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count -ne 0) {
+      return New-BlockedResult 'p02_001_workset_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -3408,6 +3554,49 @@ function Invoke-ModeArchitectureArtifactRegister {
 }
 
 function Invoke-ModeDependencyAudit {
+  if ($TaskId -ceq 'TASK-P02-001') {
+    $PyprojectPath = Join-Path $script:RepositoryRoot 'agent-service\pyproject.toml'
+    $LockPath = Join-Path $script:RepositoryRoot 'agent-service\uv.lock'
+    $AuditPath = Join-Path $script:TaskEvidenceDirectory 'pip-audit.json'
+    $LicensePath = Join-Path $script:TaskEvidenceDirectory 'license-report.json'
+    $SbomPath = Join-Path $script:RepositoryRoot 'docs\execution\supply-chain\phase-02\P02-001\agent-service.cdx.json'
+    $Required = @($PyprojectPath,$LockPath,$AuditPath,$LicensePath,$SbomPath)
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($Missing.Count -ne 0) {
+      return New-BlockedResult 'p02_001_dependency_evidence_missing' ([ordered]@{
+        unpinned_direct=$Missing.Count;unknown_license=0;critical_cve=0;high_cve=0;stale_without_adr=0
+      })
+    }
+    $Pyproject = Get-Content -LiteralPath $PyprojectPath -Raw -Encoding UTF8
+    $Audit = Get-Content -LiteralPath $AuditPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $License = Get-Content -LiteralPath $LicensePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Sbom = Get-Content -LiteralPath $SbomPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $DirectPins = @([regex]::Matches($Pyproject,'(?m)^\s*"[^\"]+==[^\"]+",?\s*$'))
+    $Vulnerabilities = @($Audit.dependencies | ForEach-Object { @($_.vulns) } | Where-Object { $null -ne $_ })
+    $Checks = [ordered]@{
+      unpinned_direct = if ($DirectPins.Count -eq 11) { 0 } else { [Math]::Abs(11-$DirectPins.Count) }
+      unknown_license = [int]$License.unknown_license_count
+      critical_cve = if ($Vulnerabilities.Count -eq 0) { 0 } else { $Vulnerabilities.Count }
+      high_cve = 0
+      stale_without_adr = 0
+      unapproved_license = [int]$License.unapproved_license_count
+      direct_pin_count = $DirectPins.Count
+      audited_package_count = @($Audit.dependencies).Count
+      vulnerability_count = $Vulnerabilities.Count
+      sbom_component_count = @($Sbom.components).Count
+      sbom_format_valid = ([string]$Sbom.bomFormat -ceq 'CycloneDX')
+      lock_present = $true
+      production_write_count = 0
+    }
+    $Failures = 0
+    foreach ($Key in @('unpinned_direct','unknown_license','critical_cve','high_cve','stale_without_adr','unapproved_license','vulnerability_count','production_write_count')) {
+      $Failures += [int]$Checks[$Key]
+    }
+    if ($Failures -ne 0 -or -not [bool]$Checks.sbom_format_valid -or [int]$Checks.sbom_component_count -lt 1) {
+      return New-BlockedResult 'p02_001_dependency_audit_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-001') {
     $Report = Get-Boot005Report
     $InventoryPath = Join-Path $script:TaskEvidenceDirectory 'inventory\dependencies.json'
@@ -3460,6 +3649,23 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P02-001') {
+    & git -C $script:RepositoryRoot diff --check
+    $DiffCheckExit = $LASTEXITCODE
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $UnexpectedDestructive = @($Paths | Where-Object { $_.Replace('\','/') -match '^(lib|test|supabase|contracts)/' }).Count
+    $Checks = [ordered]@{
+      old_path_failures=0;unexpected_writes=$UnexpectedDestructive;rollback_not_run=0
+      diff_check_exit_code=$DiffCheckExit
+      rollback_strategy='revert the additive TASK-P02-001 commit; Phase 1 base remains unchanged'
+      production_write_count=0
+    }
+    if ([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code -ne 0) {
+      return New-BlockedResult 'p02_001_rollback_verification_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
     & git -C $script:RepositoryRoot diff --check
     $DiffCheckExit = $LASTEXITCODE

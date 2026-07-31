@@ -98,4 +98,13 @@ if ($RunnerText -notmatch "TASK-P02-001" -or
     $RunnerText -notmatch "TASK-P01-990") {
   throw 'negative: Phase 2 local entry must bind the Phase 1 checkpoint status and gate evidence'
 }
+if ($RunnerText -notmatch 'p02_001_entrypoint_verification_failed' -or
+    $RunnerText -notmatch 'p02_001_dependency_audit_failed' -or
+    $RunnerText -notmatch 'p02_001_security_boundary_failed') {
+  throw 'negative: P02-001 must have task-specific build, supply-chain, and security gates'
+}
+if ($RunnerText -notmatch 'recovered_diagnostic_failure_count=\$RecoveredDiagnostics' -or
+    $RunnerText -notmatch 'Group-Object mode') {
+  throw 'negative: P02-001 must distinguish a resolved diagnostic from the latest gate result'
+}
 exit 0
