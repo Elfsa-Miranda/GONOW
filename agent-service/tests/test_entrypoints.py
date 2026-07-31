@@ -91,4 +91,3 @@ def test_duplicate_worker_start_is_rejected() -> None:
             asyncio.run(runtime.startup())
     finally:
         asyncio.run(runtime.shutdown())
-
