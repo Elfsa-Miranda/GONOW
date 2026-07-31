@@ -1055,6 +1055,7 @@ function Invoke-ModeEvidence {
       'docs/execution/supply-chain/phase-boot/BOOT-005/toolchain-lock.json',
       'docs/execution/supply-chain/phase-boot/BOOT-005/isolated-postgres.json',
       'docs/execution/evidence/boot/BOOT-005/bootstrap-toolchain-revalidation.json',
+      'docs/execution/evidence/boot/BOOT-005/bootstrap-contract-revalidation.json',
       'docs/execution/evidence/boot/BOOT-005/task-gate-catalog-canonical.json',
       'docs/execution/evidence/boot/BOOT-005/pip-audit.json',
       'docs/execution/evidence/boot/BOOT-005/python-license-audit.json',

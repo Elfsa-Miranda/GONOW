@@ -303,7 +303,10 @@ def validate_catalog(
 
 
 def validate_bootstrap_evidence(
-    schema_root: Path, evidence_root: Path, repository_root: Path
+    schema_root: Path,
+    evidence_root: Path,
+    repository_root: Path,
+    through_task_number: int = 4,
 ) -> dict[str, int]:
     errors = unhashed = 0
     mapping = {
@@ -311,7 +314,7 @@ def validate_bootstrap_evidence(
         "gate-results.json": "gate-results-v1.schema.json",
         "artifact-hashes.json": "artifact-hashes-v1.schema.json",
     }
-    for number in range(1, 5):
+    for number in range(1, through_task_number + 1):
         task_id = f"TASK-BOOT-{number:03d}"
         task_root = evidence_root / "boot" / f"BOOT-{number:03d}"
         for file_name, schema_name in mapping.items():
@@ -505,6 +508,9 @@ def main() -> int:
     parser.add_argument("--license-audit", type=Path)
     parser.add_argument("--isolated-postgres", type=Path)
     parser.add_argument("--postgres-restore", type=Path)
+    parser.add_argument(
+        "--bootstrap-evidence-through", type=int, choices=(4, 5), default=4
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     repository_root = args.plan.resolve().parent
@@ -516,7 +522,12 @@ def main() -> int:
         **validate_schemas(args.schema_root, catalog),
         **validate_yaml(args.schema_root),
         **validate_catalog(catalog, args.plan, args.commands_root),
-        **validate_bootstrap_evidence(args.schema_root, args.evidence_root, repository_root),
+        **validate_bootstrap_evidence(
+            args.schema_root,
+            args.evidence_root,
+            repository_root,
+            args.bootstrap_evidence_through,
+        ),
         **run_runner_tests(args.commands_root),
     }
     toolchain_inputs = [
