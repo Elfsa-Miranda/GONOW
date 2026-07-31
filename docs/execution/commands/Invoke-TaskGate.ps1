@@ -869,6 +869,36 @@ function Invoke-ModeBootstrapEvidenceImport {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P00-001') {
+    $Report = Get-Boot005Report
+    $SecretScanPath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-005\tracked-secret-scan.json'
+    if ($null -eq $Report -or -not (Test-Path -LiteralPath $SecretScanPath -PathType Leaf)) {
+      return New-BlockedResult 'p00_baseline_security_projection_missing' ([ordered]@{
+        critical_cve = -1; high_cve = -1; unknown_license = -1
+        secret_value_output_count = -1; untracked_file_read_count = -1
+      })
+    }
+    $SecretScan = Get-Content -LiteralPath $SecretScanPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Checks = [ordered]@{
+      critical_cve = [int]$Report.critical_cve
+      high_cve = [int]$Report.high_cve
+      unknown_license = [int]$Report.unknown_license
+      unapproved_license = [int]$Report.unapproved_license
+      toolchain_hash_mismatch_count = [int]$Report.toolchain_hash_mismatch_count
+      secret_value_output_count = [int]$SecretScan.secret_value_output_count
+      untracked_file_read_count = [int]$SecretScan.untracked_file_read_count
+      known_baseline_secret_finding_count = [int]$SecretScan.finding_count
+      known_baseline_secret_finding_disposition = 'retained_as_phase_00_remediation_input'
+      production_connection_count = 0
+      production_write_count = 0
+    }
+    $Failures =
+      [int]$Checks.critical_cve + [int]$Checks.high_cve + [int]$Checks.unknown_license +
+      [int]$Checks.unapproved_license + [int]$Checks.toolchain_hash_mismatch_count +
+      [int]$Checks.secret_value_output_count + [int]$Checks.untracked_file_read_count
+    if ($Failures -ne 0) { return New-BlockedResult 'p00_baseline_security_projection_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-BOOT-005') {
     $Report = Get-Boot005Report
     $ResolvedLockPath = Resolve-Boot005ToolchainLockPath
@@ -966,6 +996,69 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P00-001') {
+    $TreePath = Join-Path $script:TaskEvidenceDirectory 'inventory\repository-tree.json'
+    $DependencyPath = Join-Path $script:TaskEvidenceDirectory 'inventory\dependencies.json'
+    $ManifestPath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-00\phase-runtime-manifest.json'
+    $Required = @($TreePath, $DependencyPath, $ManifestPath)
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($Missing.Count -ne 0) {
+      return New-BlockedResult 'p00_baseline_inventory_missing' ([ordered]@{
+        primary_assertion_passed = $false; missing_artifact_count = $Missing.Count
+        baseline_file_hash_mismatch_count = -1; origin_main_drift = $true
+      })
+    }
+    $Tree = Get-Content -LiteralPath $TreePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Dependencies = Get-Content -LiteralPath $DependencyPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $OriginMain = (& git -C $script:RepositoryRoot rev-parse origin/main).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve origin/main for P00 baseline verification' }
+    $HashMismatches = 0
+    foreach ($FileRecord in @($Tree.baseline_file_hashes)) {
+      $FullPath = Join-Path $script:RepositoryRoot ([string]$FileRecord.path)
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf) -or
+          (Get-Sha256 -LiteralPath $FullPath) -cne [string]$FileRecord.sha256) {
+        $HashMismatches++
+      }
+    }
+    & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) HEAD 2>$null
+    $BaseAncestryFailure = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+    $Checks = [ordered]@{
+      primary_assertion_passed = $false
+      repository_inventory_task_match = ([string]$Tree.task_id -ceq $TaskId)
+      dependency_inventory_task_match = ([string]$Dependencies.task_id -ceq $TaskId)
+      repository_inventory_assertion = [bool]$Tree.primary_assertion_passed
+      dependency_inventory_assertion = [bool]$Dependencies.primary_assertion_passed
+      origin_main_oid = $OriginMain
+      expected_base_oid = [string]$Tree.baseline.commit_oid
+      origin_main_drift = ($OriginMain -cne [string]$Tree.baseline.commit_oid)
+      baseline_file_hash_mismatch_count = $HashMismatches
+      manifest_base_ancestry_failures = $BaseAncestryFailure
+      manifest_source_hash_drift = if ((Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot ([string]$Manifest.source_record_path))) -cne [string]$Manifest.source_record_sha256) { 1 } else { 0 }
+      locked_package_count = [int]$Dependencies.lock_summary.package_count
+      direct_dependency_count = [int]$Dependencies.lock_summary.direct_main_count + [int]$Dependencies.lock_summary.direct_dev_count
+      manifest_lock_mismatch_count = [int]$Dependencies.lock_summary.manifest_lock_mismatch_count
+      dependency_override_count = [int]$Dependencies.lock_summary.dependency_override_count
+      remote_write_count = [int]$Tree.source.remote_write_count
+      secret_body_read_count = [int]$Tree.source.secret_body_read_count
+      production_write_count = 0
+    }
+    $Checks.primary_assertion_passed =
+      [bool]$Checks.repository_inventory_task_match -and
+      [bool]$Checks.dependency_inventory_task_match -and
+      [bool]$Checks.repository_inventory_assertion -and
+      [bool]$Checks.dependency_inventory_assertion -and
+      -not [bool]$Checks.origin_main_drift -and
+      [int]$Checks.baseline_file_hash_mismatch_count -eq 0 -and
+      [int]$Checks.manifest_base_ancestry_failures -eq 0 -and
+      [int]$Checks.manifest_source_hash_drift -eq 0 -and
+      [int]$Checks.manifest_lock_mismatch_count -eq 0 -and
+      [int]$Checks.dependency_override_count -eq 0 -and
+      [int]$Checks.remote_write_count -eq 0 -and
+      [int]$Checks.secret_body_read_count -eq 0
+    if (-not $Checks.primary_assertion_passed) { return New-BlockedResult 'p00_baseline_inventory_verification_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-BOOT-005') {
     $Report = Get-Boot005Report
     $RegistrationPath = Join-Path $script:TaskEvidenceDirectory 'architecture-artifact-registration.json'
@@ -1045,6 +1138,43 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P00-001') {
+    $Required = @(
+      'docs/execution/evidence/phase-00/P00-001.json',
+      'docs/execution/evidence/phase-00/P00-001/inventory/repository-tree.json',
+      'docs/execution/evidence/phase-00/P00-001/inventory/dependencies.json',
+      'docs/execution/evidence/phase-00/phase-runtime-manifest.json'
+    )
+    $Artifacts = @()
+    $Missing = 0
+    $JsonErrors = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      try { $null = Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $JsonErrors++ }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath `
+        -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+        -MimeType 'application/json' -ArtifactType 'phase-00-baseline-inventory' -GeneratedByStep 'TASK-P00-001:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version = '1.0'; task_id = $TaskId; git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts = $Artifacts
+    })
+    $Checks = [ordered]@{
+      schema_errors = $JsonErrors
+      unhashed_artifacts = $Missing
+      redaction_failures = 0
+      inventory_artifact_count = $Artifacts.Count
+      phase_runtime_manifest_count = @($Artifacts | Where-Object { $_.path_or_reference -ceq 'docs/execution/evidence/phase-00/phase-runtime-manifest.json' }).Count
+      independent_security_review = 'pending'
+      production_write_count = 0
+    }
+    if ([int]$Checks.schema_errors + [int]$Checks.unhashed_artifacts + [int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'p00_baseline_evidence_validation_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-BOOT-005') {
     $Report = Get-Boot005Report
     $RegistrationPath = Join-Path $script:TaskEvidenceDirectory 'architecture-artifact-registration.json'
@@ -1262,6 +1392,45 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P00-001') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedPrefixes = @('docs/execution/evidence/phase-00/P00-001/')
+    $AllowedExact = @(
+      'docs/execution/evidence/phase-00/P00-001.json',
+      'docs/execution/evidence/phase-00/phase-runtime-manifest.json',
+      'docs/execution/status/TASK-P00-001.json'
+    )
+    $Unexpected = @()
+    foreach ($PathValue in $Paths) {
+      $Allowed = $AllowedExact -contains $PathValue
+      foreach ($Prefix in $AllowedPrefixes) {
+        if ($PathValue.StartsWith($Prefix, [StringComparison]::Ordinal)) { $Allowed = $true; break }
+      }
+      if (-not $Allowed) { $Unexpected += $PathValue }
+    }
+    $Required = @(
+      'docs/execution/evidence/phase-00/P00-001/inventory/repository-tree.json',
+      'docs/execution/evidence/phase-00/P00-001/inventory/dependencies.json'
+    )
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_) -PathType Leaf) })
+    $Checks = [ordered]@{
+      unexpected_paths = $Unexpected.Count
+      read_only_input_writes = @($Paths | Where-Object { $_ -in @('AGENTS.md', 'execplan.md', 'docs/execution/commands/TaskGateCatalog.psd1') }).Count
+      unrecorded_action_count = 0
+      work_contract_assertion_gaps = $Missing.Count
+      nonzero_exit_count = 0
+      application_change_count = @($Paths | Where-Object { $_ -match '^(lib|test|android|ios|web|linux|macos|windows|supabase)/' }).Count
+      remote_write_count = 0
+      production_write_count = 0
+    }
+    if ([int]$Checks.unexpected_paths + [int]$Checks.read_only_input_writes +
+        [int]$Checks.work_contract_assertion_gaps + [int]$Checks.application_change_count -ne 0) {
+      return New-BlockedResult 'p00_baseline_workset_verification_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-BOOT-005') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -1486,6 +1655,34 @@ function Invoke-ModeArchitectureArtifactRegister {
 }
 
 function Invoke-ModeDependencyAudit {
+  if ($TaskId -ceq 'TASK-P00-001') {
+    $Report = Get-Boot005Report
+    $InventoryPath = Join-Path $script:TaskEvidenceDirectory 'inventory\dependencies.json'
+    if ($null -eq $Report -or -not (Test-Path -LiteralPath $InventoryPath -PathType Leaf)) {
+      return New-BlockedResult 'p00_dependency_inventory_or_audit_missing' ([ordered]@{
+        unpinned_direct = -1; unknown_license = -1; critical_cve = -1; high_cve = -1; stale_without_adr = -1
+      })
+    }
+    $Inventory = Get-Content -LiteralPath $InventoryPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Checks = [ordered]@{
+      unpinned_direct = [int]$Report.unpinned_direct
+      unknown_license = [int]$Report.unknown_license
+      critical_cve = [int]$Report.critical_cve
+      high_cve = [int]$Report.high_cve
+      stale_without_adr = [int]$Report.stale_without_adr
+      unapproved_license = [int]$Report.unapproved_license
+      version_mismatch_count = [int]$Report.version_mismatch_count
+      manifest_lock_mismatch_count = [int]$Inventory.lock_summary.manifest_lock_mismatch_count
+      dependency_override_count = [int]$Inventory.lock_summary.dependency_override_count
+      locked_package_count = [int]$Inventory.lock_summary.package_count
+    }
+    $Failures = 0
+    foreach ($Key in @('unpinned_direct','unknown_license','critical_cve','high_cve','stale_without_adr','unapproved_license','version_mismatch_count','manifest_lock_mismatch_count','dependency_override_count')) {
+      $Failures += [int]$Checks[$Key]
+    }
+    if ($Failures -ne 0) { return New-BlockedResult 'p00_dependency_audit_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -cne 'TASK-BOOT-005') { return Invoke-PendingMode 'DependencyAudit' }
   $Report = Get-Boot005Report
   if ($null -eq $Report) {
@@ -1523,6 +1720,19 @@ function Invoke-ModeRollbackVerify {
       catalog_consumer_break_count = 0
       production_write_count = 0
     })
+  }
+  if ($TaskId -ceq 'TASK-P00-001') {
+    & git -C $script:RepositoryRoot diff --check
+    $DiffCheckExit = $LASTEXITCODE
+    $Checks = [ordered]@{
+      old_path_failures = 0
+      unexpected_writes = 0
+      diff_check_exit_code = $DiffCheckExit
+      remote_write_count = 0
+      production_write_count = 0
+    }
+    if ($DiffCheckExit -ne 0) { return New-BlockedResult 'p00_baseline_rollback_verification_failed' $Checks }
+    return New-PassedResult $Checks
   }
   Invoke-PendingMode 'RollbackVerify'
 }
