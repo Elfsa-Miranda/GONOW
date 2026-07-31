@@ -4577,12 +4577,17 @@ function Invoke-ModeHandoffVerification {
   if ($TaskId -ceq 'TASK-P02-089') {
     $JunitPath=Join-Path $script:TaskEvidenceDirectory 'handoff-pytest.xml'
     $TestPaths=@(
-      'agent-service/tests/test_entrypoints.py',
-      'agent-service/tests/integration/test_health_lifecycle.py',
-      'agent-service/tests/contract/test_openapi.py',
-      'agent-service/tests/security/test_process_boundaries.py'
+      'tests/test_entrypoints.py',
+      'tests/integration/test_health_lifecycle.py',
+      'tests/contract/test_openapi.py',
+      'tests/security/test_process_boundaries.py'
     )
-    $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$TestPaths+@('--maxfail=1','--junitxml',$JunitPath))
+    Push-Location (Join-Path $script:RepositoryRoot 'agent-service')
+    try {
+      $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$TestPaths+@('--maxfail=1','--junitxml',$JunitPath))
+    } finally {
+      Pop-Location
+    }
     $Tests=0;$Failures=1;$Errors=0;$Skipped=0
     if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
       [xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8
