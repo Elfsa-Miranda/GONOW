@@ -13,6 +13,11 @@ $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $ServiceRoot '..')).Path
 if ([string]::IsNullOrWhiteSpace($ReportRoot)) {
   $ReportRoot = Join-Path ([IO.Path]::GetTempPath()) 'gonow-agent-ci'
 }
+$ReportRoot = if ([IO.Path]::IsPathRooted($ReportRoot)) {
+  [IO.Path]::GetFullPath($ReportRoot)
+} else {
+  [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $ReportRoot))
+}
 New-Item -ItemType Directory -Path $ReportRoot -Force | Out-Null
 $Results = [Collections.Generic.List[object]]::new()
 

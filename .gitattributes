@@ -7,6 +7,7 @@
 /agent-service/*.lock text eol=lf
 /agent-service/*.toml text eol=lf
 /agent-service/**/*.mako text eol=lf
+/agent-service/**/*.ps1 text eol=lf
 /docs/architecture/adr/ADR-P03-001-postgresql-driver.md text eol=lf
 /docs/execution/blockers/phase-03/**/*.md text eol=lf
 /docs/execution/commands/Invoke-TaskGate.ps1 text eol=lf
