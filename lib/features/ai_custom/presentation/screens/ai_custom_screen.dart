@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:gonow/core/constants/ai_config.dart';
 import 'package:gonow/core/services/amap_service.dart';
+import 'package:gonow/core/services/ai_gateway_service.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +28,7 @@ class ChatMessage {
 class AiCustomScreen extends StatefulWidget {
   final String source;
   final String? initialPrompt;
+
   /// 若为 true，sheet 打开后会立即将 [initialPrompt] 自动发送。
   /// 仅由外部业务逻辑（非 FAB 直接点击）传入 true，FAB 路径始终为 false。
   final bool autoSend;
@@ -49,7 +50,7 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
   String? _hintPrompt;
-  
+
   // 与发现页同源的 hint 列表
   static const List<String> _searchHints = <String>[
     '下个月看海，人少一点',
@@ -65,8 +66,9 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   ];
   int _hintIndex = 0;
   Timer? _hintTimer;
-  
+
   bool _showAllHistory = false;
+
   /// 标记自动发送是否已执行，保证整个 widget 生命周期内只自动发送一次。
   bool _autoSendDone = false;
   http.Client? _activeClient;
@@ -84,161 +86,6 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
   // 常量控制最大保留条数
   static const int _maxHistoryCount = 50;
 
-  // 组装系统提示词的方法 (支持传入当前行程 JSON)
-  String _buildSystemPrompt(String? currentPlanJson, String source) {
-    // 1. 【原封不动】你原本的完美基础 Prompt
-    final String basePrompt = '''你是一个温暖、专业的智能旅游管家。当用户提出需求时，请按照以下两个部分严格输出：
-========== 【最高优先级：深度意图识别与渐进式交互机制】 ==========
-在响应任何用户输入前，你必须首先深度分析用户的【真实意图】，并严格采取对应的交互策略。🚨全局警告：不要盲目生成完整行程，也不要无休止地提问！
-
-【阶段一：探索与推荐期（意图：求推荐、找灵感、找特定地点的单项好去处）】
-触发条件（满足其一即可）：
-1. 泛目的地探索：用户未指定目的地（如：“周末去哪玩”、“哪里看海好”）。
-2. 本地单项推荐：用户虽然指定了具体城市，但询问的是【特定主题】或【单项活动】，并没有明确要求规划包含时间轴的路线（如：“深圳去哪吃火锅”、“北京有什么好逛的博物馆”、“广州必吃美食”）。
-行为准则：
-1. 绝对禁止：在这个阶段，【绝对不允许】生成按时间轴排列的每日详细行程（Day 1, Day 2...），【绝对不允许】输出任何 JSON 代码块！但是如果用户选中了你提出的方案，请务必去实现方案内容（判断意图是否跳出阶段一转到阶段二或三）
-2. 结构化种草：用 Markdown 结构化列出 7-8 个精准的推荐选项（城市，或者是具体城市的某几家店铺/景点）。如果用户只是问吃什么，你可以先概览性的总结当地有哪些特色美食，让用户对当地美食有一个非常全面的了解。然后如果用户让你做店铺推荐再分类做评分高人气高的店铺推荐。
-3. 选项格式示例（针对本地店铺/景点）：
-   - 📍 [店铺/景点名称] | 💰 预估人均/门票
-   - 🌟 核心亮点：（一句话概括它的绝杀特色）
-4. 引导话术：在回复的最后，必须用亲切的语气主动抛出钩子，引导用户进入下一步：“这几个地方有您心动想去的吗？如果您选中了某一家，或者需要我为您以它为中心，串联一个包含周边景点游玩的【完整一日/多日行程规划】，随时告诉我哦！”
-5. 如果给出一个地点的n个游玩路线的方案，务必标明方案n，然后如果用户回答：方案n或者n就直接开始那个方案的景点推荐，满意的话就进入阶段二
-6. 如果用户突然问到另一个地点，无需问用户是否执着于上一个地点的游玩，因为用户可以同时保存多份景点的规划，你只需要直接进行另一个地点规划即可
-
-【阶段二：明确规划期（意图：明确要求排期、要路线、要完整行程）】
-触发条件：1.用户明确表达了需要“行程”、“路线”、“规划”、“怎么安排”、“怎么玩（包含天数）”等全局规划意图，或者在上一步的推荐后明确要求把地点连成线（如：“带父母去北京玩五天经典路线”、“就去你推荐的第二家火锅店，帮我安排个深圳周末两日游”）。
-2.用户在你的“阶段一”推荐后，明确做出了选择（如：“就选方案二”、“按第一个安排”）。
-行为准则：
-彻底激活下方的【第一部分：回复给用户看的文本】与【第二部分：留给系统的隐藏 JSON】的严格双通道输出模式，为其生成带有精确时间轴的详尽行程。
-
-【阶段三：单点咨询期（意图：问天气、问常识、闲聊）】
-触发条件：无任何寻址或路线规划需求，仅询问单一客观问题。请你专注地回答（比如问去新疆看雪的准备就只针对性地回答相关问题与建议，而不要接着回答之前的问题。
-行为准则：仅输出亲切、专业的文本回复，【绝对不允许】输出 JSON 代码块。
-===================================================================
-【第一部分：回复给用户看的文本】
-
-请用亲切的自然语言回答，并用 Markdown 格式排出详细的每日行程（包含景点和美食）。在文本的最后，无需展示任何计算过程，只需要直接加上『💰 人均预估费用：约 XXXX 元』即可。
-
-注：不要在文本里罗列繁琐的避坑指南和行李清单！
-
-【第二部分：留给系统的隐藏 JSON】
-
-在第一部分的自然语言完全结束后，必须在整个回复的最末尾附上一个严格的 JSON 代码块（必须用 ```json 和 ``` 包裹）。JSON中不仅要包含每日行程（需提供经纬度），还要静默包含行李、避坑等行前准备数据。
-
-JSON 格式必须为：
-
-```json
-
-{
-
-  "title": "行程标题",
-
-  "estimated_budget_per_person": "3500元",
-
-  "days": [
-
-    {
-
-      "dayTitle": "Day 1 标题",
-
-      "activities": [
-
-        {
-
-          "time": "10:00",
-
-          "title": "景点名",
-
-          "type": "scenic",
-
-          "openTime": "09:00-18:00 开放",
-
-          "recommended_duration": "2.5小时",
-
-          "tag": "历史人文 · 必打卡",
-
-          "strategy": "游玩攻略：建议先去核心展区，避开下午人流高峰。",
-
-          "lat": 39.9,
-
-          "lng": 116.4
-
-        }
-
-      ]
-
-    }
-
-  ],
-
-  "pre_trip_prep": {
-
-    "bookings": [{"item": "故宫门票", "tips": "提前7天"}],
-
-    "luggage": [],
-
-    "pitfalls": []
-
-  }
-
-}
-
-```
-
-【极度重要】：在生成 activities 的时间安排和建议游玩时长 (recommended_duration) 时，绝对不允许偷懒全部写 '1小时'！你必须根据景点的真实客观属性进行合理预估。例如：
-
-大型博物馆/主题乐园：建议 3-4 小时或半天。
-
-知名自然风光/爬山：建议 2-4 小时。
-
-特色餐厅/老字号就餐：建议 1.5-2 小时。
-
-打卡地/夜市逛街：建议 1-2 小时。 请确保时间轴的安排合理且符合真实人类游玩体力！
-
-# Constraint Rules (路线规划必须严格遵守的底层逻辑)
-
-1. 空间聚类优先 (Geospatial Clustering)
-
-绝对禁止折返跑： 路线规划必须遵循物理距离最短原则。如果景点A和C距离近，B距离极远，即使输入顺序是A-B-C，你也必须纠正为A-C-B。
-
-片区化游玩： 将地理位置相邻的景点划分为同一个“游玩片区”。必须在这个片区的景点全部游玩结束后，才能前往下一个片区。
-
-2. 闭馆时间约束 (Time-Window Sorting)
-
-早关门早安排： 在同一个“游玩片区”内，必须对比各个景点的营业/闭馆时间。闭馆时间越早的景点，必须排在游玩顺序的越前面。
-
-夜间分配： 将全天开放、没有明确闭馆时间或晚上更佳的景点（如夜市、观景台、自然风光等）严格安排在行程的傍晚或晚间。
-
-3. 时间轴推演 (Time Budgeting & Commute)
-你给出的时间表必须符合严密的数学逻辑，不能凭空捏造。公式如下：
-
-离开A点的时间 = 到达A点的时间 + A景点的平均/最佳游玩时长
-
-到达B点的时间 = 离开A点的时间 + A点到B点的真实通勤时间
-
-要求： 必须在行程表中明确标出“景点间通勤时间及推荐交通方式”以及“单个景点游玩时长”。''';
-
-    String extensionPrompt = '\n\n========== 【当前场景感知与专属指令】 ==========\n';
-    extensionPrompt += '用户当前是从【$source】页面呼出你的。\n';
-
-    if (currentPlanJson != null && currentPlanJson.isNotEmpty) {
-      extensionPrompt +=
-          '''
-以下是用户当前的完整行程草案(JSON格式)：
-
-$currentPlanJson
-
-请遵循以下额外规则：
-1. 【微调修改】：如果用户要求修改当前行程，请基于现有数据精准修改，并输出修改后的完整 JSON。
-2. 🚨【变卦处理】：如果用户提出**完全改变目的地**，请彻底抛弃上述旧数据，直接为新目的地生成全新 JSON！
-3. 【闲聊防呆】：如果用户仅闲聊且不需要改行程，只输出文字回复，切勿输出 JSON 代码块！
-''';
-    } else {
-      extensionPrompt += '用户目前还没有创建任何行程，请尽情发挥创意为他从零规划，并输出 JSON 数据。';
-    }
-    return basePrompt + extensionPrompt;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -248,7 +95,7 @@ $currentPlanJson
         : -1;
     _hintIndex = startIndex >= 0 ? startIndex : 0;
     _hintPrompt = _searchHints[_hintIndex];
-    
+
     // 每 7s 轮换一次，与发现页节奏一致
     _hintTimer = Timer.periodic(const Duration(seconds: 7), (_) {
       if (mounted) {
@@ -258,7 +105,7 @@ $currentPlanJson
         });
       }
     });
-    
+
     // 点击输入框时锁定当前 hint，停止轮换
     _inputFocusNode.addListener(() {
       if (_inputFocusNode.hasFocus) {
@@ -266,7 +113,7 @@ $currentPlanJson
         _hintTimer = null;
       }
     });
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _bootstrapChat();
     });
@@ -495,12 +342,15 @@ $currentPlanJson
     String enriched = rawInput;
 
     // ── 天气意图拦截 ──────────────────────────────────────
-    if (rawInput.contains('天气') || rawInput.contains('气温') || rawInput.contains('下雨')) {
+    if (rawInput.contains('天气') ||
+        rawInput.contains('气温') ||
+        rawInput.contains('下雨')) {
       final city = AmapService.extractLocationFromText(rawInput);
       if (city != null) {
         final weatherDesc = await AmapService.getWeatherDescription(city);
         if (weatherDesc != null) {
-          enriched = '''
+          enriched =
+              '''
 用户问题：$rawInput
 <系统后台注入>$weatherDesc</系统后台注入>
 请务必基于上述【实时数据】用温暖管家语气回复，给出穿衣建议，不要向用户暴露数据来源。
@@ -510,7 +360,9 @@ $currentPlanJson
     }
 
     // ── 地点/导航意图拦截 ─────────────────────────────────
-    if (rawInput.contains('在哪') || rawInput.contains('怎么去') || rawInput.contains('地址')) {
+    if (rawInput.contains('在哪') ||
+        rawInput.contains('怎么去') ||
+        rawInput.contains('地址')) {
       // 此处可调用 AmapService.geocode(keyword, city: city) 获取坐标
       // 并将坐标注入到 enriched 中，或在 AI 回复后展示地图卡片
     }
@@ -524,7 +376,8 @@ $currentPlanJson
     if (text.isEmpty) {
       if (_hintPrompt != null && _hintPrompt!.isNotEmpty) {
         text = _hintPrompt!;
-      } else if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
+      } else if (widget.initialPrompt != null &&
+          widget.initialPrompt!.isNotEmpty) {
         text = widget.initialPrompt!;
       } else {
         text = '帮我规划一次旅行';
@@ -557,28 +410,13 @@ $currentPlanJson
           .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
     }
 
-    const String apiKey = AiConfig.deepseekApiKey;
-    final String normalizedApiKey = apiKey.trim();
-    if (normalizedApiKey.isEmpty) {
-      setState(() {
-        _messages.add(
-          const ChatMessage(
-            role: 'ai',
-            text: '检测到 API Key 为空，请先在代码中配置有效的 DeepSeek Key。',
-            isError: true,
-          ),
-        );
-      });
-      navProvider.setAiPlanning(false);
-      _scrollToBottom();
-      return;
-    }
-    final Uri url = Uri.parse(AiConfig.deepseekEndpoint);
-
     try {
       // 在调用 LLM 前先丰富用户输入（注入天气等实时数据）
       final String enrichedInput = await _enrichUserInput(userText);
-      
+      if (!mounted || _activeRequestId != requestId) {
+        return;
+      }
+
       final http.Client client = http.Client();
       _activeClient = client;
       final List<Map<String, String>> history = _messages
@@ -596,128 +434,69 @@ $currentPlanJson
       final Map<String, dynamic>? currentPlanData =
           itineraryProvider.activeItinerary?.planData ??
           itineraryProvider.currentItinerary?.planData;
-      final String? currentPlanJson = currentPlanData != null
-          ? jsonEncode(currentPlanData)
-          : null;
-      final http.Response response = await client.post(
-        url,
-        headers: <String, String>{
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $normalizedApiKey',
-        },
-        body: jsonEncode(<String, dynamic>{
-          'model': AiConfig.deepseekModel,
-          'messages': <Map<String, String>>[
-            <String, String>{
-              'role': 'system',
-              'content': _buildSystemPrompt(currentPlanJson, widget.source),
-            },
-            ...history,
-            <String, String>{'role': 'user', 'content': enrichedInput},
-          ],
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final String decodedBody = utf8.decode(response.bodyBytes);
-        final Map<String, dynamic> data =
-            jsonDecode(decodedBody) as Map<String, dynamic>;
-        final List<dynamic>? choices = data['choices'] as List<dynamic>?;
-        String? aiText;
-        if (choices != null && choices.isNotEmpty) {
-          final Map<String, dynamic>? firstChoice =
-              choices.first as Map<String, dynamic>?;
-          final Map<String, dynamic>? message =
-              firstChoice?['message'] as Map<String, dynamic>?;
-          aiText = message?['content'] as String?;
-        }
-        if (aiText != null && aiText.trim().isNotEmpty) {
-          String chatText = aiText;
-          String jsonString = '';
-          Map<String, dynamic>? parsedItinerary;
-          if (aiText.contains('```json')) {
-            final List<String> parts = aiText.split('```json');
-            chatText = parts[0].trim();
-            String jsonPart = parts.length > 1 ? parts[1] : '';
-            if (jsonPart.contains('```')) {
-              jsonString = jsonPart.split('```')[0].trim();
-            } else {
-              jsonString = jsonPart.trim();
-            }
-            if (jsonString.isNotEmpty) {
-              try {
-                final Object? parsed = jsonDecode(jsonString);
-                if (parsed is Map) {
-                  parsedItinerary = Map<String, dynamic>.from(parsed);
-                }
-              } catch (e) {
-                debugPrint('JSON 解析失败: $e');
-              }
-            }
-          }
-          final String finalChatText = chatText.trim().isEmpty
-              ? '我已经准备好继续帮你优化路线。'
-              : chatText.trim();
-          if (mounted) {
-            setState(() {
-              _messages.add(
-                ChatMessage(
-                  role: 'ai',
-                  text: finalChatText,
-                  itineraryData: parsedItinerary,
-                ),
-              );
-            });
-          }
-          if (userId != null) {
-            _supabase
-                .from('ai_chat_messages')
-                .insert(<String, dynamic>{
-                  'user_id': userId,
-                  'role': 'ai',
-                  'content': finalChatText,
-                  'itinerary_data': parsedItinerary,
-                })
-                .then((_) => debugPrint('✅ AI消息云端备份'))
-                .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
-          }
-        } else {
-          if (mounted) {
-            setState(() {
-              _messages.add(
-                const ChatMessage(role: 'ai', text: '抱歉，暂时没有拿到有效回复，请稍后再试。'),
-              );
-            });
-          }
-        }
-      } else {
-        final String err =
-            'HTTP ${response.statusCode}: ${response.reasonPhrase ?? 'unknown'}';
-        final String shortErr = err.length > 20 ? err.substring(0, 20) : err;
-        if (mounted) {
-          setState(() {
-            _messages.add(
-              ChatMessage(
-                role: 'ai',
-                text: '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
-                isError: true,
-              ),
-            );
-          });
-        }
+      final String? accessToken = _supabase.auth.currentSession?.accessToken;
+      if (accessToken == null || accessToken.trim().isEmpty) {
+        throw const AiGatewayException('authentication_required');
       }
-    } catch (e) {
-      if (_activeRequestId != requestId) {
-        return;
-      }
-      final String err = e.toString();
-      final String shortErr = err.length > 20 ? err.substring(0, 20) : err;
+      final AiGatewayResponse response = await AiGatewayService(client: client)
+          .sendChat(
+            accessToken: accessToken,
+            messages: <Map<String, String>>[
+              ...history,
+              <String, String>{'role': 'user', 'content': enrichedInput},
+            ],
+            source: widget.source,
+            currentPlan: currentPlanData,
+          );
+      final String finalChatText = response.content;
       if (mounted) {
         setState(() {
           _messages.add(
             ChatMessage(
               role: 'ai',
-              text: '抱歉，管家遇到了一点小网络问题，请稍后再试。($shortErr)',
+              text: finalChatText,
+              itineraryData: response.itineraryData,
+            ),
+          );
+        });
+      }
+      if (userId != null) {
+        _supabase
+            .from('ai_chat_messages')
+            .insert(<String, dynamic>{
+              'user_id': userId,
+              'role': 'ai',
+              'content': finalChatText,
+              'itinerary_data': response.itineraryData,
+            })
+            .then((_) => debugPrint('✅ AI消息云端备份'))
+            .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
+      }
+    } on AiGatewayException catch (error) {
+      if (_activeRequestId != requestId) {
+        return;
+      }
+      final String message = switch (error.code) {
+        'gateway_disabled' ||
+        'invalid_gateway_configuration' => 'AI 服务尚未启用，请稍后再试。',
+        'authentication_required' => '登录状态已失效，请重新登录。',
+        _ => '抱歉，管家遇到了一点小网络问题，请稍后再试。',
+      };
+      if (mounted) {
+        setState(() {
+          _messages.add(ChatMessage(role: 'ai', text: message, isError: true));
+        });
+      }
+    } catch (_) {
+      if (_activeRequestId != requestId) {
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            const ChatMessage(
+              role: 'ai',
+              text: '抱歉，管家遇到了一点小网络问题，请稍后再试。',
               isError: true,
             ),
           );

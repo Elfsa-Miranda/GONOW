@@ -888,7 +888,12 @@ function Invoke-ModeBootstrapEvidenceImport {
 function Invoke-ModeSecurity {
   if ($TaskId -ceq 'TASK-P00-003') {
     $ContainmentPath = Join-Path $script:TaskEvidenceDirectory 'security\secret-containment.json'
-    $LiveScanPath = Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan.json'
+    $PostContainmentScanPath = Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan-after-local-containment.json'
+    $LiveScanPath = if (Test-Path -LiteralPath $PostContainmentScanPath -PathType Leaf) {
+      $PostContainmentScanPath
+    } else {
+      Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan.json'
+    }
     $Report = Get-Boot005Report
     if ($null -eq $Report -or
         -not (Test-Path -LiteralPath $ContainmentPath -PathType Leaf) -or
@@ -1082,7 +1087,12 @@ function Invoke-ModeVerify {
   if ($TaskId -ceq 'TASK-P00-003') {
     $ContainmentPath = Join-Path $script:TaskEvidenceDirectory 'security\secret-containment.json'
     $RegistryPath = Join-Path $script:TaskEvidenceDirectory 'security\revoked-history-registry.json'
-    $LiveScanPath = Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan.json'
+    $PostContainmentScanPath = Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan-after-local-containment.json'
+    $LiveScanPath = if (Test-Path -LiteralPath $PostContainmentScanPath -PathType Leaf) {
+      $PostContainmentScanPath
+    } else {
+      Join-Path $script:TaskEvidenceDirectory 'security\live-secret-scan.json'
+    }
     $Required = @($ContainmentPath, $RegistryPath, $LiveScanPath)
     $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
     if ($Missing.Count -ne 0) {
@@ -1331,6 +1341,15 @@ function Invoke-ModeEvidence {
       'docs/execution/evidence/phase-00/P00-003/security/revoked-history-registry.json',
       'docs/execution/evidence/phase-00/P00-003/security/live-secret-scan.json'
     )
+    foreach ($OptionalPath in @(
+      'docs/execution/evidence/phase-00/P00-003/security/live-secret-scan-after-local-containment.json',
+      'docs/execution/evidence/phase-00/P00-003/security/local-containment-repair.json',
+      'docs/execution/evidence/phase-00/P00-003/security/apk-secret-scan-after-local-containment.json'
+    )) {
+      if (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $OptionalPath) -PathType Leaf) {
+        $Required += $OptionalPath
+      }
+    }
     $Artifacts = @()
     $Missing = 0
     $JsonErrors = 0

@@ -4,7 +4,7 @@
   "task_id": "TASK-P00-003",
   "phase": "Phase 0",
   "execution_mode": "local_provisional",
-  "status": "blocked_p0_owner_action_required",
+  "status": "blocked_p0_external_revocation_required_local_exposure_contained",
   "primary_assertion_passed": false,
   "mechanical_local_work": {
     "current_tree_redacted_scan": "completed",
@@ -13,15 +13,21 @@
     "sla_calculation": "completed",
     "secret_value_output_count": 0,
     "untracked_file_read_count": 0,
-    "external_write_count": 0
+    "external_write_count": 0,
+    "post_containment_live_secret_match_count": 0,
+    "targeted_analyzer_issue_count": 0,
+    "focused_gateway_test_count": 4,
+    "focused_gateway_test_failure_count": 0,
+    "debug_apk_build_exit_code": 0,
+    "debug_apk_valid_secret_finding_count": 0
   },
   "blocking_checks": {
-    "live_secret_match_count": 1,
+    "live_secret_match_count": 0,
     "old_ref_revoked": false,
     "new_ref_server_only": null,
     "new_ref_spend_cap_present": null,
-    "new_history_findings": null,
-    "historical_revoked_registry_mismatch": null,
+    "new_history_findings": 0,
+    "historical_revoked_registry_mismatch": 0,
     "missing_audit_receipt_count": 5,
     "sla_breach_count": 1
   },
@@ -30,6 +36,8 @@
     "docs/execution/evidence/phase-00/P00-003/security/secret-provider-reference.md",
     "docs/execution/evidence/phase-00/P00-003/security/revoked-history-registry.json",
     "docs/execution/evidence/phase-00/P00-003/security/live-secret-scan.json"
+    ,"docs/execution/evidence/phase-00/P00-003/security/live-secret-scan-after-local-containment.json"
+    ,"docs/execution/evidence/phase-00/P00-003/security/apk-secret-scan-after-local-containment.json"
   ],
   "owner_actions_required": true,
   "production_write_count": 0,
