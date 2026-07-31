@@ -18,6 +18,15 @@
 - secret 事件与轮换：`docs/runbooks/secret-rotation.md`
 - 新 Agent 架构：不在旧 Flutter AI 调用上继续扩建；按执行计划在 Phase 2 从新的 `agent-service/` 模块开始。
 
+## Phase 1 本地语义基线
+
+Phase 1 已在本地 provisional 分支冻结验证、降级与 Flutter/Agent 接线边界。模型结果只可作为可见 Candidate 草案导入；`hard`、`warning`、`unverified` 和 `verified` 四类结果都不能直接授权正式业务写入。旧聊天、导入、Auth 与本地 fallback 保持可用，新行程规划开关默认为关闭。
+
+- 验证语义与启停说明：`docs/architecture/validation-semantics.md`
+- API/DTO 消费规则：`docs/api/validation-semantics.md`
+- 旧路径降级和回滚首查：`docs/runbooks/legacy-fallback.md`
+- 当前状态仅为 `ready_for_review` 候选；独立 Product/Security 审批、正式合并、推送和生产启用仍为 pending。
+
 ## **📱 视觉预览 (Screenshots)**
 
 1.盲盒功能：点击抽取周末/国际盲盒随机旅游目的地，并且一键询问AI规划旅游路线。规划若有不满意之处可继续询问AI进行改进，直至满意即可一键导入行程。给AI的系统prompt经精心设计，综合考虑多因素规划路线，实现住宿-景点-交通-餐饮的全面高质量安排。
