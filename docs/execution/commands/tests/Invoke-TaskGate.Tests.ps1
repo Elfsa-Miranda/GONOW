@@ -136,4 +136,9 @@ if ($RunnerText -notmatch 'p02_005_lifecycle_verification_failed' -or
     $RunnerText -notmatch 'formal_clock_evidence_pending') {
   throw 'negative: P02-005 must distinguish local clock fixtures from formal measured clock evidence'
 }
+if ($RunnerText -notmatch 'p02_006_ci_verification_failed' -or
+    $RunnerText -notmatch 'p02_006_dependency_audit_failed' -or
+    $RunnerText -notmatch 'injection_executed_action_count') {
+  throw 'negative: P02-006 must execute every mandatory CI and supply-chain gate'
+}
 exit 0

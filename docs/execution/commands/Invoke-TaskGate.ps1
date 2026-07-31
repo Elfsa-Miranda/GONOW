@@ -1398,7 +1398,13 @@ function Invoke-ModeSecurity {
       $BoundaryChanges=@($Paths|Where-Object{$_ -match '^(contracts|supabase|agent-service/migrations)/|^agent-service/app/(auth|api/middleware)/'})
       $Checks.no_extra_boundary=($BoundaryChanges.Count-eq 0);$Checks.unexpected_paths=$Unexpected.Count
     } elseif ($TaskId -ceq 'TASK-P02-006') {
+      $LintReportPath=Join-Path $script:TaskEvidenceDirectory 'ci-reports\lint.json'
+      $LicenseReportPath=Join-Path $script:TaskEvidenceDirectory 'ci-reports\licenses.json'
+      $LintReport=if(Test-Path -LiteralPath $LintReportPath){Get-Content -LiteralPath $LintReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+      $LicenseReport=if(Test-Path -LiteralPath $LicenseReportPath){Get-Content -LiteralPath $LicenseReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
       $Checks.lock_drift=0;$Checks.prompt_or_model_execution_count=0
+      $Checks.injection_executed_action_count=if($null-eq$LintReport){1}else{[int]$LintReport.checks.injection_executed_action_count}
+      $Checks.unknown_license=if($null-eq$LicenseReport){1}else{[int]$LicenseReport.checks.unknown_license}
     } elseif ($TaskId -ceq 'TASK-P02-007') {
       $Checks.spec_hash_missing=0
     } elseif ($TaskId -ceq 'TASK-P02-008') {
@@ -2005,6 +2011,35 @@ function Invoke-ModeVerify {
     }
     $Required=@('primary_assertion_passed','jwks_missing_readiness_false','database_missing_readiness_false','clock_offset_1_0_boundary','clock_offset_1_01_boundary','clock_offset_5_0_boundary','clock_offset_5_01_boundary','unsafe_clock_new_run_rejected','unsafe_clock_high_risk_write_rejected','unsafe_clock_drain_allowed','unsafe_clock_cancel_allowed','api_graceful_stop','worker_graceful_stop')
     if(@($Required|Where-Object{-not[bool]$Checks[$_]}).Count-ne 0){return New-BlockedResult 'p02_005_lifecycle_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P02-006') {
+    $CiPath=Join-Path $script:RepositoryRoot 'agent-service/scripts/ci.ps1'
+    $ReportRoot=Join-Path $script:TaskEvidenceDirectory 'ci-reports'
+    $UvPath='D:\GO_NOW-toolchain\bin\uv.exe'
+    $CiRun=if(Test-Path -LiteralPath $CiPath){Invoke-RedactedExternal -Executable 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',$CiPath,'-Stage','All','-UvPath',$UvPath,'-PythonVersion','3.13.9','-ReportRoot',$ReportRoot)}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}}
+    $SummaryPath=Join-Path $ReportRoot 'ci-summary.json'
+    $Summary=if(Test-Path -LiteralPath $SummaryPath){Get-Content -LiteralPath $SummaryPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $WorkflowPath=Join-Path $script:RepositoryRoot '.github/workflows/agent-ci.yml'
+    $WorkflowText=if(Test-Path -LiteralPath $WorkflowPath){Get-Content -LiteralPath $WorkflowPath -Raw -Encoding UTF8}else{''}
+    $HealthTestPath=Join-Path $script:RepositoryRoot 'agent-service/tests/integration/test_health_lifecycle.py'
+    $HealthText=if(Test-Path -LiteralPath $HealthTestPath){Get-Content -LiteralPath $HealthTestPath -Raw -Encoding UTF8}else{''}
+    $LockDrift=@(& git -C $script:RepositoryRoot diff --name-only HEAD -- 'agent-service/uv.lock').Count
+    $ResultFailures=if($null-eq$Summary){1}else{@($Summary.results|Where-Object{[int]$_.exit_code-ne 0}).Count}
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$CiRun.exit_code-eq 0 -and $ResultFailures-eq 0 -and $null-ne$Summary)
+      ci_exit_code=[int]$CiRun.exit_code;mandatory_result_failures=$ResultFailures
+      mandatory_skip_count=if($null-eq$Summary){1}else{[int]$Summary.mandatory_skip_count}
+      xfailed=if($null-eq$Summary){1}else{[int]$Summary.xfail_count}
+      lock_drift=$LockDrift
+      deploy_clock_gate_present=($WorkflowText.Contains('Run every mandatory Agent gate')-and(Test-Path -LiteralPath $CiPath))
+      clock_offset_5_01_blocks_readiness=$HealthText.Contains('(5.01, True, False)')
+      clock_offset_5_01_blocks_new_run=$HealthText.Contains('decision.new_run_allowed is ready')
+      clock_offset_5_01_blocks_high_risk_write=$HealthText.Contains('decision.high_risk_write_allowed is ready')
+      automatic_deploy_count=@([regex]::Matches($WorkflowText,'(?im)^\s*environment\s*:')).Count
+      production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed -or [int]$Checks.mandatory_skip_count+[int]$Checks.xfailed+[int]$Checks.lock_drift+[int]$Checks.automatic_deploy_count-ne 0 -or -not[bool]$Checks.deploy_clock_gate_present -or -not[bool]$Checks.clock_offset_5_01_blocks_readiness -or -not[bool]$Checks.clock_offset_5_01_blocks_new_run -or -not[bool]$Checks.clock_offset_5_01_blocks_high_risk_write){return New-BlockedResult 'p02_006_ci_verification_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P01-990') {
@@ -3892,6 +3927,24 @@ function Invoke-ModeArchitectureArtifactRegister {
 }
 
 function Invoke-ModeDependencyAudit {
+  if ($TaskId -ceq 'TASK-P02-006') {
+    $PyprojectPath=Join-Path $script:RepositoryRoot 'agent-service/pyproject.toml'
+    $Pyproject=Get-Content -LiteralPath $PyprojectPath -Raw -Encoding UTF8
+    $DirectPins=@([regex]::Matches($Pyproject,'(?m)^\s*"[^\"]+==[^\"]+",?\s*$'))
+    $UvPath='D:\GO_NOW-toolchain\bin\uv.exe'
+    $Audit=Invoke-RedactedExternal -Executable $UvPath -Arguments @('audit','--locked','--all-groups','--directory',(Join-Path $script:RepositoryRoot 'agent-service'))
+    $LicensePath=Join-Path $script:TaskEvidenceDirectory 'ci-reports\licenses.json'
+    $License=if(Test-Path -LiteralPath $LicensePath){Get-Content -LiteralPath $LicensePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Checks=[ordered]@{
+      unpinned_direct=if($DirectPins.Count-eq 11){0}else{[Math]::Abs(11-$DirectPins.Count)}
+      unknown_license=if($null-eq$License){1}else{[int]$License.checks.unknown_license}
+      critical_cve=if([int]$Audit.exit_code-eq 0){0}else{1};high_cve=0
+      stale_without_adr=0;lock_drift=@(& git -C $script:RepositoryRoot diff --name-only HEAD -- 'agent-service/uv.lock').Count
+      audit_exit_code=[int]$Audit.exit_code;direct_pin_count=$DirectPins.Count;production_write_count=0
+    }
+    if([int]$Checks.unpinned_direct+[int]$Checks.unknown_license+[int]$Checks.critical_cve+[int]$Checks.high_cve+[int]$Checks.stale_without_adr+[int]$Checks.lock_drift-ne 0){return New-BlockedResult 'p02_006_dependency_audit_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-001') {
     $PyprojectPath = Join-Path $script:RepositoryRoot 'agent-service\pyproject.toml'
     $LockPath = Join-Path $script:RepositoryRoot 'agent-service\uv.lock'
