@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:gonow/core/services/amap_service.dart';
 import 'package:gonow/core/services/ai_gateway_service.dart';
+import 'package:gonow/core/services/safe_logger.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,13 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+void _safeAiCustomLog(String? message) {
+  SafeLogger.instance.event(
+    'ai_custom.legacy_event',
+    fields: const <String, Object?>{'source': 'ai_custom'},
+  );
+}
 
 class ChatMessage {
   final String role;
@@ -163,7 +171,7 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
                 );
               }
             } catch (e) {
-              debugPrint('🚨 单条历史 itinerary_data 解析失败: $e');
+              _safeAiCustomLog('🚨 单条历史 itinerary_data 解析失败: $e');
             }
           }
           history.add(
@@ -182,7 +190,7 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
         }
       }
     } catch (e) {
-      debugPrint('🚨 加载历史记录彻底失败: $e');
+      _safeAiCustomLog('🚨 加载历史记录彻底失败: $e');
     }
 
     // 💡 在加载完成并上屏后，顺手在后台扔一个清理任务
@@ -217,10 +225,10 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
             .delete()
             .inFilter('id', idsToDelete);
 
-        debugPrint('🧹 数据库减负成功：已清理 ${idsToDelete.length} 条过期对话');
+        _safeAiCustomLog('🧹 数据库减负成功：已清理 ${idsToDelete.length} 条过期对话');
       }
     } catch (e) {
-      debugPrint('🚨 数据库静默清理失败: $e');
+      _safeAiCustomLog('🚨 数据库静默清理失败: $e');
     }
   }
 
@@ -406,8 +414,8 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
             'role': 'user',
             'content': userText,
           })
-          .then((_) => debugPrint('✅ 用户消息云端备份'))
-          .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
+          .then((_) => _safeAiCustomLog('✅ 用户消息云端备份'))
+          .catchError((Object e) => _safeAiCustomLog('❌ 备份失败: $e'));
     }
 
     try {
@@ -469,8 +477,8 @@ class _AiCustomScreenState extends State<AiCustomScreen> {
               'content': finalChatText,
               'itinerary_data': response.itineraryData,
             })
-            .then((_) => debugPrint('✅ AI消息云端备份'))
-            .catchError((Object e) => debugPrint('❌ 备份失败: $e'));
+            .then((_) => _safeAiCustomLog('✅ AI消息云端备份'))
+            .catchError((Object e) => _safeAiCustomLog('❌ 备份失败: $e'));
       }
     } on AiGatewayException catch (error) {
       if (_activeRequestId != requestId) {
