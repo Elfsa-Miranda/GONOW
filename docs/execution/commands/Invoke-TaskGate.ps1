@@ -2288,12 +2288,18 @@ function Invoke-ModePreflight {
     $DependencyPath = Join-Path $script:RepositoryRoot "docs\execution\status\$Dependency.json"
     if (-not (Test-Path -LiteralPath $DependencyPath)) { $DependencyFailures++; continue }
     $DependencyStatus = Get-Content -LiteralPath $DependencyPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ([string]$DependencyStatus.status -notin @('ready_for_review', 'accepted')) { $DependencyFailures++ }
+    $DependencyReady = if ($ExecutionMode -ceq 'formal_adopted') {
+      [string]$DependencyStatus.status -ceq 'accepted' -and [bool]$DependencyStatus.reviewer_independent
+    } else {
+      [string]$DependencyStatus.status -in @('ready_for_review', 'accepted')
+    }
+    if (-not $DependencyReady) { $DependencyFailures++ }
   }
   $Checks = [ordered]@{
     task_id_match = $true; dependency_failures = $DependencyFailures; status_cas_conflict = 0
     unexpected_paths = 0; base_drift = 0; local_dependency_projection_valid = ($ExecutionMode -ceq 'local_provisional')
     formal_dependency_pending = ($ExecutionMode -ceq 'local_provisional')
+    formal_requires_independent_accepted_dependencies = $true
   }
   if ($DependencyFailures -ne 0) { return New-BlockedResult 'dependency_not_ready' $Checks }
   return New-PassedResult $Checks
