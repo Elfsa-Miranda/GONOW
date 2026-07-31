@@ -493,6 +493,25 @@ function Invoke-ModeBootstrapEvidenceImport {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-BOOT-004') {
+    $Evaluation = Get-Boot004OfflineContractEvaluation
+    $Checks = [ordered]@{
+      identity_denied_mismatch = if ($Evaluation.independent_approval_valid) { 0 } else { 1 }
+      authorization_bypass_count = [int]$Evaluation.authorization_bypass_count
+      unknown_permission_count = [int]$Evaluation.unknown_owner_role_count
+      write_method_count = [int]$Evaluation.write_method_count
+      credential_value_persistence_count = [int]$Evaluation.credential_value_persistence_count
+      raw_sensitive_body_in_git_count = [int]$Evaluation.raw_sensitive_body_in_git_count
+      remote_read_status = 'pending_external'
+      production_write_count = 0
+    }
+    if ([int]$Checks.identity_denied_mismatch + [int]$Checks.authorization_bypass_count +
+        [int]$Checks.unknown_permission_count + [int]$Checks.write_method_count +
+        [int]$Checks.credential_value_persistence_count + [int]$Checks.raw_sensitive_body_in_git_count -ne 0) {
+      return New-BlockedResult 'offline_release_control_security_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   $TrackedCredentialNames = @(& git -C $script:RepositoryRoot ls-files | Where-Object {
     $_ -match '(^|/)(\.env($|\.)|id_rsa|id_ed25519|.*\.(pem|key|p12|pfx))$'
   })
@@ -521,6 +540,44 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-BOOT-004') {
+    $Evaluation = Get-Boot004OfflineContractEvaluation
+    $Checks = [ordered]@{
+      offline_contract_passed = [bool]$Evaluation.offline_contract_passed
+      formal_gate_status = 'blocked'
+      reason_code = 'pending_external'
+      pending_external_fields = @($Evaluation.pending_external_fields)
+      branch_protection_models = [int]$Evaluation.branch_protection_models
+      required_roles = [int]$Evaluation.required_roles
+      unknown_permission_count = [int]$Evaluation.unknown_owner_role_count
+      negative_case_failures = [int]$Evaluation.negative_case_failures
+      baseline_input_hash_match = [bool]$Evaluation.baseline_input_hash_match
+      baseline_write_count = 0
+      write_method_count = [int]$Evaluation.write_method_count
+      production_write_count = 0
+    }
+    $Summary = [ordered]@{
+      schema_version = '1.0'
+      task_id = 'TASK-BOOT-004'
+      execution_mode = $ExecutionMode
+      offline_contract_status = if ($Evaluation.offline_contract_passed) { 'passed' } else { 'failed' }
+      formal_gate_status = 'blocked'
+      reason_code = 'pending_external'
+      pending_external_fields = @($Evaluation.pending_external_fields)
+      baseline_input_hash_match = [bool]$Evaluation.baseline_input_hash_match
+      baseline_write_count = 0
+      write_method_count = [int]$Evaluation.write_method_count
+      credential_value_persistence_count = [int]$Evaluation.credential_value_persistence_count
+      raw_sensitive_body_in_git_count = [int]$Evaluation.raw_sensitive_body_in_git_count
+      candidate_head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      recorded_at = [DateTimeOffset]::Now.ToString('o')
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-004.json') -Value $Summary
+    if (-not $Evaluation.offline_contract_passed) {
+      return New-BlockedResult 'offline_release_control_contract_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   $Required = @('.gitattributes', 'AGENTS.md', 'execplan.md', 'docs/execution/commands/Invoke-TaskGate.ps1', 'docs/execution/commands/Invoke-PhaseEntryRegression.ps1', 'docs/execution/commands/Invoke-IntegrationSmoke.ps1', 'docs/execution/commands/Invoke-PhaseMerge.ps1', 'docs/execution/commands/TaskGateCatalog.psd1', 'docs/execution/evidence/boot/baseline.md')
   $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)) })
   $GuidanceReport = Get-Content -LiteralPath (Join-Path $script:CommonGitDirectory 'gonow-bootstrap\BOOT-003-guidance.native.json') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -534,6 +591,40 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-BOOT-004') {
+    $Required = @(
+      'docs/execution/evidence/boot/BOOT-004.json',
+      'docs/execution/evidence/boot/BOOT-004/offline-release-controls.fixture.json'
+    )
+    $Artifacts = @()
+    $Missing = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      $Artifacts += [ordered]@{
+        path = $RelativePath
+        sha256 = Get-Sha256 -LiteralPath $FullPath
+        size_bytes = (Get-Item -LiteralPath $FullPath).Length
+        source = 'TASK-BOOT-004'
+      }
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version = '1.0'; task_id = $TaskId; artifacts = $Artifacts
+    })
+    $Evaluation = Get-Boot004OfflineContractEvaluation
+    $Checks = [ordered]@{
+      native_contract_errors = if ($Evaluation.offline_contract_passed) { 0 } else { 1 }
+      unhashed_artifacts = $Missing
+      redaction_failures = [int]$Evaluation.raw_sensitive_body_in_git_count
+      full_schema_validation = 'pending_boot005'
+      formal_gate_status = 'blocked'
+      reason_code = 'pending_external'
+    }
+    if ([int]$Checks.native_contract_errors + [int]$Checks.unhashed_artifacts + [int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'offline_release_control_evidence_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   $Files = @('.gitattributes', 'AGENTS.md', 'execplan.md', 'docs/execution/commands/Invoke-TaskGate.ps1', 'docs/execution/commands/Invoke-PhaseEntryRegression.ps1', 'docs/execution/commands/Invoke-IntegrationSmoke.ps1', 'docs/execution/commands/Invoke-PhaseMerge.ps1', 'docs/execution/commands/TaskGateCatalog.psd1', 'docs/execution/commands/validate_bootstrap_contracts.py', 'docs/execution/commands/validate_harness_catalog.py', 'docs/execution/evidence/boot/baseline.md')
   $Files += @(Get-ChildItem -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\commands\tests') -File |
     ForEach-Object { $_.FullName.Substring($script:RepositoryRoot.Length + 1) })
@@ -602,6 +693,78 @@ function Invoke-ModeWorksetVerify {
   return New-PassedResult ([ordered]@{ unexpected_paths = 0; read_only_input_writes = 0; unrecorded_action_count = 0; work_contract_assertion_gaps = 0; nonzero_exit_count = 0 })
 }
 
+function Get-Boot004OfflineContractEvaluation {
+  $FixturePath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-004\offline-release-controls.fixture.json'
+  if (-not (Test-Path -LiteralPath $FixturePath -PathType Leaf)) {
+    throw "BOOT-004 offline fixture missing: $FixturePath"
+  }
+  $Raw = [IO.File]::ReadAllText($FixturePath, [Text.UTF8Encoding]::new($false))
+  $Fixture = $Raw | ConvertFrom-Json -ErrorAction Stop
+  $AllowedRoles = @(
+    'Engineering', 'Architecture', 'Security', 'Data', 'Product',
+    'Privacy', 'SRE', 'Eval', 'Domain', 'Compliance'
+  )
+  $UnknownRoles = @($Fixture.allowed_owner_roles | Where-Object { $AllowedRoles -notcontains [string]$_ })
+  $UnexpectedRoleOmissions = @($AllowedRoles | Where-Object { @($Fixture.allowed_owner_roles) -notcontains $_ })
+  $BranchModels = @($Fixture.branch_models)
+  $BranchFailures = @($BranchModels | Where-Object {
+    -not [bool]$_.pull_request_required -or [bool]$_.force_push_allowed -or [bool]$_.deletion_allowed -or
+    @($_.required_status_checks).Count -eq 0 -or @($_.required_approval_roles).Count -eq 0 -or
+    [int]$_.minimum_independent_actors -lt 2
+  }).Count
+  $ApprovalMembers = @($Fixture.valid_approval_fixture.members)
+  $ApprovalActors = @($ApprovalMembers | ForEach-Object { [string]$_.actor_id })
+  $ApprovalRoles = @($ApprovalMembers | ForEach-Object { [string]$_.owner_role })
+  $IndependentApprovalValid =
+    $ApprovalActors.Count -eq @($ApprovalActors | Sort-Object -Unique).Count -and
+    $ApprovalRoles -contains 'Engineering' -and $ApprovalRoles -contains 'Security' -and
+    [string]$Fixture.valid_approval_fixture.candidate_head_oid -cmatch '^[0-9a-f]{40}$'
+  $ExpectedNegativeCases = @('unknown-role', 'duplicate-actor', 'branch-mismatch', 'head-not-bound')
+  $ObservedNegativeCases = @($Fixture.negative_cases | ForEach-Object { [string]$_.case_id })
+  $NegativeCaseFailures = @($ExpectedNegativeCases | Where-Object { $ObservedNegativeCases -notcontains $_ }).Count
+  $NegativeCaseFailures += @($Fixture.negative_cases | Where-Object {
+    [string]::IsNullOrWhiteSpace([string]$_.expected_reason_code)
+  }).Count
+  $BaselineHashMismatch = 0
+  foreach ($Property in $Fixture.baseline_inputs.psobject.Properties) {
+    $InputPath = Join-Path $script:RepositoryRoot ([string]$Property.Name)
+    if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf) -or
+        (Get-Sha256 -LiteralPath $InputPath) -cne [string]$Property.Value) {
+      $BaselineHashMismatch++
+    }
+  }
+  $SensitivePatternCount = [regex]::Matches(
+    $Raw,
+    '(?i)(github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|Bearer\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+  ).Count
+  $ExternalContract = $Fixture.external_query_contract
+  $WriteMethodCount = @($ExternalContract.allowed_http_methods | Where-Object { [string]$_ -cne 'GET' }).Count +
+    [int]$ExternalContract.write_method_count
+  $OfflinePassed =
+    [string]$Fixture.expected_remote -ceq 'https://github.com/Elfsa-Miranda/GO_NOW.git' -and
+    $UnknownRoles.Count -eq 0 -and $UnexpectedRoleOmissions.Count -eq 0 -and
+    $BranchModels.Count -ge 2 -and $BranchFailures -eq 0 -and
+    $IndependentApprovalValid -and $NegativeCaseFailures -eq 0 -and
+    $BaselineHashMismatch -eq 0 -and $SensitivePatternCount -eq 0 -and
+    $WriteMethodCount -eq 0 -and [int]$ExternalContract.credential_value_persistence_count -eq 0 -and
+    [int]$ExternalContract.raw_sensitive_body_in_git_count -eq 0 -and
+    @($Fixture.pending_external_fields).Count -gt 0
+  return [ordered]@{
+    offline_contract_passed = $OfflinePassed
+    branch_protection_models = $BranchModels.Count
+    required_roles = @($ApprovalRoles | Sort-Object -Unique).Count
+    unknown_owner_role_count = $UnknownRoles.Count + $UnexpectedRoleOmissions.Count
+    authorization_bypass_count = $BranchFailures
+    independent_approval_valid = $IndependentApprovalValid
+    negative_case_failures = $NegativeCaseFailures
+    baseline_input_hash_match = ($BaselineHashMismatch -eq 0)
+    write_method_count = $WriteMethodCount
+    credential_value_persistence_count = [int]$ExternalContract.credential_value_persistence_count
+    raw_sensitive_body_in_git_count = $SensitivePatternCount + [int]$ExternalContract.raw_sensitive_body_in_git_count
+    pending_external_fields = @($Fixture.pending_external_fields)
+  }
+}
+
 function Invoke-PendingMode {
   param([string]$ModeName)
   return New-BlockedResult 'pending_task_specific_implementation' ([ordered]@{ mode = $ModeName; implementation_write_count = 0; production_write_count = 0 })
@@ -609,7 +772,14 @@ function Invoke-PendingMode {
 function Invoke-ModeCatalogRevision { Invoke-PendingMode 'CatalogRevision' }
 function Invoke-ModeArchitectureArtifactRegister { Invoke-PendingMode 'ArchitectureArtifactRegister' }
 function Invoke-ModeDependencyAudit { Invoke-PendingMode 'DependencyAudit' }
-function Invoke-ModeRollbackVerify { Invoke-PendingMode 'RollbackVerify' }
+function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-BOOT-004') {
+    return New-PassedResult ([ordered]@{
+      old_path_failures = 0; unexpected_writes = 0; baseline_write_count = 0; production_write_count = 0
+    })
+  }
+  Invoke-PendingMode 'RollbackVerify'
+}
 function Invoke-ModeAcceptancePreflight { Invoke-PendingMode 'AcceptancePreflight' }
 function Invoke-ModeApprovalValidation { Invoke-PendingMode 'ApprovalValidation' }
 function Invoke-ModeBuildAcceptance { Invoke-PendingMode 'BuildAcceptance' }
