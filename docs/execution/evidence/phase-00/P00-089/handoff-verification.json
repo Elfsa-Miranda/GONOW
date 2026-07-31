@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P00-089",
+  "candidate_head_oid": "307567a5befb9e3110bd857c3563de4dad099235",
+  "handoff_journey_passed": true,
+  "journeys": {
+    "gateway_tests": {"passed": 4, "failed": 0},
+    "log_redaction_tests": {"passed": 3, "failed": 0},
+    "compatibility_tests": {"passed": 6, "failed": 0},
+    "new_analyzer_errors": 0
+  },
+  "reviewer_is_implementer": true,
+  "formal_handoff_pending": true,
+  "nonzero_local_test_exit_count": 0,
+  "production_write_count": 0
+}

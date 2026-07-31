@@ -9,6 +9,15 @@
 
 **GoNow 寻迹** 是一款集**旅程记录、行程规划、手账记录、旅行资产管理**于一体的全场景高可用应用。我们致力于解决传统旅行软件中的状态断层与信息过载问题，通过智能算法与大模型 AI 伴创，为热爱旅行的用户提供丝滑、沉浸、极具个性化的行前、行中、行后全链路体验。
 
+## Release A 本地安全状态
+
+当前 Phase 0 候选已经从客户端包中移除模型供应商凭据，并把普通聊天固定到默认关闭、无直连回退的服务端网关合同。生产网关、生产数据库事实清单、供应商撤销/账单核验和独立 owner 批准尚未完成，因此本分支只可用于本地 provisional 验证，不代表 Release A 已上线或 accepted。
+
+- 安全边界：`docs/architecture/release-a-security-boundary.md`
+- 网关启停与故障降级：`docs/runbooks/release-a-gateway.md`
+- secret 事件与轮换：`docs/runbooks/secret-rotation.md`
+- 新 Agent 架构：不在旧 Flutter AI 调用上继续扩建；按执行计划在 Phase 2 从新的 `agent-service/` 模块开始。
+
 ## **📱 视觉预览 (Screenshots)**
 
 1.盲盒功能：点击抽取周末/国际盲盒随机旅游目的地，并且一键询问AI规划旅游路线。规划若有不满意之处可继续询问AI进行改进，直至满意即可一键导入行程。给AI的系统prompt经精心设计，综合考虑多因素规划路线，实现住宿-景点-交通-餐饮的全面高质量安排。
