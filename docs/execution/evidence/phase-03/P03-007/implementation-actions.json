@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P03-007",
+  "execution_mode": "local_provisional",
+  "actions": [
+    {
+      "sequence": 1,
+      "kind": "preflight",
+      "result": "passed",
+      "detail": "Preflight and WorkPreflight froze roles -> policies -> grants -> two-tenant tests -> diff under local Phase 3 dependency projections."
+    },
+    {
+      "sequence": 2,
+      "kind": "environment_probe",
+      "result": "passed",
+      "detail": "The isolated migration role is non-superuser, has no CREATEROLE, and has no BYPASSRLS. Test-only principals therefore require explicit fixture provisioning by the isolated cluster owner before migration."
+    },
+    {
+      "sequence": 3,
+      "kind": "patch",
+      "result": "completed",
+      "detail": "Added five pre-provisioned NOBYPASSRLS role fixtures, least-privilege grants, FORCE RLS on ten Runtime tables, direct and inherited tenant policies, and a forward-fix-only rollback boundary."
+    },
+    {
+      "sequence": 4,
+      "kind": "diagnostic_failure",
+      "result": "recovered",
+      "exit_code": 1,
+      "detail": "The first fixture setup assumed a conventional postgres administrator role, but the isolated cluster has no such role. A read-only pg_roles query identified gonow_bootstrap_admin as the task-owned superuser/CREATEROLE identity; the fixture now binds that exact local role. No migration or RLS assertion had executed before failure."
+    },
+    {
+      "sequence": 5,
+      "kind": "affected_repair",
+      "result": "completed",
+      "exit_code": 1,
+      "detail": "The next run exposed a distinct fixture defect: two tenants were seeded in one transaction, so tenant A's deferred receipt guard observed the intentionally switched tenant B context at commit and failed closed. Seeding now uses one fixed server-derived tenant per transaction; no policy or trigger was relaxed."
+    },
+    {
+      "sequence": 6,
+      "kind": "affected_regression",
+      "result": "passed",
+      "exit_code": 0,
+      "detail": "Five real PostgreSQL RLS tests passed after fixture repair, covering CT-007, three roles across two tenants, missing context, cross-tenant writes, role separation, exact policy/grant catalog, and forward-fix rollback."
+    },
+    {
+      "sequence": 7,
+      "kind": "known_runner_enabler",
+      "result": "completed",
+      "detail": "Added exact P03-007 Verify, Security, Evidence, WorksetVerify, and RollbackVerify adapters without changing Catalog bytes."
+    },
+    {
+      "sequence": 8,
+      "kind": "full_affected_regression",
+      "result": "passed",
+      "exit_code": 0,
+      "detail": "The complete Agent CI suite passed after the RLS repair: 200 unit/integration tests and 42 contract tests, plus formatting, lint, type, secret, license, dependency-audit, and clock-contract checks."
+    }
+  ],
+  "production_write_count": 0,
+  "production_role_change_count": 0,
+  "remote_mutation_count": 0,
+  "formal_approval_count": 0
+}
