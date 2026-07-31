@@ -1429,7 +1429,7 @@ function Invoke-ModeDependencyAudit {
     toolchain_provenance_errors = [int]$Report.toolchain_provenance_errors
   }
   $Failures = 0
-  foreach ($Property in $Checks.psobject.Properties) { $Failures += [int]$Property.Value }
+  foreach ($Key in $Checks.Keys) { $Failures += [int]$Checks[$Key] }
   if ($Failures -ne 0) { return New-BlockedResult 'boot005_dependency_audit_failed' $Checks }
   return New-PassedResult $Checks
 }

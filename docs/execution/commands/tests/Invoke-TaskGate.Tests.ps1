@@ -40,4 +40,8 @@ try {
 if (@($Catalog.Tasks.Keys).Count -ne 153) { throw 'positive: expected 153 tasks' }
 if ($Catalog.Tasks.ContainsKey('TASK-DOES-NOT-EXIST')) { throw 'negative: unknown task accepted' }
 if (@($Catalog.TaskGateModeContracts.Keys).Count -ne 23) { throw 'positive: expected 23 task modes' }
+$RunnerText = [IO.File]::ReadAllText((Join-Path $Root 'Invoke-TaskGate.ps1'), [Text.UTF8Encoding]::new($false))
+if ($RunnerText -notmatch 'foreach \(\$Key in \$Checks\.Keys\)') {
+  throw 'negative: BOOT-005 dependency audit must enumerate OrderedDictionary keys'
+}
 exit 0
