@@ -5120,7 +5120,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
     $Projection = Get-P02LocalProjection
     $ModeState = Get-P02GateModeState -IncludeVerify
     if ([bool]$Projection.local_projection_passed -and [bool]$ModeState.passed) {
-      Write-P02LocalProjectionEvidence -ReadyForReview $true
+      $LocalVerificationPath = Join-Path $script:TaskEvidenceDirectory 'local-verification.json'
+      if ($Mode -ceq 'Verify' -or -not (Test-Path -LiteralPath $LocalVerificationPath -PathType Leaf)) {
+        Write-P02LocalProjectionEvidence -ReadyForReview $true
+      }
       Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
     }
   } elseif ($TaskId -ceq 'TASK-P01-990' -and $ExitCode -eq 0) {

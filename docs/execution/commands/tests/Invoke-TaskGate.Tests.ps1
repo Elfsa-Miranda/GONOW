@@ -178,4 +178,8 @@ if ($RunnerText -notmatch 'pending_independent_phase_02_approvals' -or
     $RunnerText -notmatch "formal_acceptance_status='pending_external'") {
   throw 'negative: local Phase 2 completion must not fabricate formal approvals or production drill evidence'
 }
+if ($RunnerText -notmatch "\$Mode -ceq 'Verify'.*local-verification\.json" -and
+    $RunnerText -notmatch 'LocalVerificationPath[\s\S]+Write-P02LocalProjectionEvidence') {
+  throw 'negative: P02-990 Evidence must not hash summaries that are rewritten afterward'
+}
 exit 0
