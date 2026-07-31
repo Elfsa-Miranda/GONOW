@@ -1,6 +1,6 @@
 # Phase 3 acceptance report
 
-Candidate implementation tip: `0678e493b3977310bb0607c669437f12060d6c0c`
+Candidate implementation tip: `fa52bd994ef83bf1a016d95beb53870c279566e7`
 
 Phase base OID: `aff2517da3143d539b0d639f9fa3bde6ec192181`
 
