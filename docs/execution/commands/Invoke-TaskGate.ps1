@@ -1092,6 +1092,40 @@ function Write-P00LocalProjectionEvidence {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P01-004') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedExact = @(
+      'contracts/flutter-agent-boundary-v1.yaml',
+      'docs/execution/status/TASK-P01-004.json'
+    )
+    $AllowedPrefix = 'docs/execution/evidence/phase-01/P01-004/'
+    $Unexpected = @($Paths | Where-Object {
+      $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix, [StringComparison]::Ordinal)
+    })
+    $Text = ''
+    foreach ($PathValue in $Paths) {
+      $FullPath = Join-Path $script:RepositoryRoot $PathValue
+      if (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+        $Text += [IO.File]::ReadAllText($FullPath, [Text.UTF8Encoding]::new($false))
+      }
+    }
+    $Checks = [ordered]@{
+      valid_secret_finding_count = [regex]::Matches($Text, '(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count = [regex]::Matches($Text, '[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unexpected_paths = $Unexpected.Count
+      flutter_implementation_change_count = @($Paths | Where-Object { $_ -match '^lib/' }).Count
+      deletion_enablement_count = [regex]::Matches($Text, '(?m)^\s*delete_allowed:\s*true\s*$').Count
+      production_write_count = 0
+    }
+    if ([int]$Checks.valid_secret_finding_count + [int]$Checks.pii_canary_leak_count +
+        [int]$Checks.unexpected_paths + [int]$Checks.flutter_implementation_change_count +
+        [int]$Checks.deletion_enablement_count -ne 0) {
+      return New-BlockedResult 'p01_004_security_or_scope_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-003') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -1423,6 +1457,58 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P01-004') {
+    $ContractPath = Join-Path $script:RepositoryRoot 'contracts\flutter-agent-boundary-v1.yaml'
+    $MatrixPath = Join-Path $script:TaskEvidenceDirectory 'flutter-service-matrix.md'
+    $Missing = @($ContractPath, $MatrixPath | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($Missing.Count -ne 0) {
+      return New-BlockedResult 'p01_004_boundary_contract_missing' ([ordered]@{
+        primary_assertion_passed = $false; missing_artifact_count = $Missing.Count
+      })
+    }
+    $Contract = Get-Content -LiteralPath $ContractPath -Raw -Encoding UTF8
+    $Matrix = Get-Content -LiteralPath $MatrixPath -Raw -Encoding UTF8
+    $RequiredDomains = @('chat','import','auth','fallback')
+    $MissingDomains = @($RequiredDomains | Where-Object {
+      $Contract -cnotmatch "(?m)^  - domain: $([regex]::Escape($_))$"
+    })
+    $RequiredOwners = @('flutter:','agent-api:','agent-worker:','postgres:','domain-command:')
+    $MissingOwners = @($RequiredOwners | Where-Object { -not $Contract.Contains($_) })
+    $RequiredStates = @('flag_off','flag_on_service_healthy','flag_on_service_unavailable','rollback')
+    $MissingStates = @($RequiredStates | Where-Object { $Contract -cnotmatch "(?m)^  - state: $([regex]::Escape($_))$" })
+    $Checks = [ordered]@{
+      primary_assertion_passed = $false
+      compatibility_domain_count = [regex]::Matches($Contract, '(?m)^  - domain: ').Count
+      missing_required_domain_count = $MissingDomains.Count
+      missing_data_owner_count = $MissingOwners.Count
+      missing_rollout_state_count = $MissingStates.Count
+      feature_flag_default_off = ($Contract -cmatch '(?ms)feature_flag:.*?default: false')
+      itinerary_only_scope = $Contract.Contains('release_b_itinerary_planning_only')
+      candidate_only = $Contract.Contains('model_output_is_candidate_only: true')
+      confirmed_domain_command_only = $Contract.Contains('domain_write_requires_confirmed_domain_command: true')
+      no_delete = ($Contract -cmatch '(?m)^  delete_allowed: false$') -and $Matrix.Contains('Deletion is not part of this task')
+      old_new_matrix_present = [regex]::Matches($Matrix, '(?m)^\| (chat|import|auth|fallback|itinerary planning) \|').Count -eq 5
+      current_target_distinguished = $Matrix.Contains('does not claim') -and $Contract.Contains('current_path_status: current_fact')
+      production_write_count = 0
+    }
+    $Checks.primary_assertion_passed =
+      [int]$Checks.missing_required_domain_count -eq 0 -and [int]$Checks.missing_data_owner_count -eq 0 -and
+      [int]$Checks.missing_rollout_state_count -eq 0 -and [bool]$Checks.feature_flag_default_off -and
+      [bool]$Checks.itinerary_only_scope -and [bool]$Checks.candidate_only -and
+      [bool]$Checks.confirmed_domain_command_only -and [bool]$Checks.no_delete -and
+      [bool]$Checks.old_new_matrix_present -and [bool]$Checks.current_target_distinguished
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'local-boundary-verification.json') -Value ([ordered]@{
+      schema_version = '1.0'; task_id = $TaskId; primary_assertion_passed = [bool]$Checks.primary_assertion_passed
+      contract_sha256 = Get-Sha256 -LiteralPath $ContractPath; matrix_sha256 = Get-Sha256 -LiteralPath $MatrixPath
+      compatibility_domains = $RequiredDomains; rollout_states = $RequiredStates
+      formal_review_status = 'pending_external'; accepted = $false; production_write_count = 0
+      recorded_at = [DateTimeOffset]::Now.ToString('o')
+    })
+    if (-not [bool]$Checks.primary_assertion_passed) {
+      return New-BlockedResult 'p01_004_flutter_boundary_incomplete' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-003') {
     $FixturePath = Join-Path $script:RepositoryRoot 'test\fixtures\validation\validation_semantics_cases.json'
     $ContractPath = Join-Path $script:RepositoryRoot 'docs\architecture\validation-semantics-v1.md'
@@ -1839,6 +1925,37 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P01-004') {
+    $Required = @(
+      'contracts/flutter-agent-boundary-v1.yaml',
+      'docs/execution/evidence/phase-01/P01-004/flutter-service-matrix.md',
+      'docs/execution/evidence/phase-01/P01-004/local-boundary-verification.json'
+    )
+    $Artifacts = @(); $Missing = 0; $JsonErrors = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      if ($RelativePath.EndsWith('.json')) {
+        try { $null = Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $JsonErrors++ }
+      }
+      $Mime = if ($RelativePath.EndsWith('.json')) { 'application/json' } elseif ($RelativePath.EndsWith('.yaml')) { 'application/yaml' } else { 'text/markdown' }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime `
+        -ArtifactType 'flutter-agent-boundary-contract' -GeneratedByStep 'TASK-P01-004:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version='1.0'; task_id=$TaskId; git_object_format=Get-GitObjectFormat
+      head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts=$Artifacts
+    })
+    $Checks = [ordered]@{
+      schema_errors=$JsonErrors; unhashed_artifacts=$Missing; redaction_failures=0
+      undeclared_evidence_count=0; artifact_count=$Artifacts.Count; production_write_count=0
+    }
+    if ([int]$Checks.schema_errors + [int]$Checks.unhashed_artifacts + [int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'p01_004_evidence_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-003') {
     $Required = @(
       'test/fixtures/validation/validation_semantics_cases.json',
@@ -2418,6 +2535,28 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P01-004') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+    $AllowedExact = @('contracts/flutter-agent-boundary-v1.yaml','docs/execution/status/TASK-P01-004.json')
+    $AllowedPrefix = 'docs/execution/evidence/phase-01/P01-004/'
+    $Unexpected = @($Paths | Where-Object { $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix,[StringComparison]::Ordinal) })
+    $Required = @('contracts/flutter-agent-boundary-v1.yaml','docs/execution/evidence/phase-01/P01-004/flutter-service-matrix.md')
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_) -PathType Leaf) })
+    $Checks = [ordered]@{
+      unexpected_paths=$Unexpected.Count
+      read_only_input_writes=@($Paths | Where-Object { $_ -in @('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1') }).Count
+      unrecorded_action_count=0; work_contract_assertion_gaps=$Missing.Count; nonzero_exit_count=0
+      flutter_implementation_change_count=@($Paths | Where-Object { $_ -match '^lib/' }).Count
+      production_write_count=0
+    }
+    if ([int]$Checks.unexpected_paths + [int]$Checks.read_only_input_writes +
+        [int]$Checks.work_contract_assertion_gaps + [int]$Checks.flutter_implementation_change_count -ne 0) {
+      return New-BlockedResult 'p01_004_workset_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-003') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD); $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
     $Paths = @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
@@ -2868,6 +3007,21 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P01-004') {
+    & git -C $script:RepositoryRoot diff --check
+    $DiffCheckExit = $LASTEXITCODE
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Checks = [ordered]@{
+      old_path_failures=0
+      unexpected_writes=@($Paths | Where-Object { $_.Replace('\','/') -match '^(lib|agent-service|supabase)/' }).Count
+      diff_check_exit_code=$DiffCheckExit; deletion_count=0; production_write_count=0
+    }
+    if ([int]$Checks.unexpected_writes + [int]$Checks.diff_check_exit_code -ne 0) {
+      return New-BlockedResult 'p01_004_rollback_verification_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-003') {
     & git -C $script:RepositoryRoot diff --check; $DiffCheckExit=$LASTEXITCODE
     $Checks=[ordered]@{old_path_failures=0;unexpected_writes=0;diff_check_exit_code=$DiffCheckExit;production_write_count=0}
