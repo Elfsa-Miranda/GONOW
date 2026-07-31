@@ -2638,7 +2638,7 @@ function Invoke-ModeEvidence {
   }
   if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
     $Required=@(Get-P02TaskDeliverableFiles)
-    $TaskEvidenceFiles=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue | Where-Object {
+    $TaskEvidenceFiles=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
       $_.Name -notin @('artifact-hashes.json','commands.json','gate-results.json')
     } | ForEach-Object { $_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/') })
     $Required=@($Required+$TaskEvidenceFiles|Sort-Object -Unique)

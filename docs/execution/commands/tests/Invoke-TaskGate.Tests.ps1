@@ -141,4 +141,7 @@ if ($RunnerText -notmatch 'p02_006_ci_verification_failed' -or
     $RunnerText -notmatch 'injection_executed_action_count') {
   throw 'negative: P02-006 must execute every mandatory CI and supply-chain gate'
 }
+if ($RunnerText -notmatch 'TaskEvidenceDirectory -Recurse -File') {
+  throw 'negative: nested Phase 2 reports must be included in the evidence hash manifest'
+}
 exit 0
