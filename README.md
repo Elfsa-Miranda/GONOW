@@ -27,6 +27,21 @@ Phase 1 已在本地 provisional 分支冻结验证、降级与 Flutter/Agent �
 - 旧路径降级和回滚首查：`docs/runbooks/legacy-fallback.md`
 - 当前状态仅为 `ready_for_review` 候选；独立 Product/Security 审批、正式合并、推送和生产启用仍为 pending。
 
+## Phase 2 本地 Agent 服务骨架
+
+Phase 2 在同一仓库新增 `agent-service/`，并建立彼此独立的 `agent-api` 与
+`agent-worker` 进程入口。当前能力只包括锁定构建、服务端 Secret 引用、JWT/JWKS
+认证与租户上下文、安全错误和脱敏观测、健康/时钟/优雅停机、CI 以及 OpenAPI
+合同；它没有模型、Graph、Tool、job claim、Domain Command 或生产写能力。
+
+- 进程和信任边界：`docs/architecture/agent-process-boundary.md`
+- 本地启动、探针、停机与首查：`docs/runbooks/agent-service-lifecycle.md`
+- 公共合同和错误码：`docs/api/agent-api.md`
+- 新路径未接 Flutter 流量，停用只需保持服务未部署；若本地验证异常，先运行
+  `agent-service/scripts/ci.ps1`，再按生命周期 runbook 定位。
+- 当前仅为 `local_provisional` / `ready_for_review` 候选；独立 SRE/Security review、
+  正式 required checks、真实部署时钟证据、推送、合并、生产启用和 accepted 均为 pending。
+
 ## **📱 视觉预览 (Screenshots)**
 
 1.盲盒功能：点击抽取周末/国际盲盒随机旅游目的地，并且一键询问AI规划旅游路线。规划若有不满意之处可继续询问AI进行改进，直至满意即可一键导入行程。给AI的系统prompt经精心设计，综合考虑多因素规划路线，实现住宿-景点-交通-餐饮的全面高质量安排。
