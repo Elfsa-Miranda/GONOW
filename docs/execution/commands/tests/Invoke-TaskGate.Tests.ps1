@@ -144,4 +144,9 @@ if ($RunnerText -notmatch 'p02_006_ci_verification_failed' -or
 if ($RunnerText -notmatch 'TaskEvidenceDirectory -Recurse -File') {
   throw 'negative: nested Phase 2 reports must be included in the evidence hash manifest'
 }
+if ($RunnerText -notmatch 'p02_007_openapi_verification_failed' -or
+    $RunnerText -notmatch 'error_code_corpus_diff' -or
+    $RunnerText -notmatch "ControlId 33") {
+  throw 'negative: P02-007 must bind OpenAPI digest, error corpus, and SchemaRegistry Harness evidence'
+}
 exit 0

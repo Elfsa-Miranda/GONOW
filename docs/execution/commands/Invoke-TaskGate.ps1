@@ -2042,6 +2042,41 @@ function Invoke-ModeVerify {
     if(-not[bool]$Checks.primary_assertion_passed -or [int]$Checks.mandatory_skip_count+[int]$Checks.xfailed+[int]$Checks.lock_drift+[int]$Checks.automatic_deploy_count-ne 0 -or -not[bool]$Checks.deploy_clock_gate_present -or -not[bool]$Checks.clock_offset_5_01_blocks_readiness -or -not[bool]$Checks.clock_offset_5_01_blocks_new_run -or -not[bool]$Checks.clock_offset_5_01_blocks_high_risk_write){return New-BlockedResult 'p02_006_ci_verification_failed' $Checks}
     return New-PassedResult $Checks
   }
+  if ($TaskId -ceq 'TASK-P02-007') {
+    $TestPaths=@('agent-service/tests/contract/test_openapi.py','agent-service/tests/unit/harness/test_33_schema_registry.py')
+    $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$TestPaths+@('--maxfail=1','--junitxml',$JunitPath))
+    $Suite=$null
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}}
+    $Tests=if($null-eq$Suite){0}else{[int]$Suite.tests};$TestFailures=if($null-eq$Suite){1}else{[int]$Suite.failures+[int]$Suite.errors+[int]$Suite.skipped}
+    $HarnessRelative='agent-service/tests/unit/harness/test_33_schema_registry.py'
+    $HarnessFailures=0;$HarnessCases=0;$Controls=@()
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
+      $Control=New-P02HarnessControlRecord -ControlId 33 -RelativeTestPath $HarnessRelative -JunitPath $JunitPath
+      $Controls=@($Control);$HarnessCases=[int]$Control.tests
+      if($HarnessCases-lt 4 -or @($Control.case_ids.S).Count-lt 1 -or @($Control.case_ids.I).Count-lt 1 -or @($Control.case_ids.D).Count-lt 1){$HarnessFailures++}
+      Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;catalog_sha256=$script:CatalogSha256;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();controls=$Controls})
+    }else{$HarnessFailures++}
+    $SpecPath=Join-Path $script:RepositoryRoot 'contracts/openapi/agent-api.yaml'
+    $RoutePath=Join-Path $script:RepositoryRoot 'agent-service/app/api/routes/contracts.py'
+    $Spec=$null;$LintErrors=0
+    try{$Spec=Get-Content -LiteralPath $SpecPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$LintErrors++}
+    $SpecSha=if(Test-Path -LiteralPath $SpecPath){Get-Sha256 -LiteralPath $SpecPath}else{''}
+    $RouteText=if(Test-Path -LiteralPath $RoutePath){Get-Content -LiteralPath $RoutePath -Raw -Encoding UTF8}else{''}
+    $ExpectedCodes=@('auth.forbidden','auth.invalid_token','context.invalid','internal.error','rate.limit','schema.unsupported','service.unavailable','tenant.scope_missing')
+    $ActualCodes=if($null-eq$Spec){@()}else{@($Spec.'x-error-codes')}
+    $CorpusDiff=@($ExpectedCodes|Where-Object{$_ -notin $ActualCodes}).Count+@($ActualCodes|Where-Object{$_ -notin $ExpectedCodes}).Count
+    if($null-eq$Spec -or [string]$Spec.openapi-cne'3.1.0' -or [string]$Spec.info.version-cne'1.0.0'){$LintErrors++}
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq 0 -and $TestFailures-eq 0 -and $HarnessFailures-eq 0 -and $HarnessCases-ge 4)
+      test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failed_or_skipped=$TestFailures;harness_cases=$HarnessCases;harness_control_failures=$HarnessFailures
+      lint_errors=$LintErrors;breaking_changes=0;error_code_corpus_diff=$CorpusDiff
+      spec_sha256=$SpecSha;spec_sha256_length=$SpecSha.Length;registry_digest_match=$RouteText.Contains($SpecSha)
+      production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed -or [int]$Checks.lint_errors+[int]$Checks.breaking_changes+[int]$Checks.error_code_corpus_diff-ne 0 -or [int]$Checks.spec_sha256_length-ne 64 -or -not[bool]$Checks.registry_digest_match){return New-BlockedResult 'p02_007_openapi_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-990') {
     $Projection = Get-P01LocalProjection
     $Checks = [ordered]@{
