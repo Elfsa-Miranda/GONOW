@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P03-004",
+  "execution_mode": "local_provisional",
+  "recorded_at": "2026-08-01T06:00:56+08:00",
+  "actions": [
+    {
+      "sequence": 1,
+      "kind": "preflight",
+      "result": "passed",
+      "detail": "Preflight and WorkPreflight froze schema -> immutability -> generation CAS -> audit -> race tests under a local dependency projection."
+    },
+    {
+      "sequence": 2,
+      "kind": "patch",
+      "result": "completed",
+      "detail": "Added isolated Behavior revision, certification, release, deployment, and history tables; database immutability/qualification/audit triggers; authorized repositories; and generation CAS."
+    },
+    {
+      "sequence": 3,
+      "kind": "affected_test",
+      "result": "passed",
+      "exit_code": 0,
+      "detail": "Eight real PostgreSQL contract and Harness 11 tests passed on the first run with CT-012/013, one CAS winner, immutable old release, authorization denial, and unqualified fail-closed coverage."
+    },
+    {
+      "sequence": 4,
+      "kind": "known_runner_enabler",
+      "result": "completed",
+      "detail": "Added exact P03-004 mode adapters without repeating the known placeholder failure or modifying Catalog bytes."
+    },
+    {
+      "sequence": 5,
+      "kind": "diagnostic_interruption",
+      "result": "recovered",
+      "exit_code": 124,
+      "detail": "The first full-regression invocation was terminated by the orchestration layer's one-second timeout before a test result existed; no product assertion failed and no production state was touched."
+    },
+    {
+      "sequence": 6,
+      "kind": "affected_regression",
+      "result": "passed",
+      "exit_code": 0,
+      "detail": "After correcting only the invocation timeout to a bounded 60 seconds, the complete Agent CI suite passed: 160 unit/integration tests, 12 contract tests, and all format, lint, type, secret, clock, license, and dependency audit checks."
+    }
+  ],
+  "production_write_count": 0,
+  "behavior_publish_count": 0,
+  "remote_mutation_count": 0,
+  "formal_approval_count": 0
+}
