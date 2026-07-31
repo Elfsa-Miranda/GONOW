@@ -70,4 +70,8 @@ if ($RunnerText -notmatch 'manifest_execution_mode_match' -or
 if ($RunnerText -notmatch 'merge-base --is-ancestor \(\[string\]\$Manifest\.phase_base_oid\) \$Head') {
   throw 'negative: phase base must remain an ancestor rather than equal every later task HEAD'
 }
+if ($RunnerText -notmatch "TASK-P01-002" -or
+    $RunnerText -notmatch 'domain_write_const_false_count') {
+  throw 'negative: P01-002 must keep validation results outside the formal write authority'
+}
 exit 0
