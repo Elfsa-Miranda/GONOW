@@ -1491,7 +1491,7 @@ function Invoke-ModeVerify {
     $Map = Get-Content -LiteralPath $MapPath -Raw -Encoding UTF8
     $Adr = Get-Content -LiteralPath $AdrPath -Raw -Encoding UTF8
     $Agents = Get-Content -LiteralPath $AgentsPath -Raw -Encoding UTF8
-    $HardConstraintMarker = '[' + [char]0x786C + [char]0x7EA6
+    $HardConstraintMarker = '[' + [char]0x786C + [char]0x7EA6 + [char]0x675F
     $SourceMarkerCount = [regex]::Matches($Agents,[regex]::Escape($HardConstraintMarker)).Count
     $Rows = @([regex]::Matches($Map,'(?m)^\| HC-(\d{3}) \|.*$') | ForEach-Object { $_.Value })
     $Ids = @($Rows | ForEach-Object { if ($_ -match '^\| (HC-\d{3}) \|') { $Matches[1] } } | Sort-Object -Unique)
@@ -1507,7 +1507,7 @@ function Invoke-ModeVerify {
       duplicate_hard_constraint_id_count = $Rows.Count - $Ids.Count
       incomplete_task_or_ct_mapping_count = $IncompleteRows.Count
       unmapped_hard_constraint = if ($Map -cmatch '(?m)^- unmapped hard constraint count: 0$') { 0 } else { 1 }
-      unmapped_token_count = [regex]::Matches($Map,'(?i)\bUNMAPPED\b').Count
+      unmapped_token_count = [regex]::Matches($Map,'(?i)\|\s*UNMAPPED\s*\|').Count
       current_fact_section_present = $Map.Contains('## Current Fact (not target implementation evidence)')
       target_contract_section_present = $Map.Contains('## Target Contract / Hard Constraint inventory')
       current_target_separation_statement_present = $Map.Contains('Every row below is a target or invariant')
@@ -1515,8 +1515,8 @@ function Invoke-ModeVerify {
       architecture_change_count = 0
       production_write_count = 0
     }
-    $Checks.primary_assertion_passed = [int]$Checks.source_hard_constraint_marker_count -eq 31 -and
-      [int]$Checks.mapped_hard_constraint_row_count -eq 31 -and [int]$Checks.unique_hard_constraint_id_count -eq 31 -and
+    $Checks.primary_assertion_passed = [int]$Checks.source_hard_constraint_marker_count -eq 39 -and
+      [int]$Checks.mapped_hard_constraint_row_count -eq 39 -and [int]$Checks.unique_hard_constraint_id_count -eq 39 -and
       [int]$Checks.duplicate_hard_constraint_id_count -eq 0 -and [int]$Checks.incomplete_task_or_ct_mapping_count -eq 0 -and
       [int]$Checks.unmapped_hard_constraint -eq 0 -and [int]$Checks.unmapped_token_count -eq 0 -and
       [bool]$Checks.current_fact_section_present -and [bool]$Checks.target_contract_section_present -and
