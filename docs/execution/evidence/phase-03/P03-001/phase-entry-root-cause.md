@@ -35,3 +35,10 @@ The next clean worktree must prove the OpenAPI file is 5,699 bytes, has the expe
 SHA-256, contains no CRLF, and passes the complete Agent CI suite. The Phase 0/1
 Flutter journeys must pass with `--no-pub`, and the worktree must remain clean apart
 from declared Phase 3 evidence.
+
+The clean `D:\GO_NOW-phase-03-worktree-lf` checkout satisfied that regression:
+OpenAPI bytes were 5,699 with 145 LF and zero CRLF, the digest returned to `b9e5d1…`,
+the complete Agent suite passed 135 tests plus 8 explicit contract tests across 12
+mandatory gates, and all 7 Phase 0/1 Flutter journey tests passed. Failed, not-run,
+skipped, and xfailed counts were zero. Generated plugin files normalized to the same
+Git object IDs as HEAD and left no staged or working diff.

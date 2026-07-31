@@ -31,6 +31,25 @@ SECRET_PATTERN = re.compile(
 BANNED_RUNTIME_IMPORTS = {"anthropic", "langchain", "langgraph", "openai"}
 
 
+def _normalize_license_text(value: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", value.lower()).split())
+
+
+def _license_is_approved(expression: str, classifiers: str) -> bool:
+    metadata = f" {_normalize_license_text(expression + ' ' + classifiers)} "
+    return any(
+        f" {_normalize_license_text(token)} " in metadata
+        for token in APPROVED_LICENSE_TOKENS
+    )
+
+
+def test_license_normalization_recognizes_common_bsd_metadata() -> None:
+    assert _license_is_approved("BSD 3-Clause License", "License :: OSI Approved :: BSD License")
+    assert _license_is_approved("BSD-3-Clause", "")
+    assert not _license_is_approved("LGPL-3.0-only", "")
+    assert not _license_is_approved("Proprietary committee license", "")
+
+
 def _python_files(root: Path) -> list[Path]:
     return sorted((root / "agent-service" / "app").rglob("*.py"))
 
@@ -168,9 +187,9 @@ def check_licenses(root: Path) -> tuple[list[str], dict[str, Any]]:
             continue
         distribution = requirement.split("[", 1)[0].split("==", 1)[0]
         metadata = importlib.metadata.metadata(distribution)
-        expression = (metadata.get("License-Expression") or metadata.get("License") or "").lower()
-        classifiers = " ".join(metadata.get_all("Classifier") or []).lower()
-        if not any(token in expression or token.replace("-", " ") in classifiers for token in APPROVED_LICENSE_TOKENS):
+        expression = metadata.get("License-Expression") or metadata.get("License") or ""
+        classifiers = " ".join(metadata.get_all("Classifier") or [])
+        if not _license_is_approved(expression, classifiers):
             failures.append(f"unknown-license:{distribution}")
     return failures, {"direct_pin_count": len(direct), "unpinned_direct": sum(item == "unpinned-direct-dependency" for item in failures), "unknown_license": sum(item.startswith("unknown-license:") for item in failures)}
 

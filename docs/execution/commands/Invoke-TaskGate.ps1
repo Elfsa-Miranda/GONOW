@@ -1475,7 +1475,62 @@ function New-P02HarnessControlRecord {
   }
 }
 
+function Get-P03001ChangedPaths {
+  $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+  $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+}
+
+function Test-P03001PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact = @(
+    '.gitattributes',
+    'agent-service/alembic.ini','agent-service/migrations/env.py','agent-service/migrations/script.py.mako',
+    'agent-service/migrations/versions/p03_001_runtime_baseline.py',
+    'agent-service/tests/integration/test_migration_baseline.py',
+    'agent-service/pyproject.toml','agent-service/uv.lock','agent-service/tests/ci/test_quality_gate.py',
+    'docs/execution/commands/Invoke-TaskGate.ps1','docs/architecture/adr/ADR-P03-001-postgresql-driver.md',
+    'docs/execution/blockers/phase-03/BLK-P03-001-license-metadata-normalization.md',
+    'docs/execution/status/TASK-P03-001.json'
+  )
+  if ($RelativePath -in $AllowedExact) { return $true }
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-03/P03-001/',[StringComparison]::Ordinal) -or
+    $RelativePath.StartsWith('docs/execution/supply-chain/phase-03/P03-001-enabler/',[StringComparison]::Ordinal)
+}
+
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P03-001') {
+    $Paths = @(Get-P03001ChangedPaths)
+    $Unexpected = @($Paths | Where-Object { -not (Test-P03001PathAllowed -RelativePath $_) })
+    $ChangedText = ''
+    foreach ($RelativePath in $Paths) {
+      if ($RelativePath -match '(?i)(\.xml$|uv\.lock$|sbom\.cdx\.json$)') { continue }
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+        try { $ChangedText += [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false)) + "`n" } catch { }
+      }
+    }
+    $MigrationFiles = @(
+      'agent-service\migrations\env.py','agent-service\migrations\versions\p03_001_runtime_baseline.py',
+      'agent-service\tests\integration\test_migration_baseline.py'
+    )
+    $MigrationText = @($MigrationFiles | ForEach-Object {
+      [IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))
+    }) -join "`n"
+    $ForbiddenExecutorCount = [regex]::Matches($MigrationText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|(?<![A-Za-z0-9_.])(?:eval|exec)\s*\()').Count
+    $HardcodedPasswordCount = [regex]::Matches($MigrationText,'(?i)postgresql(?:\+[^:]+)?://[^/@:]+:[^/@]+@').Count
+    $Checks = [ordered]@{
+      no_extra_boundary=($ForbiddenExecutorCount+$HardcodedPasswordCount+$Unexpected.Count-eq 0)
+      valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count=[regex]::Matches($ChangedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unexpected_paths=$Unexpected.Count;arbitrary_executor_count=$ForbiddenExecutorCount
+      hardcoded_database_password_count=$HardcodedPasswordCount;production_write_count=0
+    }
+    if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count-ne0-or[int]$Checks.pii_canary_leak_count-ne0){
+      return New-BlockedResult 'p03_001_security_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-990') {
     $DiffText=@(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD --)-join"`n"
     $AddedText=@($DiffText-split"`n"|Where-Object{$_.StartsWith('+')-and-not$_.StartsWith('+++')})-join"`n"
@@ -2017,6 +2072,49 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P03-001') {
+    $Python = Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
+    $JunitPath = Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $InventoryPath = Join-Path $script:TaskEvidenceDirectory 'migration-inventory.json'
+    $PreviousInventoryPath = $env:GONOW_P03_INVENTORY_REPORT
+    try {
+      $env:GONOW_P03_INVENTORY_REPORT = $InventoryPath
+      $TestRun = if (Test-Path -LiteralPath $Python -PathType Leaf) {
+        Invoke-RedactedExternal -Executable $Python -Arguments @(
+          '-m','pytest','-q','agent-service/tests/integration/test_migration_baseline.py',
+          '--maxfail=1','--junitxml',$JunitPath
+        )
+      } else { [ordered]@{exit_code=1;duration_seconds=0;output_line_count=0} }
+    } finally {
+      if ($null -eq $PreviousInventoryPath) { Remove-Item Env:\GONOW_P03_INVENTORY_REPORT -ErrorAction SilentlyContinue }
+      else { $env:GONOW_P03_INVENTORY_REPORT = $PreviousInventoryPath }
+    }
+    $LockRun = Invoke-RedactedExternal -Executable 'D:\GO_NOW-toolchain\bin\uv.exe' -Arguments @(
+      'lock','--check','--directory',(Join-Path $script:RepositoryRoot 'agent-service')
+    )
+    $Tests=0;$Failures=1;$Skipped=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
+      [xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8
+      $Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}
+      $Tests=[int]$Suite.tests;$Failures=[int]$Suite.failures+[int]$Suite.errors;$Skipped=[int]$Suite.skipped
+    }
+    $Inventory=if(Test-Path -LiteralPath $InventoryPath -PathType Leaf){
+      Get-Content -LiteralPath $InventoryPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
+    }else{$null}
+    $InventoryReviewed=$null-ne$Inventory-and @($Inventory.pre_upgrade_tables).Count-eq0-and
+      @($Inventory.post_upgrade_tables).Count-eq1-and [string]@($Inventory.post_upgrade_tables)[0]-ceq'alembic_version'-and
+      (@($Inventory.idempotent_upgrade_tables)-join',')-ceq'alembic_version'-and
+      [string]$Inventory.revision-ceq'p03_001_runtime_baseline'-and[int]$Inventory.downgrade_version_rows-eq0-and
+      -not[bool]$Inventory.cleanup_schema_present-and-not[bool]$Inventory.production
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq0-and[int]$LockRun.exit_code-eq0-and$Failures-eq0-and$Skipped-eq0-and$Tests-ge4-and$InventoryReviewed)
+      empty_upgrade=$InventoryReviewed;inventory_diff_reviewed=$InventoryReviewed;baseline_revision=if($null-eq$Inventory){'missing'}else{[string]$Inventory.revision}
+      test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failures=$Failures;skipped=$Skipped
+      lock_test_exit_code=[int]$LockRun.exit_code;production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p03_001_migration_baseline_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-990') {
     $Projection=Get-P02LocalProjection
     $ModeState=Get-P02GateModeState
@@ -2861,6 +2959,43 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P03-001') {
+    $Required=@(
+      '.gitattributes',
+      'agent-service/alembic.ini','agent-service/migrations/env.py','agent-service/migrations/script.py.mako',
+      'agent-service/migrations/versions/p03_001_runtime_baseline.py','agent-service/tests/integration/test_migration_baseline.py',
+      'agent-service/pyproject.toml','agent-service/uv.lock','agent-service/tests/ci/test_quality_gate.py',
+      'docs/execution/commands/Invoke-TaskGate.ps1','docs/architecture/adr/ADR-P03-001-postgresql-driver.md',
+      'docs/execution/blockers/phase-03/BLK-P03-001-license-metadata-normalization.md',
+      'docs/execution/evidence/phase-03/phase-runtime-manifest.json'
+    )
+    $EvidenceFiles=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -Recurse -File -ErrorAction SilentlyContinue|Where-Object{
+      $_.Name-notin@('artifact-hashes.json','commands.json','gate-results.json')
+    }|ForEach-Object{$_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/')})
+    $SupplyRoot=Join-Path $script:RepositoryRoot 'docs\execution\supply-chain\phase-03\P03-001-enabler'
+    $SupplyFiles=@(Get-ChildItem -LiteralPath $SupplyRoot -Recurse -File -ErrorAction SilentlyContinue|ForEach-Object{
+      $_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/')
+    })
+    $Required=@($Required+$EvidenceFiles+$SupplyFiles|Sort-Object -Unique)
+    $Artifacts=@();$Missing=0;$JsonErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}}
+      if($RelativePath-notmatch'(?i)(\.xml$|uv\.lock$|sbom\.cdx\.json$)'){
+        try{$TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count}catch{}
+      }
+      $Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/plain'}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-03-migration-baseline' -GeneratedByStep 'TASK-P03-001:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat
+      head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts
+    })
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p03_001_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-990') {
     $Required=@(
       'docs/execution/evidence/phase-02/acceptance.md','docs/execution/evidence/index.json',
@@ -3484,6 +3619,66 @@ function Invoke-ModeEvidence {
 }
 
 function Invoke-ModePreflight {
+  if ($TaskId -ceq 'TASK-P03-001') {
+    $ManifestPath = Join-Path $script:RepositoryRoot ([string]$script:Task.phase_runtime_manifest_path)
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+      return New-BlockedResult 'phase_03_entry_manifest_missing' ([ordered]@{
+        task_id_match=$true;dependency_failures=1;status_cas_conflict=0;unexpected_paths=0
+        base_drift=1;local_dependency_projection_valid=$false;formal_dependency_pending=($ExecutionMode-ceq'local_provisional')
+      })
+    }
+    $Manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $SourcePath = Join-Path $script:RepositoryRoot ([string]$Manifest.source_record_path)
+    $SourceRecord = if (Test-Path -LiteralPath $SourcePath -PathType Leaf) {
+      Get-Content -LiteralPath $SourcePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } else { $null }
+    $SourceHashDrift = if ($null -eq $SourceRecord) { 1 } elseif (
+      (Get-Sha256 -LiteralPath $SourcePath) -cne [string]$Manifest.source_record_sha256
+    ) { 1 } else { 0 }
+    $SourceGatePath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\P02-990\gate-results.json'
+    $SourceEvidenceHashDrift = if ($null -eq $SourceRecord -or -not (Test-Path -LiteralPath $SourceGatePath -PathType Leaf)) {
+      1
+    } elseif ((Get-Sha256 -LiteralPath $SourceGatePath) -cne [string]$SourceRecord.evidence_sha256) { 1 } else { 0 }
+    $EntryRegressionPath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-03\P03-001\phase-entry-regression.json'
+    $EntryRegression = if (Test-Path -LiteralPath $EntryRegressionPath -PathType Leaf) {
+      Get-Content -LiteralPath $EntryRegressionPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } else { $null }
+    & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) HEAD 2>$null
+    $BaseDrift = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+    $FormalStatusPath = Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P02-999.json'
+    $FormalStatus = if (Test-Path -LiteralPath $FormalStatusPath -PathType Leaf) {
+      Get-Content -LiteralPath $FormalStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } else { $null }
+    $FormalDependencySatisfied = $null -ne $FormalStatus -and
+      [string]$FormalStatus.status -ceq 'accepted' -and [bool]$FormalStatus.reviewer_independent -and
+      -not [string]::IsNullOrWhiteSpace([string]$Manifest.formal_phase_base_oid)
+    $LocalProjectionSatisfied = [bool]$Manifest.local_dependency_projection_valid -and
+      $null -ne $SourceRecord -and [string]$SourceRecord.status -in @('ready_for_review','accepted') -and
+      [string]$Manifest.boot005_mechanical_revalidation -ceq 'passed'
+    $DependencyProjectionSatisfied = if ($ExecutionMode -ceq 'formal_adopted') {
+      $FormalDependencySatisfied
+    } else { $LocalProjectionSatisfied }
+    $Checks = [ordered]@{
+      task_id_match=([string]$Manifest.task_id-ceq$TaskId);phase_match=([string]$Manifest.phase-ceq'Phase 3')
+      manifest_execution_mode_match=([string]$Manifest.execution_mode-ceq$ExecutionMode)
+      dependency_failures=0;status_cas_conflict=0;unexpected_paths=0;base_drift=$BaseDrift
+      source_hash_drift=$SourceHashDrift;source_evidence_hash_drift=$SourceEvidenceHashDrift
+      prior_phase_regression_failures=if($null-eq$EntryRegression){1}else{[int]$EntryRegression.failure_count}
+      phase_runtime_manifest='existing_exact';phase_base_oid=[string]$Manifest.phase_base_oid
+      provisional_base_oid=[string]$Manifest.provisional_base_oid;source_task_id=[string]$Manifest.source_task_id
+      source_status=if($null-eq$SourceRecord){'missing'}else{[string]$SourceRecord.status}
+      boot005_mechanical_revalidation=[string]$Manifest.boot005_mechanical_revalidation
+      local_dependency_projection_valid=$LocalProjectionSatisfied;formal_dependency_satisfied=$FormalDependencySatisfied
+      formal_dependency_pending=($ExecutionMode-ceq'local_provisional');production_write_count=0
+    }
+    if(-not[bool]$Checks.task_id_match-or-not[bool]$Checks.phase_match-or-not[bool]$Checks.manifest_execution_mode_match-or
+       [int]$Checks.base_drift+[int]$Checks.source_hash_drift+[int]$Checks.source_evidence_hash_drift+[int]$Checks.prior_phase_regression_failures-ne 0-or
+       [string]$Checks.source_task_id-cne'TASK-P02-990'-or-not$DependencyProjectionSatisfied){
+      $Checks.dependency_failures=1
+      return New-BlockedResult 'phase_03_entry_manifest_validation_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-001') {
     $ManifestPath = Join-Path $script:RepositoryRoot ([string]$script:Task.phase_runtime_manifest_path)
     $ManifestState = 'existing_exact'
@@ -3707,6 +3902,46 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P03-001') {
+    $Paths=@(Get-P03001ChangedPaths)
+    $Unexpected=@($Paths|Where-Object{-not(Test-P03001PathAllowed -RelativePath $_)})
+    $Required=@(
+      '.gitattributes',
+      'agent-service/alembic.ini','agent-service/migrations/env.py','agent-service/migrations/script.py.mako',
+      'agent-service/migrations/versions/p03_001_runtime_baseline.py','agent-service/tests/integration/test_migration_baseline.py',
+      'agent-service/pyproject.toml','agent-service/uv.lock','agent-service/tests/ci/test_quality_gate.py',
+      'docs/architecture/adr/ADR-P03-001-postgresql-driver.md',
+      'docs/execution/evidence/phase-03/phase-runtime-manifest.json',
+      'docs/execution/evidence/phase-03/P03-001/direct-pytest.xml',
+      'docs/execution/evidence/phase-03/P03-001/migration-inventory.json',
+      'docs/execution/evidence/phase-03/P03-001/implementation-actions.json',
+      'docs/execution/supply-chain/phase-03/P03-001-enabler/dependency-diff.json',
+      'docs/execution/supply-chain/phase-03/P03-001-enabler/sbom.cdx.json',
+      'docs/execution/supply-chain/phase-03/P03-001-enabler/licenses.json',
+      'docs/execution/supply-chain/phase-03/P03-001-enabler/vulnerability-scan.json',
+      'docs/execution/supply-chain/phase-03/P03-001-enabler/maintenance.json',
+      'docs/execution/supply-chain/phase-03/P03-001-enabler/provenance.json',
+      'docs/execution/supply-chain/phase-03/P03-001-enabler/decision.json'
+    )
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$RecoveredDiagnostics=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){
+      $Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json
+      $RecoveredDiagnostics=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count
+      foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}
+    }
+    $Checks=[ordered]@{
+      unexpected_paths=$Unexpected.Count
+      read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count
+      unrecorded_action_count=if(Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'implementation-actions.json')){0}else{1}
+      work_contract_assertion_gaps=$Missing.Count;nonzero_exit_count=$LatestNonzero
+      recovered_diagnostic_failure_count=$RecoveredDiagnostics;production_write_count=0
+    }
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count-ne0){
+      return New-BlockedResult 'p03_001_workset_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-001') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -4379,6 +4614,24 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P03-001') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
+    $Paths=@(Get-P03001ChangedPaths)
+    $Unexpected=@($Paths|Where-Object{-not(Test-P03001PathAllowed -RelativePath $_)})
+    $InventoryPath=Join-Path $script:TaskEvidenceDirectory 'migration-inventory.json'
+    $Inventory=if(Test-Path -LiteralPath $InventoryPath -PathType Leaf){Get-Content -LiteralPath $InventoryPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $RollbackExecuted=$null-ne$Inventory-and[int]$Inventory.downgrade_version_rows-eq0-and-not[bool]$Inventory.cleanup_schema_present
+    $Checks=[ordered]@{
+      old_path_failures=if($RollbackExecuted){0}else{1};unexpected_writes=$Unexpected.Count
+      rollback_not_run=if($RollbackExecuted){0}else{1};diff_check_exit_code=$DiffCheckExit
+      rollback_strategy='downgrade the empty baseline to base, remove only the task-owned test schema, and retain database data'
+      production_write_count=0
+    }
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){
+      return New-BlockedResult 'p03_001_rollback_verification_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-990') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
     $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
