@@ -61,6 +61,16 @@ if ([string]::IsNullOrWhiteSpace($TaskId) -or
   [Console]::Error.WriteLine('phase_entry_source_or_oid_invalid')
   exit 3
 }
+if ($TaskId -cnotmatch '^TASK-P(?<phase>\d{2}[A-D]?)-') {
+  [Console]::Error.WriteLine('phase_entry_task_phase_invalid')
+  exit 3
+}
+$TargetPhaseCode = [string]$Matches.phase
+$TargetPhaseLabel = if ($TargetPhaseCode -cmatch '^0+(\d+)$') {
+  "Phase $([int]$Matches[1])"
+} else {
+  "Phase $TargetPhaseCode"
+}
 
 function Resolve-RepositoryPath([string]$Value) {
   if ([IO.Path]::IsPathRooted($Value)) { return [IO.Path]::GetFullPath($Value) }
@@ -114,9 +124,9 @@ $PlanHash = Get-Sha256 $PlanPath
 $Manifest = [ordered]@{
   schema_version = '1.0'
   task_id = $TaskId
-  phase = 'Phase 0'
+  phase = $TargetPhaseLabel
   execution_mode = $ExecutionMode
-  phase_base_source_ref = 'phase-base-source:00'
+  phase_base_source_ref = "phase-base-source:$($TargetPhaseCode.ToLowerInvariant())"
   phase_base_oid = $Head
   provisional_base_oid = if ($ExecutionMode -ceq 'local_provisional') { $Head } else { $null }
   formal_phase_base_oid = if ($FormalAccepted) { [string]$Source.head_oid } else { $null }

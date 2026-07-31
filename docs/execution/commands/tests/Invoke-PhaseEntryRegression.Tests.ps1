@@ -10,4 +10,8 @@ if ($Text -notmatch 'Write-CreateOnlyJson' -or
     $Text -notmatch 'future_oid_literal_count') {
   throw 'negative: phase entry manifest contract is incomplete'
 }
+if ($Text -notmatch 'phase = \$TargetPhaseLabel' -or
+    $Text -notmatch 'phase-base-source:\$\(\$TargetPhaseCode') {
+  throw 'negative: phase entry identity must be derived from TaskId'
+}
 exit 0
