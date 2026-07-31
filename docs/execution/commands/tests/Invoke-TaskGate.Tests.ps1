@@ -93,4 +93,9 @@ if ($RunnerText -notmatch 'function Set-ReadyForReviewStatus' -or
     $RunnerText -notmatch 'evidence-refresh-without-status-transition') {
   throw 'negative: regenerated gate evidence must refresh the ready status hash without forging a status transition'
 }
+if ($RunnerText -notmatch "TASK-P02-001" -or
+    $RunnerText -notmatch "source_evidence_hash_drift" -or
+    $RunnerText -notmatch "TASK-P01-990") {
+  throw 'negative: Phase 2 local entry must bind the Phase 1 checkpoint status and gate evidence'
+}
 exit 0
