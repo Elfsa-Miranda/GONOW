@@ -6,13 +6,13 @@ controls:
   - {id: 2, name: AuthVerifier, status: implemented, first_phase: P2, test_file: agent-service/tests/unit/harness/test_02_auth_verifier.py, minimum_cases: 13}
   - {id: 3, name: AuthorizationPolicy, status: implemented, first_phase: P2, test_file: agent-service/tests/unit/harness/test_03_authorization_policy.py, minimum_cases: 4}
   - {id: 4, name: TenantScope, status: implemented, first_phase: P2/P3, test_file: agent-service/tests/unit/harness/test_04_tenant_scope.py, minimum_cases: 5}
-  - {id: 5, name: IdempotencyGuard, status: contract_only, first_phase: P3, test_file: agent-service/tests/unit/harness/test_05_idempotency_guard.py, minimum_cases: 4}
+  - {id: 5, name: IdempotencyGuard, status: implemented, first_phase: P3, test_file: agent-service/tests/unit/harness/test_05_idempotency_guard.py, minimum_cases: 4}
   - {id: 6, name: RateLimiter, status: implemented, first_phase: P2, test_file: agent-service/tests/unit/harness/test_06_rate_limiter.py, minimum_cases: 4}
   - {id: 7, name: BudgetManager, status: contract_only, first_phase: P4, test_file: agent-service/tests/unit/harness/test_07_budget_manager.py, minimum_cases: 4}
   - {id: 8, name: MultiBudgetLimiter, status: contract_only, first_phase: P4/P8, test_file: agent-service/tests/unit/harness/test_08_multi_budget_limiter.py, minimum_cases: 4}
   - {id: 9, name: ModelRouter, status: contract_only, first_phase: P4, test_file: agent-service/tests/unit/harness/test_09_model_router.py, minimum_cases: 4}
   - {id: 10, name: ModelGateway, status: contract_only, first_phase: P0/P4, test_file: agent-service/tests/unit/harness/test_10_model_gateway.py, minimum_cases: 5}
-  - {id: 11, name: BehaviorPromptRegistry, status: contract_only, first_phase: P3/P4, test_file: agent-service/tests/unit/harness/test_11_behavior_registry.py, minimum_cases: 4}
+  - {id: 11, name: BehaviorPromptRegistry, status: implemented, first_phase: P3/P4, test_file: agent-service/tests/unit/harness/test_11_behavior_registry.py, minimum_cases: 4}
   - {id: 12, name: ContextCompiler, status: contract_only, first_phase: P4, test_file: agent-service/tests/unit/harness/test_12_context_compiler.py, minimum_cases: 4}
   - {id: 13, name: StateGuard, status: contract_only, first_phase: P4, test_file: agent-service/tests/unit/harness/test_13_state_guard.py, minimum_cases: 4}
   - {id: 14, name: InterruptPolicy, status: contract_only, first_phase: P6, test_file: agent-service/tests/unit/harness/test_14_interrupt_policy.py, minimum_cases: 4}
@@ -26,7 +26,7 @@ controls:
   - {id: 22, name: EvidenceLedger, status: contract_only, first_phase: P3/P4, test_file: agent-service/tests/unit/harness/test_22_evidence_ledger.py, minimum_cases: 4}
   - {id: 23, name: CitationAssembler, status: contract_only, first_phase: P4/P11, test_file: agent-service/tests/unit/harness/test_23_citation_assembler.py, minimum_cases: 4}
   - {id: 24, name: CheckpointAdapter, status: contract_only, first_phase: P5, test_file: agent-service/tests/unit/harness/test_24_checkpoint_adapter.py, minimum_cases: 4}
-  - {id: 25, name: EventWriter, status: contract_only, first_phase: P3, test_file: agent-service/tests/unit/harness/test_25_event_writer.py, minimum_cases: 4}
+  - {id: 25, name: EventWriter, status: implemented, first_phase: P3, test_file: agent-service/tests/unit/harness/test_25_event_writer.py, minimum_cases: 4}
   - {id: 26, name: CandidateProjector, status: contract_only, first_phase: P4, test_file: agent-service/tests/unit/harness/test_26_candidate_projector.py, minimum_cases: 4}
   - {id: 27, name: PIIRedactor, status: implemented, first_phase: P0/P2, test_file: agent-service/tests/unit/harness/test_27_pii_redactor.py, minimum_cases: 4}
   - {id: 28, name: AuditLogger, status: implemented, first_phase: P0/P2/P3, test_file: agent-service/tests/unit/harness/test_28_audit_logger.py, minimum_cases: 4}
@@ -35,4 +35,4 @@ controls:
   - {id: 31, name: FeatureFlags, status: contract_only, first_phase: P0/P2/P4, test_file: agent-service/tests/unit/harness/test_31_feature_flags.py, minimum_cases: 4}
   - {id: 32, name: SecretsProvider, status: implemented, first_phase: P0/P2, test_file: agent-service/tests/unit/harness/test_32_secrets_provider.py, minimum_cases: 4}
   - {id: 33, name: SchemaRegistry, status: implemented, first_phase: P1/P2/P3, test_file: agent-service/tests/unit/harness/test_33_schema_registry.py, minimum_cases: 4}
-  - {id: 34, name: ConsistencyFence, status: contract_only, first_phase: P3/P5, test_file: agent-service/tests/unit/harness/test_34_consistency_fence.py, minimum_cases: 4}
+  - {id: 34, name: ConsistencyFence, status: implemented, first_phase: P3/P5, test_file: agent-service/tests/unit/harness/test_34_consistency_fence.py, minimum_cases: 4}

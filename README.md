@@ -42,6 +42,21 @@ Phase 2 在同一仓库新增 `agent-service/`，并建立彼此独立的 `agent
 - 当前仅为 `local_provisional` / `ready_for_review` 候选；独立 SRE/Security review、
   正式 required checks、真实部署时钟证据、推送、合并、生产启用和 accepted 均为 pending。
 
+## Phase 3 本地 Runtime 持久化候选
+
+Phase 3 在专用 PostgreSQL schema 中建立 Thread、Run、Event、幂等记录、Job/Lease/
+checkpoint metadata、Behavior Package 版本指针、transactional outbox、delivery receipt
+和 metadata-only dead letter。Run 状态、事件序号、指针 generation 和 fencing token
+由数据库约束/CAS 保护；十张 Runtime 表强制 RLS，角色默认无 `BYPASSRLS`。
+
+- 架构、表和角色边界：`docs/architecture/runtime-persistence.md`
+- 迁移、锁和 forward-fix：`docs/runbooks/runtime-migrations.md`
+- 备份与恢复演练：`docs/runbooks/runtime-db-restore.md`
+- Event 存储/回放合同：`docs/api/runtime-events.md`
+- 本阶段仍不执行模型、Graph、Tool 或 Domain Command，也没有接入 Flutter 或生产流量。
+- 当前只属于 `local_provisional` / `ready_for_review` 候选；生产数据库事实、正式
+  备份策略、独立 SRE/Security/Data review、推送、合并、部署和 `accepted` 均为 pending。
+
 ## **📱 视觉预览 (Screenshots)**
 
 1.盲盒功能：点击抽取周末/国际盲盒随机旅游目的地，并且一键询问AI规划旅游路线。规划若有不满意之处可继续询问AI进行改进，直至满意即可一键导入行程。给AI的系统prompt经精心设计，综合考虑多因素规划路线，实现住宿-景点-交通-餐饮的全面高质量安排。
