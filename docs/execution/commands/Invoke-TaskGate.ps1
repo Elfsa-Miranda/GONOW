@@ -2714,12 +2714,17 @@ function Invoke-ModePreflight {
     $ManifestState = 'existing_exact'
     if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
       $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      $PhaseBaseOid = (& git -C $script:RepositoryRoot merge-base $Head 'codex/phase-01-semantics-baseline').Trim()
+      if ($LASTEXITCODE -ne 0 -or $PhaseBaseOid -cnotmatch '^[0-9a-f]{40}$') {
+        return New-BlockedResult 'phase_02_base_resolution_failed' ([ordered]@{dependency_failures=0;base_drift=1;production_write_count=0})
+      }
       $PhaseEntryResult = Invoke-RedactedExternal -Executable 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -Arguments @(
         '-NoProfile','-ExecutionPolicy','Bypass','-File',
         (Join-Path $script:RepositoryRoot 'docs\execution\commands\Invoke-PhaseEntryRegression.ps1'),
         '-TaskId',$TaskId,
         '-SourceRecordPath',(Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P01-990.json'),
         '-ExpectedHeadOid',$Head,
+        '-PhaseBaseOid',$PhaseBaseOid,
         '-OutputPath',$ManifestPath,
         '-ExecutionMode',$ExecutionMode
       )

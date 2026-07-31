@@ -18,4 +18,8 @@ if ($Text -notmatch "ExecutionMode -ceq 'formal_adopted'" -or
     $Text -notmatch '\$FormalAccepted') {
   throw 'negative: formal phase entry must remain bound to an independently accepted source'
 }
+if ($Text -notmatch 'PhaseBaseOid' -or
+    $Text -notmatch 'phase_entry_base_not_ancestor') {
+  throw 'negative: phase checkpoint OID must be distinct from and ancestral to the current repair head'
+}
 exit 0

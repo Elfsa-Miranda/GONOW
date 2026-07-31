@@ -3,6 +3,7 @@ param(
   [string]$TaskId = '',
   [string]$SourceRecordPath = '',
   [string]$ExpectedHeadOid = '',
+  [string]$PhaseBaseOid = '',
   [string]$OutputPath = '',
   [string]$CatalogPath = '',
   [string]$PlanPath = '',
@@ -61,6 +62,11 @@ if ([string]::IsNullOrWhiteSpace($TaskId) -or
   [Console]::Error.WriteLine('phase_entry_source_or_oid_invalid')
   exit 3
 }
+$ResolvedPhaseBaseOid = if ([string]::IsNullOrWhiteSpace($PhaseBaseOid)) { $ExpectedHeadOid } else { $PhaseBaseOid }
+if ($ResolvedPhaseBaseOid -cnotmatch '^[0-9a-f]{40}$') {
+  [Console]::Error.WriteLine('phase_entry_base_oid_invalid')
+  exit 3
+}
 if ($TaskId -cnotmatch '^TASK-P(?<phase>\d{2}[A-D]?)-') {
   [Console]::Error.WriteLine('phase_entry_task_phase_invalid')
   exit 3
@@ -97,6 +103,11 @@ if ($LASTEXITCODE -ne 0 -or $Head -cne $ExpectedHeadOid) {
   [Console]::Error.WriteLine('phase_entry_base_drift')
   exit 3
 }
+& git -C $RepositoryRoot merge-base --is-ancestor $ResolvedPhaseBaseOid $Head 2>$null
+if ($LASTEXITCODE -ne 0) {
+  [Console]::Error.WriteLine('phase_entry_base_not_ancestor')
+  exit 3
+}
 $Source = Get-Content -LiteralPath $SourceRecordPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
 $SourceReady = [string]$Source.status -in @('ready_for_review', 'accepted')
 $SourceIndependent = [bool]$Source.reviewer_independent
@@ -127,8 +138,8 @@ $Manifest = [ordered]@{
   phase = $TargetPhaseLabel
   execution_mode = $ExecutionMode
   phase_base_source_ref = "phase-base-source:$($TargetPhaseCode.ToLowerInvariant())"
-  phase_base_oid = $Head
-  provisional_base_oid = if ($ExecutionMode -ceq 'local_provisional') { $Head } else { $null }
+  phase_base_oid = $ResolvedPhaseBaseOid
+  provisional_base_oid = if ($ExecutionMode -ceq 'local_provisional') { $ResolvedPhaseBaseOid } else { $null }
   formal_phase_base_oid = if ($FormalAccepted) { [string]$Source.head_oid } else { $null }
   source_record_path = $SourceRecordPath.Replace($RepositoryRoot + '\', '').Replace('\', '/')
   source_record_sha256 = $SourceHash
@@ -154,7 +165,7 @@ if (Test-Path -LiteralPath $OutputPath -PathType Leaf) {
   $Existing = Get-Content -LiteralPath $OutputPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
   $Conflict =
     [string]$Existing.task_id -cne $TaskId -or
-    [string]$Existing.phase_base_oid -cne $Head -or
+    [string]$Existing.phase_base_oid -cne $ResolvedPhaseBaseOid -or
     [string]$Existing.source_record_sha256 -cne $SourceHash -or
     [string]$Existing.catalog_sha256 -cne $CatalogHash -or
     [string]$Existing.plan_sha256 -cne $PlanHash
@@ -171,7 +182,7 @@ if (Test-Path -LiteralPath $OutputPath -PathType Leaf) {
   schema_version = '1.0'
   task_id = $TaskId
   phase_runtime_manifest = if ($Created) { 'created' } else { 'existing_exact' }
-  phase_base_oid = $Head
+  phase_base_oid = $ResolvedPhaseBaseOid
   source_record_path = $Manifest.source_record_path
   source_record_sha256 = $SourceHash
   catalog_sha256 = $CatalogHash
