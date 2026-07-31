@@ -1419,6 +1419,7 @@ function Invoke-ModeSecurity {
       $Checks.llm_calls=[regex]::Matches($ServiceText,'(?im)^\s*(?:from|import)\s+(?:openai|anthropic|langchain|langgraph)').Count
       $Checks.tool_calls=[regex]::Matches($ServiceText,'(?i)\btool[_ ]?call\s*\(').Count
       $Checks.graph_runs=[regex]::Matches($ServiceText,'(?i)\bgraph\.(?:invoke|ainvoke|stream)\s*\(').Count
+      $Checks.injection_executed_action_count=[regex]::Matches($ServiceText,'(?m)(?<![A-Za-z0-9_.])(?:eval|exec)\s*\(').Count
     }
     $Failures=0
     foreach($Property in $Checks.GetEnumerator()){
@@ -2089,6 +2090,31 @@ function Invoke-ModeVerify {
       production_write_count=0
     }
     if(-not[bool]$Checks.primary_assertion_passed -or [int]$Checks.lint_errors+[int]$Checks.breaking_changes+[int]$Checks.error_code_corpus_diff-ne 0 -or [int]$Checks.spec_sha256_length-ne 64 -or -not[bool]$Checks.registry_digest_match){return New-BlockedResult 'p02_007_openapi_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P02-008') {
+    $TestPaths=@('agent-service/tests/security/test_process_boundaries.py','agent-service/tests/security/test_forbidden_capabilities.py')
+    $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$TestPaths+@('--maxfail=1','--junitxml',$JunitPath))
+    $Suite=$null
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}}
+    $Tests=if($null-eq$Suite){0}else{[int]$Suite.tests};$TestFailures=if($null-eq$Suite){1}else{[int]$Suite.failures+[int]$Suite.errors+[int]$Suite.skipped}
+    $ServiceFiles=@(Get-ChildItem -LiteralPath (Join-Path $script:RepositoryRoot 'agent-service/app') -Recurse -File -Filter '*.py')
+    $ServiceText=@($ServiceFiles|ForEach-Object{[IO.File]::ReadAllText($_.FullName,[Text.UTF8Encoding]::new($false))})-join"`n"
+    $DependencyText=(Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'agent-service/pyproject.toml') -Raw -Encoding UTF8)+"`n"+(Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'agent-service/uv.lock') -Raw -Encoding UTF8)
+    $TestText=@($TestPaths|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_) -Raw -Encoding UTF8})-join"`n"
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq 0 -and $TestFailures-eq 0 -and $Tests-ge 11)
+      test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failed_or_skipped=$TestFailures
+      llm_calls=[regex]::Matches($ServiceText,'(?i)\b(?:chat|completion|responses)\.create\s*\(').Count
+      tool_calls=[regex]::Matches($ServiceText,'(?i)\btool[_ ]?call\s*\(').Count
+      graph_runs=[regex]::Matches($ServiceText,'(?i)\bgraph\.(?:invoke|ainvoke|stream)\s*\(').Count
+      provider_dependency_count=[regex]::Matches($DependencyText,'(?i)(?:openai|anthropic|langchain|langgraph|llama-index)').Count
+      domain_write_capability_count=[regex]::Matches($ServiceText,'(?i)(?:domain_command|production_write|supabase)').Count
+      network_deny_fixture_present=$TestText.Contains('test_lifecycle_checks_need_no_network')
+      production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed -or [int]$Checks.llm_calls+[int]$Checks.tool_calls+[int]$Checks.graph_runs+[int]$Checks.provider_dependency_count+[int]$Checks.domain_write_capability_count-ne 0 -or -not[bool]$Checks.network_deny_fixture_present){return New-BlockedResult 'p02_008_inert_boundary_verification_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P01-990') {

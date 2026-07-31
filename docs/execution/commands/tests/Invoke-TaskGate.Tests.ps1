@@ -153,4 +153,9 @@ if ($RunnerText -notmatch "authoritative_execplan_line=3920" -or
     $RunnerText -notmatch "missing_catalog_path='contracts/openapi/agent-api.yaml'") {
   throw 'negative: the P02-007 Catalog omission must remain explicit and narrowly projected'
 }
+if ($RunnerText -notmatch 'p02_008_inert_boundary_verification_failed' -or
+    $RunnerText -notmatch 'provider_dependency_count' -or
+    $RunnerText -notmatch 'network_deny_fixture_present') {
+  throw 'negative: P02-008 must mechanically prove the API and Worker skeleton remains inert'
+}
 exit 0
