@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "contract_version": "1.0.0",
+  "expected_remote": "https://github.com/Elfsa-Miranda/GO_NOW.git",
+  "baseline_inputs": {
+    "docs/execution/evidence/boot/baseline.md": "7cf9239a91a5f8aadb5cce6c53b69ed7fe56b18452a6803495455553871126ba",
+    "AGENTS.md": "6d2a3577f564cdb5161511260b125d8041df0aa32ef3fdb9629371f6800d7e85",
+    "execplan.md": "e243070be5faed585a4190ed5f430fb2fc43c66d35f33552a513081004ed2c69",
+    "docs/execution/commands/TaskGateCatalog.psd1": "8f898f72b559c6a5ade6bdf143335f53aadf143a1559c7795efe8abe9c4fe7f4"
+  },
+  "allowed_owner_roles": [
+    "Engineering",
+    "Architecture",
+    "Security",
+    "Data",
+    "Product",
+    "Privacy",
+    "SRE",
+    "Eval",
+    "Domain",
+    "Compliance"
+  ],
+  "branch_models": [
+    {
+      "branch": "main",
+      "pull_request_required": true,
+      "force_push_allowed": false,
+      "deletion_allowed": false,
+      "required_status_checks": ["release-gate"],
+      "required_approval_roles": ["Engineering", "Security", "Product"],
+      "minimum_independent_actors": 3
+    },
+    {
+      "branch": "codex/gonow-agent-landing",
+      "pull_request_required": true,
+      "force_push_allowed": false,
+      "deletion_allowed": false,
+      "required_status_checks": ["phase-gate"],
+      "required_approval_roles": ["Engineering", "Security"],
+      "minimum_independent_actors": 2
+    }
+  ],
+  "valid_approval_fixture": {
+    "candidate_head_oid": "1111111111111111111111111111111111111111",
+    "members": [
+      {"actor_id": "fixture-engineering-reviewer", "owner_role": "Engineering", "decision": "approve"},
+      {"actor_id": "fixture-security-reviewer", "owner_role": "Security", "decision": "approve"},
+      {"actor_id": "fixture-product-reviewer", "owner_role": "Product", "decision": "approve"}
+    ]
+  },
+  "negative_cases": [
+    {"case_id": "unknown-role", "expected_reason_code": "unknown_owner_role"},
+    {"case_id": "duplicate-actor", "expected_reason_code": "approval_not_independent"},
+    {"case_id": "branch-mismatch", "expected_reason_code": "protected_branch_mismatch"},
+    {"case_id": "head-not-bound", "expected_reason_code": "candidate_head_oid_missing"}
+  ],
+  "pending_external_fields": [
+    "governance_adoption_receipt",
+    "provider_read_credential_reference",
+    "remote_branch_protection_rules",
+    "remote_reviewer_identities"
+  ],
+  "external_query_contract": {
+    "allowed_http_methods": ["GET"],
+    "write_method_count": 0,
+    "credential_value_persistence_count": 0,
+    "raw_sensitive_body_in_git_count": 0
+  }
+}
