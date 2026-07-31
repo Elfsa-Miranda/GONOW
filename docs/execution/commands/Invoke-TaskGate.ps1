@@ -1698,7 +1698,7 @@ function Invoke-ModeWorksetVerify {
       unrecorded_action_count = 0
       work_contract_assertion_gaps = $Missing.Count
       nonzero_exit_count = 0
-      recovered_diagnostic_failure_count = 1
+      recovered_diagnostic_failure_count = 2
       application_change_count = @($Paths | Where-Object { $_ -match '^(lib|test|agent-service|contracts|supabase)/' }).Count
       external_revocation_attempt_count = 0
       production_write_count = 0
