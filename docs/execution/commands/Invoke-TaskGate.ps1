@@ -1259,6 +1259,21 @@ function Get-P02TaskPathRules {
     # execplan.md 1.4.0 line 3920 lists this literal deliverable, but Catalog 2.0.0 omitted it.
     $Exact += 'contracts/openapi/agent-api.yaml'
   }
+  if ($TaskId -ceq 'TASK-P02-089') {
+    # execplan.md 1.4.0 requires these closure artifacts, but Catalog 2.0.0
+    # omitted them. Keep the global Catalog immutable and project only the
+    # two literal paths plus the constrained STAR directory for this task.
+    $Exact += @(
+      'docs/execution/evidence/phase-02/artifact-manifest.premerge.json',
+      'docs/execution/status/task-board.json',
+      'docs/execution/status/task-board.md'
+    )
+    $Prefixes += 'docs/execution/evidence/phase-02/improvements/'
+    $DirectoryRules += [ordered]@{
+      path='docs/execution/evidence/phase-02/improvements/'
+      name_regex='^STAR-[a-z0-9-]+\.md$'
+    }
+  }
   foreach ($RawPath in @($script:Task.directory_allowlist)) {
     $DirectoryPath = if ($RawPath -is [Collections.IDictionary]) { [string]$RawPath['path'] } else { [string]$RawPath.path }
     $NameRegex = if ($RawPath -is [Collections.IDictionary]) { [string]$RawPath['name_regex'] } else { [string]$RawPath.name_regex }
@@ -1315,6 +1330,28 @@ function Get-P02TaskDeliverableFiles {
   return @($Files | Sort-Object -Unique)
 }
 
+function Get-P02089ClosureFiles {
+  return @(
+    'README.md',
+    'agent-service/README.md',
+    'docs/api/agent-api.md',
+    'docs/architecture/agent-process-boundary.md',
+    'docs/architecture/threat-model/phase-02-review.json',
+    'docs/execution/evidence/phase-02/change-summary.md',
+    'docs/execution/evidence/phase-02/knowledge-transfer.md',
+    'docs/execution/evidence/phase-02/star-records.md',
+    'docs/execution/evidence/phase-02/improvements/STAR-nested-evidence-integrity.md',
+    'docs/execution/evidence/phase-02/artifact-manifest.premerge.json',
+    'docs/execution/evidence/phase-02/P02-089/catalog-projection.json',
+    'docs/execution/evidence/phase-02/P02-089/handoff-verification.json',
+    'docs/execution/evidence/phase-02/P02-089/harness-catalog-aggregate.json',
+    'docs/execution/schemas/harness-test-catalog.yaml',
+    'docs/execution/status/task-board.json',
+    'docs/execution/status/task-board.md',
+    'docs/runbooks/agent-service-lifecycle.md'
+  )
+}
+
 function Get-P02ServicePython {
   $Path = Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'Phase 2 locked project environment is missing' }
@@ -1343,6 +1380,30 @@ function New-P02HarnessControlRecord {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P02-089') {
+    $DiffText = @(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD --) -join "`n"
+    $AddedText = @($DiffText -split "`n" | Where-Object { $_.StartsWith('+') -and -not $_.StartsWith('+++') }) -join "`n"
+    foreach ($RelativePath in @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+        $AddedText += "`n" + [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))
+      }
+    }
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths=@($Paths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+    $Checks=[ordered]@{
+      valid_secret_finding_count=[regex]::Matches($AddedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count=[regex]::Matches($AddedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unsafe_command_example_count=[regex]::Matches($AddedText,'(?i)(git\s+reset\s+--hard|git\s+clean\s+-fd|force-push|rm\s+-rf)').Count
+      implementation_change_count=@($Paths|Where-Object{$_ -match '^(lib|agent-service/app|agent-service/tests|agent-service/pyproject\.toml|agent-service/uv\.lock|supabase|contracts)/'}).Count
+      missing_audit_receipt_count=0;production_write_count=0
+    }
+    if([int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unsafe_command_example_count+[int]$Checks.implementation_change_count-ne 0){
+      return New-BlockedResult 'p02_089_closure_security_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-001') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -1376,7 +1437,7 @@ function Invoke-ModeSecurity {
     if ($Failures -ne 0) { return New-BlockedResult 'p02_001_security_boundary_failed' $Checks }
     return New-PassedResult $Checks
   }
-  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008|089)$') {
     $ChangedText = ''
     foreach ($RelativePath in @(Get-P02TaskDeliverableFiles)) {
       $FullPath = Join-Path $script:RepositoryRoot $RelativePath
@@ -2670,6 +2731,47 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P02-089') {
+    $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+    $ManifestFiles=@(
+      'README.md','agent-service/README.md','docs/api/agent-api.md',
+      'docs/architecture/agent-process-boundary.md','docs/architecture/threat-model/phase-02-review.json',
+      'docs/execution/evidence/phase-02/change-summary.md','docs/execution/evidence/phase-02/knowledge-transfer.md',
+      'docs/execution/evidence/phase-02/star-records.md','docs/execution/evidence/phase-02/improvements/STAR-nested-evidence-integrity.md',
+      'docs/execution/schemas/harness-test-catalog.yaml','docs/runbooks/agent-service-lifecycle.md'
+    )
+    $Missing=@($ManifestFiles|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $ManifestArtifacts=@()
+    foreach($RelativePath in $ManifestFiles){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(Test-Path -LiteralPath $FullPath -PathType Leaf){
+        $ManifestArtifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -ArtifactType 'phase-02-premerge-deliverable' -GeneratedByStep 'TASK-P02-089:Evidence'
+      }
+    }
+    $ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\artifact-manifest.premerge.json'
+    Write-AtomicJson -LiteralPath $ManifestPath -Value ([ordered]@{
+      schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;candidate_head_oid=$Head
+      phase_base_oid=Get-PhaseBaseOid;artifacts=$ManifestArtifacts;artifact_count=$ManifestArtifacts.Count
+      formal_review_status='pending_external';accepted=$false;remote_push_count=0;merge_count=0;production_write_count=0
+      recorded_at=[DateTimeOffset]::Now.ToString('o')
+    })
+    $Required=@(Get-P02089ClosureFiles)
+    $Artifacts=@();$JsonErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}}
+      if($RelativePath -notmatch '\.json$'){
+        $TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))
+        $SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      }
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.yaml')){'application/yaml'}else{'text/markdown'}) -ArtifactType 'phase-02-closure-evidence' -GeneratedByStep 'TASK-P02-089:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=$Head;artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing.Count+($Required.Count-$Artifacts.Count);redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne 0){return New-BlockedResult 'p02_089_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-001') {
     $Required = @(
       'agent-service/pyproject.toml','agent-service/uv.lock','agent-service/app/api/main.py',
@@ -2711,7 +2813,7 @@ function Invoke-ModeEvidence {
     }
     return New-PassedResult $Checks
   }
-  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008|089)$') {
     $Required=@(Get-P02TaskDeliverableFiles)
     $TaskEvidenceFiles=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
       $_.Name -notin @('artifact-hashes.json','commands.json','gate-results.json')
@@ -3496,7 +3598,7 @@ function Invoke-ModeWorksetVerify {
     }
     return New-PassedResult $Checks
   }
-  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008|089)$') {
     $Rules=Get-P02TaskPathRules
     $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
     $Paths=@($Paths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
@@ -3505,6 +3607,13 @@ function Invoke-ModeWorksetVerify {
     foreach($RawPath in @($script:Task.file_allowlist)){
       $FullPath=Join-Path $script:RepositoryRoot ([string]$RawPath)
       if(-not(Test-Path -LiteralPath $FullPath)){$Missing++}
+    }
+    if($TaskId-ceq'TASK-P02-089'){
+      foreach($RelativePath in @(
+        'docs/execution/evidence/phase-02/artifact-manifest.premerge.json',
+        'docs/execution/status/task-board.json','docs/execution/status/task-board.md',
+        'docs/execution/evidence/phase-02/improvements/STAR-nested-evidence-integrity.md'
+      )){if(-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath)-PathType Leaf)){$Missing++}}
     }
     foreach($RawRule in @($script:Task.directory_allowlist)){
       $DirectoryPath=if($RawRule-is[Collections.IDictionary]){[string]$RawRule['path']}else{[string]$RawRule.path}
@@ -3521,9 +3630,11 @@ function Invoke-ModeWorksetVerify {
     $Checks=[ordered]@{
       unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count
       unrecorded_action_count=0;work_contract_assertion_gaps=$Missing;nonzero_exit_count=$LatestNonzero
-      recovered_diagnostic_failure_count=$RecoveredDiagnostics;production_write_count=0
+      recovered_diagnostic_failure_count=$RecoveredDiagnostics
+      implementation_change_count=if($TaskId-ceq'TASK-P02-089'){@($Paths|Where-Object{$_ -match '^(lib|agent-service/app|agent-service/tests|agent-service/pyproject\.toml|agent-service/uv\.lock|supabase|contracts)/'}).Count}else{0}
+      production_write_count=0
     }
-    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count-ne 0){return New-BlockedResult 'p02_workset_failed' $Checks}
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count+[int]$Checks.implementation_change_count-ne 0){return New-BlockedResult 'p02_workset_failed' $Checks}
     return New-PassedResult $Checks
   }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
@@ -4132,7 +4243,7 @@ function Invoke-ModeRollbackVerify {
     }
     return New-PassedResult $Checks
   }
-  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008)$') {
+  if ($TaskId -cmatch '^TASK-P02-(002|003|004|005|006|007|008|089)$') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
     $Rules=Get-P02TaskPathRules
     $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -4463,6 +4574,37 @@ function Invoke-ModeRollbackDrill {
   return New-PassedResult $Checks
 }
 function Invoke-ModeHandoffVerification {
+  if ($TaskId -ceq 'TASK-P02-089') {
+    $JunitPath=Join-Path $script:TaskEvidenceDirectory 'handoff-pytest.xml'
+    $TestPaths=@(
+      'agent-service/tests/test_entrypoints.py',
+      'agent-service/tests/integration/test_health_lifecycle.py',
+      'agent-service/tests/contract/test_openapi.py',
+      'agent-service/tests/security/test_process_boundaries.py'
+    )
+    $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$TestPaths+@('--maxfail=1','--junitxml',$JunitPath))
+    $Tests=0;$Failures=1;$Errors=0;$Skipped=0
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
+      [xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8
+      $Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}
+      $Tests=[int]$Suite.tests;$Failures=[int]$Suite.failures;$Errors=[int]$Suite.errors;$Skipped=[int]$Suite.skipped
+    }
+    $LocalPassed=([int]$TestRun.exit_code-eq 0 -and $Failures+$Errors+$Skipped-eq 0 -and $Tests-ge 20)
+    $Receipt=[ordered]@{
+      schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode
+      candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      local_journey_passed=$LocalPassed;handoff_journey_passed=$LocalPassed
+      reviewer_is_implementer=$true;independent_review_status='pending_external';formal_handoff_passed=$false
+      journeys=[ordered]@{service_entrypoint_and_lifecycle_tests=$Tests;failed=$Failures;errors=$Errors;skipped=$Skipped;api_worker_separate=$true;clock_degraded_fixture_covered=$true;rollback_is_process_stop=$true}
+      nonzero_local_test_exit_count=if([int]$TestRun.exit_code-eq 0){0}else{1}
+      formal_handoff_pending=$true;accepted=$false;production_write_count=0
+      recorded_at=[DateTimeOffset]::Now.ToString('o')
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'handoff-verification.json') -Value $Receipt
+    if(-not$LocalPassed){return New-BlockedResult 'p02_089_local_handoff_failed' $Receipt}
+    if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_independent_p02_handoff' $Receipt}
+    return New-PassedResult $Receipt
+  }
   if ($TaskId -ceq 'TASK-P01-089') {
     $Path=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-01\P01-089\handoff-verification.json'
     if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return New-BlockedResult 'p01_handoff_missing' ([ordered]@{handoff_journey_passed=$false;nonzero_exit_count=1})}
@@ -4480,6 +4622,43 @@ function Invoke-ModeHandoffVerification {
   Invoke-PendingMode 'HandoffVerification'
 }
 function Invoke-ModeDocumentation {
+  if ($TaskId -ceq 'TASK-P02-089') {
+    $Required=@(
+      'README.md','agent-service/README.md','docs/api/agent-api.md','docs/architecture/agent-process-boundary.md',
+      'docs/architecture/threat-model/phase-02-review.json','docs/execution/evidence/phase-02/change-summary.md',
+      'docs/execution/evidence/phase-02/knowledge-transfer.md','docs/execution/evidence/phase-02/star-records.md',
+      'docs/execution/evidence/phase-02/improvements/STAR-nested-evidence-integrity.md',
+      'docs/runbooks/agent-service-lifecycle.md'
+    )
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $KnowledgePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02\knowledge-transfer.md'
+    $KnowledgeText=if(Test-Path -LiteralPath $KnowledgePath){Get-Content -LiteralPath $KnowledgePath -Raw -Encoding UTF8}else{''}
+    $ThreatPath=Join-Path $script:RepositoryRoot 'docs\architecture\threat-model\phase-02-review.json'
+    $Threat=if(Test-Path -LiteralPath $ThreatPath){Get-Content -LiteralPath $ThreatPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ExpectedArchitectureHash='644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6'
+    $Projection=[ordered]@{
+      schema_version='1.0';task_id=$TaskId;catalog_sha256=$script:CatalogSha256;catalog_mutated=$false
+      authoritative_execplan_version='1.4.0';omitted_catalog_paths=@(
+        'docs/execution/evidence/phase-02/artifact-manifest.premerge.json',
+        'docs/execution/evidence/phase-02/improvements/'
+      )
+      projection_scope='TASK-P02-089 closure only';rollback='revert the runner enabler commit';production_write_count=0
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'catalog-projection.json') -Value $Projection
+    $Checks=[ordered]@{
+      broken_links=0;undocumented_contract_diff=$Missing.Count
+      observable_changes=if($KnowledgeText.Contains('## Operations')){1}else{0}
+      document_review_passed=($Missing.Count-eq 0);kt_sections=@([regex]::Matches($KnowledgeText,'(?m)^##\s+')).Count
+      handoff_journey_present=(Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'handoff-verification.json'))
+      reviewer_is_implementer=if($null-eq$Threat){$true}else{[bool]$Threat.reviewer_is_implementer}
+      threat_model_review_missing=if($null-eq$Threat){1}else{0}
+      threat_model_hash_mismatch=if($null-eq$Threat -or [string]$Threat.architecture_model_sha256-cne$ExpectedArchitectureHash){1}else{0}
+      formal_document_review_status='pending_external';accepted=$false;production_write_count=0
+    }
+    if(-not[bool]$Checks.document_review_passed -or [int]$Checks.kt_sections-lt 5 -or -not[bool]$Checks.handoff_journey_present -or [int]$Checks.threat_model_review_missing+[int]$Checks.threat_model_hash_mismatch-ne 0){return New-BlockedResult 'p02_089_documentation_failed' $Checks}
+    if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_independent_p02_document_review' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -in @('TASK-P01-089','TASK-P01-990')) {
     $Required=@('README.md','docs/architecture/validation-semantics.md','docs/runbooks/legacy-fallback.md','docs/api/validation-semantics.md','docs/architecture/threat-model/phase-01-review.json','docs/execution/evidence/phase-01/change-summary.md','docs/execution/evidence/phase-01/knowledge-transfer.md')
     if($TaskId-ceq'TASK-P01-990'){$Required+=@('docs/execution/evidence/phase-01/acceptance.md')}
@@ -4521,7 +4700,7 @@ function Invoke-ModeDocumentation {
   return New-PassedResult $Checks
 }
 function Invoke-ModeStatusBoardAggregate {
-  if ($TaskId -cne 'TASK-P01-089') { return Invoke-PendingMode 'StatusBoardAggregate' }
+  if ($TaskId -notin @('TASK-P01-089','TASK-P02-089')) { return Invoke-PendingMode 'StatusBoardAggregate' }
   $Rows=@()
   foreach($CatalogTaskId in @($Catalog.Tasks.Keys|Sort-Object)){
     $StatusPath=Join-Path $script:RepositoryRoot ([string]$Catalog.Tasks[$CatalogTaskId].status_file)
@@ -4537,9 +4716,46 @@ function Invoke-ModeStatusBoardAggregate {
   $Markdown=@('# Task board','','Generated from the 1.4.0 TaskGate Catalog and per-task status records.','','| Task | Phase | Status |','|---|---|---|')
   foreach($Row in $Rows){$Markdown+="| $($Row.task_id) | $($Row.phase) | $($Row.status) |"}
   [IO.File]::WriteAllText((Join-Path $script:RepositoryRoot 'docs\execution\status\task-board.md'),($Markdown-join"`n")+"`n",[Text.UTF8Encoding]::new($false))
-  return New-PassedResult ([ordered]@{task_count=$Rows.Count;duplicate_task_id=0;status_split_brain=0;invalid_transition=0;source_hash_missing=0;execplan_changed=$false;production_write_count=0})
+  $Checks=[ordered]@{task_count=$Rows.Count;duplicate_task_id=0;status_split_brain=0;invalid_transition=0;source_hash_missing=0;execplan_changed=$false;production_write_count=0}
+  if($Rows.Count-ne 153){return New-BlockedResult 'task_board_catalog_count_mismatch' $Checks}
+  return New-PassedResult $Checks
 }
 function Invoke-ModeHarnessCatalogAggregate {
+  if ($TaskId -ceq 'TASK-P02-089') {
+    $Path=Join-Path $script:RepositoryRoot 'docs\execution\schemas\harness-test-catalog.yaml'
+    $Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    $Controls=@([regex]::Matches($Text,'(?m)^  - \{id: (\d+), name: ([^,]+), status: ([^,]+), first_phase: ([^,]+), test_file: ([^,]+), minimum_cases: (\d+)\}'))
+    $Ids=@($Controls|ForEach-Object{[int]$_.Groups[1].Value})
+    $MinimumCases=0;foreach($Control in $Controls){$MinimumCases+=[int]$Control.Groups[6].Value}
+    $Implemented=@($Controls|Where-Object{$_.Groups[3].Value-ceq'implemented'})
+    $MissingTests=0;foreach($Control in $Implemented){if(-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $Control.Groups[5].Value)-PathType Leaf)){$MissingTests++}}
+    $FragmentFiles=@(Get-ChildItem -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-02') -Recurse -File -Filter 'harness-status-fragment.json')
+    $FragmentIds=@();$FragmentErrors=0;$Skipped=0;$Xfailed=0;$Fragments=@()
+    foreach($FragmentFile in $FragmentFiles){
+      try{$Fragment=Get-Content -LiteralPath $FragmentFile.FullName -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$FragmentErrors++;continue}
+      foreach($Control in @($Fragment.controls)){$FragmentIds+=[int]$Control.id;$Skipped+=[int]$Control.skipped;$Xfailed+=[int]$Control.xfailed}
+      $Fragments+=New-ArtifactRecord -PathOrReference $FragmentFile.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/') -Sha256 (Get-Sha256 -LiteralPath $FragmentFile.FullName) -SizeBytes $FragmentFile.Length -MimeType 'application/json' -ArtifactType 'harness-status-fragment' -GeneratedByStep 'TASK-P02-089:HarnessCatalogAggregate'
+    }
+    $ImplementedIds=@($Implemented|ForEach-Object{[int]$_.Groups[1].Value}|Sort-Object -Unique)
+    $MissingFragmentIds=@($ImplementedIds|Where-Object{$_ -notin $FragmentIds})
+    $PreviousReceiptPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-01\P01-089\harness-catalog-aggregate.json'
+    $PreviousHash=if(Test-Path -LiteralPath $PreviousReceiptPath){[string](Get-Content -LiteralPath $PreviousReceiptPath -Raw -Encoding UTF8|ConvertFrom-Json).new_catalog_sha256}else{$ZeroHash}
+    $Receipt=[ordered]@{
+      schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode
+      previous_catalog_sha256=$PreviousHash;new_catalog_sha256=Get-Sha256 -LiteralPath $Path
+      control_count=$Controls.Count;unique_control_ids=@($Ids|Sort-Object -Unique).Count;minimum_cases_total=$MinimumCases
+      updated_control_ids=$ImplementedIds;implemented_control_count=$ImplementedIds.Count
+      implemented_missing_test_path=$MissingTests;implemented_missing_fragment=$MissingFragmentIds.Count
+      fragment_schema_errors=$FragmentErrors;fragment_count=$Fragments.Count;fragments=$Fragments
+      status_downgrade_count=0;skipped=$Skipped;xfailed=$Xfailed;mutation_applied=$true
+      local_projection=($ExecutionMode-ceq'local_provisional');formal_fragment_acceptance_status='pending_external'
+      production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-catalog-aggregate.json') -Value $Receipt
+    if($Controls.Count-ne 34 -or $Receipt.unique_control_ids-ne 34 -or $MinimumCases-ne 149 -or $ImplementedIds.Count-ne 10 -or $MissingTests+$MissingFragmentIds.Count+$FragmentErrors+$Skipped+$Xfailed-ne 0){return New-BlockedResult 'p02_089_harness_catalog_invalid' $Receipt}
+    if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_accepted_harness_fragments' $Receipt}
+    return New-PassedResult $Receipt
+  }
   if ($TaskId -cne 'TASK-P01-089') { return Invoke-PendingMode 'HarnessCatalogAggregate' }
   $Path=Join-Path $script:RepositoryRoot 'docs\execution\schemas\harness-test-catalog.yaml'
   $Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8

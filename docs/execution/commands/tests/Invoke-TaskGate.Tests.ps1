@@ -158,4 +158,14 @@ if ($RunnerText -notmatch 'p02_008_inert_boundary_verification_failed' -or
     $RunnerText -notmatch 'network_deny_fixture_present') {
   throw 'negative: P02-008 must mechanically prove the API and Worker skeleton remains inert'
 }
+if ($RunnerText -notmatch 'function Get-P02089ClosureFiles' -or
+    $RunnerText -notmatch 'p02_089_harness_catalog_invalid' -or
+    $RunnerText -notmatch 'pending_independent_p02_handoff' -or
+    $RunnerText -notmatch 'catalog_mutated=\$false') {
+  throw 'negative: P02-089 must aggregate closure evidence without mutating the global Catalog or fabricating independent review'
+}
+if ($RunnerText -notmatch "TASK-P02-089'.*artifact-manifest\.premerge" -and
+    $RunnerText -notmatch "TASK-P02-089[\s\S]+STAR-\[a-z0-9-\]") {
+  throw 'negative: the P02-089 execplan/Catalog omissions must remain narrowly projected'
+}
 exit 0
