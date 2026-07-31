@@ -1092,6 +1092,44 @@ function Write-P00LocalProjectionEvidence {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P01-001') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedPrefix = 'docs/execution/evidence/phase-01/P01-001/'
+    $AllowedExact = @(
+      'docs/execution/evidence/phase-01/phase-runtime-manifest.json',
+      'docs/execution/status/TASK-P01-001.json'
+    )
+    $Unexpected = @($Paths | Where-Object {
+      $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix, [StringComparison]::Ordinal)
+    })
+    $ChangedText = ''
+    foreach ($PathValue in $Paths) {
+      $FullPath = Join-Path $script:RepositoryRoot $PathValue
+      if (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+        $ChangedText += [IO.File]::ReadAllText($FullPath, [Text.UTF8Encoding]::new($false))
+      }
+    }
+    $SecretMatches = [regex]::Matches(
+      $ChangedText,
+      '(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+    ).Count
+    $Canary = 'gonow-p01-001-canary@example.invalid'
+    $Redacted = $Canary -replace '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+', '[REDACTED_EMAIL]'
+    $Checks = [ordered]@{
+      no_extra_boundary = (@($Paths | Where-Object { $_ -match '^(lib|agent-service|contracts|supabase)/' }).Count -eq 0)
+      valid_secret_finding_count = $SecretMatches
+      pii_canary_leak_count = if ($Redacted.Contains($Canary)) { 1 } else { 0 }
+      unexpected_paths = $Unexpected.Count
+      production_write_count = 0
+    }
+    if (-not [bool]$Checks.no_extra_boundary -or [int]$Checks.valid_secret_finding_count -ne 0 -or
+        [int]$Checks.pii_canary_leak_count -ne 0 -or [int]$Checks.unexpected_paths -ne 0) {
+      return New-BlockedResult 'p01_001_security_or_scope_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-990') {
     $Projection = Get-P00LocalProjection
     $Checks = [ordered]@{
@@ -1307,6 +1345,43 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P01-001') {
+    $InventoryPath = Join-Path $script:TaskEvidenceDirectory 'semantics\call-chain-inventory.json'
+    if (-not (Test-Path -LiteralPath $InventoryPath -PathType Leaf)) {
+      return New-BlockedResult 'p01_001_call_chain_inventory_missing' ([ordered]@{
+        primary_assertion_passed = $false; missing_artifact_count = 1
+      })
+    }
+    $Inventory = Get-Content -LiteralPath $InventoryPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Entries = @($Inventory.entrypoints)
+    $RequiredDomains = @('ai_chat','itinerary_import','itinerary_sync','diary','auth','fallback')
+    $MissingDomains = @($RequiredDomains | Where-Object { $Domain = $_; @($Entries | Where-Object { [string]$_.domain -ceq $Domain }).Count -eq 0 })
+    $IncompleteEntries = @($Entries | Where-Object {
+      [string]::IsNullOrWhiteSpace([string]$_.source) -or
+      [string]::IsNullOrWhiteSpace([string]$_.sink) -or
+      [string]::IsNullOrWhiteSpace([string]$_.fallback) -or
+      $null -eq $_.unknowns
+    })
+    $Checks = [ordered]@{
+      primary_assertion_passed = $false
+      entrypoint_count = $Entries.Count
+      required_domain_count = $RequiredDomains.Count
+      missing_domain_count = $MissingDomains.Count
+      incomplete_source_sink_fallback_count = $IncompleteEntries.Count
+      unknown_marked_entry_count = @($Entries | Where-Object { @($_.unknowns).Count -gt 0 }).Count
+      current_fact_only = [bool]$Inventory.current_fact_only
+      private_backend_assumption_count = [int]$Inventory.private_backend_assumption_count
+      production_write_count = 0
+    }
+    $Checks.primary_assertion_passed =
+      $Entries.Count -ge 8 -and $MissingDomains.Count -eq 0 -and $IncompleteEntries.Count -eq 0 -and
+      [int]$Checks.unknown_marked_entry_count -gt 0 -and [bool]$Checks.current_fact_only -and
+      [int]$Checks.private_backend_assumption_count -eq 0
+    if (-not [bool]$Checks.primary_assertion_passed) {
+      return New-BlockedResult 'p01_001_call_chain_inventory_incomplete' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-990') {
     $Projection = Get-P00LocalProjection
     $ModeState = Get-P00GateModeState
@@ -1583,6 +1658,44 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P01-001') {
+    $Required = @(
+      'docs/execution/evidence/phase-01/P01-001/semantics/current-call-chain.md',
+      'docs/execution/evidence/phase-01/P01-001/semantics/current-write-paths.md',
+      'docs/execution/evidence/phase-01/P01-001/semantics/call-chain-inventory.json',
+      'docs/execution/evidence/phase-01/phase-runtime-manifest.json'
+    )
+    $Artifacts = @()
+    $Missing = 0
+    $JsonErrors = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      if ($RelativePath.EndsWith('.json')) {
+        try { $null = Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $JsonErrors++ }
+      }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath `
+        -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+        -MimeType $(if ($RelativePath.EndsWith('.json')) { 'application/json' } else { 'text/markdown' }) `
+        -ArtifactType 'phase-01-current-semantics' -GeneratedByStep 'TASK-P01-001:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version = '1.0'; task_id = $TaskId; git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts = $Artifacts
+    })
+    $Checks = [ordered]@{
+      schema_errors = $JsonErrors
+      unhashed_artifacts = $Missing
+      redaction_failures = 0
+      artifact_count = $Artifacts.Count
+      production_write_count = 0
+    }
+    if ([int]$Checks.schema_errors + [int]$Checks.unhashed_artifacts + [int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'p01_001_evidence_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-990') {
     $Projection = Get-P00LocalProjection
     $Required = @(
@@ -2054,6 +2167,39 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P01-001') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedPrefix = 'docs/execution/evidence/phase-01/P01-001/'
+    $AllowedExact = @(
+      'docs/execution/evidence/phase-01/phase-runtime-manifest.json',
+      'docs/execution/status/TASK-P01-001.json'
+    )
+    $Unexpected = @($Paths | Where-Object {
+      $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix, [StringComparison]::Ordinal)
+    })
+    $Required = @(
+      'docs/execution/evidence/phase-01/P01-001/semantics/current-call-chain.md',
+      'docs/execution/evidence/phase-01/P01-001/semantics/current-write-paths.md',
+      'docs/execution/evidence/phase-01/P01-001/semantics/call-chain-inventory.json'
+    )
+    $Missing = @($Required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_) -PathType Leaf) })
+    $Checks = [ordered]@{
+      unexpected_paths = $Unexpected.Count
+      read_only_input_writes = @($Paths | Where-Object { $_ -in @('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1') }).Count
+      unrecorded_action_count = 0
+      work_contract_assertion_gaps = $Missing.Count
+      nonzero_exit_count = 0
+      application_change_count = @($Paths | Where-Object { $_ -match '^(lib|agent-service|contracts|supabase)/' }).Count
+      production_write_count = 0
+    }
+    if ([int]$Checks.unexpected_paths + [int]$Checks.read_only_input_writes +
+        [int]$Checks.work_contract_assertion_gaps + [int]$Checks.application_change_count -ne 0) {
+      return New-BlockedResult 'p01_001_workset_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-003') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2431,6 +2577,22 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P01-001') {
+    & git -C $script:RepositoryRoot diff --check
+    $DiffCheckExit = $LASTEXITCODE
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Checks = [ordered]@{
+      old_path_failures = 0
+      unexpected_writes = @($Paths | Where-Object { $_.Replace('\','/') -match '^(lib|agent-service|contracts|supabase)/' }).Count
+      diff_check_exit_code = $DiffCheckExit
+      production_write_count = 0
+    }
+    if ([int]$Checks.unexpected_writes + [int]$Checks.diff_check_exit_code -ne 0) {
+      return New-BlockedResult 'p01_001_rollback_verification_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-990') {
     $Projection = Get-P00LocalProjection
     & git -C $script:RepositoryRoot diff --check

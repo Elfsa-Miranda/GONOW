@@ -59,4 +59,8 @@ if ($RunnerText -match "Set-TaskStatus -Status 'accepted'") {
 if ($RunnerText -notmatch "Get-P00GateModeState -IncludeVerify") {
   throw 'negative: P00-990 must not become ready_for_review before all registered local modes pass'
 }
+if ($RunnerText -notmatch "TASK-P01-001" -or
+    $RunnerText -notmatch 'incomplete_source_sink_fallback_count') {
+  throw 'negative: P01-001 must verify every mapped source, sink, and fallback'
+}
 exit 0
