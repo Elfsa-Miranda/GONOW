@@ -149,4 +149,8 @@ if ($RunnerText -notmatch 'p02_007_openapi_verification_failed' -or
     $RunnerText -notmatch "ControlId 33") {
   throw 'negative: P02-007 must bind OpenAPI digest, error corpus, and SchemaRegistry Harness evidence'
 }
+if ($RunnerText -notmatch "authoritative_execplan_line=3920" -or
+    $RunnerText -notmatch "missing_catalog_path='contracts/openapi/agent-api.yaml'") {
+  throw 'negative: the P02-007 Catalog omission must remain explicit and narrowly projected'
+}
 exit 0

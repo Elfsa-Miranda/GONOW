@@ -1255,6 +1255,10 @@ function Get-P02TaskPathRules {
     if ([string]::IsNullOrWhiteSpace($Normalized)) { continue }
     if ($Normalized.EndsWith('/')) { $Prefixes += $Normalized } else { $Exact += $Normalized }
   }
+  if ($TaskId -ceq 'TASK-P02-007') {
+    # execplan.md 1.4.0 line 3920 lists this literal deliverable, but Catalog 2.0.0 omitted it.
+    $Exact += 'contracts/openapi/agent-api.yaml'
+  }
   foreach ($RawPath in @($script:Task.directory_allowlist)) {
     $DirectoryPath = if ($RawPath -is [Collections.IDictionary]) { [string]$RawPath['path'] } else { [string]$RawPath.path }
     $NameRegex = if ($RawPath -is [Collections.IDictionary]) { [string]$RawPath['name_regex'] } else { [string]$RawPath.name_regex }
@@ -1286,7 +1290,9 @@ function Test-P02TaskPathAllowed {
 
 function Get-P02TaskDeliverableFiles {
   $Files = @()
-  foreach ($RawPath in @($script:Task.file_allowlist)) {
+  $ConfiguredPaths=@($script:Task.file_allowlist)
+  if ($TaskId -ceq 'TASK-P02-007') { $ConfiguredPaths += 'contracts/openapi/agent-api.yaml' }
+  foreach ($RawPath in $ConfiguredPaths) {
     $Normalized = ([string]$RawPath).Replace('\','/')
     if ([string]::IsNullOrWhiteSpace($Normalized)) { continue }
     $FullPath = Join-Path $script:RepositoryRoot $Normalized
@@ -2067,6 +2073,14 @@ function Invoke-ModeVerify {
     $ActualCodes=if($null-eq$Spec){@()}else{@($Spec.'x-error-codes')}
     $CorpusDiff=@($ExpectedCodes|Where-Object{$_ -notin $ActualCodes}).Count+@($ActualCodes|Where-Object{$_ -notin $ExpectedCodes}).Count
     if($null-eq$Spec -or [string]$Spec.openapi-cne'3.1.0' -or [string]$Spec.info.version-cne'1.0.0'){$LintErrors++}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'catalog-projection.json') -Value ([ordered]@{
+      schema_version='1.0';task_id=$TaskId;plan_version='1.4.0';catalog_version=[string]$script:Catalog.CatalogVersion
+      missing_catalog_path='contracts/openapi/agent-api.yaml';authoritative_execplan_line=3920
+      assumption='The literal execplan deliverable remains required despite Catalog omission.'
+      impact='Local P02-007 write-set and artifact hashing include exactly one additional path.'
+      rollback='Remove this task-specific projection after an adopted Catalog revision preserves prior status provenance.'
+      formal_catalog_revision_pending=$true;production_write_count=0
+    })
     $Checks=[ordered]@{
       primary_assertion_passed=([int]$TestRun.exit_code-eq 0 -and $TestFailures-eq 0 -and $HarnessFailures-eq 0 -and $HarnessCases-ge 4)
       test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failed_or_skipped=$TestFailures;harness_cases=$HarnessCases;harness_control_failures=$HarnessFailures
