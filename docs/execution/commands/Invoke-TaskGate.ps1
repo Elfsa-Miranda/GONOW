@@ -1092,6 +1092,31 @@ function Write-P00LocalProjectionEvidence {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P01-005') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+    $AllowedExact = @('docs/architecture/adr/ADR-P01-005-architecture-baseline.md','docs/execution/status/TASK-P01-005.json')
+    $AllowedPrefix = 'docs/execution/evidence/phase-01/P01-005/'
+    $Unexpected = @($Paths | Where-Object { $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix,[StringComparison]::Ordinal) })
+    $Text = ''
+    foreach ($PathValue in $Paths) {
+      $FullPath = Join-Path $script:RepositoryRoot $PathValue
+      if (Test-Path -LiteralPath $FullPath -PathType Leaf) { $Text += [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false)) }
+    }
+    $Checks = [ordered]@{
+      no_extra_boundary = (@($Paths | Where-Object { $_ -match '^(lib|agent-service|contracts|supabase)/' }).Count -eq 0)
+      valid_secret_finding_count = [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count = [regex]::Matches($Text,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unexpected_paths = $Unexpected.Count
+      database_change_count = @($Paths | Where-Object { $_ -match '^(supabase|agent-service/migrations)/' }).Count
+      production_write_count = 0
+    }
+    if (-not [bool]$Checks.no_extra_boundary -or [int]$Checks.valid_secret_finding_count -ne 0 -or
+        [int]$Checks.pii_canary_leak_count -ne 0 -or [int]$Checks.unexpected_paths -ne 0 -or
+        [int]$Checks.database_change_count -ne 0) { return New-BlockedResult 'p01_005_security_or_scope_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-004') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -1457,6 +1482,56 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P01-005') {
+    $MapPath = Join-Path $script:TaskEvidenceDirectory 'traceability-v1.6.1-task-map.md'
+    $AdrPath = Join-Path $script:RepositoryRoot 'docs\architecture\adr\ADR-P01-005-architecture-baseline.md'
+    $AgentsPath = Join-Path $script:RepositoryRoot 'AGENTS.md'
+    $Missing = @($MapPath,$AdrPath,$AgentsPath | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($Missing.Count -ne 0) { return New-BlockedResult 'p01_005_traceability_artifact_missing' ([ordered]@{primary_assertion_passed=$false;missing_artifact_count=$Missing.Count}) }
+    $Map = Get-Content -LiteralPath $MapPath -Raw -Encoding UTF8
+    $Adr = Get-Content -LiteralPath $AdrPath -Raw -Encoding UTF8
+    $Agents = Get-Content -LiteralPath $AgentsPath -Raw -Encoding UTF8
+    $HardConstraintMarker = '[' + [char]0x786C + [char]0x7EA6
+    $SourceMarkerCount = [regex]::Matches($Agents,[regex]::Escape($HardConstraintMarker)).Count
+    $Rows = @([regex]::Matches($Map,'(?m)^\| HC-(\d{3}) \|.*$') | ForEach-Object { $_.Value })
+    $Ids = @($Rows | ForEach-Object { if ($_ -match '^\| (HC-\d{3}) \|') { $Matches[1] } } | Sort-Object -Unique)
+    $IncompleteRows = @($Rows | Where-Object {
+      $Cells = @($_.Split('|') | ForEach-Object { $_.Trim() })
+      $Cells.Count -lt 10 -or [string]::IsNullOrWhiteSpace($Cells[5]) -or [string]::IsNullOrWhiteSpace($Cells[6])
+    })
+    $Checks = [ordered]@{
+      primary_assertion_passed = $false
+      source_hard_constraint_marker_count = $SourceMarkerCount
+      mapped_hard_constraint_row_count = $Rows.Count
+      unique_hard_constraint_id_count = $Ids.Count
+      duplicate_hard_constraint_id_count = $Rows.Count - $Ids.Count
+      incomplete_task_or_ct_mapping_count = $IncompleteRows.Count
+      unmapped_hard_constraint = if ($Map -cmatch '(?m)^- unmapped hard constraint count: 0$') { 0 } else { 1 }
+      unmapped_token_count = [regex]::Matches($Map,'(?i)\bUNMAPPED\b').Count
+      current_fact_section_present = $Map.Contains('## Current Fact (not target implementation evidence)')
+      target_contract_section_present = $Map.Contains('## Target Contract / Hard Constraint inventory')
+      current_target_separation_statement_present = $Map.Contains('Every row below is a target or invariant')
+      adr_proposed_not_accepted = $Adr.Contains('- status: proposed') -and $Adr.Contains('remains `proposed`')
+      architecture_change_count = 0
+      production_write_count = 0
+    }
+    $Checks.primary_assertion_passed = [int]$Checks.source_hard_constraint_marker_count -eq 31 -and
+      [int]$Checks.mapped_hard_constraint_row_count -eq 31 -and [int]$Checks.unique_hard_constraint_id_count -eq 31 -and
+      [int]$Checks.duplicate_hard_constraint_id_count -eq 0 -and [int]$Checks.incomplete_task_or_ct_mapping_count -eq 0 -and
+      [int]$Checks.unmapped_hard_constraint -eq 0 -and [int]$Checks.unmapped_token_count -eq 0 -and
+      [bool]$Checks.current_fact_section_present -and [bool]$Checks.target_contract_section_present -and
+      [bool]$Checks.current_target_separation_statement_present -and [bool]$Checks.adr_proposed_not_accepted
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'local-traceability-verification.json') -Value ([ordered]@{
+      schema_version='1.0';task_id=$TaskId;primary_assertion_passed=[bool]$Checks.primary_assertion_passed
+      source_marker_count=$SourceMarkerCount;mapped_row_count=$Rows.Count;unique_id_count=$Ids.Count
+      unmapped_hard_constraint=[int]$Checks.unmapped_hard_constraint
+      current_target_separated=([bool]$Checks.current_fact_section_present -and [bool]$Checks.target_contract_section_present)
+      map_sha256=Get-Sha256 -LiteralPath $MapPath;adr_sha256=Get-Sha256 -LiteralPath $AdrPath
+      formal_review_status='pending_external';accepted=$false;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+    })
+    if (-not [bool]$Checks.primary_assertion_passed) { return New-BlockedResult 'p01_005_traceability_incomplete' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-004') {
     $ContractPath = Join-Path $script:RepositoryRoot 'contracts\flutter-agent-boundary-v1.yaml'
     $MatrixPath = Join-Path $script:TaskEvidenceDirectory 'flutter-service-matrix.md'
@@ -1925,6 +2000,21 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P01-005') {
+    $Required = @('docs/execution/evidence/phase-01/P01-005/traceability-v1.6.1-task-map.md','docs/architecture/adr/ADR-P01-005-architecture-baseline.md','docs/execution/evidence/phase-01/P01-005/local-traceability-verification.json')
+    $Artifacts=@();$Missing=0;$JsonErrors=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}}
+      $Mime=if($RelativePath.EndsWith('.json')){'application/json'}else{'text/markdown'}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'architecture-traceability' -GeneratedByStep 'TASK-P01-005:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne 0){return New-BlockedResult 'p01_005_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-004') {
     $Required = @(
       'contracts/flutter-agent-boundary-v1.yaml',
@@ -2535,6 +2625,18 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P01-005') {
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths=@($Paths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+    $AllowedExact=@('docs/architecture/adr/ADR-P01-005-architecture-baseline.md','docs/execution/status/TASK-P01-005.json')
+    $AllowedPrefix='docs/execution/evidence/phase-01/P01-005/'
+    $Unexpected=@($Paths|Where-Object{$_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix,[StringComparison]::Ordinal)})
+    $Required=@('docs/architecture/adr/ADR-P01-005-architecture-baseline.md','docs/execution/evidence/phase-01/P01-005/traceability-v1.6.1-task-map.md')
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath(Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_ -in @('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=0;work_contract_assertion_gaps=$Missing.Count;nonzero_exit_count=0;runtime_or_database_change_count=@($Paths|Where-Object{$_ -match '^(lib|agent-service|contracts|supabase)/'}).Count;production_write_count=0}
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.runtime_or_database_change_count-ne 0){return New-BlockedResult 'p01_005_workset_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-004') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -3007,6 +3109,12 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P01-005') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
+    $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Checks=[ordered]@{old_path_failures=0;unexpected_writes=@($Paths|Where-Object{$_.Replace('\','/') -match '^(lib|agent-service|contracts|supabase)/'}).Count;diff_check_exit_code=$DiffCheckExit;architecture_runtime_change_count=0;production_write_count=0}
+    if([int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code-ne 0){return New-BlockedResult 'p01_005_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P01-004') {
     & git -C $script:RepositoryRoot diff --check
     $DiffCheckExit = $LASTEXITCODE
