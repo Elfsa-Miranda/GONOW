@@ -12,6 +12,7 @@ $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $ServiceRoot '..')).Path
 $ServicePython = Join-Path $ServiceRoot '.venv\Scripts\python.exe'
 $CycloneDx = Join-Path $ServiceRoot '.venv\Scripts\cyclonedx-py.exe'
 $SbomPath = Join-Path $RepoRoot 'docs\execution\supply-chain\phase-02\P02-001\agent-service.cdx.json'
+$PreviousPythonUtf8 = $env:PYTHONUTF8
 
 foreach ($RequiredTool in @($PythonPath, $UvPath)) {
   if (-not (Test-Path -LiteralPath $RequiredTool -PathType Leaf)) {
@@ -21,6 +22,7 @@ foreach ($RequiredTool in @($PythonPath, $UvPath)) {
 
 Push-Location $ServiceRoot
 try {
+  $env:PYTHONUTF8 = '1'
   if (-not $SkipDependencySync) {
     & $UvPath sync --frozen --group dev --python $PythonPath
     if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE" }
@@ -40,10 +42,11 @@ try {
     if (-not (Test-Path -LiteralPath $CycloneDx -PathType Leaf)) {
       throw "CycloneDX executable is unavailable: $CycloneDx"
     }
-    & $CycloneDx environment --output-format JSON --output-file $SbomPath
+    & $CycloneDx environment --output-reproducible --output-format JSON --output-file $SbomPath
     if ($LASTEXITCODE -ne 0) { throw "CycloneDX generation failed with exit code $LASTEXITCODE" }
   }
 }
 finally {
+  $env:PYTHONUTF8 = $PreviousPythonUtf8
   Pop-Location
 }
