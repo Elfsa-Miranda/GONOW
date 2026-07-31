@@ -48,7 +48,7 @@ Generated from the 1.4.0 TaskGate Catalog and per-task status records.
 | TASK-P03-007 | Phase 3 | ready_for_review |
 | TASK-P03-008 | Phase 3 | ready_for_review |
 | TASK-P03-009 | Phase 3 | ready_for_review |
-| TASK-P03-089 | Phase 3 | in_progress |
+| TASK-P03-089 | Phase 3 | ready_for_review |
 | TASK-P03-990 | Phase 3 | not_started |
 | TASK-P03-999 | Phase 3 | not_started |
 | TASK-P04-000 | Phase 4 | not_started |
