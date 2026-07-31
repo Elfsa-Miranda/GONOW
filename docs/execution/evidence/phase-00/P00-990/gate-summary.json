@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P00-990",
+  "candidate_head_oid": "7c0990ecf42590ddca44e3bf9e85daa5a3a93f65",
+  "overall_status": "blocked",
+  "local_implementation_complete": true,
+  "formal_acceptance_complete": false,
+  "harness_catalog": {
+    "control_count": 34,
+    "valid_status_count": 34,
+    "contract_only_count": 34,
+    "implemented_count": 0,
+    "minimum_cases_total": 149,
+    "catalog_errors": 0
+  },
+  "mechanical_results": {
+    "gateway": {"passed": 4, "failed": 0, "skipped": 0},
+    "log_redaction": {"passed": 3, "failed": 0, "skipped": 0},
+    "release_a_compatibility": {"passed": 6, "failed": 0, "skipped": 0},
+    "new_analyzer_errors": 0,
+    "new_test_failures": 0,
+    "new_skips": 0,
+    "candidate_apk_build_exit": 0
+  },
+  "forced_rejection_counts": {
+    "mandatory_gate_invalid": 8,
+    "scope_or_worktree_invalid": 0,
+    "open_security_or_privacy_violation": 1,
+    "rollback_not_executed_or_incomplete": 1,
+    "approval_invalid_or_expired_or_evidence_changed": 1,
+    "blocker_without_final_state": 0,
+    "required_delivery_missing": 4,
+    "nonreproducible_summary_or_raw_evidence_missing": 0
+  },
+  "open_p0_p1_formal_gate_count": 1,
+  "production_write_count": 0,
+  "remote_push_count": 0,
+  "merge_count": 0
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P00-990",
+  "execution_mode": "local_provisional",
+  "base_head_oid": "7c0990ecf42590ddca44e3bf9e85daa5a3a93f65",
+  "primary_assertion_passed": false,
+  "local_summary_reproducible": true,
+  "checks": {
+    "harness_control_count": 34,
+    "harness_valid_status_count": 34,
+    "harness_catalog_errors": 0,
+    "mandatory_gate_invalid": 8,
+    "open_p0_p1_formal_gate_count": 1,
+    "missing_approval_role_count": 4,
+    "valid_secret_finding_count": 0,
+    "pii_canary_leak_count": 0,
+    "missing_audit_receipt_count": 4,
+    "production_write_count": 0,
+    "remote_push_count": 0,
+    "merge_count": 0
+  },
+  "artifact_paths": [
+    "docs/execution/evidence/phase-00/acceptance.md",
+    "docs/execution/evidence/index.json",
+    "docs/execution/evidence/phase-00/P00-990/harness-catalog-validation.json",
+    "docs/execution/evidence/phase-00/P00-990/gate-summary.json",
+    "docs/execution/evidence/phase-00/P00-990/commands.json",
+    "docs/execution/evidence/phase-00/P00-990/gate-results.json",
+    "docs/execution/evidence/phase-00/P00-990/local-verification.json"
+  ],
+  "phase_1_local_entry_projection_valid": false,
+  "precise_resume_condition": "P00-002 production inventory, P00-003 provider incident closure, gateway server approval, independent handoff/owner review, then rerun P00-089 aggregates and P00-990 mandatory gates",
+  "generated_at": "2026-08-01T01:10:17.2290338+08:00"
+}

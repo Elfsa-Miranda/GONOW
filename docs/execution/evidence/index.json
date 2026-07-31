@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-01T01:10:17.2290338+08:00",
+  "execution_mode": "local_provisional",
+  "phases": [
+    {
+      "phase": "Phase 0",
+      "candidate_head_oid": "7c0990ecf42590ddca44e3bf9e85daa5a3a93f65",
+      "status": "blocked",
+      "acceptance_path": "docs/execution/evidence/phase-00/acceptance.md",
+      "premerge_manifest_path": "docs/execution/evidence/phase-00/artifact-manifest.premerge.json",
+      "open_p0_p1_formal_gate_count": 1,
+      "production_write_count": 0,
+      "remote_push_count": 0
+    }
+  ]
+}
