@@ -1505,6 +1505,27 @@ function Test-P03002PathAllowed {
   return $RelativePath.StartsWith('docs/execution/evidence/phase-03/P03-002/',[StringComparison]::Ordinal)
 }
 
+function Get-P03003ChangedPaths {
+  $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+  $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+}
+
+function Test-P03003PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact = @(
+    'agent-service/app/persistence/models/jobs.py',
+    'agent-service/app/persistence/repositories/jobs.py',
+    'agent-service/app/persistence/repositories/checkpoints.py',
+    'agent-service/migrations/versions/p03_003_jobs_leases_checkpoints.py',
+    'agent-service/tests/integration/test_job_metadata.py',
+    'docs/execution/commands/Invoke-TaskGate.ps1',
+    'docs/execution/status/TASK-P03-003.json'
+  )
+  if ($RelativePath -in $AllowedExact) { return $true }
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-03/P03-003/',[StringComparison]::Ordinal)
+}
+
 function Test-P03001PathAllowed {
   param([Parameter(Mandatory=$true)][string]$RelativePath)
   $AllowedExact = @(
@@ -1523,6 +1544,59 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P03-003') {
+    $Paths=@(Get-P03003ChangedPaths)
+    $Unexpected=@($Paths|Where-Object{-not(Test-P03003PathAllowed -RelativePath $_)})
+    $ChangedText=''
+    foreach($RelativePath in $Paths){
+      if($RelativePath-match'(?i)\.(xml|pyc)$'){continue}
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(Test-Path -LiteralPath $FullPath -PathType Leaf){try{$ChangedText += [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))+"`n"}catch{}}
+    }
+    $AppFiles=@(
+      'agent-service\app\persistence\models\jobs.py',
+      'agent-service\app\persistence\repositories\jobs.py',
+      'agent-service\app\persistence\repositories\checkpoints.py'
+    )
+    $AppText=@($AppFiles|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $ContractFiles=$AppFiles+@(
+      'agent-service\migrations\versions\p03_003_jobs_leases_checkpoints.py',
+      'agent-service\tests\integration\test_job_metadata.py'
+    )
+    $ContractText=@($ContractFiles|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $RequiredAuditMarkers=@(
+      'ck_jobs_audit_receipt_nonempty','ck_leases_holder_audit_nonempty',
+      'ck_checkpoints_audit_receipt_nonempty','audit_receipt_id: str',
+      'audit-checkpoint-valid'
+    )
+    $MissingAudit=@($RequiredAuditMarkers|Where-Object{-not$ContractText.Contains($_)})
+    $DependencyPath=Join-Path $script:TaskEvidenceDirectory 'dependency-audit-report.json'
+    $Dependency=if(Test-Path -LiteralPath $DependencyPath -PathType Leaf){Get-Content -LiteralPath $DependencyPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'job-metadata-report.json'
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ExpectedOld='events,idempotency_records,runs,threads';$ExpectedNew='checkpoint_metadata,events,idempotency_records,jobs,leases,runs,threads'
+    $RestoreValid=$null-ne$Report-and(@($Report.old_worker_tables_after_downgrade)-join',')-ceq$ExpectedOld-and(@($Report.rebuilt_tables)-join',')-ceq$ExpectedNew
+    $ForbiddenExecutorCount=[regex]::Matches($AppText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|(?<![A-Za-z0-9_.])(?:eval|exec)\s*\()').Count
+    $ArbitrarySqlCount=[regex]::Matches($AppText,'(?im)(?:sa\.)?text\s*\(|execute\s*\(\s*[rfbu]*["'']').Count
+    $SsrfCount=[regex]::Matches($AppText,'(?im)^\s*(?:from|import)\s+(?:httpx|requests|urllib)').Count
+    $Checks=[ordered]@{
+      critical_cve=if($null-eq$Dependency){1}else{[int]$Dependency.checks.critical_cve}
+      high_cve=if($null-eq$Dependency){1}else{[int]$Dependency.checks.high_cve}
+      unknown_license=if($null-eq$Dependency){1}else{[int]$Dependency.checks.unknown_license}
+      ssrf_escape_count=$SsrfCount;unauthorized_tool_exec_count=$ForbiddenExecutorCount
+      arbitrary_sql_executor_count=$ArbitrarySqlCount
+      restore_verification_failures=if($RestoreValid){0}else{1}
+      missing_audit_receipt_count=$MissingAudit.Count
+      secret_canary_count=if($null-eq$Report){-1}else{[int]$Report.secret_canary_count}
+      valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count=[regex]::Matches($ChangedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unexpected_paths=$Unexpected.Count;production_write_count=0
+    }
+    $Failures=0
+    foreach($Key in @('critical_cve','high_cve','unknown_license','ssrf_escape_count','unauthorized_tool_exec_count','arbitrary_sql_executor_count','restore_verification_failures','missing_audit_receipt_count','secret_canary_count','valid_secret_finding_count','pii_canary_leak_count','unexpected_paths')){$Failures += [int]$Checks[$Key]}
+    if($Failures-ne0){return New-BlockedResult 'p03_003_security_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-002') {
     $Paths = @(Get-P03002ChangedPaths)
     $Unexpected = @($Paths | Where-Object { -not (Test-P03002PathAllowed -RelativePath $_) })
@@ -2148,6 +2222,48 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P03-003') {
+    $Python = Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
+    $JunitPath = Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $ReportPath = Join-Path $script:TaskEvidenceDirectory 'job-metadata-report.json'
+    $PreviousReportPath = $env:GONOW_P03_JOB_REPORT
+    try {
+      $env:GONOW_P03_JOB_REPORT = $ReportPath
+      $TestRun = if (Test-Path -LiteralPath $Python -PathType Leaf) {
+        Invoke-RedactedExternal -Executable $Python -Arguments @(
+          '-m','pytest','-q','agent-service/tests/integration/test_job_metadata.py',
+          '--maxfail=1','--junitxml',$JunitPath
+        )
+      } else { [ordered]@{exit_code=1;duration_seconds=0;output_line_count=0} }
+    } finally {
+      if ($null -eq $PreviousReportPath) { Remove-Item Env:\GONOW_P03_JOB_REPORT -ErrorAction SilentlyContinue }
+      else { $env:GONOW_P03_JOB_REPORT = $PreviousReportPath }
+    }
+    $Tests=0;$Failures=1;$Skipped=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
+      [xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8
+      $Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite}
+      $Tests=[int]$Suite.tests;$Failures=[int]$Suite.failures+[int]$Suite.errors;$Skipped=[int]$Suite.skipped
+    }
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}else{$null}
+    $ExpectedOld='events,idempotency_records,runs,threads'
+    $ExpectedNew='checkpoint_metadata,events,idempotency_records,jobs,leases,runs,threads'
+    $ReportValid=$null-ne$Report-and[string]$Report.task_id-ceq$TaskId-and
+      [string]$Report.revision-ceq'p03_003_jobs_leases_checkpoints'-and[bool]$Report.empty_rebuild-and
+      (@($Report.tables)-join',')-ceq$ExpectedNew-and(@($Report.rebuilt_tables)-join',')-ceq$ExpectedNew-and
+      (@($Report.old_worker_tables_after_downgrade)-join',')-ceq$ExpectedOld-and
+      (@($Report.fencing_tokens)-join',')-ceq'1,2'-and[bool]$Report.stale_fence_denied-and
+      [bool]$Report.database_stale_checkpoint_denied-and[int]$Report.secret_canary_count-eq0-and-not[bool]$Report.production
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$Failures-eq0-and$Skipped-eq0-and$Tests-ge4-and$ReportValid)
+      stale_fence_denied=$ReportValid;database_stale_checkpoint_denied=$ReportValid
+      secret_canary_count=if($null-eq$Report){-1}else{[int]$Report.secret_canary_count}
+      old_worker_tables_preserved=$ReportValid;empty_rebuild=$ReportValid
+      test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failures=$Failures;skipped=$Skipped;production_write_count=0
+    }
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p03_003_job_metadata_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-002') {
     $Python = Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
     $JunitPath = Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
@@ -3094,6 +3210,46 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P03-003') {
+    $Required=@(
+      'agent-service/app/persistence/models/jobs.py',
+      'agent-service/app/persistence/repositories/jobs.py',
+      'agent-service/app/persistence/repositories/checkpoints.py',
+      'agent-service/migrations/versions/p03_003_jobs_leases_checkpoints.py',
+      'agent-service/tests/integration/test_job_metadata.py',
+      'docs/execution/commands/Invoke-TaskGate.ps1',
+      'docs/execution/evidence/phase-03/P03-003/direct-pytest.xml',
+      'docs/execution/evidence/phase-03/P03-003/job-metadata-report.json',
+      'docs/execution/evidence/phase-03/P03-003/dependency-audit-report.json',
+      'docs/execution/evidence/phase-03/P03-003/dependency-licenses.json',
+      'docs/execution/evidence/phase-03/P03-003/implementation-actions.json',
+      'docs/execution/evidence/phase-03/P03-003/runner-enabler.md',
+      'docs/execution/evidence/phase-03/P03-003/blocker.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/ci-summary.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/clock-contract.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/contract.xml',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/format.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/licenses.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/lint.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/secret.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/type.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/unit-report.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/unit.xml'
+    )
+    $Artifacts=@();$Missing=0;$JsonErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}}
+      if($RelativePath-notmatch'\.(json|xml)$'){try{$TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count}catch{}}
+      $Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/plain'}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-03-job-metadata' -GeneratedByStep 'TASK-P03-003:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p03_003_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-002') {
     $Required=@(
       '.gitattributes',
@@ -4083,6 +4239,40 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P03-003') {
+    $Paths=@(Get-P03003ChangedPaths)
+    $Unexpected=@($Paths|Where-Object{-not(Test-P03003PathAllowed -RelativePath $_)})
+    $Required=@(
+      'agent-service/app/persistence/models/jobs.py',
+      'agent-service/app/persistence/repositories/jobs.py',
+      'agent-service/app/persistence/repositories/checkpoints.py',
+      'agent-service/migrations/versions/p03_003_jobs_leases_checkpoints.py',
+      'agent-service/tests/integration/test_job_metadata.py',
+      'docs/execution/commands/Invoke-TaskGate.ps1',
+      'docs/execution/evidence/phase-03/P03-003/direct-pytest.xml',
+      'docs/execution/evidence/phase-03/P03-003/job-metadata-report.json',
+      'docs/execution/evidence/phase-03/P03-003/dependency-audit-report.json',
+      'docs/execution/evidence/phase-03/P03-003/dependency-licenses.json',
+      'docs/execution/evidence/phase-03/P03-003/implementation-actions.json',
+      'docs/execution/evidence/phase-03/P03-003/runner-enabler.md',
+      'docs/execution/evidence/phase-03/P03-003/blocker.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/ci-summary.json',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/unit.xml',
+      'docs/execution/evidence/phase-03/P03-003/ci-reports/contract.xml'
+    )
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$RecoveredDiagnostics=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$RecoveredDiagnostics=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{
+      unexpected_paths=$Unexpected.Count
+      read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count
+      unrecorded_action_count=if(Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'implementation-actions.json')){0}else{1}
+      work_contract_assertion_gaps=$Missing.Count;nonzero_exit_count=$LatestNonzero
+      recovered_diagnostic_failure_count=$RecoveredDiagnostics;production_write_count=0
+    }
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p03_003_workset_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-002') {
     $Paths=@(Get-P03002ChangedPaths)
     $Unexpected=@($Paths|Where-Object{-not(Test-P03002PathAllowed -RelativePath $_)})
@@ -4723,6 +4913,33 @@ function Invoke-ModeArchitectureArtifactRegister {
 }
 
 function Invoke-ModeDependencyAudit {
+  if ($TaskId -ceq 'TASK-P03-003') {
+    $UvPath='D:\GO_NOW-toolchain\bin\uv.exe'
+    $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
+    $Quality=Join-Path $script:RepositoryRoot 'agent-service\tests\ci\test_quality_gate.py'
+    $LicensePath=Join-Path $script:TaskEvidenceDirectory 'dependency-licenses.json'
+    $Audit=Invoke-RedactedExternal -Executable $UvPath -Arguments @(
+      'audit','--locked','--all-groups','--directory',(Join-Path $script:RepositoryRoot 'agent-service')
+    )
+    $LicenseRun=Invoke-RedactedExternal -Executable $Python -Arguments @(
+      $Quality,'--mode','licenses','--repo-root',$script:RepositoryRoot,'--output',$LicensePath
+    )
+    $License=if(Test-Path -LiteralPath $LicensePath -PathType Leaf){Get-Content -LiteralPath $LicensePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $DependencyPaths=@(& git -C $script:RepositoryRoot diff --name-only HEAD -- 'agent-service/pyproject.toml' 'agent-service/uv.lock')
+    $Checks=[ordered]@{
+      unpinned_direct=if($null-eq$License){1}else{[int]$License.checks.unpinned_direct}
+      unknown_license=if($null-eq$License){1}else{[int]$License.checks.unknown_license}
+      critical_cve=if([int]$Audit.exit_code-eq0){0}else{1};high_cve=0
+      stale_without_adr=0;dependency_change_count=$DependencyPaths.Count
+      audit_exit_code=[int]$Audit.exit_code;license_exit_code=[int]$LicenseRun.exit_code
+      direct_pin_count=if($null-eq$License){0}else{[int]$License.checks.direct_pin_count};production_write_count=0
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'dependency-audit-report.json') -Value ([ordered]@{
+      schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')
+    })
+    if([int]$Checks.unpinned_direct+[int]$Checks.unknown_license+[int]$Checks.critical_cve+[int]$Checks.high_cve+[int]$Checks.stale_without_adr+[int]$Checks.dependency_change_count+[int]$Checks.license_exit_code-ne0){return New-BlockedResult 'p03_003_dependency_audit_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P02-006') {
     $PyprojectPath=Join-Path $script:RepositoryRoot 'agent-service/pyproject.toml'
     $Pyproject=Get-Content -LiteralPath $PyprojectPath -Raw -Encoding UTF8
@@ -4836,6 +5053,22 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P03-003') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
+    $Paths=@(Get-P03003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P03003PathAllowed -RelativePath $_)})
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'job-metadata-report.json'
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Old='events,idempotency_records,runs,threads';$New='checkpoint_metadata,events,idempotency_records,jobs,leases,runs,threads'
+    $RollbackExecuted=$null-ne$Report-and(@($Report.old_worker_tables_after_downgrade)-join',')-ceq$Old-and(@($Report.rebuilt_tables)-join',')-ceq$New-and-not[bool]$Report.production
+    $Checks=[ordered]@{
+      old_path_failures=if($RollbackExecuted){0}else{1};unexpected_writes=$Unexpected.Count
+      rollback_not_run=if($RollbackExecuted){0}else{1};diff_check_exit_code=$DiffCheckExit
+      rollback_strategy='forward-fix while retaining P03-002 tables; isolated downgrade proves old Worker metadata remains readable'
+      production_write_count=0
+    }
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p03_003_rollback_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-002') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
     $Paths=@(Get-P03002ChangedPaths)
