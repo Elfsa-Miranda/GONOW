@@ -1054,20 +1054,21 @@ function Invoke-ModeEvidence {
     $Required = @(
       'docs/execution/supply-chain/phase-boot/BOOT-005/toolchain-lock.json',
       'docs/execution/supply-chain/phase-boot/BOOT-005/isolated-postgres.json',
-      'docs/execution/evidence/boot/BOOT-005/bootstrap-toolchain-revalidation.json',
-      'docs/execution/evidence/boot/BOOT-005/bootstrap-contract-revalidation.json',
-      'docs/execution/evidence/boot/BOOT-005/task-gate-catalog-canonical.json',
-      'docs/execution/evidence/boot/BOOT-005/pip-audit.json',
-      'docs/execution/evidence/boot/BOOT-005/python-license-audit.json',
-      'docs/execution/evidence/boot/BOOT-005/tracked-secret-scan.json',
-      'docs/execution/evidence/boot/BOOT-005/isolated-postgres-restore.json',
-      'docs/execution/evidence/boot/BOOT-005/catalog-revision.json',
-      'docs/execution/evidence/boot/BOOT-005/architecture-artifact-registration.json',
+      'tool/bootstrap/README.md',
+      'tool/bootstrap/Export-TaskGateCatalog.ps1',
+      'tool/bootstrap/Migrate-BootstrapEvidenceV1.ps1',
+      'tool/bootstrap/Repair-NativeCatalog.ps1',
+      'tool/bootstrap/Test-IsolatedPostgresRestore.ps1',
+      'tool/bootstrap/audit_python_licenses.py',
       'tool/bootstrap/requirements.lock',
       'tool/bootstrap/toolchain-lock.schema.json',
       'tool/bootstrap/object_store_adapter.py',
       'tool/bootstrap/scan_tracked_secrets.py'
     )
+    $Required += @(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File |
+      Where-Object { $_.Name -notin @('artifact-hashes.json', 'commands.json', 'gate-results.json', 'blocker.json') } |
+      ForEach-Object { $_.FullName.Substring($script:RepositoryRoot.Length + 1).Replace('\', '/') })
+    $Required = @($Required | Sort-Object -Unique)
     $Artifacts = @()
     $Missing = 0
     foreach ($RelativePath in $Required) {
