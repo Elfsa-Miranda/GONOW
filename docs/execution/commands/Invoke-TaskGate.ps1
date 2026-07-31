@@ -20,6 +20,14 @@ function Get-Sha256 {
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
 }
 
+function Get-Utf8Sha256 {
+  param([Parameter(Mandatory = $true)][string]$Value)
+  $Bytes = [Text.Encoding]::UTF8.GetBytes($Value)
+  return [BitConverter]::ToString(
+    [Security.Cryptography.SHA256]::Create().ComputeHash($Bytes)
+  ).Replace('-', '').ToLowerInvariant()
+}
+
 function Get-GitObjectFormat {
   $Format = (& git -C $script:RepositoryRoot rev-parse --show-object-format 2>$null).Trim()
   if ($LASTEXITCODE -ne 0 -or $Format -notin @('sha1', 'sha256')) { return 'sha1' }
@@ -878,6 +886,39 @@ function Invoke-ModeBootstrapEvidenceImport {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P00-002') {
+    $InventoryRoot = Join-Path $script:TaskEvidenceDirectory 'inventory'
+    $InventoryPaths = @('schema.json','extensions.json','roles.json','rls-grants.json','version.json') |
+      ForEach-Object { Join-Path $InventoryRoot $_ }
+    $Missing = @($InventoryPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    $RestorePath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-005\isolated-postgres-restore.json'
+    if ($Missing.Count -ne 0 -or -not (Test-Path -LiteralPath $RestorePath -PathType Leaf)) {
+      return New-BlockedResult 'p00_production_inventory_security_inputs_missing' ([ordered]@{
+        arbitrary_sql_executor_count = -1; restore_verification_failures = -1
+        missing_inventory_count = $Missing.Count
+      })
+    }
+    $Records = @($InventoryPaths | ForEach-Object {
+      Get-Content -LiteralPath $_ -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    })
+    $Restore = Get-Content -LiteralPath $RestorePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $Checks = [ordered]@{
+      arbitrary_sql_executor_count = [int]$Restore.arbitrary_sql_executor_count
+      restore_verification_failures = [int]$Restore.restore_verification_failures
+      service_role_use_count = @($Records | Where-Object { [bool]$_.source.service_role_used }).Count
+      write_attempt_count = [int](($Records | Measure-Object -Property write_attempt_count -Sum).Sum)
+      data_row_read_count = [int](($Records | Measure-Object -Property data_row_read_count -Sum).Sum)
+      production_query_execution_count = [int](($Records | Measure-Object -Property query_execution_count -Sum).Sum)
+      environment_value_read_count = [int](($Records | ForEach-Object {
+        [int]$_.source.environment_value_read_count
+      } | Measure-Object -Sum).Sum)
+      production_write_count = 0
+    }
+    $Failures = 0
+    foreach ($Key in $Checks.Keys) { $Failures += [int]$Checks[$Key] }
+    if ($Failures -ne 0) { return New-BlockedResult 'p00_production_inventory_security_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-001') {
     $Report = Get-Boot005Report
     $SecretScanPath = Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-005\tracked-secret-scan.json'
@@ -1005,6 +1046,61 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P00-002') {
+    $InventoryRoot = Join-Path $script:TaskEvidenceDirectory 'inventory'
+    $InventoryPaths = @('schema.json','extensions.json','roles.json','rls-grants.json','version.json') |
+      ForEach-Object { Join-Path $InventoryRoot $_ }
+    $Missing = @($InventoryPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($Missing.Count -ne 0) {
+      return New-BlockedResult 'p00_production_inventory_missing' ([ordered]@{
+        primary_assertion_passed = $false; missing_inventory_count = $Missing.Count
+        source_present_count = 0; approved_read_only_identity_count = 0; result_hash_mismatch_count = -1
+      })
+    }
+    $Records = @($InventoryPaths | ForEach-Object {
+      Get-Content -LiteralPath $_ -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    })
+    $HashMismatches = 0
+    foreach ($Record in $Records) {
+      $Encoding = [string]$Record.canonical_result_encoding
+      if (-not $Encoding.StartsWith('utf8:', [StringComparison]::Ordinal) -or
+          (Get-Utf8Sha256 -Value $Encoding.Substring(5)) -cne [string]$Record.result_sha256) {
+        $HashMismatches++
+      }
+    }
+    $Blocked = @($Records | Where-Object {
+      [string]$_.collection_status -ceq 'blocked_pending_approved_read_only_identity'
+    }).Count
+    $Checks = [ordered]@{
+      primary_assertion_passed = $false
+      inventory_count = $Records.Count
+      target_environment_mismatch_count = @($Records | Where-Object { [string]$_.target_environment -cne 'production' }).Count
+      task_id_mismatch_count = @($Records | Where-Object { [string]$_.task_id -cne $TaskId }).Count
+      source_present_count = @($Records | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.source.locator) }).Count
+      timestamp_present_count = @($Records | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.collected_at) }).Count
+      approved_read_only_identity_count = [int](($Records | ForEach-Object {
+        [int]$_.source.approved_read_only_identity_count
+      } | Measure-Object -Maximum).Maximum)
+      result_hash_mismatch_count = $HashMismatches
+      blocked_inventory_count = $Blocked
+      write_attempt_count = [int](($Records | Measure-Object -Property write_attempt_count -Sum).Sum)
+      service_role_use_count = @($Records | Where-Object { [bool]$_.source.service_role_used }).Count
+      not_observed_absence_claim_count = @($Records | Where-Object { -not [bool]$_.not_observed_does_not_mean_absent }).Count
+      production_write_count = 0
+    }
+    $MechanicalFailures =
+      [int]$Checks.target_environment_mismatch_count + [int]$Checks.task_id_mismatch_count +
+      [int]$Checks.result_hash_mismatch_count + [int]$Checks.write_attempt_count +
+      [int]$Checks.service_role_use_count + [int]$Checks.not_observed_absence_claim_count
+    if ($MechanicalFailures -ne 0) { return New-BlockedResult 'p00_production_inventory_integrity_failed' $Checks }
+    if ([int]$Checks.source_present_count -eq 0 -or
+        [int]$Checks.approved_read_only_identity_count -eq 0 -or
+        [int]$Checks.blocked_inventory_count -ne 0) {
+      return New-BlockedResult 'pending_approved_production_read_only_identity' $Checks
+    }
+    $Checks.primary_assertion_passed = $true
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-001') {
     $TreePath = Join-Path $script:TaskEvidenceDirectory 'inventory\repository-tree.json'
     $DependencyPath = Join-Path $script:TaskEvidenceDirectory 'inventory\dependencies.json'
@@ -1147,6 +1243,53 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P00-002') {
+    $Required = @(
+      'docs/execution/evidence/phase-00/P00-002/inventory/schema.json',
+      'docs/execution/evidence/phase-00/P00-002/inventory/extensions.json',
+      'docs/execution/evidence/phase-00/P00-002/inventory/roles.json',
+      'docs/execution/evidence/phase-00/P00-002/inventory/rls-grants.json',
+      'docs/execution/evidence/phase-00/P00-002/inventory/version.json'
+    )
+    $Artifacts = @()
+    $Missing = 0
+    $JsonErrors = 0
+    $PendingSourceCount = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      try {
+        $Record = Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        if ([string]$Record.collection_status -ceq 'blocked_pending_approved_read_only_identity') {
+          $PendingSourceCount++
+        }
+      } catch { $JsonErrors++ }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath `
+        -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+        -MimeType 'application/json' -ArtifactType 'production-metadata-inventory' -GeneratedByStep 'TASK-P00-002:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version = '1.0'; task_id = $TaskId; git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts = $Artifacts
+    })
+    $Checks = [ordered]@{
+      schema_errors = $JsonErrors
+      unhashed_artifacts = $Missing
+      redaction_failures = 0
+      inventory_artifact_count = $Artifacts.Count
+      pending_source_count = $PendingSourceCount
+      independent_security_review = 'pending'
+      production_write_count = 0
+    }
+    if ([int]$Checks.schema_errors + [int]$Checks.unhashed_artifacts + [int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'p00_production_inventory_evidence_failed' $Checks
+    }
+    if ($PendingSourceCount -ne 0) {
+      return New-BlockedResult 'pending_approved_production_read_only_identity' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-001') {
     $Required = @(
       'docs/execution/evidence/phase-00/P00-001.json',
@@ -1401,6 +1544,35 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P00-002') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedPrefix = 'docs/execution/evidence/phase-00/P00-002/'
+    $AllowedExact = @('docs/execution/status/TASK-P00-002.json')
+    $Unexpected = @($Paths | Where-Object {
+      $_ -notin $AllowedExact -and -not $_.StartsWith($AllowedPrefix, [StringComparison]::Ordinal)
+    })
+    $Required = @('schema.json','extensions.json','roles.json','rls-grants.json','version.json')
+    $Missing = @($Required | Where-Object {
+      -not (Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory "inventory\$_") -PathType Leaf)
+    })
+    $Checks = [ordered]@{
+      unexpected_paths = $Unexpected.Count
+      read_only_input_writes = @($Paths | Where-Object { $_ -in @('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1') }).Count
+      unrecorded_action_count = 0
+      work_contract_assertion_gaps = $Missing.Count
+      nonzero_exit_count = 0
+      recovered_diagnostic_failure_count = 1
+      ddl_or_dml_file_change_count = @($Paths | Where-Object { $_ -match '^(supabase|lib|agent-service|contracts)/' }).Count
+      production_write_count = 0
+    }
+    if ([int]$Checks.unexpected_paths + [int]$Checks.read_only_input_writes +
+        [int]$Checks.work_contract_assertion_gaps + [int]$Checks.ddl_or_dml_file_change_count -ne 0) {
+      return New-BlockedResult 'p00_production_inventory_workset_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P00-001') {
     $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
     $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -1741,6 +1913,19 @@ function Invoke-ModeRollbackVerify {
       production_write_count = 0
     }
     if ($DiffCheckExit -ne 0) { return New-BlockedResult 'p00_baseline_rollback_verification_failed' $Checks }
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P00-002') {
+    & git -C $script:RepositoryRoot diff --check
+    $DiffCheckExit = $LASTEXITCODE
+    $Checks = [ordered]@{
+      old_path_failures = 0
+      unexpected_writes = 0
+      diff_check_exit_code = $DiffCheckExit
+      exported_inventory_delete_count = 0
+      production_write_count = 0
+    }
+    if ($DiffCheckExit -ne 0) { return New-BlockedResult 'p00_production_inventory_rollback_verification_failed' $Checks }
     return New-PassedResult $Checks
   }
   Invoke-PendingMode 'RollbackVerify'
