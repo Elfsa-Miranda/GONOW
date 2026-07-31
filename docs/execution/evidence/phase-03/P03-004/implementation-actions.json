@@ -42,6 +42,13 @@
       "result": "passed",
       "exit_code": 0,
       "detail": "After correcting only the invocation timeout to a bounded 60 seconds, the complete Agent CI suite passed: 160 unit/integration tests, 12 contract tests, and all format, lint, type, secret, clock, license, and dependency audit checks."
+    },
+    {
+      "sequence": 7,
+      "kind": "blocker_resolution",
+      "result": "resolved",
+      "exit_code": 124,
+      "detail": "BLK-P03-004-ORCHESTRATION-TIMEOUT records the second orchestration timeout caused by reusing a one-second tool budget. The durable correction is to use at least 60 seconds for every gate collection containing PostgreSQL tests; no product assertion had run to failure."
     }
   ],
   "production_write_count": 0,

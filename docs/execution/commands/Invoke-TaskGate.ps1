@@ -3292,7 +3292,7 @@ function Invoke-ModeEvidence {
       'agent-service/tests/unit/harness/test_11_behavior_registry.py','docs/execution/commands/Invoke-TaskGate.ps1',
       'docs/execution/evidence/phase-03/P03-004/direct-pytest.xml','docs/execution/evidence/phase-03/P03-004/behavior-release-report.json',
       'docs/execution/evidence/phase-03/P03-004/harness-status-fragment.json','docs/execution/evidence/phase-03/P03-004/implementation-actions.json',
-      'docs/execution/evidence/phase-03/P03-004/runner-enabler.md',
+      'docs/execution/evidence/phase-03/P03-004/runner-enabler.md','docs/execution/evidence/phase-03/P03-004/blocker.json',
       'docs/execution/evidence/phase-03/P03-004/ci-reports/ci-summary.json',
       'docs/execution/evidence/phase-03/P03-004/ci-reports/clock-contract.json',
       'docs/execution/evidence/phase-03/P03-004/ci-reports/contract.xml',
@@ -4347,7 +4347,7 @@ function Invoke-ModeWorksetVerify {
       'agent-service/tests/unit/harness/test_11_behavior_registry.py','docs/execution/commands/Invoke-TaskGate.ps1',
       'docs/execution/evidence/phase-03/P03-004/direct-pytest.xml','docs/execution/evidence/phase-03/P03-004/behavior-release-report.json',
       'docs/execution/evidence/phase-03/P03-004/harness-status-fragment.json','docs/execution/evidence/phase-03/P03-004/implementation-actions.json',
-      'docs/execution/evidence/phase-03/P03-004/runner-enabler.md',
+      'docs/execution/evidence/phase-03/P03-004/runner-enabler.md','docs/execution/evidence/phase-03/P03-004/blocker.json',
       'docs/execution/evidence/phase-03/P03-004/ci-reports/ci-summary.json',
       'docs/execution/evidence/phase-03/P03-004/ci-reports/unit.xml',
       'docs/execution/evidence/phase-03/P03-004/ci-reports/contract.xml'
