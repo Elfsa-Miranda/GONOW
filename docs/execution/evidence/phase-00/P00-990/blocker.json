@@ -1,1 +1,1 @@
-{"schema_version":"1.0","task_id":"TASK-P00-990","mode":"AcceptancePreflight","reason_code":"pending_task_specific_implementation","local_provisional":true,"external_approval_or_authority_required":true,"production_write_count":0,"recorded_at":"2026-08-01T01:09:15.4682338+08:00"}
+{"schema_version":"1.0","task_id":"TASK-P00-990","mode":"ApprovalValidation","reason_code":"pending_independent_phase_00_approvals","local_provisional":false,"external_approval_or_authority_required":true,"production_write_count":0,"recorded_at":"2026-08-01T01:28:16.4829539+08:00"}
