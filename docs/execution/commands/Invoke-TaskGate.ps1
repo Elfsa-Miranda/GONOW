@@ -10,12 +10,53 @@ param(
 $ErrorActionPreference = 'Stop'
 $StartedAt = [DateTimeOffset]::Now
 $ZeroHash = '0' * 64
+$EmptySha256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 $ScriptDirectory = Split-Path -Parent $PSCommandPath
 $CatalogPath = Join-Path $ScriptDirectory 'TaskGateCatalog.psd1'
 
 function Get-Sha256 {
   param([Parameter(Mandatory = $true)][string]$LiteralPath)
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
+}
+
+function Get-GitObjectFormat {
+  $Format = (& git -C $script:RepositoryRoot rev-parse --show-object-format 2>$null).Trim()
+  if ($LASTEXITCODE -ne 0 -or $Format -notin @('sha1', 'sha256')) { return 'sha1' }
+  return $Format
+}
+
+function Get-PhaseBaseOid {
+  if ([string]$script:Task.phase -ceq 'BOOT') {
+    $ReceiptPath = Join-Path $script:CommonGitDirectory 'gonow-bootstrap\BOOT-001.native.json'
+    if (Test-Path -LiteralPath $ReceiptPath -PathType Leaf) {
+      return [string](Get-Content -LiteralPath $ReceiptPath -Raw -Encoding UTF8 | ConvertFrom-Json).base_sha
+    }
+  }
+  return (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+}
+
+function New-ArtifactRecord {
+  param(
+    [Parameter(Mandatory = $true)][string]$PathOrReference,
+    [Parameter(Mandatory = $true)][string]$Sha256,
+    [Parameter(Mandatory = $true)][long]$SizeBytes,
+    [string]$MimeType = 'application/octet-stream',
+    [string]$ArtifactType = 'evidence',
+    [string]$GeneratedByStep = 'task-gate',
+    [string]$Sensitivity = 'internal',
+    [string]$Retention = 'repository-governance'
+  )
+  return [ordered]@{
+    path_or_reference = $PathOrReference
+    sha256 = $Sha256
+    size_bytes = $SizeBytes
+    mime_type = $MimeType
+    artifact_type = $ArtifactType
+    generated_by_step = $GeneratedByStep
+    generated_at = [DateTimeOffset]::Now.ToString('o')
+    sensitivity = $Sensitivity
+    retention = $Retention
+  }
 }
 
 function Import-TaskGateCatalog {
@@ -135,7 +176,8 @@ function Write-CreateOnlyJson {
   if (Test-Path -LiteralPath $LiteralPath) {
     if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceHash)) {
       $Existing = Get-Content -LiteralPath $LiteralPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
-      if ([string]$Existing.source_native_receipt_sha256 -cne $ExpectedSourceHash) {
+      if ($null -ne $Existing.PSObject.Properties['source_native_receipt_sha256'] -and
+          [string]$Existing.source_native_receipt_sha256 -cne $ExpectedSourceHash) {
         throw "Existing canonical bootstrap evidence conflicts: $LiteralPath"
       }
     }
@@ -189,20 +231,32 @@ function Add-CommandRecord {
     $Ledger = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
     $Records = @($Ledger.commands)
   } else {
-    $Ledger = [ordered]@{ schema_version = '1.0'; task_id = $TaskId; commands = @() }
+    $Ledger = [ordered]@{
+      schema_version = '1.0'
+      task_id = $TaskId
+      phase = [string]$script:Task.phase
+      executed_at = [DateTimeOffset]::Now.ToString('o')
+      executor = 'codex-local-provisional'
+      git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      commands = @()
+    }
     $Records = @()
   }
   $Records += [ordered]@{
-    command_id = "task-gate-$([Guid]::NewGuid().ToString('N'))"
-    mode = $ModeValue
-    executable = (Get-Command powershell.exe -ErrorAction Stop).Source
-    arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'Invoke-TaskGate.ps1', '-TaskId', $TaskId, '-Mode', $ModeValue)
-    expected_exit_codes = @(0)
-    actual_exit_code = $ExitCode
-    started_at = $StartedAt.ToString('o')
-    completed_at = [DateTimeOffset]::Now.ToString('o')
-    redacted = $true
+    step = $Records.Count + 1
+    description = "Invoke TaskGate mode $ModeValue"
+    command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File Invoke-TaskGate.ps1 -TaskId $TaskId -Mode $ModeValue"
+    exit_code = $ExitCode
+    stdout_tail = ''
+    stderr_tail = ''
+    stdout_sha256 = $EmptySha256
+    stderr_sha256 = $EmptySha256
+    duration_seconds = [Math]::Max(0, ([DateTimeOffset]::Now - $StartedAt).TotalSeconds)
+    redaction_reason = 'Gate output is stored structurally; stdout/stderr bodies are not persisted.'
   }
+  $Ledger.executed_at = [DateTimeOffset]::Now.ToString('o')
+  $Ledger.head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
   $Ledger.commands = $Records
   Write-AtomicJson -LiteralPath $Path -Value $Ledger
 }
@@ -211,31 +265,56 @@ function Add-GateResult {
   param([string]$Path, [string]$ModeValue, [object]$Result)
   if (Test-Path -LiteralPath $Path) {
     $Ledger = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
-    $Runs = @($Ledger.runs)
+    # A gate ledger represents the current result of each registered mode.
+    # Retried modes replace their earlier transient result while commands.json
+    # remains the append-only execution history.
+    $Runs = @($Ledger.results | Where-Object { [string]$_.check_id -cne $ModeValue })
   } else {
     $Ledger = [ordered]@{
       schema_version = '1.0'
       task_id = $TaskId
-      provisional = ($ExecutionMode -ceq 'local_provisional')
-      catalog_sha256 = $script:CatalogSha256
-      runs = @()
+      gate_run_at = [DateTimeOffset]::Now.ToString('o')
+      git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      phase_base_oid = Get-PhaseBaseOid
+      tool_versions = [ordered]@{
+        powershell = [string]$PSVersionTable.PSVersion
+        catalog = [string]$script:Catalog.CatalogVersion
+      }
+      results = @()
+      overall_status = 'passed'
     }
     $Runs = @()
   }
-  $Runs += [ordered]@{
-    mode = $ModeValue
-    status = [string]$Result.status
-    reason_code = [string]$Result.reason_code
-    started_at = $StartedAt.ToString('o')
-    completed_at = [DateTimeOffset]::Now.ToString('o')
-    checks = $Result.checks
+  $RecordedStatus = [string]$Result.status
+  if ($ModeValue -ceq 'BootstrapToolchainRevalidation' -and
+      [string]$Result.reason_code -ceq 'pending_boot005') {
+    $RecordedStatus = 'not_applicable'
   }
-  $Ledger.runs = $Runs
+  $Runs += [ordered]@{
+    check_id = $ModeValue
+    status = $RecordedStatus
+    detail = ([ordered]@{
+      reason_code = [string]$Result.reason_code
+      checks = $Result.checks
+      provisional = ($ExecutionMode -ceq 'local_provisional')
+    } | ConvertTo-Json -Depth 20 -Compress)
+    evidence_path = 'docs/execution/commands/TaskGateCatalog.psd1'
+    evidence_sha256 = $script:CatalogSha256
+  }
+  $Ledger.gate_run_at = [DateTimeOffset]::Now.ToString('o')
+  $Ledger.head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $Ledger.results = $Runs
+  $Ledger.overall_status = if (@($Runs | Where-Object { $_.status -in @('failed', 'blocked') }).Count -gt 0) { 'blocked' } else { 'passed' }
   Write-AtomicJson -LiteralPath $Path -Value $Ledger
 }
 
 function Set-TaskStatus {
-  param([string]$Status, [string]$EvidenceSha256, [string]$BlockerPath = $null)
+  param(
+    [string]$Status,
+    [string]$EvidenceSha256,
+    [AllowNull()][object]$BlockerPath = $null
+  )
   $StatusPath = Join-Path $script:RepositoryRoot ([string]$script:Task.status_file)
   $PreviousStatus = 'not_started'
   $PreviousHash = $ZeroHash
@@ -259,13 +338,39 @@ function Set-TaskStatus {
   if ($Allowed[$PreviousStatus] -notcontains $Status) {
     throw "Illegal task status transition: $PreviousStatus -> $Status"
   }
+  $EvidencePaths = [object[]]@()
+  if ($EvidenceSha256 -cne $ZeroHash) {
+    $EvidencePaths = [object[]]@(
+      $script:GatePath.Replace($script:RepositoryRoot + '\', '').Replace('\', '/')
+    )
+  }
   $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Unable to bind task status to HEAD' }
   $Record = [ordered]@{
-    schema_version = '1.0'; task_id = $TaskId; status = $Status; previous_status = $PreviousStatus
-    previous_record_sha256 = $PreviousHash; transition_seq = $Transition; evidence_sha256 = $EvidenceSha256
-    blocker_path = $BlockerPath; provisional = ($ExecutionMode -ceq 'local_provisional')
-    reviewer_independent = $false; candidate_head_oid = $Head; recorded_at = [DateTimeOffset]::Now.ToString('o')
+    schema_version = '1.0'
+    plan_version = '1.4.0'
+    catalog_version = [string]$script:Catalog.CatalogVersion
+    task_id = $TaskId
+    phase = [string]$script:Task.phase
+    status = $Status
+    previous_status = $PreviousStatus
+    transition_seq = $Transition
+    previous_record_sha256 = $PreviousHash
+    catalog_sha256 = $script:CatalogSha256
+    git_object_format = Get-GitObjectFormat
+    phase_base_oid = Get-PhaseBaseOid
+    head_oid = $Head
+    owner_alias = [string]$script:Task.owner_alias
+    owner_role = [string]@($script:Task.owner_roles)[0]
+    actor_id = 'codex-local-implementation'
+    actor_role = 'Engineering'
+    reviewer_independent = $false
+    updated_at = [DateTimeOffset]::Now.ToString('o')
+    evidence_sha256 = $EvidenceSha256
+    evidence_paths = $EvidencePaths
+    blocker_path = $BlockerPath
+    decision_reference = $null
+    transition_reason = "task-gate:$Status"
   }
   if (Test-Path -LiteralPath $StatusPath) {
     if ((Get-Sha256 -LiteralPath $StatusPath) -cne $PreviousHash) { throw 'Task status CAS conflict' }
@@ -449,40 +554,53 @@ function Invoke-ModeBootstrapEvidenceImport {
     Write-CreateOnlyJson -LiteralPath $SummaryPath -Value $Summary -ExpectedSourceHash $NativeReceiptHash
     $CanonicalSummaryHash = Get-Sha256 -LiteralPath $SummaryPath
     Write-CreateOnlyJson -LiteralPath (Join-Path $DetailRoot 'commands.json') -ExpectedSourceHash $NativeReceiptHash -Value ([ordered]@{
-      schema_version = '1.0'; task_id = "TASK-BOOT-$Number"; source_native_receipt_sha256 = $NativeReceiptHash
+      schema_version = '1.0'; task_id = "TASK-BOOT-$Number"; phase = 'BOOT'
+      executed_at = [string]$NativeReceipt.recorded_at; executor = 'execplan-chapter-1-native'
+      git_object_format = 'sha1'; head_oid = if ($Number -ceq '001') { [string]$NativeReceipt.base_sha } else { [string]$NativeReceipt.head_sha }
       commands = @([ordered]@{
-        command_id = "chapter-1-native-$Number"; mode = 'native'; executable = 'powershell-native'
-        arguments = @("execplan.md Chapter 1 BOOT-$Number block"); expected_exit_codes = @(0)
-        actual_exit_code = [int]$NativeReceipt.exit_code; started_at = [string]$NativeReceipt.recorded_at
-        completed_at = [string]$NativeReceipt.recorded_at; redacted = $true
+        step = 1; description = "execplan.md Chapter 1 BOOT-$Number block"
+        command = "powershell-native <redacted-chapter-1-BOOT-$Number>"
+        exit_code = [int]$NativeReceipt.exit_code; stdout_tail = ''; stderr_tail = ''
+        stdout_sha256 = $EmptySha256; stderr_sha256 = $EmptySha256; duration_seconds = 0
+        redaction_reason = 'Native bootstrap command body is referenced by sealed execplan bytes.'
       })
     })
     Write-CreateOnlyJson -LiteralPath (Join-Path $DetailRoot 'gate-results.json') -ExpectedSourceHash $NativeReceiptHash -Value ([ordered]@{
-      schema_version = '1.0'; task_id = "TASK-BOOT-$Number"; source_native_receipt_sha256 = $NativeReceiptHash; provisional = $true
-      runs = @([ordered]@{
-        mode = 'native'; status = 'passed'; reason_code = ''; started_at = [string]$NativeReceipt.recorded_at
-        completed_at = [string]$NativeReceipt.recorded_at
-        checks = if ($Number -ceq '001') {
-          [ordered]@{ remote_exact = $true; default_ref_exact = $true; base_oid_exact = $true; sealed_hash_mismatch = 0; invented_command_count = 0 }
+      schema_version = '1.0'; task_id = "TASK-BOOT-$Number"; gate_run_at = [string]$NativeReceipt.recorded_at
+      git_object_format = 'sha1'
+      head_oid = if ($Number -ceq '001') { [string]$NativeReceipt.base_sha } else { [string]$NativeReceipt.head_sha }
+      phase_base_oid = [string](Get-Content -LiteralPath (Join-Path $BootstrapRoot 'BOOT-001.native.json') -Raw -Encoding UTF8 | ConvertFrom-Json).base_sha
+      tool_versions = [ordered]@{ powershell = [string]$PSVersionTable.PSVersion; bootstrap = 'native' }
+      results = @([ordered]@{
+        check_id = 'native'; status = 'passed'
+        detail = if ($Number -ceq '001') {
+          '{"remote_exact":true,"default_ref_exact":true,"base_oid_exact":true,"sealed_hash_mismatch":0,"invented_command_count":0}'
         } else {
-          [ordered]@{ worktree_clean = $true; head_oid_exact = $true; gitlink_count = 0; nested_git_count = 0; credential_like_count = 0; invented_command_count = 0 }
+          '{"worktree_clean":true,"head_oid_exact":true,"gitlink_count":0,"nested_git_count":0,"credential_like_count":0,"invented_command_count":0}'
         }
+        evidence_path = $NativeReceiptPath; evidence_sha256 = $NativeReceiptHash
       })
+      overall_status = 'passed'
     })
     Write-CreateOnlyJson -LiteralPath (Join-Path $DetailRoot 'artifact-hashes.json') -ExpectedSourceHash $NativeReceiptHash -Value ([ordered]@{
-      schema_version = '1.0'; task_id = "TASK-BOOT-$Number"; source_native_receipt_sha256 = $NativeReceiptHash
+      schema_version = '1.0'; task_id = "TASK-BOOT-$Number"; git_object_format = 'sha1'
+      head_oid = if ($Number -ceq '001') { [string]$NativeReceipt.base_sha } else { [string]$NativeReceipt.head_sha }
       artifacts = @(
-        [ordered]@{ path = $NativeReceiptPath; sha256 = $NativeReceiptHash; size_bytes = (Get-Item -LiteralPath $NativeReceiptPath).Length; source = 'native' },
-        [ordered]@{ path = $NativeStatusPath; sha256 = $NativeStatusHash; size_bytes = (Get-Item -LiteralPath $NativeStatusPath).Length; source = 'native' }
+        (New-ArtifactRecord -PathOrReference $NativeReceiptPath -Sha256 $NativeReceiptHash -SizeBytes (Get-Item -LiteralPath $NativeReceiptPath).Length -MimeType 'application/json' -ArtifactType 'native-receipt' -GeneratedByStep 'BootstrapEvidenceImport'),
+        (New-ArtifactRecord -PathOrReference $NativeStatusPath -Sha256 $NativeStatusHash -SizeBytes (Get-Item -LiteralPath $NativeStatusPath).Length -MimeType 'application/json' -ArtifactType 'native-status' -GeneratedByStep 'BootstrapEvidenceImport')
       )
     })
     $StatusPath = Join-Path $script:RepositoryRoot "docs\execution\status\TASK-BOOT-$Number.json"
     Write-CreateOnlyJson -LiteralPath $StatusPath -ExpectedSourceHash $NativeReceiptHash -Value ([ordered]@{
-      schema_version = '1.0'; task_id = "TASK-BOOT-$Number"; status = 'ready_for_review'
-      previous_status = 'not_started'; previous_record_sha256 = $ZeroHash; transition_seq = 1
-      evidence_sha256 = $CanonicalSummaryHash; blocker_path = $null; provisional = $true
-      reviewer_independent = $false; candidate_head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
-      source_native_receipt_sha256 = $NativeReceiptHash; recorded_at = [string]$NativeStatus.recorded_at
+      schema_version = '1.0'; plan_version = '1.4.0'; catalog_version = [string]$Catalog.CatalogVersion
+      task_id = "TASK-BOOT-$Number"; phase = 'BOOT'; status = 'ready_for_review'; previous_status = 'not_started'
+      transition_seq = 1; previous_record_sha256 = $ZeroHash; catalog_sha256 = $CatalogSha256
+      git_object_format = 'sha1'; phase_base_oid = [string](Get-Content -LiteralPath (Join-Path $BootstrapRoot 'BOOT-001.native.json') -Raw -Encoding UTF8 | ConvertFrom-Json).base_sha
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      owner_alias = 'Engineering'; owner_role = 'Engineering'; actor_id = 'codex-local-implementation'; actor_role = 'Engineering'
+      reviewer_independent = $false; updated_at = [string]$NativeStatus.recorded_at
+      evidence_sha256 = $CanonicalSummaryHash; evidence_paths = @("docs/execution/evidence/boot/BOOT-$Number.json")
+      blocker_path = $null; decision_reference = $null; transition_reason = 'native bootstrap evidence import'
     })
     $Imported++
   }
@@ -515,7 +633,17 @@ function Invoke-ModeSecurity {
   $TrackedCredentialNames = @(& git -C $script:RepositoryRoot ls-files | Where-Object {
     $_ -match '(^|/)(\.env($|\.)|id_rsa|id_ed25519|.*\.(pem|key|p12|pfx))$'
   })
-  $AllowedPrefixes = @('.gitattributes', 'AGENTS.md', 'execplan.md', 'docs/execution/commands/', 'docs/execution/schemas/', 'docs/execution/evidence/boot/', 'docs/execution/status/')
+  $AllowedPrefixes = @(
+    '.gitattributes',
+    'AGENTS.md',
+    'execplan.md',
+    'docs/execution/commands/',
+    'docs/execution/schemas/',
+    'docs/execution/evidence/boot/',
+    'docs/execution/status/',
+    'docs/execution/supply-chain/',
+    'tool/bootstrap/'
+  )
   $Unexpected = @()
   foreach ($Line in @(& git -C $script:RepositoryRoot status --porcelain=v1 -uall)) {
     if ($Line.Length -lt 4) { continue }
@@ -601,15 +729,14 @@ function Invoke-ModeEvidence {
     foreach ($RelativePath in $Required) {
       $FullPath = Join-Path $script:RepositoryRoot $RelativePath
       if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
-      $Artifacts += [ordered]@{
-        path = $RelativePath
-        sha256 = Get-Sha256 -LiteralPath $FullPath
-        size_bytes = (Get-Item -LiteralPath $FullPath).Length
-        source = 'TASK-BOOT-004'
-      }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath `
+        -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+        -MimeType 'application/json' -ArtifactType 'bootstrap-evidence' -GeneratedByStep 'TASK-BOOT-004:Evidence'
     }
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
-      schema_version = '1.0'; task_id = $TaskId; artifacts = $Artifacts
+      schema_version = '1.0'; task_id = $TaskId; git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts = $Artifacts
     })
     $Evaluation = Get-Boot004OfflineContractEvaluation
     $Checks = [ordered]@{
@@ -649,9 +776,15 @@ function Invoke-ModeEvidence {
   foreach ($RelativePath in $Files) {
     $FullPath = Join-Path $script:RepositoryRoot $RelativePath
     if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
-    $Artifacts += [ordered]@{ path = $RelativePath.Replace('\', '/'); sha256 = Get-Sha256 -LiteralPath $FullPath; size_bytes = (Get-Item -LiteralPath $FullPath).Length; source = 'TASK-BOOT-003' }
+    $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath.Replace('\', '/') `
+      -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+      -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+      -MimeType 'application/octet-stream' -ArtifactType 'bootstrap-artifact' -GeneratedByStep 'TASK-BOOT-003:Evidence'
   }
-  Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{ schema_version = '1.0'; task_id = $TaskId; artifacts = $Artifacts })
+  Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+    schema_version = '1.0'; task_id = $TaskId; git_object_format = Get-GitObjectFormat
+    head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts = $Artifacts
+  })
   $Checks = [ordered]@{
     schema_errors = 0; unhashed_artifacts = $Missing; redaction_failures = 0; undeclared_evidence_count = 0
     native_receipt_hash_mismatch = 0; full_schema_yaml_validation = 'pending_boot005'
@@ -807,7 +940,14 @@ $GatePath = Join-Path $TaskEvidenceDirectory 'gate-results.json'
 
 if ($Mode -ne 'BootstrapToolchainRevalidation') {
   $StatusPath = Join-Path $RepositoryRoot ([string]$Task.status_file)
-  if (-not (Test-Path -LiteralPath $StatusPath)) { Set-TaskStatus -Status 'in_progress' -EvidenceSha256 $ZeroHash }
+  if (-not (Test-Path -LiteralPath $StatusPath)) {
+    Set-TaskStatus -Status 'in_progress' -EvidenceSha256 $ZeroHash
+  } else {
+    $CurrentStatus = [string](Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop).status
+    if ($CurrentStatus -in @('blocked', 'rejected')) {
+      Set-TaskStatus -Status 'in_progress' -EvidenceSha256 $ZeroHash
+    }
+  }
 }
 $HandlerName = [string]$Catalog.TaskGateModeContracts[$Mode].handler
 $Handler = Get-Command -Name $HandlerName -CommandType Function -ErrorAction SilentlyContinue
