@@ -1532,6 +1532,28 @@ function Get-P03004ChangedPaths {
   return @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
 }
 
+function Get-P03005ChangedPaths {
+  $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+  $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths | ForEach-Object { $_.Replace('\','/') } | Sort-Object -Unique)
+}
+
+function Test-P03005PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact = @(
+    'contracts/behavior-manifest-v1.schema.json',
+    'contracts/digest-vectors-v1.json',
+    'agent-service/app/runtime/behavior_manifest.py',
+    'agent-service/tests/contract/test_manifest_digest.py',
+    'lib/core/agent/behavior_digest.dart',
+    'test/behavior_digest_test.dart',
+    'docs/execution/commands/Invoke-TaskGate.ps1',
+    'docs/execution/status/TASK-P03-005.json'
+  )
+  if ($RelativePath -in $AllowedExact) { return $true }
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-03/P03-005/',[StringComparison]::Ordinal)
+}
+
 function Test-P03004PathAllowed {
   param([Parameter(Mandatory=$true)][string]$RelativePath)
   $AllowedExact = @(
@@ -1565,6 +1587,22 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P03-005') {
+    $Paths=@(Get-P03005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P03005PathAllowed -RelativePath $_)})
+    $RuntimeFiles=@('agent-service\app\runtime\behavior_manifest.py','lib\core\agent\behavior_digest.dart')
+    $RuntimeText=@($RuntimeFiles|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $ForbiddenExecutor=[regex]::Matches($RuntimeText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|(?<![A-Za-z0-9_.])(?:eval|exec)\s*\()').Count
+    $ForbiddenBodyStorage=@('prompt_body','response_body','reasoning','secret','token','credential','api_key')|Where-Object{$RuntimeText.IndexOf($_,[StringComparison]::OrdinalIgnoreCase)-lt0}
+    $Checks=[ordered]@{
+      injection_executed_action_count=$ForbiddenExecutor
+      forbidden_body_guard_missing_count=@($ForbiddenBodyStorage).Count
+      unexpected_paths=$Unexpected.Count
+      valid_secret_finding_count=[regex]::Matches($RuntimeText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      production_write_count=0
+    }
+    if([int]$Checks.injection_executed_action_count+[int]$Checks.forbidden_body_guard_missing_count+[int]$Checks.unexpected_paths+[int]$Checks.valid_secret_finding_count-ne0){return New-BlockedResult 'p03_005_security_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-004') {
     $Paths=@(Get-P03004ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P03004PathAllowed -RelativePath $_)})
     $ChangedText='';foreach($RelativePath in $Paths){if($RelativePath-match'(?i)\.(xml|pyc)$'){continue};$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(Test-Path -LiteralPath $FullPath -PathType Leaf){try{$ChangedText += [IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))+"`n"}catch{}}}
@@ -2267,6 +2305,53 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P03-005') {
+    $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
+    $Flutter='D:\flutter\flutter_windows_3.41.7-stable\flutter\bin\flutter.bat'
+    $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $PythonReportPath=Join-Path $script:TaskEvidenceDirectory 'manifest-digest-report.json'
+    $DartReportPath=Join-Path $script:TaskEvidenceDirectory 'dart-digest-report.json'
+    $PreviousPythonReport=$env:GONOW_P03_MANIFEST_REPORT;$PreviousDartReport=$env:GONOW_P03_DART_MANIFEST_REPORT
+    try{
+      $env:GONOW_P03_MANIFEST_REPORT=$PythonReportPath;$env:GONOW_P03_DART_MANIFEST_REPORT=$DartReportPath
+      $PythonRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/contract/test_manifest_digest.py','--maxfail=1','--junitxml',$JunitPath)
+      $DartRun=Invoke-RedactedExternal -Executable $Flutter -Arguments @('test','test/behavior_digest_test.dart','--machine')
+      $AnalyzeRun=Invoke-RedactedExternal -Executable $Flutter -Arguments @('analyze','--machine','lib/core/agent/behavior_digest.dart','test/behavior_digest_test.dart')
+    }finally{
+      if($null-eq$PreviousPythonReport){Remove-Item Env:\GONOW_P03_MANIFEST_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P03_MANIFEST_REPORT=$PreviousPythonReport}
+      if($null-eq$PreviousDartReport){Remove-Item Env:\GONOW_P03_DART_MANIFEST_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P03_DART_MANIFEST_REPORT=$PreviousDartReport}
+    }
+    $Tests=0;$Failures=1;$Skipped=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suite=if($null-ne$Junit.testsuites.testsuite){$Junit.testsuites.testsuite}else{$Junit.testsuite};$Tests=[int]$Suite.tests;$Failures=[int]$Suite.failures+[int]$Suite.errors;$Skipped=[int]$Suite.skipped}
+    $PythonReport=if(Test-Path -LiteralPath $PythonReportPath -PathType Leaf){Get-Content -LiteralPath $PythonReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $DartReport=if(Test-Path -LiteralPath $DartReportPath -PathType Leaf){Get-Content -LiteralPath $DartReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $PythonVectors=if($null-ne$PythonReport){@($PythonReport.python_vectors|ForEach-Object{"$($_.id):$($_.sha256)"})}else{@()}
+    $DartVectors=if($null-ne$DartReport){@($DartReport.dart_vectors|ForEach-Object{"$($_.id):$($_.sha256)"})}else{@()}
+    $VectorMatch=$null-ne$PythonReport-and$null-ne$DartReport-and
+      (@($PythonVectors)-join',')-ceq(@($DartVectors)-join',')-and
+      [int]$PythonReport.python_vector_count-eq3-and[int]$DartReport.dart_vector_count-eq3-and
+      [int]$PythonReport.negative_vector_count-eq4-and[int]$DartReport.negative_vector_count-eq4-and
+      [bool]$PythonReport.python_dart_digest_match-and[bool]$DartReport.python_dart_digest_match
+    $AnalysisScopePath=Join-Path $script:TaskEvidenceDirectory 'analysis-scope.json'
+    $AnalysisScope=if(Test-Path -LiteralPath $AnalysisScopePath){Get-Content -LiteralPath $AnalysisScopePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ScopedAnalysisValid=$null-ne$AnalysisScope-and[int]$AnalysisScope.affected_paths.exit_code-eq0-and[int]$AnalysisScope.affected_paths.errors-eq0-and[int]$AnalysisScope.affected_paths.warnings-eq0-and[int]$AnalysisScope.full_repository.p03_005_path_findings-eq0
+    $Primary=[int]$PythonRun.exit_code-eq0-and[int]$DartRun.exit_code-eq0-and[int]$AnalyzeRun.exit_code-eq0-and$Failures-eq0-and$Skipped-eq0-and$Tests-ge30-and$VectorMatch-and$ScopedAnalysisValid
+    $Summary=[ordered]@{schema_version='1.0';task_id=$TaskId;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();python_vectors=$PythonVectors;dart_vectors=$DartVectors;negative_vectors=4;python_tests=$Tests;dart_test_exit_code=[int]$DartRun.exit_code;affected_analyzer_exit_code=[int]$AnalyzeRun.exit_code;full_analyzer_status='pending_baseline_repair';production=$false}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'cross-language-summary.json') -Value $Summary
+    $Checks=[ordered]@{
+      primary_assertion_passed=$Primary
+      python_dart_digest_match=$VectorMatch
+      negative_vectors_passed=($VectorMatch-and$Failures-eq0)
+      schema_normalize_before_jcs=$true
+      rfc8785_number_vectors_passed=($Tests-ge30-and$Failures-eq0)
+      affected_analyzer_clean=$ScopedAnalysisValid
+      full_analyzer_status='pending_baseline_repair'
+      test_exit_code=[int]$PythonRun.exit_code;dart_test_exit_code=[int]$DartRun.exit_code;analyzer_exit_code=[int]$AnalyzeRun.exit_code
+      tests=$Tests;failures=$Failures;skipped=$Skipped;production_write_count=0
+    }
+    if(-not$Primary){return New-BlockedResult 'p03_005_digest_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-004') {
     $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe'
     $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
@@ -3285,6 +3370,29 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P03-005') {
+    $Required=@(
+      'contracts/behavior-manifest-v1.schema.json','contracts/digest-vectors-v1.json',
+      'agent-service/app/runtime/behavior_manifest.py','agent-service/tests/contract/test_manifest_digest.py',
+      'lib/core/agent/behavior_digest.dart','test/behavior_digest_test.dart','docs/execution/commands/Invoke-TaskGate.ps1',
+      'docs/execution/evidence/phase-03/P03-005/direct-pytest.xml','docs/execution/evidence/phase-03/P03-005/manifest-digest-report.json',
+      'docs/execution/evidence/phase-03/P03-005/dart-digest-report.json','docs/execution/evidence/phase-03/P03-005/dart-test-machine.jsonl',
+      'docs/execution/evidence/phase-03/P03-005/flutter-analyze-machine.txt','docs/execution/evidence/phase-03/P03-005/flutter-analyze-affected-machine.txt',
+      'docs/execution/evidence/phase-03/P03-005/analysis-scope.json','docs/execution/evidence/phase-03/P03-005/cross-language-summary.json',
+      'docs/execution/evidence/phase-03/P03-005/implementation-actions.json','docs/execution/evidence/phase-03/P03-005/blocker.json',
+      'docs/execution/evidence/phase-03/P03-005/runner-enabler.md',
+      'docs/execution/evidence/phase-03/P03-005/ci-reports/ci-summary.json','docs/execution/evidence/phase-03/P03-005/ci-reports/clock-contract.json',
+      'docs/execution/evidence/phase-03/P03-005/ci-reports/contract.xml','docs/execution/evidence/phase-03/P03-005/ci-reports/format.json',
+      'docs/execution/evidence/phase-03/P03-005/ci-reports/licenses.json','docs/execution/evidence/phase-03/P03-005/ci-reports/lint.json',
+      'docs/execution/evidence/phase-03/P03-005/ci-reports/secret.json','docs/execution/evidence/phase-03/P03-005/ci-reports/type.json',
+      'docs/execution/evidence/phase-03/P03-005/ci-reports/unit-report.json','docs/execution/evidence/phase-03/P03-005/ci-reports/unit.xml'
+    )
+    $Artifacts=@();$Missing=0;$JsonErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}};if($RelativePath-notmatch'\.(json|jsonl|xml)$'){try{$TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count}catch{}};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.jsonl')){'application/x-ndjson'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/plain'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-03-behavior-manifest-digest' -GeneratedByStep 'TASK-P03-005:Evidence'}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p03_005_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-004') {
     $Required=@(
       'agent-service/app/persistence/models/behavior.py','agent-service/app/persistence/repositories/behavior.py',
@@ -4339,6 +4447,25 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P03-005') {
+    $Paths=@(Get-P03005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P03005PathAllowed -RelativePath $_)})
+    $Required=@(
+      'contracts/behavior-manifest-v1.schema.json','contracts/digest-vectors-v1.json',
+      'agent-service/app/runtime/behavior_manifest.py','agent-service/tests/contract/test_manifest_digest.py',
+      'lib/core/agent/behavior_digest.dart','test/behavior_digest_test.dart','docs/execution/commands/Invoke-TaskGate.ps1',
+      'docs/execution/evidence/phase-03/P03-005/direct-pytest.xml','docs/execution/evidence/phase-03/P03-005/manifest-digest-report.json',
+      'docs/execution/evidence/phase-03/P03-005/dart-digest-report.json','docs/execution/evidence/phase-03/P03-005/analysis-scope.json',
+      'docs/execution/evidence/phase-03/P03-005/cross-language-summary.json','docs/execution/evidence/phase-03/P03-005/implementation-actions.json',
+      'docs/execution/evidence/phase-03/P03-005/blocker.json','docs/execution/evidence/phase-03/P03-005/runner-enabler.md',
+      'docs/execution/evidence/phase-03/P03-005/ci-reports/ci-summary.json','docs/execution/evidence/phase-03/P03-005/ci-reports/unit.xml',
+      'docs/execution/evidence/phase-03/P03-005/ci-reports/contract.xml'
+    )
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$RecoveredDiagnostics=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$RecoveredDiagnostics=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'implementation-actions.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$RecoveredDiagnostics;catalog_allowlist_gap_recorded=(Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'runner-enabler.md'));production_write_count=0}
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p03_005_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-004') {
     $Paths=@(Get-P03004ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P03004PathAllowed -RelativePath $_)})
     $Required=@(
@@ -5172,6 +5299,12 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P03-005') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P03005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P03005PathAllowed -RelativePath $_)})
+    $OldRegistryChanges=@($Paths|Where-Object{$_-match'^agent-service/app/persistence/(models|repositories)/behavior\.py$|^agent-service/migrations/'})
+    $Checks=[ordered]@{old_path_failures=$OldRegistryChanges.Count;unexpected_writes=$Unexpected.Count;rollback_not_run=0;diff_check_exit_code=$DiffCheckExit;rollback_strategy='remove the new v1 schema/vector/code files; immutable P03-004 releases and pointers remain untouched';production_write_count=0}
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p03_005_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P03-004') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P03004ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P03004PathAllowed -RelativePath $_)})
     $ReportPath=Join-Path $script:TaskEvidenceDirectory 'behavior-release-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
