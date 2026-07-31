@@ -431,6 +431,25 @@ function Install-GeneratedFile {
   }
 }
 
+function Write-TaskBlockerEvidence {
+  param(
+    [Parameter(Mandatory = $true)][string]$ModeValue,
+    [Parameter(Mandatory = $true)][string]$ReasonCode
+  )
+  $BlockerPath = Join-Path $script:TaskEvidenceDirectory 'blocker.json'
+  Write-AtomicJson -LiteralPath $BlockerPath -Value ([ordered]@{
+    schema_version = '1.0'
+    task_id = $TaskId
+    mode = $ModeValue
+    reason_code = $ReasonCode
+    local_provisional = ($ExecutionMode -ceq 'local_provisional')
+    external_approval_or_authority_required = ($ReasonCode -cmatch '^pending_')
+    production_write_count = 0
+    recorded_at = [DateTimeOffset]::Now.ToString('o')
+  })
+  return $BlockerPath.Replace($script:RepositoryRoot + '\', '').Replace('\', '/')
+}
+
 function Resolve-Boot005ToolchainLockPath {
   if ([string]::IsNullOrWhiteSpace($ToolchainLockPath)) {
     if ($TaskId -ceq 'TASK-BOOT-005') {
@@ -1497,7 +1516,8 @@ try {
   if ($Mode -ceq 'Evidence' -and $ExitCode -eq 0) {
     Set-TaskStatus -Status 'ready_for_review' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)
   } elseif ($ExitCode -ne 0 -and $Mode -ne 'BootstrapToolchainRevalidation') {
-    Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath "docs/execution/blockers/boot/BLK-$TaskId-$Mode.md"
+    $BlockerPath = Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode ([string]$Result.reason_code)
+    Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath
   }
   $Result | ConvertTo-Json -Depth 20
   exit $ExitCode

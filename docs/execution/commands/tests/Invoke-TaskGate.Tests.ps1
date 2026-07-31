@@ -44,4 +44,7 @@ $RunnerText = [IO.File]::ReadAllText((Join-Path $Root 'Invoke-TaskGate.ps1'), [T
 if ($RunnerText -notmatch 'foreach \(\$Key in \$Checks\.Keys\)') {
   throw 'negative: BOOT-005 dependency audit must enumerate OrderedDictionary keys'
 }
+if ($RunnerText -notmatch 'function Write-TaskBlockerEvidence') {
+  throw 'negative: blocked task status must reference materialized task evidence'
+}
 exit 0
