@@ -1109,12 +1109,20 @@ function Invoke-ModeSecurity {
       $FullPath = Join-Path $script:RepositoryRoot $PathValue
       if (Test-Path -LiteralPath $FullPath -PathType Leaf) { $ChangedText += [IO.File]::ReadAllText($FullPath, [Text.UTF8Encoding]::new($false)) }
     }
+    $FixtureSecurityPath = Join-Path $script:RepositoryRoot 'test\fixtures\validation\validation_semantics_cases.json'
+    $TestSecurityPath = Join-Path $script:RepositoryRoot 'test\validation_semantics_test.dart'
+    $FixtureSecurityText = if (Test-Path -LiteralPath $FixtureSecurityPath -PathType Leaf) {
+      [IO.File]::ReadAllText($FixtureSecurityPath, [Text.UTF8Encoding]::new($false))
+    } else { '' }
+    $TaskSecurityText = $ChangedText + $FixtureSecurityText + $(if (Test-Path -LiteralPath $TestSecurityPath -PathType Leaf) {
+      [IO.File]::ReadAllText($TestSecurityPath, [Text.UTF8Encoding]::new($false))
+    } else { '' })
     $Checks = [ordered]@{
       no_extra_boundary = (@($Paths | Where-Object { $_ -match '^(lib|agent-service|contracts|supabase)/' }).Count -eq 0)
-      valid_secret_finding_count = [regex]::Matches($ChangedText, '(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
-      pii_canary_leak_count = [regex]::Matches($ChangedText, '[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      valid_secret_finding_count = [regex]::Matches($TaskSecurityText, '(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count = [regex]::Matches($TaskSecurityText, '[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
       unexpected_paths = $Unexpected.Count
-      synthetic_fixture_marker_missing = if ($ChangedText.Contains('"synthetic_only": true')) { 0 } else { 1 }
+      synthetic_fixture_marker_missing = if ($FixtureSecurityText.Contains('"synthetic_only": true')) { 0 } else { 1 }
       production_write_count = 0
     }
     if (-not [bool]$Checks.no_extra_boundary -or [int]$Checks.valid_secret_finding_count -ne 0 -or
