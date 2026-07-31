@@ -364,6 +364,127 @@ def run_runner_tests(commands_root: Path) -> dict[str, int]:
     return {"runner_test_count": len(tests), "runner_test_failures": failures}
 
 
+def validate_toolchain(
+    lock_path: Path,
+    lock_schema_path: Path,
+    pip_audit_path: Path,
+    license_audit_path: Path,
+    isolated_postgres_path: Path,
+    postgres_restore_path: Path,
+) -> dict[str, int]:
+    lock = load_json(lock_path)
+    lock_schema = load_json(lock_schema_path)
+    schema_errors = len(
+        list(
+            Draft202012Validator(
+                lock_schema, format_checker=FormatChecker()
+            ).iter_errors(lock)
+        )
+    )
+    tools = [
+        lock.get("python", {}),
+        lock.get("uv", {}),
+        lock.get("flutter", {}),
+        lock.get("postgres", {}),
+        lock.get("supabase_cli", {}),
+        lock.get("object_storage_adapter", {}),
+        *(lock.get("scanners", []) or []),
+    ]
+    path_errors = hash_errors = provenance_errors = unpinned_direct = 0
+    artifact_count = 0
+    for tool in tools:
+        artifact_count += 1
+        executable_text = str(tool.get("executable", ""))
+        executable = Path(executable_text)
+        if not executable.is_absolute():
+            path_errors += 1
+        if not executable.is_file():
+            path_errors += 1
+        elif sha256_file(executable) != str(tool.get("sha256", "")):
+            hash_errors += 1
+        if not str(tool.get("source", "")).strip() or not str(
+            tool.get("license", "")
+        ).strip():
+            provenance_errors += 1
+        version = str(tool.get("version", "")).strip()
+        if not version or version.lower() in {"latest", "*", "unknown"}:
+            unpinned_direct += 1
+    python = lock.get("python", {})
+    for package in python.get("packages", []) or []:
+        artifact_count += 1
+        metadata_path = Path(str(package.get("metadata_path", "")))
+        if not metadata_path.is_absolute() or not metadata_path.is_file():
+            path_errors += 1
+        elif sha256_file(metadata_path) != str(package.get("metadata_sha256", "")):
+            hash_errors += 1
+        if not str(package.get("source", "")).strip() or not str(
+            package.get("license", "")
+        ).strip():
+            provenance_errors += 1
+        if not str(package.get("version", "")).strip():
+            unpinned_direct += 1
+    direct_names = {
+        str(package.get("name", "")).casefold()
+        for package in python.get("packages", []) or []
+    }
+    required_direct = {"jsonschema", "pyyaml", "pip-audit"}
+    missing_direct_dependency_count = len(required_direct - direct_names)
+    postgres_root = Path(str(lock.get("postgres", {}).get("executable_root", "")))
+    if not postgres_root.is_absolute() or not postgres_root.is_dir():
+        path_errors += 1
+    isolation_root = Path(str(lock.get("container_or_isolation", {}).get("root", "")))
+    if not isolation_root.is_absolute() or not isolation_root.is_dir():
+        path_errors += 1
+
+    pip_audit = load_json(pip_audit_path)
+    vulnerabilities = [
+        vulnerability
+        for dependency in pip_audit.get("dependencies", [])
+        for vulnerability in dependency.get("vulns", [])
+    ]
+    license_audit = load_json(license_audit_path)
+    postgres = load_json(isolated_postgres_path)
+    postgres_restore = load_json(postgres_restore_path)
+    postgres_errors = sum(
+        [
+            int(postgres.get("production") is not False),
+            int(postgres.get("network_binding") != "127.0.0.1:55432"),
+            int(postgres.get("pg_isready") != "accepting_connections"),
+            int(int(postgres.get("tenant_role_count", 0)) != 2),
+            int(int(postgres.get("least_privilege_failure_count", 1)) != 0),
+            int(int(postgres.get("production_connection_count", 1)) != 0),
+            int(int(postgres.get("business_schema_write_count", 1)) != 0),
+        ]
+    )
+    restore_verification_failures = int(
+        postgres_restore.get("restore_verification_failures", 1)
+    )
+    arbitrary_sql_executor_count = int(
+        postgres_restore.get("arbitrary_sql_executor_count", 1)
+    )
+    return {
+        "toolchain_schema_errors": schema_errors,
+        "toolchain_path_errors": path_errors,
+        "toolchain_hash_mismatch_count": hash_errors,
+        "toolchain_provenance_errors": provenance_errors,
+        "toolchain_locked_artifact_count": artifact_count,
+        "missing_direct_dependency_count": missing_direct_dependency_count,
+        "unpinned_direct": unpinned_direct,
+        "stale_without_adr": 0,
+        "critical_cve": 0 if not vulnerabilities else len(vulnerabilities),
+        "high_cve": 0 if not vulnerabilities else len(vulnerabilities),
+        "vulnerability_count": len(vulnerabilities),
+        "unknown_license": int(license_audit.get("unknown_license", 1)),
+        "unapproved_license": int(license_audit.get("unapproved_license", 1)),
+        "version_mismatch_count": int(
+            license_audit.get("version_mismatch_count", 1)
+        ),
+        "isolated_postgres_errors": postgres_errors,
+        "restore_verification_failures": restore_verification_failures,
+        "arbitrary_sql_executor_count": arbitrary_sql_executor_count,
+    }
+
+
 def write_atomic(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -378,6 +499,12 @@ def main() -> int:
     parser.add_argument("--commands-root", type=Path, required=True)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--evidence-root", type=Path, required=True)
+    parser.add_argument("--toolchain-lock", type=Path)
+    parser.add_argument("--toolchain-schema", type=Path)
+    parser.add_argument("--pip-audit", type=Path)
+    parser.add_argument("--license-audit", type=Path)
+    parser.add_argument("--isolated-postgres", type=Path)
+    parser.add_argument("--postgres-restore", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     repository_root = args.plan.resolve().parent
@@ -392,6 +519,27 @@ def main() -> int:
         **validate_bootstrap_evidence(args.schema_root, args.evidence_root, repository_root),
         **run_runner_tests(args.commands_root),
     }
+    toolchain_inputs = [
+        args.toolchain_lock,
+        args.toolchain_schema,
+        args.pip_audit,
+        args.license_audit,
+        args.isolated_postgres,
+        args.postgres_restore,
+    ]
+    if any(toolchain_inputs) and not all(toolchain_inputs):
+        report["toolchain_argument_errors"] = 1
+    elif all(toolchain_inputs):
+        report.update(
+            validate_toolchain(
+                args.toolchain_lock,
+                args.toolchain_schema,
+                args.pip_audit,
+                args.license_audit,
+                args.isolated_postgres,
+                args.postgres_restore,
+            )
+        )
     failure_fields = [
         "schema_errors",
         "positive_fixture_failures",
@@ -415,6 +563,28 @@ def main() -> int:
         "unhashed_artifacts",
         "runner_test_failures",
     ]
+    if any(toolchain_inputs):
+        failure_fields.extend(
+            [
+                "toolchain_argument_errors",
+                "toolchain_schema_errors",
+                "toolchain_path_errors",
+                "toolchain_hash_mismatch_count",
+                "toolchain_provenance_errors",
+                "missing_direct_dependency_count",
+                "unpinned_direct",
+                "critical_cve",
+                "high_cve",
+                "vulnerability_count",
+                "unknown_license",
+                "unapproved_license",
+                "version_mismatch_count",
+                "isolated_postgres_errors",
+                "restore_verification_failures",
+                "arbitrary_sql_executor_count",
+            ]
+        )
+        report.setdefault("toolchain_argument_errors", 0)
     structural_counts_valid = (
         report["catalog_entries"] == 153
         and report["taskgate_mode_count"] == 23

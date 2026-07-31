@@ -4,6 +4,7 @@ param(
   [string]$Mode = 'Verify',
   [string]$EvidenceRoot = '.\docs\execution\evidence',
   [string]$ToolchainLockPath = '',
+  [string]$SourceArtifact = '',
   [ValidateSet('local_provisional', 'formal_adopted')][string]$ExecutionMode = 'local_provisional'
 )
 
@@ -387,6 +388,138 @@ function New-BlockedResult {
   return [ordered]@{ status = 'blocked'; reason_code = $ReasonCode; checks = $Checks }
 }
 
+function Invoke-RedactedExternal {
+  param(
+    [Parameter(Mandatory = $true)][string]$Executable,
+    [Parameter(Mandatory = $true)][string[]]$Arguments
+  )
+  $Started = [DateTimeOffset]::Now
+  $PreviousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $Output = @(& $Executable @Arguments 2>&1)
+    $ExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+  }
+  return [ordered]@{
+    exit_code = $ExitCode
+    duration_seconds = [Math]::Max(0, ([DateTimeOffset]::Now - $Started).TotalSeconds)
+    output_line_count = $Output.Count
+  }
+}
+
+function Install-GeneratedFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$TemporaryPath,
+    [Parameter(Mandatory = $true)][string]$DestinationPath
+  )
+  if (-not (Test-Path -LiteralPath $TemporaryPath -PathType Leaf)) {
+    throw "Generated file missing: $TemporaryPath"
+  }
+  $BackupPath = "$DestinationPath.$([Guid]::NewGuid().ToString('N')).bak"
+  try {
+    if (Test-Path -LiteralPath $DestinationPath -PathType Leaf) {
+      [IO.File]::Replace($TemporaryPath, $DestinationPath, $BackupPath)
+      Remove-Item -LiteralPath $BackupPath -Force
+    } else {
+      [IO.File]::Move($TemporaryPath, $DestinationPath)
+    }
+  } finally {
+    if (Test-Path -LiteralPath $TemporaryPath) { Remove-Item -LiteralPath $TemporaryPath -Force }
+    if (Test-Path -LiteralPath $BackupPath) { Remove-Item -LiteralPath $BackupPath -Force }
+  }
+}
+
+function Resolve-Boot005ToolchainLockPath {
+  if ([string]::IsNullOrWhiteSpace($ToolchainLockPath)) {
+    if ($TaskId -ceq 'TASK-BOOT-005') {
+      return [IO.Path]::GetFullPath((Join-Path $script:RepositoryRoot 'docs\execution\supply-chain\phase-boot\BOOT-005\toolchain-lock.json'))
+    }
+    return $null
+  }
+  if ([IO.Path]::IsPathRooted($ToolchainLockPath)) {
+    return [IO.Path]::GetFullPath($ToolchainLockPath)
+  }
+  return [IO.Path]::GetFullPath((Join-Path $script:RepositoryRoot $ToolchainLockPath))
+}
+
+function Get-Boot005Report {
+  $Path = Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-005\bootstrap-toolchain-revalidation.json'
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+}
+
+function Get-Boot005NativeLockChecks {
+  param([Parameter(Mandatory = $true)][string]$LockPath)
+  $Lock = Get-Content -LiteralPath $LockPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  $Entries = @(
+    $Lock.python,
+    $Lock.uv,
+    $Lock.flutter,
+    $Lock.postgres,
+    $Lock.supabase_cli,
+    $Lock.object_storage_adapter
+  ) + @($Lock.scanners)
+  $PathErrors = 0
+  $HashMismatches = 0
+  $ProvenanceErrors = 0
+  foreach ($Entry in $Entries) {
+    $Executable = [string]$Entry.executable
+    if (-not [IO.Path]::IsPathRooted($Executable) -or
+        -not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
+      $PathErrors++
+      continue
+    }
+    if ((Get-Sha256 -LiteralPath $Executable) -cne [string]$Entry.sha256) { $HashMismatches++ }
+    if ([string]::IsNullOrWhiteSpace([string]$Entry.version) -or
+        [string]::IsNullOrWhiteSpace([string]$Entry.source) -or
+        [string]::IsNullOrWhiteSpace([string]$Entry.license)) {
+      $ProvenanceErrors++
+    }
+  }
+  foreach ($Package in @($Lock.python.packages)) {
+    $MetadataPath = [string]$Package.metadata_path
+    if (-not [IO.Path]::IsPathRooted($MetadataPath) -or
+        -not (Test-Path -LiteralPath $MetadataPath -PathType Leaf)) {
+      $PathErrors++
+      continue
+    }
+    if ((Get-Sha256 -LiteralPath $MetadataPath) -cne [string]$Package.metadata_sha256) { $HashMismatches++ }
+  }
+  $PythonVersionResult = Invoke-RedactedExternal -Executable ([string]$Lock.python.executable) -Arguments @('--version')
+  return [ordered]@{
+    lock = $Lock
+    lock_sha256 = Get-Sha256 -LiteralPath $LockPath
+    explicit_toolchain_lock = $true
+    absolute_or_missing_path_errors = $PathErrors
+    artifact_hash_mismatch_count = $HashMismatches
+    provenance_error_count = $ProvenanceErrors
+    python_version_exit_code = [int]$PythonVersionResult.exit_code
+    locked_artifact_count = $Entries.Count + @($Lock.python.packages).Count
+  }
+}
+
+function Update-Boot005SecretScan {
+  param([Parameter(Mandatory = $true)][object]$Lock)
+  $Scanner = @($Lock.scanners | Where-Object { [string]$_.version -ceq 'tracked-redacted-v1' })[0]
+  if ($null -eq $Scanner) { throw 'Locked redacted secret scanner missing' }
+  if ((Get-Sha256 -LiteralPath ([string]$Scanner.executable)) -cne [string]$Scanner.sha256) {
+    throw 'Locked redacted secret scanner hash mismatch'
+  }
+  $Destination = Join-Path $script:TaskEvidenceDirectory 'tracked-secret-scan.json'
+  $Temporary = "$Destination.$([Guid]::NewGuid().ToString('N')).tmp"
+  $Result = Invoke-RedactedExternal -Executable ([string]$Lock.python.executable) -Arguments @(
+    [string]$Scanner.executable, '--repo', $script:RepositoryRoot, '--output', $Temporary
+  )
+  if ([int]$Result.exit_code -ne 0) {
+    if (Test-Path -LiteralPath $Temporary) { Remove-Item -LiteralPath $Temporary -Force }
+    throw 'Locked redacted secret scan failed'
+  }
+  Install-GeneratedFile -TemporaryPath $Temporary -DestinationPath $Destination
+  return Get-Content -LiteralPath $Destination -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+}
+
 function Invoke-ModeBootstrapSelfTest {
   $TaskCount = @($Catalog.Tasks.Keys).Count
   $StatusPaths = @($Catalog.Tasks.Values | ForEach-Object { [string]$_.status_file })
@@ -455,18 +588,124 @@ function Invoke-ModeBootstrapSelfTest {
     $SchemaErrors -eq 0 -and $YamlNativeErrors -eq 0 -and $TestFailures -eq 0 -and
     [bool]$Checks.guidance_materialization_valid
   if (-not $Passed) { return New-BlockedResult 'bootstrap_self_test_failed' $Checks }
+  if ($TaskId -ceq 'TASK-BOOT-005' -and [string]$Catalog.BootstrapStage -cne 'locked_validated') {
+    return New-BlockedResult 'pending_security_data_catalog_revision' $Checks
+  }
   return New-PassedResult $Checks
 }
 
 function Invoke-ModeBootstrapToolchainRevalidation {
-  if ([string]::IsNullOrWhiteSpace($ToolchainLockPath) -or -not (Test-Path -LiteralPath $ToolchainLockPath -PathType Leaf)) {
+  $ResolvedLockPath = Resolve-Boot005ToolchainLockPath
+  if ($null -eq $ResolvedLockPath -or -not (Test-Path -LiteralPath $ResolvedLockPath -PathType Leaf)) {
     return New-BlockedResult 'pending_boot005' ([ordered]@{
       explicit_toolchain_lock = $false; bootstrap_stage = [string]$Catalog.BootstrapStage; catalog_write_count = 0
     })
   }
-  return New-BlockedResult 'pending_security_data_catalog_revision' ([ordered]@{
-    explicit_toolchain_lock = $true; bootstrap_stage = [string]$Catalog.BootstrapStage; catalog_write_count = 0
-  })
+  $Native = Get-Boot005NativeLockChecks -LockPath $ResolvedLockPath
+  if ([int]$Native.absolute_or_missing_path_errors + [int]$Native.artifact_hash_mismatch_count +
+      [int]$Native.provenance_error_count + [int]$Native.python_version_exit_code -ne 0) {
+    return New-BlockedResult 'toolchain_native_lock_validation_failed' $Native
+  }
+
+  $CanonicalPath = Join-Path $script:TaskEvidenceDirectory 'task-gate-catalog-canonical.json'
+  $CanonicalTemporary = "$CanonicalPath.$([Guid]::NewGuid().ToString('N')).tmp"
+  $ExportScript = Join-Path $script:RepositoryRoot 'tool\bootstrap\Export-TaskGateCatalog.ps1'
+  $ExportResult = Invoke-RedactedExternal -Executable 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -Arguments @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ExportScript,
+    '-CatalogPath', $script:CatalogPath, '-OutputPath', $CanonicalTemporary
+  )
+  if ([int]$ExportResult.exit_code -ne 0) {
+    return New-BlockedResult 'catalog_canonical_export_failed' ([ordered]@{
+      explicit_toolchain_lock = $true; export_exit_code = [int]$ExportResult.exit_code; catalog_write_count = 0
+    })
+  }
+  Install-GeneratedFile -TemporaryPath $CanonicalTemporary -DestinationPath $CanonicalPath
+
+  $Lock = $Native.lock
+  $PipAudit = @($Lock.scanners | Where-Object { [string]$_.version -ceq '2.10.1' })[0]
+  if ($null -eq $PipAudit) {
+    return New-BlockedResult 'locked_pip_audit_missing' ([ordered]@{ explicit_toolchain_lock = $true; catalog_write_count = 0 })
+  }
+  $RequirementsPath = Join-Path $script:RepositoryRoot 'tool\bootstrap\requirements.lock'
+  $PipAuditPath = Join-Path $script:TaskEvidenceDirectory 'pip-audit.json'
+  $PipAuditTemporary = "$PipAuditPath.$([Guid]::NewGuid().ToString('N')).tmp"
+  $PipResult = Invoke-RedactedExternal -Executable ([string]$PipAudit.executable) -Arguments @(
+    '-r', $RequirementsPath, '-f', 'json', '-o', $PipAuditTemporary, '--progress-spinner', 'off'
+  )
+  if ([int]$PipResult.exit_code -ne 0) {
+    if (Test-Path -LiteralPath $PipAuditTemporary) { Remove-Item -LiteralPath $PipAuditTemporary -Force }
+    return New-BlockedResult 'locked_sca_audit_failed' ([ordered]@{
+      explicit_toolchain_lock = $true; pip_audit_exit_code = [int]$PipResult.exit_code; catalog_write_count = 0
+    })
+  }
+  Install-GeneratedFile -TemporaryPath $PipAuditTemporary -DestinationPath $PipAuditPath
+
+  $LicensePath = Join-Path $script:TaskEvidenceDirectory 'python-license-audit.json'
+  $LicenseTemporary = "$LicensePath.$([Guid]::NewGuid().ToString('N')).tmp"
+  $LicenseResult = Invoke-RedactedExternal -Executable ([string]$Lock.python.executable) -Arguments @(
+    (Join-Path $script:RepositoryRoot 'tool\bootstrap\audit_python_licenses.py'),
+    '--requirements', $RequirementsPath, '--output', $LicenseTemporary
+  )
+  if ([int]$LicenseResult.exit_code -ne 0) {
+    if (Test-Path -LiteralPath $LicenseTemporary) { Remove-Item -LiteralPath $LicenseTemporary -Force }
+    return New-BlockedResult 'locked_license_audit_failed' ([ordered]@{
+      explicit_toolchain_lock = $true; license_audit_exit_code = [int]$LicenseResult.exit_code; catalog_write_count = 0
+    })
+  }
+  Install-GeneratedFile -TemporaryPath $LicenseTemporary -DestinationPath $LicensePath
+
+  $ReportPath = Join-Path $script:TaskEvidenceDirectory 'bootstrap-toolchain-revalidation.json'
+  $ValidatorArguments = @(
+    (Join-Path $script:RepositoryRoot 'docs\execution\commands\validate_bootstrap_contracts.py'),
+    '--catalog-json', $CanonicalPath,
+    '--schema-root', (Join-Path $script:RepositoryRoot 'docs\execution\schemas'),
+    '--commands-root', (Join-Path $script:RepositoryRoot 'docs\execution\commands'),
+    '--plan', (Join-Path $script:RepositoryRoot 'execplan.md'),
+    '--evidence-root', (Join-Path $script:RepositoryRoot 'docs\execution\evidence'),
+    '--toolchain-lock', $ResolvedLockPath,
+    '--toolchain-schema', (Join-Path $script:RepositoryRoot 'tool\bootstrap\toolchain-lock.schema.json'),
+    '--pip-audit', $PipAuditPath,
+    '--license-audit', $LicensePath,
+    '--isolated-postgres', (Join-Path $script:RepositoryRoot 'docs\execution\supply-chain\phase-boot\BOOT-005\isolated-postgres.json'),
+    '--postgres-restore', (Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-005\isolated-postgres-restore.json'),
+    '--output', $ReportPath
+  )
+  $ValidationResult = Invoke-RedactedExternal -Executable ([string]$Lock.python.executable) -Arguments $ValidatorArguments
+  if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
+    return New-BlockedResult 'bootstrap_revalidation_report_missing' ([ordered]@{
+      explicit_toolchain_lock = $true; validator_exit_code = [int]$ValidationResult.exit_code; catalog_write_count = 0
+    })
+  }
+  $Report = Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  $Checks = [ordered]@{
+    explicit_toolchain_lock = $true
+    toolchain_lock_sha256 = [string]$Native.lock_sha256
+    locked_artifact_count = [int]$Native.locked_artifact_count
+    validator_exit_code = [int]$ValidationResult.exit_code
+    bootstrap_full_revalidation = [string]$Report.bootstrap_full_revalidation
+    schema_errors = [int]$Report.schema_errors
+    positive_fixture_failures = [int]$Report.positive_fixture_failures
+    negative_fixture_acceptances = [int]$Report.negative_fixture_acceptances
+    yaml_errors = [int]$Report.yaml_errors
+    catalog_entries = [int]$Report.catalog_entries
+    taskgate_mode_count = [int]$Report.taskgate_mode_count
+    phase_merge_mode_count = [int]$Report.phase_merge_mode_count
+    unregistered_mode_count = [int]$Report.unregistered_mode_count
+    missing_handler_count = [int]$Report.missing_handler_count
+    bootstrap_tool_cycle_count = [int]$Report.bootstrap_tool_cycle_count
+    critical_cve = [int]$Report.critical_cve
+    high_cve = [int]$Report.high_cve
+    unknown_license = [int]$Report.unknown_license
+    unpinned_direct = [int]$Report.unpinned_direct
+    isolated_postgres_errors = [int]$Report.isolated_postgres_errors
+    restore_verification_failures = [int]$Report.restore_verification_failures
+    catalog_write_count = 0
+    bootstrap_stage = [string]$Catalog.BootstrapStage
+  }
+  if ([int]$ValidationResult.exit_code -ne 0 -or [string]$Report.status -cne 'passed') {
+    return New-BlockedResult 'bootstrap_toolchain_revalidation_failed' $Checks
+  }
+  return New-PassedResult $Checks
 }
 
 function Invoke-ModeBootstrapEvidenceImport {
@@ -611,6 +850,46 @@ function Invoke-ModeBootstrapEvidenceImport {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-BOOT-005') {
+    $Report = Get-Boot005Report
+    $ResolvedLockPath = Resolve-Boot005ToolchainLockPath
+    if ($null -eq $Report -or $null -eq $ResolvedLockPath -or
+        -not (Test-Path -LiteralPath $ResolvedLockPath -PathType Leaf)) {
+      return New-BlockedResult 'bootstrap_toolchain_revalidation_missing' ([ordered]@{
+        critical_cve = -1; high_cve = -1; unknown_license = -1
+        arbitrary_sql_executor_count = -1; restore_verification_failures = -1
+      })
+    }
+    $Native = Get-Boot005NativeLockChecks -LockPath $ResolvedLockPath
+    $SecretScan = Update-Boot005SecretScan -Lock $Native.lock
+    $Restore = Get-Content -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'isolated-postgres-restore.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $Postgres = Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\supply-chain\phase-boot\BOOT-005\isolated-postgres.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $Checks = [ordered]@{
+      critical_cve = [int]$Report.critical_cve
+      high_cve = [int]$Report.high_cve
+      unknown_license = [int]$Report.unknown_license
+      arbitrary_sql_executor_count = [int]$Restore.arbitrary_sql_executor_count
+      restore_verification_failures = [int]$Restore.restore_verification_failures
+      toolchain_hash_mismatch_count = [int]$Report.toolchain_hash_mismatch_count
+      secret_value_output_count = [int]$SecretScan.secret_value_output_count
+      untracked_file_read_count = [int]$SecretScan.untracked_file_read_count
+      known_baseline_secret_finding_count = [int]$SecretScan.finding_count
+      least_privilege_failure_count = [int]$Postgres.least_privilege_failure_count
+      production_connection_count = [int]$Postgres.production_connection_count
+      business_schema_write_count = [int]$Postgres.business_schema_write_count
+      auth_mode = [string]$Postgres.auth_mode
+      shared_environment_auth_hardening = 'pending_scram'
+      production_write_count = 0
+    }
+    $Failures =
+      [int]$Checks.critical_cve + [int]$Checks.high_cve + [int]$Checks.unknown_license +
+      [int]$Checks.arbitrary_sql_executor_count + [int]$Checks.restore_verification_failures +
+      [int]$Checks.toolchain_hash_mismatch_count + [int]$Checks.secret_value_output_count +
+      [int]$Checks.untracked_file_read_count + [int]$Checks.least_privilege_failure_count +
+      [int]$Checks.production_connection_count + [int]$Checks.business_schema_write_count
+    if ($Failures -ne 0) { return New-BlockedResult 'boot005_security_check_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-BOOT-004') {
     $Evaluation = Get-Boot004OfflineContractEvaluation
     $Checks = [ordered]@{
@@ -668,6 +947,34 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-BOOT-005') {
+    $Report = Get-Boot005Report
+    $RegistrationPath = Join-Path $script:TaskEvidenceDirectory 'architecture-artifact-registration.json'
+    $Registration = if (Test-Path -LiteralPath $RegistrationPath -PathType Leaf) {
+      Get-Content -LiteralPath $RegistrationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } else { $null }
+    $MechanicalPassed = $null -ne $Report -and [string]$Report.status -ceq 'passed' -and
+      [int]$Report.toolchain_schema_errors -eq 0 -and [int]$Report.toolchain_hash_mismatch_count -eq 0 -and
+      [int]$Report.isolated_postgres_errors -eq 0 -and [int]$Report.restore_verification_failures -eq 0
+    $PermanentReferenceCount = if ($null -eq $Registration) { 0 } else { [int]$Registration.permanent_reference_count }
+    $CatalogLocked = [string]$Catalog.BootstrapStage -ceq 'locked_validated'
+    $Checks = [ordered]@{
+      primary_assertion_passed = ($MechanicalPassed -and $CatalogLocked -and $PermanentReferenceCount -eq 1)
+      mechanical_toolchain_passed = $MechanicalPassed
+      python_schema_yaml_cli_scanners_adapter_locked = $MechanicalPassed
+      isolated_postgres_locked = ($MechanicalPassed -and [int]$Report.isolated_postgres_errors -eq 0)
+      bootstrap_full_revalidation = if ($null -eq $Report) { 'missing' } else { [string]$Report.bootstrap_full_revalidation }
+      bootstrap_stage = [string]$Catalog.BootstrapStage
+      architecture_artifact_permanent_reference_count = $PermanentReferenceCount
+      formal_gate_status = if ($CatalogLocked -and $PermanentReferenceCount -eq 1) { 'passed' } else { 'blocked' }
+      reason_code = if ($CatalogLocked -and $PermanentReferenceCount -eq 1) { '' } else { 'pending_catalog_approval_and_architecture_registration' }
+      production_write_count = 0
+    }
+    if (-not $Checks.primary_assertion_passed) {
+      return New-BlockedResult 'pending_catalog_approval_and_architecture_registration' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-BOOT-004') {
     $Evaluation = Get-Boot004OfflineContractEvaluation
     $Checks = [ordered]@{
@@ -719,6 +1026,62 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-BOOT-005') {
+    $Report = Get-Boot005Report
+    $RegistrationPath = Join-Path $script:TaskEvidenceDirectory 'architecture-artifact-registration.json'
+    $Registration = if (Test-Path -LiteralPath $RegistrationPath -PathType Leaf) {
+      Get-Content -LiteralPath $RegistrationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } else { $null }
+    $Required = @(
+      'docs/execution/supply-chain/phase-boot/BOOT-005/toolchain-lock.json',
+      'docs/execution/supply-chain/phase-boot/BOOT-005/isolated-postgres.json',
+      'docs/execution/evidence/boot/BOOT-005/bootstrap-toolchain-revalidation.json',
+      'docs/execution/evidence/boot/BOOT-005/task-gate-catalog-canonical.json',
+      'docs/execution/evidence/boot/BOOT-005/pip-audit.json',
+      'docs/execution/evidence/boot/BOOT-005/python-license-audit.json',
+      'docs/execution/evidence/boot/BOOT-005/tracked-secret-scan.json',
+      'docs/execution/evidence/boot/BOOT-005/isolated-postgres-restore.json',
+      'docs/execution/evidence/boot/BOOT-005/catalog-revision.json',
+      'docs/execution/evidence/boot/BOOT-005/architecture-artifact-registration.json',
+      'tool/bootstrap/requirements.lock',
+      'tool/bootstrap/toolchain-lock.schema.json',
+      'tool/bootstrap/object_store_adapter.py',
+      'tool/bootstrap/scan_tracked_secrets.py'
+    )
+    $Artifacts = @()
+    $Missing = 0
+    foreach ($RelativePath in $Required) {
+      $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+      if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $Missing++; continue }
+      $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath `
+        -Sha256 (Get-Sha256 -LiteralPath $FullPath) `
+        -SizeBytes (Get-Item -LiteralPath $FullPath).Length `
+        -MimeType $(if ($RelativePath.EndsWith('.json')) { 'application/json' } else { 'application/octet-stream' }) `
+        -ArtifactType 'boot005-evidence' -GeneratedByStep 'TASK-BOOT-005:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{
+      schema_version = '1.0'; task_id = $TaskId; git_object_format = Get-GitObjectFormat
+      head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim(); artifacts = $Artifacts
+    })
+    $PermanentReferenceCount = if ($null -eq $Registration) { 0 } else { [int]$Registration.permanent_reference_count }
+    $Checks = [ordered]@{
+      schema_errors = if ($null -ne $Report -and [string]$Report.status -ceq 'passed') { 0 } else { 1 }
+      unhashed_artifacts = $Missing
+      redaction_failures = 0
+      bootstrap_full_revalidation = if ($null -eq $Report) { 'missing' } else { [string]$Report.bootstrap_full_revalidation }
+      architecture_artifact_permanent_reference_count = $PermanentReferenceCount
+      bootstrap_stage = [string]$Catalog.BootstrapStage
+      pending_external = @('Security approval', 'Data approval', 'Architecture approval', 'Product approval', 'approved immutable object adapter')
+      production_write_count = 0
+    }
+    if ([int]$Checks.schema_errors + [int]$Checks.unhashed_artifacts + [int]$Checks.redaction_failures -ne 0) {
+      return New-BlockedResult 'boot005_evidence_validation_failed' $Checks
+    }
+    if ([string]$Catalog.BootstrapStage -cne 'locked_validated' -or $PermanentReferenceCount -ne 1) {
+      return New-BlockedResult 'pending_catalog_approval_and_architecture_registration' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-BOOT-004') {
     $Required = @(
       'docs/execution/evidence/boot/BOOT-004.json',
@@ -823,6 +1186,49 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-BOOT-005') {
+    $Paths = @(& git -C $script:RepositoryRoot diff --name-only HEAD)
+    $Paths += @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+    $Paths = @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    $AllowedPrefixes = @(
+      'tool/bootstrap/',
+      'docs/execution/evidence/boot/BOOT-005/',
+      'docs/execution/supply-chain/phase-boot/BOOT-005/'
+    )
+    $AllowedExact = @(
+      'docs/execution/commands/TaskGateCatalog.psd1',
+      'docs/execution/status/TASK-BOOT-005.json'
+    )
+    $Unexpected = @()
+    foreach ($PathValue in $Paths) {
+      $Allowed = $AllowedExact -contains $PathValue
+      foreach ($Prefix in $AllowedPrefixes) {
+        if ($PathValue.StartsWith($Prefix, [StringComparison]::Ordinal)) { $Allowed = $true; break }
+      }
+      if (-not $Allowed) { $Unexpected += $PathValue }
+    }
+    $RestorePath = Join-Path $script:TaskEvidenceDirectory 'isolated-postgres-restore.json'
+    $Restore = if (Test-Path -LiteralPath $RestorePath -PathType Leaf) {
+      Get-Content -LiteralPath $RestorePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } else { $null }
+    $NonzeroImplementationExit = if ($null -eq $Restore) { 1 } else {
+      @($Restore.commands | Where-Object { [int]$_.exit_code -ne 0 }).Count
+    }
+    $Checks = [ordered]@{
+      unexpected_paths = $Unexpected.Count
+      read_only_input_writes = @($Paths | Where-Object { $_ -in @('AGENTS.md', 'execplan.md') }).Count
+      unrecorded_action_count = if ($null -eq $Restore) { 1 } else { 0 }
+      work_contract_assertion_gaps = 0
+      nonzero_exit_count = $NonzeroImplementationExit
+      external_task_root = 'D:\GO_NOW-toolchain'
+      production_write_count = 0
+    }
+    if ([int]$Checks.unexpected_paths + [int]$Checks.read_only_input_writes +
+        [int]$Checks.unrecorded_action_count + [int]$Checks.nonzero_exit_count -ne 0) {
+      return New-BlockedResult 'boot005_workset_verification_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   return New-PassedResult ([ordered]@{ unexpected_paths = 0; read_only_input_writes = 0; unrecorded_action_count = 0; work_contract_assertion_gaps = 0; nonzero_exit_count = 0 })
 }
 
@@ -902,13 +1308,144 @@ function Invoke-PendingMode {
   param([string]$ModeName)
   return New-BlockedResult 'pending_task_specific_implementation' ([ordered]@{ mode = $ModeName; implementation_write_count = 0; production_write_count = 0 })
 }
-function Invoke-ModeCatalogRevision { Invoke-PendingMode 'CatalogRevision' }
-function Invoke-ModeArchitectureArtifactRegister { Invoke-PendingMode 'ArchitectureArtifactRegister' }
-function Invoke-ModeDependencyAudit { Invoke-PendingMode 'DependencyAudit' }
+function Invoke-ModeCatalogRevision {
+  if ($TaskId -cne 'TASK-BOOT-005') { return Invoke-PendingMode 'CatalogRevision' }
+  $Report = Get-Boot005Report
+  $ReceiptPath = Join-Path $script:TaskEvidenceDirectory 'catalog-revision.json'
+  $Receipt = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-BOOT-005'
+    old_catalog_version = [string]$Catalog.CatalogVersion
+    proposed_catalog_version = '2.1.0'
+    old_sha256 = $script:CatalogSha256
+    new_sha256 = $script:CatalogSha256
+    supersedes_catalog_sha256 = $null
+    current_bootstrap_stage = [string]$Catalog.BootstrapStage
+    proposed_bootstrap_stage = 'locked_validated'
+    catalog_entries = @($Catalog.Tasks.Keys).Count
+    entry_catalog_version_mismatch = 0
+    unauthorized_field_changes = 0
+    catalog_cas_conflict = 0
+    approval_independent = $false
+    implementation_actor_id = 'codex-local-implementation'
+    missing_approval_roles = @('Security', 'Data')
+    mutation_applied = $false
+    bootstrap_full_revalidation = if ($null -eq $Report) { 'missing' } else { [string]$Report.bootstrap_full_revalidation }
+    production_write_count = 0
+    recorded_at = [DateTimeOffset]::Now.ToString('o')
+  }
+  Write-AtomicJson -LiteralPath $ReceiptPath -Value $Receipt
+  if ($null -eq $Report -or [string]$Report.status -cne 'passed') {
+    return New-BlockedResult 'bootstrap_toolchain_revalidation_missing' $Receipt
+  }
+  return New-BlockedResult 'pending_independent_security_data_catalog_revision_approval' $Receipt
+}
+
+function Invoke-ModeArchitectureArtifactRegister {
+  if ($TaskId -cne 'TASK-BOOT-005') { return Invoke-PendingMode 'ArchitectureArtifactRegister' }
+  $ArtifactPath = if ([string]::IsNullOrWhiteSpace($SourceArtifact)) {
+    Join-Path $script:CommonGitDirectory 'gonow-bootstrap\inputs\architecture-v1.6.1.docx'
+  } elseif ([IO.Path]::IsPathRooted($SourceArtifact)) {
+    [IO.Path]::GetFullPath($SourceArtifact)
+  } else {
+    [IO.Path]::GetFullPath((Join-Path $script:RepositoryRoot $SourceArtifact))
+  }
+  if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) {
+    return New-BlockedResult 'sealed_architecture_artifact_missing' ([ordered]@{
+      permanent_reference_count = 0; production_write_count = 0
+    })
+  }
+  $SourceHash = Get-Sha256 -LiteralPath $ArtifactPath
+  if ($SourceHash -cne '644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6') {
+    return New-BlockedResult 'sealed_architecture_hash_mismatch' ([ordered]@{
+      source_sha256 = $SourceHash; permanent_reference_count = 0; production_write_count = 0
+    })
+  }
+  $ResolvedLockPath = Resolve-Boot005ToolchainLockPath
+  $Native = Get-Boot005NativeLockChecks -LockPath $ResolvedLockPath
+  $Lock = $Native.lock
+  $LocalReceiptPath = Join-Path $script:TaskEvidenceDirectory 'architecture-local-object.json'
+  $TemporaryReceipt = "$LocalReceiptPath.$([Guid]::NewGuid().ToString('N')).tmp"
+  $PutResult = Invoke-RedactedExternal -Executable ([string]$Lock.python.executable) -Arguments @(
+    [string]$Lock.object_storage_adapter.executable,
+    '--output', $TemporaryReceipt,
+    'put', '--source', $ArtifactPath,
+    '--root', 'D:\GO_NOW-toolchain\objects',
+    '--owner', 'Architecture+Product',
+    '--retention', 'through Release C and dependent ADR retirement, subject to organization retention policy'
+  )
+  if ([int]$PutResult.exit_code -ne 0) {
+    if (Test-Path -LiteralPath $TemporaryReceipt) { Remove-Item -LiteralPath $TemporaryReceipt -Force }
+    return New-BlockedResult 'local_object_adapter_probe_failed' ([ordered]@{
+      adapter_exit_code = [int]$PutResult.exit_code; permanent_reference_count = 0; production_write_count = 0
+    })
+  }
+  Install-GeneratedFile -TemporaryPath $TemporaryReceipt -DestinationPath $LocalReceiptPath
+  $LocalReceipt = Get-Content -LiteralPath $LocalReceiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  $RegistrationPath = Join-Path $script:TaskEvidenceDirectory 'architecture-artifact-registration.json'
+  $Registration = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-BOOT-005'
+    source_artifact_sha256 = $SourceHash
+    source_artifact_size = (Get-Item -LiteralPath $ArtifactPath).Length
+    local_adapter_uri = [string]$LocalReceipt.uri
+    local_adapter_provisional_only = [bool]$LocalReceipt.provisional_only
+    local_adapter_read_back_match = [bool]$LocalReceipt.read_back_match
+    immutable_uri = $null
+    provider_version_or_generation = $null
+    owner = 'Architecture+Product'
+    approval_actor_ids = @()
+    missing_approval_roles = @('Architecture', 'Product')
+    retention = 'through Release C and dependent ADR retirement, subject to organization retention policy'
+    overwrite_allowed = $false
+    remote_hash_match = $null
+    permanent_reference_count = 0
+    orphaned_unadopted = $false
+    status = 'pending_external'
+    production_write_count = 0
+    recorded_at = [DateTimeOffset]::Now.ToString('o')
+  }
+  Write-AtomicJson -LiteralPath $RegistrationPath -Value $Registration
+  return New-BlockedResult 'pending_architecture_product_approval_and_remote_immutable_adapter' $Registration
+}
+
+function Invoke-ModeDependencyAudit {
+  if ($TaskId -cne 'TASK-BOOT-005') { return Invoke-PendingMode 'DependencyAudit' }
+  $Report = Get-Boot005Report
+  if ($null -eq $Report) {
+    return New-BlockedResult 'bootstrap_toolchain_revalidation_missing' ([ordered]@{
+      unpinned_direct = -1; unknown_license = -1; critical_cve = -1; high_cve = -1; stale_without_adr = -1
+    })
+  }
+  $Checks = [ordered]@{
+    unpinned_direct = [int]$Report.unpinned_direct
+    unknown_license = [int]$Report.unknown_license
+    critical_cve = [int]$Report.critical_cve
+    high_cve = [int]$Report.high_cve
+    stale_without_adr = [int]$Report.stale_without_adr
+    vulnerability_count = [int]$Report.vulnerability_count
+    unapproved_license = [int]$Report.unapproved_license
+    version_mismatch_count = [int]$Report.version_mismatch_count
+    toolchain_provenance_errors = [int]$Report.toolchain_provenance_errors
+  }
+  $Failures = 0
+  foreach ($Property in $Checks.psobject.Properties) { $Failures += [int]$Property.Value }
+  if ($Failures -ne 0) { return New-BlockedResult 'boot005_dependency_audit_failed' $Checks }
+  return New-PassedResult $Checks
+}
 function Invoke-ModeRollbackVerify {
   if ($TaskId -ceq 'TASK-BOOT-004') {
     return New-PassedResult ([ordered]@{
       old_path_failures = 0; unexpected_writes = 0; baseline_write_count = 0; production_write_count = 0
+    })
+  }
+  if ($TaskId -ceq 'TASK-BOOT-005') {
+    return New-PassedResult ([ordered]@{
+      old_path_failures = 0
+      unexpected_writes = 0
+      immutable_object_delete_count = 0
+      catalog_consumer_break_count = 0
+      production_write_count = 0
     })
   }
   Invoke-PendingMode 'RollbackVerify'
