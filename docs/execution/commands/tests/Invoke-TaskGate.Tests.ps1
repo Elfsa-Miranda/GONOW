@@ -80,4 +80,13 @@ if ($RunnerText -notmatch "TASK-P01-003" -or $RunnerText -notmatch 'orphan_contr
 if ($RunnerText -notmatch 'DependencyStatus\.status -ceq ''accepted'' -and \[bool\]\$DependencyStatus\.reviewer_independent') {
   throw 'negative: formal task dependencies must be independently accepted'
 }
+if ($RunnerText -notmatch 'function Get-P01LocalProjection' -or
+    $RunnerText -notmatch 'function Get-P01GateModeState' -or
+    $RunnerText -notmatch 'Write-P01LocalProjectionEvidence -ReadyForReview \$true') {
+  throw 'negative: P01-990 must bind a complete local projection before Phase 2 entry'
+}
+if ($RunnerText -notmatch "TASK-P01-089" -or
+    $RunnerText -notmatch "Phase 1 freezes contract/schema semantics and owns no implemented harness transition") {
+  throw 'negative: P01-089 must archive its handoff without fabricating harness implementation'
+}
 exit 0
