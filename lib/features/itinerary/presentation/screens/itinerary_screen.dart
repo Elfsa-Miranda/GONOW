@@ -15,6 +15,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:gonow/core/config/agent_feature_flags.dart';
 import 'package:gonow/core/constants/ai_config.dart';
 import 'package:gonow/core/constants/amap_config.dart';
 import 'package:gonow/features/common/presentation/widgets/full_screen_photo_gallery.dart';
@@ -28,7 +29,9 @@ import 'package:url_launcher/url_launcher.dart';
 enum _MapSource { amap, google }
 
 class ItineraryScreen extends StatefulWidget {
-  const ItineraryScreen({super.key});
+  const ItineraryScreen({super.key, this.onOpenAgentPlanning});
+
+  final VoidCallback? onOpenAgentPlanning;
 
   @override
   State<ItineraryScreen> createState() => _ItineraryScreenState();
@@ -249,6 +252,21 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     _fetchAllRoutesAndSync(model);
   }
 
+  void _openPlanningEntry(
+    BuildContext context,
+    ItineraryProvider provider,
+  ) {
+    final AgentRouteDecision decision = provider.selectAgentRoute(
+      AgentEntryKind.itineraryPlanning,
+      agentRouteAvailable: widget.onOpenAgentPlanning != null,
+    );
+    if (decision.route == AgentPlanningRoute.agent) {
+      widget.onOpenAgentPlanning!();
+      return;
+    }
+    context.read<MainNavProvider>().setTab(0);
+  }
+
   Future<void> _loadAmapArrowTexture() async {
     try {
       // 预热常见天数的纹理缓存；其余天数按需懒加载。
@@ -354,6 +372,10 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         final ItineraryModel? activeTrip =
             itineraryProvider.activeItinerary ?? itineraryProvider.currentItinerary;
         if (activeTrip == null) {
+          final AgentRouteDecision planningRoute = provider.previewAgentRoute(
+            AgentEntryKind.itineraryPlanning,
+            agentRouteAvailable: widget.onOpenAgentPlanning != null,
+          );
           return Scaffold(
             backgroundColor: Colors.white,
             body: Center(
@@ -367,9 +389,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                     style: TextStyle(color: Colors.grey),
                   ),
                   TextButton(
-                    onPressed: () =>
-                        Provider.of<MainNavProvider>(context, listen: false).setTab(0),
-                    child: const Text('去“发现”页选一个吧'),
+                    onPressed: () => _openPlanningEntry(context, provider),
+                    child: Text(
+                      planningRoute.route == AgentPlanningRoute.agent
+                          ? '使用 Agent 规划行程'
+                          : '去“发现”页选一个吧',
+                    ),
                   ),
                 ],
               ),
