@@ -126,7 +126,7 @@ if ($RunnerText -notmatch 'Get-P09006GateModeState' -or
     $RunnerText -notmatch 'itinerary_effect_count' -or
     $RunnerText -notmatch 'outbox_effect_count' -or
     $RunnerText -notmatch 'no_extra_boundary' -or
-    $RunnerText -notmatch 'BLK-P09-003-production-itinerary-mapping-unknown.md' -or
+    $RunnerText -notmatch 'BLK-P09-006-production-itinerary-mapping-unknown.md' -or
     $RunnerText -notmatch 'p09_006_security_failed' -or
     $RunnerText -notmatch 'p09_006_rollback_verification_failed') {
   throw 'negative: P09-006 must own its implementation paths, direct JUnit materialization, exact rejection/effect counts, fail-closed production mapping blocker, security, and rollback gates'
