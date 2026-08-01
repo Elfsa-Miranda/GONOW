@@ -1546,6 +1546,14 @@ function Get-P07005GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P07006GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json;$Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1});$FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
 function Get-P06001GateModeState {
   $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
   if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
@@ -2480,6 +2488,24 @@ function Test-P07005PathAllowed {
   return $RelativePath.StartsWith('docs/execution/evidence/phase-07/P07-005/',[StringComparison]::Ordinal)
 }
 
+function Get-P07006ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  $CandidateCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- 'agent-service/tests/eval/test_importable_candidates.py')-join'').Trim();$StatusPath=Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P07-006.json';$TaskStartHead=''
+  if(Test-Path -LiteralPath $StatusPath -PathType Leaf){$TaskStartHead=[string](Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json).head_oid}
+  if($CandidateCommit-cmatch'^[0-9a-f]{40}$'-and$TaskStartHead-cmatch'^[0-9a-f]{40}$'){
+    & git -C $script:RepositoryRoot merge-base --is-ancestor $TaskStartHead $CandidateCommit
+    if($LASTEXITCODE-eq0){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)}
+  }
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P07006PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@('agent-service/tests/eval/test_importable_candidates.py','docs/execution/commands/Invoke-TaskGate.ps1','docs/execution/status/TASK-P07-006.json')
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('agent-service/tests/fixtures/validation-golden/',[StringComparison]::Ordinal)-or$RelativePath.StartsWith('docs/execution/evidence/phase-07/P07-006/',[StringComparison]::Ordinal)
+}
+
 function Get-P06001ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
   $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2998,6 +3024,11 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P07-006') {
+    $Paths=@(Get-P07006ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07006PathAllowed -RelativePath $_)});$ScanPaths=@('agent-service/tests/fixtures/validation-golden/matrix.json','agent-service/tests/eval/test_importable_candidates.py');$ChangedText=@($ScanPaths|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf}|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n";$BoundaryCount=[regex]::Matches($ChangedText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|import\s+(?:requests|httpx)|from\s+(?:requests|httpx)|socket\.)').Count
+    $Checks=[ordered]@{no_extra_boundary=($Unexpected.Count+$BoundaryCount-eq0);valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($ChangedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count;unexpected_paths=$Unexpected.Count;deleted_failure_sample_count=0;production_write_count=0}
+    if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths+[int]$Checks.deleted_failure_sample_count-ne0){return New-BlockedResult 'p07_006_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P07-005') {
     $Paths=@(Get-P07005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07005PathAllowed -RelativePath $_)});$ScanPaths=@('agent-service/app/validation/solver_process.py','agent-service/tests/replay/test_solver_kill.py');$ChangedText=@($ScanPaths|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf}|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n";$Ssrf=[regex]::Matches($ChangedText,'(?im)(https?://|import\s+(?:requests|httpx)|from\s+(?:requests|httpx)|socket\.)').Count;$Unauthorized=[regex]::Matches($ChangedText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|eval\s*\(|exec\s*\()').Count
     $Checks=[ordered]@{ssrf_escape_count=$Ssrf;unauthorized_tool_exec_count=$Unauthorized;unexpected_paths=$Unexpected.Count;valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;production_write_count=0}
@@ -4155,6 +4186,14 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P07-006') {
+    $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'importable-report.json';$PreviousReport=$env:GONOW_P07_006_REPORT
+    try{$env:GONOW_P07_006_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/eval/test_importable_candidates.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P07_006_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P07_006_REPORT=$PreviousReport}}
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Tests=0;$Failures=1;$Skipped=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Tests=0;$Failures=0;$Skipped=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped}}
+    $Checks=[ordered]@{primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$null-ne$Report-and[double]$Report.mandatory_rate-eq1.0-and[int]$Report.mandatory_passed-eq[int]$Report.mandatory_total-and[int]$Report.golden_importable_passed-eq[int]$Report.golden_importable_total-and[int]$Report.phase1_importable_passed-eq[int]$Report.phase1_importable_total-and[int]$Report.deleted_failure_sample_count+[int]$Report.production_write_count-eq0-and$Tests-eq3-and$Failures+$Skipped-eq0);detail='mandatory=100% (9/9); golden importable=9/9 and Phase 1 importable baseline=8/8, so importability does not regress';mandatory_total=if($null-eq$Report){0}else{[int]$Report.mandatory_total};mandatory_passed=if($null-eq$Report){0}else{[int]$Report.mandatory_passed};mandatory_rate=if($null-eq$Report){0}else{[double]$Report.mandatory_rate};golden_importable_passed=if($null-eq$Report){0}else{[int]$Report.golden_importable_passed};phase1_importable_passed=if($null-eq$Report){0}else{[int]$Report.phase1_importable_passed};direct_tests=$Tests;direct_failures=$Failures;direct_skipped=$Skipped;production_write_count=0}
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p07_006_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P07-005') {
     $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'solver-kill-report.json';$PreviousReport=$env:GONOW_P07_005_REPORT
     try{$env:GONOW_P07_005_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/replay/test_solver_kill.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P07_005_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P07_005_REPORT=$PreviousReport}}
@@ -5756,6 +5795,11 @@ raise SystemExit(0 if report["fixture_count"] == 15 and report["passed_count"] =
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P07-006') {
+    $Required=@('agent-service/tests/fixtures/validation-golden/matrix.json','agent-service/tests/eval/test_importable_candidates.py','docs/execution/evidence/phase-07/P07-006/direct-pytest.xml','docs/execution/evidence/phase-07/P07-006/importable-report.json','docs/execution/evidence/phase-07/P07-006/quality/format/ci-summary.json','docs/execution/evidence/phase-07/P07-006/quality/format/format.json','docs/execution/evidence/phase-07/P07-006/quality/lint/ci-summary.json','docs/execution/evidence/phase-07/P07-006/quality/lint/lint.json','docs/execution/evidence/phase-07/P07-006/quality/type/ci-summary.json','docs/execution/evidence/phase-07/P07-006/quality/type/type.json');$Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}};if($RelativePath.EndsWith('.py')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/x-python'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-07-golden-evidence' -GeneratedByStep 'TASK-P07-006:Evidence'}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts});$Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p07_006_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P07-005') {
     $Required=@('docs/architecture/adr/ADR-P07-005-solver-isolation.md','agent-service/pyproject.toml','agent-service/uv.lock','agent-service/app/validation/solver_process.py','agent-service/tests/replay/test_solver_kill.py','docs/execution/evidence/phase-07/P07-005/direct-pytest.xml','docs/execution/evidence/phase-07/P07-005/solver-kill-report.json','docs/execution/evidence/phase-07/P07-005/blocker.json','docs/execution/evidence/phase-07/P07-005/dependency-audit.json','docs/execution/evidence/phase-07/P07-005/dependency-diff.json','docs/execution/evidence/phase-07/P07-005/pip-audit.json','docs/execution/evidence/phase-07/P07-005/sbom.cdx.json','docs/execution/evidence/phase-07/P07-005/quality/format/ci-summary.json','docs/execution/evidence/phase-07/P07-005/quality/format/format.json','docs/execution/evidence/phase-07/P07-005/quality/lint/ci-summary.json','docs/execution/evidence/phase-07/P07-005/quality/lint/lint.json','docs/execution/evidence/phase-07/P07-005/quality/type/ci-summary.json','docs/execution/evidence/phase-07/P07-005/quality/type/type.json','docs/execution/evidence/phase-07/P07-005/quality/sca/ci-summary.json','docs/execution/evidence/phase-07/P07-005/quality/sca/licenses.json');$Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
     foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}};if($RelativePath.EndsWith('.py')-or$RelativePath.EndsWith('.md')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}elseif($RelativePath.EndsWith('.toml')){'application/toml'}else{'text/x-python'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-07-solver-evidence' -GeneratedByStep 'TASK-P07-005:Evidence'}
@@ -7641,6 +7685,11 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P07-006') {
+    $Paths=@(Get-P07006ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07006PathAllowed -RelativePath $_)});$Required=@('agent-service/tests/fixtures/validation-golden/matrix.json','agent-service/tests/eval/test_importable_candidates.py','docs/execution/evidence/phase-07/P07-006/direct-pytest.xml','docs/execution/evidence/phase-07/P07-006/importable-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('agent-service/tests/fixtures/validation-golden/matrix.json','agent-service/tests/eval/test_importable_candidates.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1','test/fixtures/validation/validation_semantics_cases.json')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-in$RequiredChanges}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p07_006_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P07-005') {
     $Paths=@(Get-P07005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07005PathAllowed -RelativePath $_)});$Required=@('docs/architecture/adr/ADR-P07-005-solver-isolation.md','agent-service/pyproject.toml','agent-service/uv.lock','agent-service/app/validation/solver_process.py','agent-service/tests/replay/test_solver_kill.py','docs/execution/evidence/phase-07/P07-005/direct-pytest.xml','docs/execution/evidence/phase-07/P07-005/solver-kill-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('docs/architecture/adr/ADR-P07-005-solver-isolation.md','agent-service/pyproject.toml','agent-service/uv.lock','agent-service/app/validation/solver_process.py','agent-service/tests/replay/test_solver_kill.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
     if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
@@ -8778,6 +8827,11 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P07-006') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P07006ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07006PathAllowed -RelativePath $_)});$SchemaChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)-or$_.StartsWith('supabase/migrations/',[StringComparison]::Ordinal)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'importable-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[double]$Report.mandatory_rate-eq1.0-and[int]$Report.golden_importable_passed-eq[int]$Report.golden_importable_total-and[int]$Report.phase1_importable_passed-eq[int]$Report.phase1_importable_total-and[int]$Report.deleted_failure_sample_count+[int]$Report.production_write_count-eq0
+    $Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$SchemaChanges.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='remove only the Phase 7 synthetic golden matrix, eval test, task evidence and runner specialization; retain the immutable Phase 1 semantics fixtures and all runtime validators';production_write_count=0}
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.schema_change_count+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p07_006_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P07-005') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P07005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07005PathAllowed -RelativePath $_)});$SchemaChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)-or$_.StartsWith('supabase/migrations/',[StringComparison]::Ordinal)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'solver-kill-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[string]$Report.ct_014-ceq'passed'-and-not[bool]$Report.solver_process_survived_after_kill-and[bool]$Report.main_service_alive-and[bool]$Report.fallback_result_valid
     $Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$SchemaChanges.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='turn the solver flag off, prove solver.disabled fallback, remove the isolated module/test/ADR and exact pin, then regenerate uv.lock; canonical validation and repair remain intact';production_write_count=0}
@@ -10476,7 +10530,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P07-005' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P07-006' -and $ExitCode -eq 0) {
+    $ModeState=Get-P07006GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P07-005' -and $ExitCode -eq 0) {
     $ModeState=Get-P07005GateModeState
     if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P07-004' -and $ExitCode -eq 0) {
