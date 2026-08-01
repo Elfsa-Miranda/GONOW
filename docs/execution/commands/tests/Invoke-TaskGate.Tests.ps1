@@ -142,6 +142,9 @@ if ($RunnerText -notmatch 'Get-P10005GateModeState' -or
     $RunnerText -notmatch 'baseline_recent_holdout_separated' -or
     $RunnerText -notmatch 'canonical_digest_cross_platform_match' -or
     $RunnerText -notmatch 'dataset_git_tree_oid' -or
+    $RunnerText -notmatch 'record_schema_error_count' -or
+    $RunnerText -notmatch 'boundary_locale_count != 5' -or
+    $RunnerText -notmatch 'boundary_journey_count != 5' -or
     $RunnerText -notmatch 'p10_005_security_failed' -or
     $RunnerText -notmatch 'p10_005_workset_failed' -or
     $RunnerText -notmatch 'p10_005_evidence_failed' -or

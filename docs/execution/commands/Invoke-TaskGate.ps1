@@ -1565,6 +1565,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 root = Path(sys.argv[1]).resolve()
 report_path = Path(sys.argv[2]).resolve()
 service_root = root / "agent-service"
@@ -1633,6 +1635,17 @@ ids = [record.get("case_id") for record in records]
 duplicate_count = len(ids) - len(set(ids))
 invalid_id_count = sum(not isinstance(case_id, str) or re.fullmatch(r"E1-[0-9]{4}", case_id) is None for case_id in ids)
 boundary_records = [record for record in records if record.get("case_class") == "boundary"]
+record_schema_error_count = 0
+if schema:
+    validator = Draft202012Validator(schema)
+    record_schema_error_count = sum(bool(list(validator.iter_errors(record))) for record in records)
+boundary_locale_count = len({record.get("locale") for record in boundary_records})
+boundary_journey_count = len({record.get("journey") for record in boundary_records})
+boundary_failure_code_count = len({record.get("expected_failure_code") for record in boundary_records})
+outcome_mismatch_count = sum(
+    (record.get("case_class") == "boundary") != (record.get("expected_outcome") == "rejected" and bool(record.get("expected_failure_code")))
+    for record in records
+)
 source_mismatch_count = sum(record.get("source") != "synthetic_e1_v01" for record in records)
 prohibited_keys = {"user_id", "account_id", "email", "phone", "latitude", "longitude", "trace_id", "prompt", "response", "reasoning"}
 prohibited_key_count = sum(any(key in record for key in prohibited_keys) for record in records)
@@ -1707,13 +1720,16 @@ checks = {
     "overwritten_dataset_versions": overwritten_dataset_versions, "baseline_recent_holdout_separated": separated,
     "canonical_digest_cross_platform_match": manifest["canonical_digest_cross_platform_match"], "total_cases": len(records),
     "boundary_initial_hypothesis_count": len(boundary_records), "split_count_mismatch": split_count_mismatch,
+    "record_schema_error_count": record_schema_error_count, "boundary_locale_count": boundary_locale_count,
+    "boundary_journey_count": boundary_journey_count, "boundary_failure_code_count": boundary_failure_code_count,
+    "outcome_mismatch_count": outcome_mismatch_count,
     "duplicate_case_id_count": duplicate_count, "invalid_case_id_count": invalid_id_count, "source_mismatch_count": source_mismatch_count,
     "source_contract_valid": source_valid, "review_contract_valid": review_valid, "split_contract_valid": split_valid, "schema_contract_valid": schema_valid,
     "prohibited_key_count": prohibited_key_count, "pii_canary_leak_count": pii_canary_leak_count,
     "manifest_file_count": len(file_entries), "dataset_git_tree_oid": tree_oid, "canonical_jcs_sha256": canonical_digest,
     "badcase_count": len(ledger["entries"]), "missing_audit_receipt_count": int(not audit_receipt_id), "production_write_count": 0,
 }
-failure_count = len(errors) + e0_mismatches + overwritten_dataset_versions + int(not separated) + int(not manifest["canonical_digest_cross_platform_match"]) + int(len(records) != 150) + int(len(boundary_records) != 30) + split_count_mismatch + duplicate_count + invalid_id_count + source_mismatch_count + int(not source_valid) + int(not review_valid) + int(not split_valid) + int(not schema_valid) + prohibited_key_count + pii_canary_leak_count + int(len(file_entries) != len(required_names)) + int(tree_oid == "0" * 40)
+failure_count = len(errors) + e0_mismatches + overwritten_dataset_versions + int(not separated) + int(not manifest["canonical_digest_cross_platform_match"]) + int(len(records) != 150) + int(len(boundary_records) != 30) + split_count_mismatch + duplicate_count + invalid_id_count + record_schema_error_count + int(boundary_locale_count != 5) + int(boundary_journey_count != 5) + int(boundary_failure_code_count != 5) + outcome_mismatch_count + source_mismatch_count + int(not source_valid) + int(not review_valid) + int(not split_valid) + int(not schema_valid) + prohibited_key_count + pii_canary_leak_count + int(len(file_entries) != len(required_names)) + int(tree_oid == "0" * 40)
 report = {"schema_version": "1.0", "task_id": "TASK-P10-005", "checks": checks, "errors": errors, "failure_count": failure_count}
 atomic_json(report_path, report)
 raise SystemExit(0 if failure_count == 0 else 1)
