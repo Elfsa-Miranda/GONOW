@@ -37,6 +37,7 @@ def test_ci_wrapper_has_no_mandatory_skip_switch() -> None:
     assert "-skip" not in wrapper
     assert "--skip" not in wrapper
     assert "continue-on-error" not in wrapper
+    assert "--maxfail" not in wrapper
 
 
 def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:

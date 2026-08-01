@@ -99,13 +99,13 @@ try {
     }
 
     if($Stage -in @('All','Unit')){
-      Invoke-CheckedNative 'unit' $Python @('-m','pytest','-q','tests','--strict-config','--strict-markers','--maxfail=1','--junitxml',(Join-Path $ReportRoot 'unit.xml'))
+      Invoke-CheckedNative 'unit' $Python @('-m','pytest','-q','tests','--strict-config','--strict-markers','--junitxml',(Join-Path $ReportRoot 'unit.xml'))
       Invoke-CheckedNative 'unit-report' $Python @($Quality,'--mode','junit','--repo-root',$RepoRoot,'--input',(Join-Path $ReportRoot 'unit.xml'),'--output',(Join-Path $ReportRoot 'unit-report.json'))
     }
     if($Stage -in @('All','Contract')){
       $ContractDirectory=Join-Path $ServiceRoot 'tests\contract'
       if(Test-Path -LiteralPath $ContractDirectory -PathType Container){
-        Invoke-CheckedNative 'contract' $Python @('-m','pytest','-q','tests/contract','--strict-config','--strict-markers','--maxfail=1','--junitxml',(Join-Path $ReportRoot 'contract.xml'))
+        Invoke-CheckedNative 'contract' $Python @('-m','pytest','-q','tests/contract','--strict-config','--strict-markers','--junitxml',(Join-Path $ReportRoot 'contract.xml'))
       }else{
         $Results.Add([ordered]@{name='contract-not-yet-materialized';exit_code=0;duration_ms=0;state='phase-2-pre-P02-007'})
       }
