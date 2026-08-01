@@ -1516,6 +1516,16 @@ function Get-P05002GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P05003GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json
+  $Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
 function Write-P04LocalProjectionEvidence {
   param([Parameter(Mandatory=$true)][bool]$ReadyForReview)
   $Projection=Get-P04LocalProjection;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
@@ -2155,6 +2165,24 @@ function Test-P05002PathAllowed {
   return $RelativePath.StartsWith('docs/execution/evidence/phase-05/P05-002/',[StringComparison]::Ordinal)
 }
 
+function Get-P05003ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P05003PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'docs/architecture/adr/ADR-P05-003-checkpoint-saver.md',
+    'agent-service/app/runtime/checkpoint.py','agent-service/migrations/versions/p05_003_checkpoint_refs.py',
+    'agent-service/tests/integration/test_checkpoint_saver.py','agent-service/tests/unit/harness/test_24_checkpoint_adapter.py',
+    'docs/execution/status/TASK-P05-003.json'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-05/P05-003/',[StringComparison]::Ordinal)
+}
+
 function Get-P04009ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
   $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2384,6 +2412,28 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P05-003') {
+    $Paths=@(Get-P05003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05003PathAllowed -RelativePath $_)})
+    $SourcePaths=@('agent-service/app/runtime/checkpoint.py','agent-service/migrations/versions/p05_003_checkpoint_refs.py','agent-service/tests/integration/test_checkpoint_saver.py','agent-service/tests/unit/harness/test_24_checkpoint_adapter.py')
+    $SourceText=@($SourcePaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $AppText=[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot 'agent-service/app/runtime/checkpoint.py'),[Text.UTF8Encoding]::new($false))
+    $ArbitrarySql=[regex]::Matches($AppText,'(?im)(?:text\s*\(|execute\s*\(\s*[furb]*["'']|exec_driver_sql|\braw_sql\b|subprocess\.|os\.system\s*\(|shell\s*=\s*true|(?<![A-Za-z0-9_.])(?:eval|exec)\s*\()').Count
+    $Ssrf=[regex]::Matches($AppText,'(?im)\b(?:requests|httpx|urllib|aiohttp)\b').Count
+    $UnauthorizedTool=[regex]::Matches($AppText,'(?im)\b(?:subprocess|os\.system|tool_node|mcp_client)\b|shell\s*=\s*true').Count
+    $RestorePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-03\P03-009\backup-restore-report.json';$Restore=if(Test-Path -LiteralPath $RestorePath -PathType Leaf){Get-Content -LiteralPath $RestorePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'checkpoint-saver-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Checks=[ordered]@{
+      ssrf_escape_count=$Ssrf;unauthorized_tool_exec_count=$UnauthorizedTool;arbitrary_sql_executor_count=$ArbitrarySql
+      restore_verification_failures=if($null-eq$Restore){1}else{[int]$Restore.restore_verification_failures}
+      canary_leak_count=if($null-eq$Report){1}else{[int]$Report.canary_leak_count}
+      pickle_fallback_count=if($null-eq$Report){1}else{[int]$Report.pickle_fallback_count}
+      raw_body_persistence_count=if($null-eq$Report){1}else{[int]$Report.raw_body_persistence_count}
+      valid_secret_finding_count=[regex]::Matches($SourceText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      unexpected_paths=$Unexpected.Count;production_write_count=0
+    }
+    $Failures=0;foreach($Key in @('ssrf_escape_count','unauthorized_tool_exec_count','arbitrary_sql_executor_count','restore_verification_failures','canary_leak_count','pickle_fallback_count','raw_body_persistence_count','valid_secret_finding_count','unexpected_paths')){$Failures += [int]$Checks[$Key]}
+    if($Failures-ne0){return New-BlockedResult 'p05_003_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-002') {
     $Paths=@(Get-P05002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05002PathAllowed -RelativePath $_)})
     $SourcePaths=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py')
@@ -3342,6 +3392,18 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P05-003') {
+    $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'checkpoint-saver-report.json';$PreviousReport=$env:GONOW_P05_003_REPORT
+    try{$env:GONOW_P05_003_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/integration/test_checkpoint_saver.py','agent-service/tests/unit/harness/test_24_checkpoint_adapter.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P05_003_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P05_003_REPORT=$PreviousReport}}
+    $Tests=0;$Failures=1;$Skipped=1;if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Tests=0;$Failures=0;$Skipped=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped}}
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Control=if(Test-Path -LiteralPath $JunitPath -PathType Leaf){New-P02HarnessControlRecord -ControlId 24 -RelativeTestPath 'agent-service/tests/unit/harness/test_24_checkpoint_adapter.py' -JunitPath $JunitPath}else{$null}
+    $HarnessValid=$null-ne$Control-and[int]$Control.tests-eq5-and@($Control.case_ids.S).Count-ge1-and@($Control.case_ids.I).Count-ge2-and@($Control.case_ids.D).Count-ge2-and[int]$Control.failures+[int]$Control.errors+[int]$Control.skipped+[int]$Control.xfailed-eq0
+    if($null-ne$Control){Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;operation='implement';catalog_sha256=$script:CatalogSha256;catalog_before_sha256=$script:CatalogSha256;catalog_after_sha256=$script:CatalogSha256;catalog_changed=$false;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();controls=@($Control)})}
+    $ReportValid=$null-ne$Report-and[string]$Report.task_id-ceq'TASK-P05-003'-and[string]$Report.database-ceq'isolated-postgresql-17'-and[string]$Report.langgraph_version-ceq'1.2.9'-and[string]$Report.checkpoint_protocol_version-ceq'4.1.1'-and[bool]$Report.base_checkpoint_saver_conformance-and[int]$Report.graph_roundtrip_cases-ge1-and[int]$Report.graph_roundtrip_failures+[int]$Report.v1_envelope_upgrade_failures+[int]$Report.migration_downgrade_rebuild_failures+[int]$Report.canary_leak_count+[int]$Report.pickle_fallback_count+[int]$Report.raw_body_persistence_count+[int]$Report.ssrf_escape_count+[int]$Report.unauthorized_tool_exec_count+[int]$Report.arbitrary_sql_executor_count+[int]$Report.restore_verification_failures+[int]$Report.redis_count+[int]$Report.production_write_count-eq0-and[int]$Report.v1_envelope_upgrade_cases-ge1-and[int]$Report.migration_downgrade_rebuild_cases-ge1-and[int]$Report.forced_rls_table_count-eq2-and[bool]$Report.prior_metadata_preserved_after_downgrade
+    $Checks=[ordered]@{primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$Tests-eq7-and$Failures-eq0-and$Skipped-eq0-and$ReportValid-and$HarnessValid);detail='locked LangGraph saver roundtrip/upgrade passed; canary leak=0';tests=$Tests;failures=$Failures;skipped=$Skipped;test_exit_code=[int]$TestRun.exit_code;roundtrip_failures=if($null-eq$Report){1}else{[int]$Report.graph_roundtrip_failures};upgrade_failures=if($null-eq$Report){1}else{[int]$Report.v1_envelope_upgrade_failures};canary_leak_count=if($null-eq$Report){1}else{[int]$Report.canary_leak_count};forced_rls_table_count=if($null-eq$Report){0}else{[int]$Report.forced_rls_table_count};harness_valid=$HarnessValid;harness_tests=if($null-eq$Control){0}else{[int]$Control.tests};production_write_count=if($null-eq$Report){1}else{[int]$Report.production_write_count}}
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p05_003_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-002') {
     $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'lease-fencing-report.json';$PreviousReport=$env:GONOW_P05_002_REPORT
     try{$env:GONOW_P05_002_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P05_002_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P05_002_REPORT=$PreviousReport}}
@@ -4685,6 +4747,12 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P05-003') {
+    $Required=@('docs/architecture/adr/ADR-P05-003-checkpoint-saver.md','agent-service/app/runtime/checkpoint.py','agent-service/migrations/versions/p05_003_checkpoint_refs.py','agent-service/tests/integration/test_checkpoint_saver.py','agent-service/tests/unit/harness/test_24_checkpoint_adapter.py','docs/execution/evidence/phase-05/P05-003/direct-pytest.xml','docs/execution/evidence/phase-05/P05-003/checkpoint-saver-report.json','docs/execution/evidence/phase-05/P05-003/harness-status-fragment.json')
+    $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0;foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};try{if($RelativePath.EndsWith('.json')){$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}elseif($RelativePath.EndsWith('.xml')){[xml]$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8}}catch{$SchemaErrors++};if($RelativePath-match'\.(py|ps1|md)$'){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/x-python'}) -ArtifactType 'phase-05-checkpoint-saver-evidence' -GeneratedByStep 'TASK-P05-003:Evidence'}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p05_003_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-002') {
     $Required=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py','docs/execution/evidence/phase-05/P05-002/direct-pytest.xml','docs/execution/evidence/phase-05/P05-002/lease-fencing-report.json','docs/execution/evidence/phase-05/P05-002/harness-status-fragment.json','docs/execution/evidence/phase-05/P05-002/dependency-audit-report.json')
     $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0;foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};try{if($RelativePath.EndsWith('.json')){$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}elseif($RelativePath.EndsWith('.xml')){[xml]$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8}}catch{$SchemaErrors++};if($RelativePath.EndsWith('.py')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/x-python'}) -ArtifactType 'phase-05-lease-fencing-evidence' -GeneratedByStep 'TASK-P05-002:Evidence'}
@@ -6196,6 +6264,10 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P05-003') {
+    $Paths=@(Get-P05003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05003PathAllowed -RelativePath $_)});$Required=@('docs/architecture/adr/ADR-P05-003-checkpoint-saver.md','agent-service/app/runtime/checkpoint.py','agent-service/migrations/versions/p05_003_checkpoint_refs.py','agent-service/tests/integration/test_checkpoint_saver.py','agent-service/tests/unit/harness/test_24_checkpoint_adapter.py','docs/execution/evidence/phase-05/P05-003/direct-pytest.xml','docs/execution/evidence/phase-05/P05-003/checkpoint-saver-report.json','docs/execution/evidence/phase-05/P05-003/harness-status-fragment.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('docs/architecture/adr/ADR-P05-003-checkpoint-saver.md','agent-service/app/runtime/checkpoint.py','agent-service/migrations/versions/p05_003_checkpoint_refs.py','agent-service/tests/integration/test_checkpoint_saver.py','agent-service/tests/unit/harness/test_24_checkpoint_adapter.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0;if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1','docs/execution/schemas/harness-test-catalog.yaml','agent-service/pyproject.toml','agent-service/uv.lock')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-match'^agent-service/(app|tests|migrations)/'}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p05_003_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-002') {
     $Paths=@(Get-P05002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05002PathAllowed -RelativePath $_)});$Required=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py','docs/execution/evidence/phase-05/P05-002/direct-pytest.xml','docs/execution/evidence/phase-05/P05-002/lease-fencing-report.json','docs/execution/evidence/phase-05/P05-002/harness-status-fragment.json','docs/execution/evidence/phase-05/P05-002/dependency-audit-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0;if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
     $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1','docs/execution/schemas/harness-test-catalog.yaml','agent-service/pyproject.toml','agent-service/uv.lock')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-match'^agent-service/(app|tests)/'}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p05_002_workset_failed' $Checks};return New-PassedResult $Checks
@@ -7219,6 +7291,9 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P05-003') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P05003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05003PathAllowed -RelativePath $_)});$MigrationChanges=@($Paths|Where-Object{$_-ceq'agent-service/migrations/versions/p05_003_checkpoint_refs.py'});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'checkpoint-saver-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$FragmentPath=Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json';$Fragment=if(Test-Path -LiteralPath $FragmentPath -PathType Leaf){Get-Content -LiteralPath $FragmentPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$RollbackValid=$null-ne$Report-and[int]$Report.migration_downgrade_rebuild_cases-ge1-and[int]$Report.migration_downgrade_rebuild_failures-eq0-and[bool]$Report.prior_metadata_preserved_after_downgrade-and[int]$Report.restore_verification_failures-eq0-and[int]$Report.production_write_count-eq0;$CatalogPreserved=$null-ne$Fragment-and-not[bool]$Fragment.catalog_changed-and[string]$Fragment.catalog_before_sha256-ceq[string]$Fragment.catalog_after_sha256;$Checks=[ordered]@{old_path_failures=if($RollbackValid){0}else{1};unexpected_writes=$Unexpected.Count;expected_migration_change_count=$MigrationChanges.Count;catalog_preservation_failures=if($CatalogPreserved){0}else{1};rollback_not_run=if($RollbackValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='stop checkpoint-taking workers, revert the saver and p05_003 revision, then retain Phase 3 checkpoint metadata and restore the prior compatible dependency set';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.catalog_preservation_failures+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0-or[int]$Checks.expected_migration_change_count-ne1){return New-BlockedResult 'p05_003_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-002') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P05002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05002PathAllowed -RelativePath $_)});$MigrationChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'lease-fencing-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$FragmentPath=Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json';$Fragment=if(Test-Path -LiteralPath $FragmentPath -PathType Leaf){Get-Content -LiteralPath $FragmentPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[int]$Report.stale_write_count-eq0-and[int]$Report.new_lease_winner_count-eq1-and[bool]$Report.fencing_token_monotonic-and[int]$Report.production_write_count-eq0;$CatalogPreserved=$null-ne$Fragment-and-not[bool]$Fragment.catalog_changed-and[string]$Fragment.catalog_before_sha256-ceq[string]$Fragment.catalog_after_sha256;$Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$MigrationChanges.Count;catalog_preservation_failures=if($CatalogPreserved){0}else{1};rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='stop claiming new Jobs, let valid leases drain, then revert the lease coordinator, repository CAS methods, and tests; no schema or Catalog mutation is required';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.schema_change_count+[int]$Checks.catalog_preservation_failures+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p05_002_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
@@ -8572,7 +8647,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P05-002' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P05-003' -and $ExitCode -eq 0) {
+    $ModeState=Get-P05003GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P05-002' -and $ExitCode -eq 0) {
     $ModeState=Get-P05002GateModeState
     if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P05-001' -and $ExitCode -eq 0) {
