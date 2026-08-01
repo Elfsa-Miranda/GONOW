@@ -220,6 +220,20 @@ if ($RunnerText -notmatch 'Get-P10089GateModeState' -or
     $RunnerText -notmatch 'p10_089_rollback_verification_failed') {
   throw 'negative: P10-089 must own STAR, documentation, handoff, Harness 29/30/31 CAS, status board, security, evidence, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10LocalProjection' -or
+    $RunnerText -notmatch 'Get-P10GateModeState' -or
+    $RunnerText -notmatch 'Write-P10LocalProjectionEvidence' -or
+    $RunnerText -notmatch 'first_phase_le_p10_unimplemented_count' -or
+    $RunnerText -notmatch 'accepted_rollout_and_release_gate' -or
+    $RunnerText -notmatch 'cost_failure_count' -or
+    $RunnerText -notmatch 'p10_990_security_failed' -or
+    $RunnerText -notmatch 'p10_990_evidence_failed' -or
+    $RunnerText -notmatch 'p10_990_acceptance_preflight_failed' -or
+    $RunnerText -notmatch 'p10_990_regression_failed' -or
+    $RunnerText -notmatch 'p10_990_rollback_drill_failed' -or
+    $RunnerText -notmatch 'pending_phase_10_independent_approvals') {
+  throw 'negative: P10-990 must bind accepted rollout/release gates, E0/E1/CT/cost evidence, full regression, rollback, approvals, and all eight rejection categories'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
