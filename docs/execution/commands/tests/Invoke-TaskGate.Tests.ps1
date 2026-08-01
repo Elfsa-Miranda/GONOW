@@ -78,9 +78,10 @@ if ($RunnerText -notmatch "TASK-P09-001" -or
 }
 $P10EntryMarker = "if (`$TaskId -ceq 'TASK-P10-001') {"
 $P09EntryMarker = "if (`$TaskId -ceq 'TASK-P09-001') {"
-$P10EntryStart = $RunnerText.IndexOf($P10EntryMarker, [StringComparison]::Ordinal)
+$PreflightStart = $RunnerText.IndexOf('function Invoke-ModePreflight {', [StringComparison]::Ordinal)
+$P10EntryStart = $RunnerText.IndexOf($P10EntryMarker, $PreflightStart, [StringComparison]::Ordinal)
 $P09EntryStart = $RunnerText.IndexOf($P09EntryMarker, $P10EntryStart + $P10EntryMarker.Length, [StringComparison]::Ordinal)
-if ($P10EntryStart -lt 0 -or $P09EntryStart -le $P10EntryStart) {
+if ($PreflightStart -lt 0 -or $P10EntryStart -lt $PreflightStart -or $P09EntryStart -le $P10EntryStart) {
   throw 'negative: P10-001 specialized phase-entry branch is missing or shadowed'
 }
 $P10EntryBlock = $RunnerText.Substring($P10EntryStart, $P09EntryStart - $P10EntryStart)
@@ -91,6 +92,16 @@ if ($P10EntryBlock -notmatch '\$script:Task\.phase_runtime_manifest_path' -or
     $P10EntryBlock -notmatch 'minimum_contract_tests=144' -or
     $P10EntryBlock -notmatch 'minimum_tests=82') {
   throw 'negative: Phase 10 entry must materialize its manifest and bind the P09 provisional integration checkpoint'
+}
+if ($RunnerText -notmatch 'Get-P10001GateModeState' -or
+    $RunnerText -notmatch 'p10_001_verify_failed' -or
+    $RunnerText -notmatch 'trace-topology-report\.json' -or
+    $RunnerText -notmatch 'pii_canary_leak_count' -or
+    $RunnerText -notmatch 'harness-status-fragment\.json' -or
+    $RunnerText -notmatch 'p10_001_security_failed' -or
+    $RunnerText -notmatch 'p10_001_workset_failed' -or
+    $RunnerText -notmatch 'p10_001_rollback_verification_failed') {
+  throw 'negative: P10-001 must own trace, redaction, harness, workset, evidence, and rollback gates'
 }
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or

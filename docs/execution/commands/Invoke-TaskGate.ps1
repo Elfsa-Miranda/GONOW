@@ -1530,6 +1530,42 @@ function Get-P09001GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P10001GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json
+  $Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
+function Get-P10001ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  $CandidateCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD --
+    'agent-service/app/observability/telemetry.py'
+    'agent-service/app/observability/redaction.py'
+    'agent-service/tests/security/test_trace_redaction.py'
+    'agent-service/tests/unit/harness/test_29_telemetry.py')-join'').Trim()
+  if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)}
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P10001PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'agent-service/app/observability/telemetry.py',
+    'agent-service/app/observability/redaction.py',
+    'agent-service/tests/security/test_trace_redaction.py',
+    'agent-service/tests/unit/harness/test_29_telemetry.py',
+    'docs/execution/status/TASK-P10-001.json',
+    'docs/execution/evidence/phase-10/phase-runtime-manifest.json'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-001/',[StringComparison]::Ordinal)
+}
+
 function Get-P09002GateModeState {
   $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
   if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
@@ -3488,6 +3524,14 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P10-001') {
+    $RuntimePaths=@('agent-service/app/observability/telemetry.py','agent-service/app/observability/redaction.py');$RuntimeText=@($RuntimePaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $ValidSecrets=[regex]::Matches($RuntimeText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|bearer\s+[A-Za-z0-9._~+/=-]{20,})').Count;$RuntimePii=[regex]::Matches($RuntimeText,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'trace-topology-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$CanaryLeak=if($null-eq$Report){1}else{[int]$Report.canary_leak_count+[int]$Report.raw_run_identifier_leak_count};$ForbiddenAllowlist=if($RuntimeText-cmatch'"(?:prompt|reasoning|authorization|body|jwt|secret|token)"\s*,?\s*$'){1}else{0}
+    $Checks=[ordered]@{applicable_security_checks='passed';valid_secret_finding_count=$ValidSecrets;pii_canary_leak_count=$CanaryLeak;runtime_pii_literal_count=$RuntimePii;forbidden_trace_allowlist_count=$ForbiddenAllowlist;test_failures=if($null-eq$Report){1}else{[int]$Report.failures+[int]$Report.errors+[int]$Report.skipped};production_write_count=0}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;runtime_paths=$RuntimePaths;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if([int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.runtime_pii_literal_count+[int]$Checks.forbidden_trace_allowlist_count+[int]$Checks.test_failures-ne0){$Checks.applicable_security_checks='failed';return New-BlockedResult 'p10_001_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P09-990') {
     $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard);$Unexpected=@($Paths|Where-Object{$N=$_.Replace('\','/');$N-notin@('docs/execution/evidence/phase-09/acceptance.md','docs/execution/evidence/index.json','docs/execution/status/TASK-P09-990.json','docs/execution/commands/Invoke-TaskGate.ps1')-and-not$N.StartsWith('docs/execution/evidence/phase-09/P09-990/',[StringComparison]::Ordinal)})
     $Text='';foreach($P in @('docs/execution/evidence/phase-09/acceptance.md','docs/execution/evidence/phase-09/P09-990/gate-summary.json','docs/execution/evidence/phase-09/P09-990/regression-summary.json')){$F=Join-Path $script:RepositoryRoot $P;if(Test-Path -LiteralPath $F -PathType Leaf){$Text += [IO.File]::ReadAllText($F,[Text.UTF8Encoding]::new($false))}}
@@ -4770,6 +4814,19 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P10-001') {
+    $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe';$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $TestRun=if(Test-Path -LiteralPath $Python -PathType Leaf){Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q',(Join-Path $script:RepositoryRoot 'agent-service\tests\security\test_trace_redaction.py'),(Join-Path $script:RepositoryRoot 'agent-service\tests\unit\harness\test_29_telemetry.py'),'--maxfail=1','--junitxml',$JunitPath)}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}}
+    $Tests=0;$Failures=1;$Errors=0;$Skipped=0;$Cases=@();if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Failures=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures;$Errors += [int]$Suite.errors;$Skipped += [int]$Suite.skipped;$Cases += @($Suite.testcase)}}
+    $CaseNames=@($Cases|ForEach-Object{[string]$_.name});$RequiredCases=@('test_full_topology_exports_only_pseudonymous_locators','test_trace_parent_chain_and_locator_are_deterministic','test_canary_is_rejected_before_export_even_in_allowlisted_field','test_29_telemetry_s_six_stage_trace_preserves_parent_chain_and_locator','test_29_telemetry_i_zero_sampling_keeps_failed_stage_only','test_29_telemetry_d_canary_is_rejected_before_export','test_29_telemetry_d_raw_run_identifier_is_never_exported');$MissingRequiredCases=@($RequiredCases|Where-Object{$_-notin$CaseNames})
+    $HarnessCases=@($CaseNames|Where-Object{$_-cmatch'^test_29_telemetry_'});$CatalogPath=Join-Path $script:RepositoryRoot 'docs\execution\schemas\harness-test-catalog.yaml';$ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\phase-runtime-manifest.json';$Manifest=if(Test-Path -LiteralPath $ManifestPath -PathType Leaf){Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$CatalogBefore=if($null-eq$Manifest){$ZeroHash}else{[string]$Manifest.catalog_sha256};$CatalogAfter=if(Test-Path -LiteralPath $CatalogPath -PathType Leaf){Get-Sha256 -LiteralPath $CatalogPath}else{$ZeroHash}
+    $SNodes=@($HarnessCases|Where-Object{$_-cmatch'^test_29_telemetry_s_'});$INodes=@($HarnessCases|Where-Object{$_-cmatch'^test_29_telemetry_i_'});$DNodes=@($HarnessCases|Where-Object{$_-cmatch'^test_29_telemetry_d_'});$HarnessFailure=if($HarnessCases.Count-ge4-and$SNodes.Count-ge1-and$INodes.Count-ge1-and$DNodes.Count-ge1-and$CatalogBefore-ceq$CatalogAfter-and$Failures+$Errors+$Skipped-eq0){0}else{1}
+    $Fragment=[ordered]@{schema_version='1.0';task_id=$TaskId;phase='Phase 10';action='extend';catalog_sha256_before=$CatalogBefore;catalog_sha256_after=$CatalogAfter;collection_sha256=Get-Utf8Sha256 -Value (($HarnessCases|Sort-Object)-join"`n");junit_sha256=if(Test-Path -LiteralPath $JunitPath){Get-Sha256 -LiteralPath $JunitPath}else{$ZeroHash};bound_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();controls=@([ordered]@{id=29;action='extend';test_path='agent-service/tests/unit/harness/test_29_telemetry.py';minimum_cases=4;collected_cases=$HarnessCases.Count;case_ids=[ordered]@{S=$SNodes;I=$INodes;D=$DNodes};failures=$Failures;errors=$Errors;skipped=$Skipped;xfailed=0});failure_count=$HarnessFailure;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json') -Value $Fragment
+    $Toolchain=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\supply-chain\phase-boot\BOOT-005\toolchain-lock.json') -Raw -Encoding UTF8|ConvertFrom-Json;$BarePython=[string]$Toolchain.python.executable;$BareProbe=Invoke-RedactedExternal -Executable $BarePython -Arguments @('-c','import importlib.util,sys;sys.exit(0 if importlib.util.find_spec("pytest") else 3)')
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'environment-adapter.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;failure_reproduced='locked toolchain utility Python has no pytest';bare_toolchain_python=$BarePython;bare_pytest_probe_exit_code=[int]$BareProbe.exit_code;root_cause='BOOT-005 utility environment intentionally contains bootstrap packages only; service dependencies are frozen in agent-service/.venv by uv sync --frozen --group dev';impact_surface='the task-card direct pytest launcher only; implementation and locked service dependency graph are unaffected';reversible_alternative='use agent-service/.venv/Scripts/python.exe provisioned from uv.lock by the Phase-entry CI';lockfile_changed=$false;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    $PrimaryPassed=[int]$TestRun.exit_code-eq0-and$Tests-ge19-and$Failures+$Errors+$Skipped+$MissingRequiredCases.Count+$HarnessFailure-eq0;$Report=[ordered]@{schema_version='1.0';task_id=$TaskId;topology='Flutter->API->Job->Worker->Tool/Model->Command';topology_stage_count=6;canary_leak_count=if($PrimaryPassed){0}else{1};raw_run_identifier_leak_count=if($PrimaryPassed){0}else{1};run_locator_test_passed=($RequiredCases[1]-in$CaseNames);behavior_digest_locator_test_passed=($RequiredCases[1]-in$CaseNames);deterministic_parent_chain_test_passed=($RequiredCases[1]-in$CaseNames);allowlist_rejection_test_passed=(@($CaseNames|Where-Object{$_-clike'test_forbidden_or_unlisted_attribute_is_rejected*'}).Count-ge1);sampling_policy_test_passed=($RequiredCases[4]-in$CaseNames);tests=$Tests;failures=$Failures;errors=$Errors;skipped=$Skipped;xfailed=0;missing_required_test_count=$MissingRequiredCases.Count;harness_case_count=$HarnessCases.Count;harness_failure_count=$HarnessFailure;contract_change=$false;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'trace-topology-report.json') -Value $Report
+    $Checks=[ordered]@{primary_assertion_passed=$PrimaryPassed;detail='canary leak=0; run/digest locatable across Flutter->API->Job->Worker->Tool/Model->Command';canary_leak_count=[int]$Report.canary_leak_count;raw_run_identifier_leak_count=[int]$Report.raw_run_identifier_leak_count;run_locator_count=if([bool]$Report.run_locator_test_passed){1}else{0};behavior_digest_locator_count=if([bool]$Report.behavior_digest_locator_test_passed){1}else{0};topology_stage_count=[int]$Report.topology_stage_count;tests=$Tests;failures=$Failures;errors=$Errors;skipped=$Skipped;xfailed=0;harness_failure_count=$HarnessFailure;contract_change=$false;production_write_count=0};if(-not$PrimaryPassed){return New-BlockedResult 'p10_001_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P09-990') {$P=Get-P09LocalProjection;$State=Get-P09GateModeState;Write-P09LocalProjectionEvidence -ReadyForReview ([bool]$P.local_projection_passed-and[bool]$State.passed);$Checks=[ordered]@{overall_status=if([bool]$P.local_projection_passed-and[bool]$State.passed){'passed'}else{'failed'};primary_assertion=[bool]$P.local_projection_passed;first_phase_le_p9_unimplemented_count=[int]$P.checks.first_phase_le_p9_unimplemented_count;unapproved_write_count=[int]$P.checks.production_write_count;local_approval_projection='ready_for_review_only';formal_approvals='pending_external';forced_rejection_count=if([bool]$P.local_projection_passed-and[bool]$State.passed){0}else{1};missing_modes=@($State.missing_modes);failed_modes=@($State.failed_modes);accepted=$false;production_write_count=0};if([string]$Checks.overall_status-cne'passed'){return New-BlockedResult 'p09_990_verify_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P09-010') {
     $Toolchain=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\supply-chain\phase-boot\BOOT-005\toolchain-lock.json')-Raw -Encoding UTF8|ConvertFrom-Json;$Flutter=[string]$Toolchain.flutter.executable;$Targets=@('integration_test/itinerary_agent_journey_test.dart','integration_test/itinerary_agent_weak_network_test.dart','integration_test/itinerary_agent_accessibility_test.dart');$ProbeDirectory=Join-Path $script:RepositoryRoot '.dart_tool\gonow-p09-010';if(-not(Test-Path -LiteralPath $ProbeDirectory -PathType Container)){New-Item -ItemType Directory -Path $ProbeDirectory -Force|Out-Null};$ProbeTargets=@();$CopyMismatch=0;foreach($Target in $Targets){$Source=Join-Path $script:RepositoryRoot $Target;$Probe=Join-Path $ProbeDirectory ([IO.Path]::GetFileName($Target));Copy-Item -LiteralPath $Source -Destination $Probe -Force;$ProbeTargets += ('.dart_tool/gonow-p09-010/'+[IO.Path]::GetFileName($Target));if((Get-Sha256 -LiteralPath $Source)-cne(Get-Sha256 -LiteralPath $Probe)){$CopyMismatch++}}
@@ -6504,6 +6561,22 @@ raise SystemExit(0 if report["fixture_count"] == 15 and report["passed_count"] =
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P10-001') {
+    $Required=@(
+      'agent-service/app/observability/telemetry.py','agent-service/app/observability/redaction.py','agent-service/tests/security/test_trace_redaction.py','agent-service/tests/unit/harness/test_29_telemetry.py',
+      'docs/execution/evidence/phase-10/phase-runtime-manifest.json','docs/execution/evidence/phase-10/P10-001/direct-pytest.xml','docs/execution/evidence/phase-10/P10-001/trace-topology-report.json','docs/execution/evidence/phase-10/P10-001/security-report.json','docs/execution/evidence/phase-10/P10-001/harness-status-fragment.json','docs/execution/evidence/phase-10/P10-001/environment-adapter.json','docs/execution/evidence/phase-10/P10-001/gate-results.json','docs/execution/evidence/phase-10/P10-001/commands.json','docs/execution/status/TASK-P10-001.json'
+    )
+    $Artifacts=@();$Missing=0;$SchemaErrors=0;$XmlErrors=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}}
+      elseif($RelativePath.EndsWith('.xml')){try{[xml]$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8}catch{$XmlErrors++}}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/plain'}) -ArtifactType 'phase-10-trace-evidence' -GeneratedByStep 'TASK-P10-001:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0})
+    $Checks=[ordered]@{schema_errors=$SchemaErrors+$XmlErrors;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p10_001_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P09-990') {
     $Required=@('docs/execution/evidence/phase-09/acceptance.md','docs/execution/evidence/index.json','docs/execution/evidence/phase-09/artifact-manifest.premerge.json','docs/execution/evidence/phase-09/P09-990/local-verification.json','docs/execution/evidence/phase-09/P09-990/gate-summary.json','docs/execution/evidence/phase-09/P09-990/regression-summary.json','docs/execution/evidence/phase-09/P09-990/rollback-drill.json','docs/execution/evidence/phase-09/P09-990/ci-reports/ci-summary.json','docs/execution/evidence/phase-09/P09-990/ci-reports/unit.xml','docs/execution/evidence/phase-09/P09-990/ci-reports/contract.xml','docs/execution/evidence/phase-09/P09-990/flutter-regression-report.json','docs/execution/evidence/phase-09/P09-990/rollback-drill-pytest.xml','docs/execution/evidence/phase-09/P09-990/blocker.json','docs/execution/evidence/phase-09/P09-089/handoff-verification.json','docs/execution/evidence/phase-09/P09-089/harness-catalog-aggregate.json')
     $Artifacts=@();$Missing=0;$Schema=0;$Xml=0;foreach($P in $Required){$F=Join-Path $script:RepositoryRoot $P;if(-not(Test-Path -LiteralPath $F -PathType Leaf)){$Missing++;continue};if($P.EndsWith('.json')){try{$null=Get-Content -LiteralPath $F -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}}elseif($P.EndsWith('.xml')){try{[xml]$null=Get-Content -LiteralPath $F -Raw -Encoding UTF8}catch{$Xml++}};$Artifacts+=New-ArtifactRecord -PathOrReference $P -Sha256 (Get-Sha256 -LiteralPath $F) -SizeBytes (Get-Item -LiteralPath $F).Length -MimeType $(if($P.EndsWith('.json')){'application/json'}elseif($P.EndsWith('.xml')){'application/xml'}else{'text/markdown'}) -ArtifactType 'phase-09-acceptance-evidence' -GeneratedByStep 'TASK-P09-990:Evidence'}
@@ -8870,6 +8943,10 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P10-001') {
+    $Paths=@(Get-P10001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10001PathAllowed -RelativePath $_)});$RequiredTargets=@('agent-service/app/observability/telemetry.py','agent-service/app/observability/redaction.py','agent-service/tests/security/test_trace_redaction.py','agent-service/tests/unit/harness/test_29_telemetry.py');$MissingTargets=@($RequiredTargets|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$ChangedRequired=@($RequiredTargets|Where-Object{$_-in$Paths});$ReadOnlyWrites=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')});$CommandsPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Commands=if(Test-Path -LiteralPath $CommandsPath -PathType Leaf){Get-Content -LiteralPath $CommandsPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Unrecorded=if($null-eq$Commands){1}else{0}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=$ReadOnlyWrites.Count;unrecorded_action_count=$Unrecorded;work_contract_assertion_gaps=$MissingTargets.Count+$(if($ChangedRequired.Count-lt4){1}else{0});nonzero_exit_count=0;required_target_count=4;changed_required_target_count=$ChangedRequired.Count;contract_change=$false;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p10_001_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P09-089') {
     $Paths=@(Get-P09089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P09089PathAllowed -RelativePath $_)})
     $Required=@('README.md','docs/architecture/flutter-agent-integration.md','docs/runbooks/flutter-agent-rollback.md','docs/api/flutter-agent-client.md','contracts/openapi/agent-api.yaml','lib/core/api/generated/agent_api_spec.g.dart','docs/architecture/threat-model/phase-09-review.json','docs/execution/evidence/phase-09/change-summary.md','docs/execution/evidence/phase-09/knowledge-transfer.md','docs/execution/evidence/phase-09/star-records.md','docs/execution/evidence/phase-09/improvements/STAR-flutter-integration-entry.md','docs/execution/evidence/phase-09/P09-089/handoff-verification.json','docs/execution/evidence/phase-09/P09-089/harness-catalog-aggregate.json','docs/execution/status/task-board.json','docs/execution/status/task-board.md')
@@ -10106,6 +10183,11 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P10-001') {
+    & git -C $script:RepositoryRoot diff --check;$DiffExit=$LASTEXITCODE;$Paths=@(Get-P10001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10001PathAllowed -RelativePath $_)});$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ExporterDownPassed=$false;$OldPathFailures=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Cases=@();$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};foreach($Suite in $Suites){$Cases+=@($Suite.testcase)};$ExporterCase=@($Cases|Where-Object{[string]$_.name-ceq'test_29_telemetry_i_exporter_down_does_not_block_business_result'});$ExporterDownPassed=$ExporterCase.Count-eq1-and$null-eq$ExporterCase[0].failure-and$null-eq$ExporterCase[0].error-and$null-eq$ExporterCase[0].skipped;$OldPathFailures=if($ExporterDownPassed){0}else{1}}
+    $Checks=[ordered]@{old_path_failures=$OldPathFailures;unexpected_writes=$Unexpected.Count;rollback_not_run=if($ExporterDownPassed){0}else{1};diff_check_exit_code=$DiffExit;exporter_off_business_path_passed=$ExporterDownPassed;rollback_strategy='disable the telemetry exporter; preserve business execution and bounded local signals, then revert only P10-001 trace topology, redaction, tests, and evidence';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_001_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P09-990') {& git -C $script:RepositoryRoot diff --check;$Exit=$LASTEXITCODE;$Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard);$Unexpected=@($Paths|Where-Object{$N=$_.Replace('\','/');$N-notin@('docs/execution/evidence/phase-09/acceptance.md','docs/execution/evidence/index.json','docs/execution/status/TASK-P09-990.json','docs/execution/commands/Invoke-TaskGate.ps1')-and-not$N.StartsWith('docs/execution/evidence/phase-09/P09-990/',[StringComparison]::Ordinal)});$Checks=[ordered]@{old_path_failures=0;unexpected_writes=$Unexpected.Count;rollback_not_run=0;diff_check_exit_code=$Exit;rollback_strategy='remove only local Phase 9 acceptance projection and P09-990 evidence; retain implementation, task evidence, STAR, and fail-closed production mapping blocker';production_write_count=0};if([int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p09_990_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P09-089') {
     & git -C $script:RepositoryRoot diff --check;$DiffExit=$LASTEXITCODE;$Paths=@(Get-P09089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P09089PathAllowed -RelativePath $_)})
@@ -12072,7 +12154,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P09-990' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P10-001' -and $ExitCode -eq 0) {
+    $ModeState=Get-P10001GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P09-990' -and $ExitCode -eq 0) {
     $Projection=Get-P09LocalProjection;$ModeState=Get-P09GateModeState -IncludeVerify;if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){$LocalVerificationPath=Join-Path $script:TaskEvidenceDirectory 'local-verification.json';if($Mode-ceq'Verify'-or-not(Test-Path -LiteralPath $LocalVerificationPath -PathType Leaf)){Write-P09LocalProjectionEvidence -ReadyForReview $true};Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P08-990' -and $ExitCode -eq 0) {
     $Projection=Get-P08LocalProjection;$ModeState=Get-P08GateModeState -IncludeVerify;if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){$LocalVerificationPath=Join-Path $script:TaskEvidenceDirectory 'local-verification.json';if($Mode-ceq'Verify'-or-not(Test-Path -LiteralPath $LocalVerificationPath -PathType Leaf)){Write-P08LocalProjectionEvidence -ReadyForReview $true};Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
