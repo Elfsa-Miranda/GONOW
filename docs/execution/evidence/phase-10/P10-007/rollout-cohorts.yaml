@@ -19,6 +19,15 @@ allocation:
   cohorts_mutually_exclusive: true
   skip_gate_allowed: false
   insufficient_sample_action: extend_current_gate
+observation_contract:
+  windows_must_be_nonoverlapping: true
+  minimum_nonoverlap_observation_hours: 744
+  window_started_at_field: window_started_at
+  window_ended_at_field: window_ended_at
+  duration_field: observed_hours
+  duration_tolerance_hours: 0.01
+  timestamp_offset_required: true
+  insufficient_total_observation_action: extend_current_gate
 risk_slices:
   - id: authentication_boundary
   - id: candidate_rejection
