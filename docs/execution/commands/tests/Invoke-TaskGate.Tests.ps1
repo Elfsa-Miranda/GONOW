@@ -151,6 +151,20 @@ if ($RunnerText -notmatch 'Get-P10005GateModeState' -or
     $RunnerText -notmatch 'p10_005_rollback_verification_failed') {
   throw 'negative: P10-005 must own E0 immutability, versioned split, canonical digest, change control, security, evidence, workset, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10006GateModeState' -or
+    $RunnerText -notmatch 'p10_006_verify_failed' -or
+    $RunnerText -notmatch 'raw_agreement' -or
+    $RunnerText -notmatch 'cohen_kappa' -or
+    $RunnerText -notmatch 'advisory_only' -or
+    $RunnerText -notmatch 'rollout_decision_count' -or
+    $RunnerText -notmatch 'harness_control_id=30' -or
+    $RunnerText -notmatch 'p10_006_security_failed' -or
+    $RunnerText -notmatch 'forbidden_reasoning_field_count' -or
+    $RunnerText -notmatch 'p10_006_workset_failed' -or
+    $RunnerText -notmatch 'p10_006_evidence_failed' -or
+    $RunnerText -notmatch 'p10_006_rollback_verification_failed') {
+  throw 'negative: P10-006 must own double-label calibration metrics, advisory fallback, Harness 30, security, evidence, workset, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
