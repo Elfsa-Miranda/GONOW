@@ -6,9 +6,15 @@ import uuid
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.persistence.models.runtime import EventRecord, RunRecord, RunState, TERMINAL_RUN_STATES
+from app.persistence.models.runtime import (
+    EventRecord,
+    RunRecord,
+    RunState,
+    TERMINAL_RUN_STATES,
+)
 from app.persistence.repositories.runs import RuntimeRecordNotFound, TransactionRequired
 
 
@@ -21,6 +27,15 @@ class AuditReceiptRequired(RuntimeError):
 
 class RunTerminal(RuntimeError):
     code = "run.terminal"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
+class EventSequenceConflict(RuntimeError):
+    """Stable error for a database uniqueness race while allocating an event."""
+
+    code = "event.sequence_conflict"
 
     def __init__(self) -> None:
         super().__init__(self.code)
@@ -69,7 +84,10 @@ class EventsRepository:
         )
         run.next_event_seq += 1
         self._session.add(event)
-        self._session.flush()
+        try:
+            self._session.flush()
+        except IntegrityError as error:
+            raise EventSequenceConflict() from error
         return event
 
     def replay_after(

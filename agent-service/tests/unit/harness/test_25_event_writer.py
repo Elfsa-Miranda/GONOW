@@ -12,8 +12,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Engine, make_url
-from sqlalchemy.exc import StatementError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 
@@ -22,11 +21,9 @@ site.addsitedir(str(SERVICE_ROOT / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(SERVICE_ROOT))
 
 from app.persistence.models.runtime import EventRecord, RUNTIME_SCHEMA, RunRecord  # noqa: E402
-from app.persistence.repositories.events import (  # noqa: E402
-    AuditReceiptRequired,
-    EventsRepository,
-)
+from app.persistence.repositories.events import AuditReceiptRequired  # noqa: E402
 from app.persistence.repositories.runs import RunsRepository  # noqa: E402
+from app.runtime.event_writer import EventWriter, UnsafeEventPayload  # noqa: E402
 
 
 ALEMBIC_INI = SERVICE_ROOT / "alembic.ini"
@@ -94,90 +91,108 @@ def event_runtime(monkeypatch: pytest.MonkeyPatch):
             command.downgrade(config, "base")
         finally:
             with engine.begin() as connection:
-                connection.execute(DropSchema(RUNTIME_SCHEMA, cascade=True, if_exists=True))
-                connection.execute(DropSchema(VERSION_SCHEMA, cascade=True, if_exists=True))
+                connection.execute(
+                    DropSchema(RUNTIME_SCHEMA, cascade=True, if_exists=True)
+                )
+                connection.execute(
+                    DropSchema(VERSION_SCHEMA, cascade=True, if_exists=True)
+                )
             engine.dispose()
 
 
 def test_25_event_writer_s_persists_before_replay(event_runtime) -> None:
     factory, run_id = event_runtime
-    with factory.begin() as session:
-        written = EventsRepository(session).append(
-            tenant_id=TENANT,
-            run_id=run_id,
-            event_type="run.queued",
-            payload={"state": "queued"},
-            audit_receipt_id="audit-harness-success",
-        )
-    with factory.begin() as session:
-        replay = EventsRepository(session).replay_after(
-            tenant_id=TENANT,
-            run_id=run_id,
-            last_event_id=0,
-        )
+    writer = EventWriter(factory)
+    written = writer.append(
+        tenant_id=TENANT,
+        run_id=run_id,
+        event_type="run.queued",
+        payload={"state": "queued"},
+        audit_receipt_id="audit-harness-success",
+    )
+    replay = writer.replay_after(
+        tenant_id=TENANT,
+        run_id=run_id,
+        last_event_id=0,
+    )
     assert [(event.seq, event.event_id) for event in replay] == [(1, written.event_id)]
 
 
-def test_25_event_writer_i_concurrent_writers_are_database_serialized(event_runtime) -> None:
+def test_25_event_writer_i_concurrent_writers_are_database_serialized(
+    event_runtime,
+) -> None:
     factory, run_id = event_runtime
+    writer = EventWriter(factory)
 
     def append(index: int) -> int:
-        with factory.begin() as session:
-            return EventsRepository(session).append(
-                tenant_id=TENANT,
-                run_id=run_id,
-                event_type="run.progress",
-                payload={"index": index},
-                audit_receipt_id=f"audit-harness-{index}",
-            ).seq
+        return writer.append(
+            tenant_id=TENANT,
+            run_id=run_id,
+            event_type="run.progress",
+            payload={"index": index},
+            audit_receipt_id=f"audit-harness-{index}",
+        ).seq
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         assigned = list(executor.map(append, range(4)))
     assert sorted(assigned) == [1, 2, 3, 4]
     with factory.begin() as session:
         persisted = session.scalars(
-            select(EventRecord).where(EventRecord.run_id == run_id).order_by(EventRecord.seq)
+            select(EventRecord)
+            .where(EventRecord.run_id == run_id)
+            .order_by(EventRecord.seq)
         ).all()
     assert [event.seq for event in persisted] == [1, 2, 3, 4]
 
 
 def test_25_event_writer_d_missing_audit_receipt_fails_closed(event_runtime) -> None:
     factory, run_id = event_runtime
+    writer = EventWriter(factory)
     with pytest.raises(AuditReceiptRequired, match="audit.receipt_required"):
-        with factory.begin() as session:
-            EventsRepository(session).append(
-                tenant_id=TENANT,
-                run_id=run_id,
-                event_type="run.progress",
-                payload={},
-                audit_receipt_id="",
-            )
-    with factory.begin() as session:
-        assert session.scalar(select(func.count()).select_from(EventRecord)) == 0
-        assert session.scalar(
-            select(RunRecord.next_event_seq).where(RunRecord.run_id == run_id)
-        ) == 1
-
-
-def test_25_event_writer_d_failed_write_rolls_back_sequence_reservation(event_runtime) -> None:
-    factory, run_id = event_runtime
-    with pytest.raises(StatementError):
-        with factory.begin() as session:
-            EventsRepository(session).append(
-                tenant_id=TENANT,
-                run_id=run_id,
-                event_type="run.progress",
-                payload={"not_json": object()},
-                audit_receipt_id="audit-harness-failed",
-            )
-    with factory.begin() as session:
-        recovered = EventsRepository(session).append(
+        writer.append(
             tenant_id=TENANT,
             run_id=run_id,
             event_type="run.progress",
-            payload={"recovered": True},
-            audit_receipt_id="audit-harness-recovered",
+            payload={},
+            audit_receipt_id="",
         )
+    with factory.begin() as session:
+        assert session.scalar(select(func.count()).select_from(EventRecord)) == 0
+        assert (
+            session.scalar(
+                select(RunRecord.next_event_seq).where(RunRecord.run_id == run_id)
+            )
+            == 1
+        )
+
+
+def test_25_event_writer_d_failed_write_rolls_back_sequence_reservation(
+    event_runtime,
+) -> None:
+    factory, run_id = event_runtime
+    notifications: list[int] = []
+    writer = EventWriter(
+        factory, after_commit=lambda event: notifications.append(event.seq)
+    )
+    heartbeat = writer.heartbeat()
+    with pytest.raises(UnsafeEventPayload, match="event.unsafe_payload"):
+        writer.append(
+            tenant_id=TENANT,
+            run_id=run_id,
+            event_type="run.progress",
+            payload={"prompt_text": "must not persist"},
+            audit_receipt_id="audit-harness-failed",
+        )
+    assert heartbeat.seq is None and heartbeat.data == {}
+    assert notifications == []
+    recovered = writer.append(
+        tenant_id=TENANT,
+        run_id=run_id,
+        event_type="run.progress",
+        payload={"recovered": True},
+        audit_receipt_id="audit-harness-recovered",
+    )
     assert recovered.seq == 1
+    assert notifications == [1]
     with factory.begin() as session:
         assert session.scalar(select(func.count()).select_from(EventRecord)) == 1
