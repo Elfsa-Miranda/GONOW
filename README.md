@@ -231,3 +231,21 @@ database readiness, tenant/Run identity, the last persisted business sequence, t
 interrupt/capability state, and cancellation version. See
 `docs/runbooks/sse-recovery.md` for the full local procedure. Independent review, production
 validation, remote merge, deployment, and formal acceptance remain pending.
+
+## Itinerary validation and bounded repair (local provisional)
+
+Phase 7 adds a deterministic, typed validation candidate for itinerary constraints. It classifies
+hard conflicts, warnings, unverified facts, and verified candidates; a five-state Evidence Gate
+prevents transport success from being treated as truth; local repair is limited to two rounds and
+retains unresolved original conflicts. An optional OR-Tools solver is disabled by default and, when
+explicitly enabled for sufficiently large inputs, runs only in a spawned child process with a
+parent-owned hard deadline and a valid original-order fallback.
+
+No production-quality, latency, cost, or adoption claim is made: the recorded data is synthetic and
+local. Keep the solver disabled to use canonical validation plus bounded repair only. If solver
+execution degrades, disable it immediately; canonical validation remains available. Start diagnosis
+with the typed constraint envelope, observation/evidence state, stable reason code, repair round and
+stop reason, then the solver child/deadline only when the solver was enabled. See
+`docs/architecture/validation-repair.md`, `docs/api/validation-errors.md`, and
+`docs/runbooks/solver-isolation.md`. Independent review, production-like validation, remote merge,
+deployment, and formal acceptance remain pending.

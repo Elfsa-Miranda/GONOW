@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P07-089",
+  "mode": "WorksetVerify",
+  "reason_code": "recovered_post_commit_workset_projection",
+  "status": "resolved_local",
+  "root_cause": "the closure workset implementation inspected only dirty files, so any post-commit evidence refresh falsely reported all already committed required deliverables as missing",
+  "impact_surface": [
+    "post-commit P07-089 WorksetVerify re-entry",
+    "quality-hash refresh after an upstream validation repair",
+    "Phase 7 pre-merge artifact manifest refresh"
+  ],
+  "excluded_paths": [
+    "17 local handoff journeys passed with zero failure, error, or skip",
+    "documentation, security, rollback, and status-board modes passed",
+    "no implementation file or production object was changed by the closure refresh"
+  ],
+  "repair": "project the workset from dirty paths plus every Phase-base-descended commit whose subject binds TASK-P07-089, then de-duplicate and apply the unchanged allowlist",
+  "rollback": "revert only the TASK-P07-089 commit-projection loop and refreshed closure evidence; retain the upstream validation compatibility repair",
+  "recovery_condition": "required_change_missing_count=0, unexpected_paths=0, implementation_files_changed=0, and Evidence hashes this blocker plus the refreshed manifest",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-01T19:08:00+08:00"
+}

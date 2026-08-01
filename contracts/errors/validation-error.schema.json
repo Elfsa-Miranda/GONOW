@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gonow.example.invalid/contracts/errors/validation-error.schema.json",
+  "title": "GoNow validation error or degradation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "error_code", "category", "retryable", "user_action"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "constraint.fact_missing",
+        "constraint.time_outside_window",
+        "constraint.commute_unverified",
+        "constraint.commute_exceeded",
+        "constraint.opening_hours_unverified",
+        "constraint.venue_closed",
+        "constraint.budget_unverified",
+        "constraint.budget_exceeded",
+        "constraint.preference_unverified",
+        "constraint.preference_unmet",
+        "evidence.repository_unavailable",
+        "evidence.unverified",
+        "evidence.stale",
+        "evidence.conflicted",
+        "evidence.payload_invalid",
+        "repair.candidate_items_required",
+        "repair.duplicate_path",
+        "repair.path_not_allowed",
+        "repair.item_not_found",
+        "repair.field_not_found",
+        "solver.completed",
+        "solver.disabled",
+        "solver.not_needed",
+        "solver.soft_timeout",
+        "solver.hard_timeout",
+        "solver.child_failed"
+      ]
+    },
+    "category": {
+      "enum": ["hard", "warning", "unverified", "evidence", "repair", "solver"]
+    },
+    "retryable": {"type": "boolean"},
+    "user_action": {
+      "enum": ["none", "refresh_evidence", "edit_candidate", "confirm", "disable_solver", "contact_support"]
+    }
+  }
+}
