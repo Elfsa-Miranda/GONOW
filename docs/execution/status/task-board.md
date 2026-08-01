@@ -93,7 +93,7 @@ Generated from the 1.4.0 TaskGate Catalog and per-task status records.
 | TASK-P07-005 | Phase 7 | ready_for_review |
 | TASK-P07-006 | Phase 7 | ready_for_review |
 | TASK-P07-007 | Phase 7 | ready_for_review |
-| TASK-P07-089 | Phase 7 | in_progress |
+| TASK-P07-089 | Phase 7 | ready_for_review |
 | TASK-P07-990 | Phase 7 | not_started |
 | TASK-P07-999 | Phase 7 | not_started |
 | TASK-P08-001 | Phase 8 | not_started |
