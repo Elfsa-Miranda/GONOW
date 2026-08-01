@@ -105,6 +105,14 @@ if ($RunnerText -notmatch 'Get-P10001GateModeState' -or
     $RunnerText -notmatch 'p10_001_rollback_verification_failed') {
   throw 'negative: P10-001 must own trace, redaction, harness, workset, evidence, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10002GateModeState' -or
+    $RunnerText -notmatch 'p10_002_verify_failed' -or
+    $RunnerText -notmatch 'required metrics have type/unit/owner' -or
+    $RunnerText -notmatch 'p10_002_security_failed' -or
+    $RunnerText -notmatch 'p10_002_workset_failed' -or
+    $RunnerText -notmatch 'p10_002_rollback_verification_failed') {
+  throw 'negative: P10-002 must own bounded metrics, dashboard, security, evidence, workset, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
