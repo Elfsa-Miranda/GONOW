@@ -1506,6 +1506,16 @@ function Get-P05001GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P05002GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','DependencyAudit','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json
+  $Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
 function Write-P04LocalProjectionEvidence {
   param([Parameter(Mandatory=$true)][bool]$ReadyForReview)
   $Projection=Get-P04LocalProjection;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
@@ -2128,6 +2138,23 @@ function Test-P05001PathAllowed {
   return $RelativePath.StartsWith('docs/execution/evidence/phase-05/P05-001/',[StringComparison]::Ordinal)
 }
 
+function Get-P05002ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P05002PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py',
+    'agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py',
+    'docs/execution/commands/Invoke-TaskGate.ps1','docs/execution/status/TASK-P05-002.json'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-05/P05-002/',[StringComparison]::Ordinal)
+}
+
 function Get-P04009ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
   $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2357,6 +2384,25 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P05-002') {
+    $Paths=@(Get-P05002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05002PathAllowed -RelativePath $_)})
+    $SourcePaths=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py')
+    $SourceText=@($SourcePaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $AppPaths=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py')
+    $AppText=@($AppPaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $ArbitrarySql=[regex]::Matches($AppText,'(?im)(?:text\s*\(|execute\s*\(\s*[furb]*["'']|exec_driver_sql|\braw_sql\b|subprocess\.|os\.system\s*\(|shell\s*=\s*true|(?<![A-Za-z0-9_.])(?:eval|exec)\s*\()').Count
+    $RestorePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-03\P03-009\backup-restore-report.json';$Restore=if(Test-Path -LiteralPath $RestorePath -PathType Leaf){Get-Content -LiteralPath $RestorePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $DependencyPath=Join-Path $script:TaskEvidenceDirectory 'dependency-audit-report.json';$Dependency=if(Test-Path -LiteralPath $DependencyPath -PathType Leaf){Get-Content -LiteralPath $DependencyPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'lease-fencing-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Checks=[ordered]@{
+      critical_cve=if($null-eq$Dependency){1}else{[int]$Dependency.checks.critical_cve};high_cve=if($null-eq$Dependency){1}else{[int]$Dependency.checks.high_cve};unknown_license=if($null-eq$Dependency){1}else{[int]$Dependency.checks.unknown_license}
+      arbitrary_sql_executor_count=$ArbitrarySql;restore_verification_failures=if($null-eq$Restore){1}else{[int]$Restore.restore_verification_failures};missing_audit_receipt_count=if($null-eq$Report){1}else{[int]$Report.missing_audit_receipt_count}
+      valid_secret_finding_count=[regex]::Matches($SourceText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($SourceText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unexpected_paths=$Unexpected.Count;production_write_count=0
+    }
+    $Failures=0;foreach($Key in @('critical_cve','high_cve','unknown_license','arbitrary_sql_executor_count','restore_verification_failures','missing_audit_receipt_count','valid_secret_finding_count','pii_canary_leak_count','unexpected_paths')){$Failures += [int]$Checks[$Key]}
+    if($Failures-ne0){return New-BlockedResult 'p05_002_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-001') {
     $Paths=@(Get-P05001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05001PathAllowed -RelativePath $_)})
     $SourcePaths=@('agent-service/app/persistence/repositories/jobs.py','agent-service/app/worker/job_runner.py','agent-service/tests/integration/test_job_claim.py')
@@ -3296,6 +3342,18 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P05-002') {
+    $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'lease-fencing-report.json';$PreviousReport=$env:GONOW_P05_002_REPORT
+    try{$env:GONOW_P05_002_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P05_002_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P05_002_REPORT=$PreviousReport}}
+    $Tests=0;$Failures=1;$Skipped=1;if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Tests=0;$Failures=0;$Skipped=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped}}
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Control=if(Test-Path -LiteralPath $JunitPath -PathType Leaf){New-P02HarnessControlRecord -ControlId 34 -RelativeTestPath 'agent-service/tests/unit/harness/test_34_consistency_fence.py' -JunitPath $JunitPath}else{$null}
+    $HarnessValid=$null-ne$Control-and[int]$Control.tests-eq7-and@($Control.case_ids.S).Count-ge2-and@($Control.case_ids.I).Count-ge2-and@($Control.case_ids.D).Count-ge3-and[int]$Control.failures+[int]$Control.errors+[int]$Control.skipped+[int]$Control.xfailed-eq0
+    if($null-ne$Control){Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;operation='extend';catalog_sha256=$script:CatalogSha256;catalog_before_sha256=$script:CatalogSha256;catalog_after_sha256=$script:CatalogSha256;catalog_changed=$false;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();controls=@($Control)})}
+    $ReportValid=$null-ne$Report-and[string]$Report.task_id-ceq'TASK-P05-002'-and[string]$Report.database-ceq'isolated-postgresql-17'-and[bool]$Report.database_clock_only-and[int]$Report.recovery_contender_count-eq2-and[int]$Report.new_lease_winner_count-eq1-and[int]$Report.empty_recovery_count-eq1-and(@($Report.fencing_tokens)-join',')-ceq'1,2'-and[bool]$Report.fencing_token_monotonic-and[int]$Report.stale_renew_rejection_count-eq1-and[int]$Report.stale_write_rejection_count-eq1-and[int]$Report.stale_write_count-eq0-and[int]$Report.active_lease_count-eq1-and[bool]$Report.heartbeat_advanced-and[bool]$Report.expiry_after_heartbeat-and[int]$Report.missing_audit_receipt_count+[int]$Report.redis_count+[int]$Report.external_queue_count+[int]$Report.unknown_outcome_blind_retry_count+[int]$Report.production_write_count-eq0
+    $Checks=[ordered]@{primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$Tests-eq9-and$Failures-eq0-and$Skipped-eq0-and$ReportValid-and$HarnessValid);tests=$Tests;failures=$Failures;skipped=$Skipped;test_exit_code=[int]$TestRun.exit_code;stale_write_count=if($null-eq$Report){1}else{[int]$Report.stale_write_count};new_lease_winner_count=if($null-eq$Report){0}else{[int]$Report.new_lease_winner_count};fencing_token_monotonic=($null-ne$Report-and[bool]$Report.fencing_token_monotonic);heartbeat_advanced=($null-ne$Report-and[bool]$Report.heartbeat_advanced);harness_valid=$HarnessValid;harness_tests=if($null-eq$Control){0}else{[int]$Control.tests};production_write_count=if($null-eq$Report){1}else{[int]$Report.production_write_count}}
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p05_002_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-001') {
     $Python=Get-P02ServicePython
     $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
@@ -4627,6 +4685,12 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P05-002') {
+    $Required=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py','docs/execution/evidence/phase-05/P05-002/direct-pytest.xml','docs/execution/evidence/phase-05/P05-002/lease-fencing-report.json','docs/execution/evidence/phase-05/P05-002/harness-status-fragment.json','docs/execution/evidence/phase-05/P05-002/dependency-audit-report.json')
+    $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0;foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};try{if($RelativePath.EndsWith('.json')){$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}elseif($RelativePath.EndsWith('.xml')){[xml]$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8}}catch{$SchemaErrors++};if($RelativePath.EndsWith('.py')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/x-python'}) -ArtifactType 'phase-05-lease-fencing-evidence' -GeneratedByStep 'TASK-P05-002:Evidence'}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p05_002_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-001') {
     $Required=@(
       'agent-service/app/persistence/repositories/jobs.py','agent-service/app/worker/job_runner.py',
@@ -6132,6 +6196,10 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P05-002') {
+    $Paths=@(Get-P05002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05002PathAllowed -RelativePath $_)});$Required=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py','docs/execution/evidence/phase-05/P05-002/direct-pytest.xml','docs/execution/evidence/phase-05/P05-002/lease-fencing-report.json','docs/execution/evidence/phase-05/P05-002/harness-status-fragment.json','docs/execution/evidence/phase-05/P05-002/dependency-audit-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('agent-service/app/worker/lease.py','agent-service/app/persistence/repositories/jobs.py','agent-service/tests/integration/test_lease_fencing.py','agent-service/tests/unit/harness/test_34_consistency_fence.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0;if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1','docs/execution/schemas/harness-test-catalog.yaml','agent-service/pyproject.toml','agent-service/uv.lock')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-match'^agent-service/(app|tests)/'}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p05_002_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-001') {
     $Paths=@(Get-P05001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05001PathAllowed -RelativePath $_)})
     $Required=@(
@@ -7004,6 +7072,9 @@ function Invoke-ModeArchitectureArtifactRegister {
 }
 
 function Invoke-ModeDependencyAudit {
+  if ($TaskId -ceq 'TASK-P05-002') {
+    $UvPath='D:\GO_NOW-toolchain\bin\uv.exe';$Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe';$Quality=Join-Path $script:RepositoryRoot 'agent-service\tests\ci\test_quality_gate.py';$LicensePath=Join-Path $script:TaskEvidenceDirectory 'dependency-licenses.json';$Audit=Invoke-RedactedExternal -Executable $UvPath -Arguments @('audit','--locked','--all-groups','--directory',(Join-Path $script:RepositoryRoot 'agent-service'));$LicenseRun=Invoke-RedactedExternal -Executable $Python -Arguments @($Quality,'--mode','licenses','--repo-root',$script:RepositoryRoot,'--output',$LicensePath);$License=if(Test-Path -LiteralPath $LicensePath -PathType Leaf){Get-Content -LiteralPath $LicensePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$DependencyPaths=@(& git -C $script:RepositoryRoot diff --name-only HEAD -- 'agent-service/pyproject.toml' 'agent-service/uv.lock');$Checks=[ordered]@{unpinned_direct=if($null-eq$License){1}else{[int]$License.checks.unpinned_direct};unknown_license=if($null-eq$License){1}else{[int]$License.checks.unknown_license};critical_cve=if([int]$Audit.exit_code-eq0){0}else{1};high_cve=0;stale_without_adr=0;dependency_change_count=$DependencyPaths.Count;audit_exit_code=[int]$Audit.exit_code;license_exit_code=[int]$LicenseRun.exit_code;direct_pin_count=if($null-eq$License){0}else{[int]$License.checks.direct_pin_count};production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'dependency-audit-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.unpinned_direct+[int]$Checks.unknown_license+[int]$Checks.critical_cve+[int]$Checks.high_cve+[int]$Checks.stale_without_adr+[int]$Checks.dependency_change_count+[int]$Checks.license_exit_code-ne0){return New-BlockedResult 'p05_002_dependency_audit_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P04-004') {
     $UvPath='D:\GO_NOW-toolchain\bin\uv.exe';$Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe';$Quality=Join-Path $script:RepositoryRoot 'agent-service\tests\ci\test_quality_gate.py';$LicensePath=Join-Path $script:TaskEvidenceDirectory 'dependency-licenses.json';$Audit=Invoke-RedactedExternal -Executable $UvPath -Arguments @('audit','--locked','--all-groups','--directory',(Join-Path $script:RepositoryRoot 'agent-service'));$LicenseRun=Invoke-RedactedExternal -Executable $Python -Arguments @($Quality,'--mode','licenses','--repo-root',$script:RepositoryRoot,'--output',$LicensePath);$License=if(Test-Path -LiteralPath $LicensePath -PathType Leaf){Get-Content -LiteralPath $LicensePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$DependencyPaths=@(& git -C $script:RepositoryRoot diff --name-only HEAD -- 'agent-service/pyproject.toml' 'agent-service/uv.lock')
     $Checks=[ordered]@{unpinned_direct=if($null-eq$License){1}else{[int]$License.checks.unpinned_direct};unknown_license=if($null-eq$License){1}else{[int]$License.checks.unknown_license};critical_cve=if([int]$Audit.exit_code-eq0){0}else{1};high_cve=0;stale_without_adr=0;dependency_change_count=$DependencyPaths.Count;audit_exit_code=[int]$Audit.exit_code;license_exit_code=[int]$LicenseRun.exit_code;direct_pin_count=if($null-eq$License){0}else{[int]$License.checks.direct_pin_count};production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'dependency-audit-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.unpinned_direct+[int]$Checks.unknown_license+[int]$Checks.critical_cve+[int]$Checks.high_cve+[int]$Checks.stale_without_adr+[int]$Checks.dependency_change_count+[int]$Checks.license_exit_code-ne0){return New-BlockedResult 'p04_004_dependency_audit_failed' $Checks};return New-PassedResult $Checks
@@ -7148,6 +7219,9 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P05-002') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P05002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05002PathAllowed -RelativePath $_)});$MigrationChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'lease-fencing-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$FragmentPath=Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json';$Fragment=if(Test-Path -LiteralPath $FragmentPath -PathType Leaf){Get-Content -LiteralPath $FragmentPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[int]$Report.stale_write_count-eq0-and[int]$Report.new_lease_winner_count-eq1-and[bool]$Report.fencing_token_monotonic-and[int]$Report.production_write_count-eq0;$CatalogPreserved=$null-ne$Fragment-and-not[bool]$Fragment.catalog_changed-and[string]$Fragment.catalog_before_sha256-ceq[string]$Fragment.catalog_after_sha256;$Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$MigrationChanges.Count;catalog_preservation_failures=if($CatalogPreserved){0}else{1};rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='stop claiming new Jobs, let valid leases drain, then revert the lease coordinator, repository CAS methods, and tests; no schema or Catalog mutation is required';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.schema_change_count+[int]$Checks.catalog_preservation_failures+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p05_002_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-001') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
     $Paths=@(Get-P05001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05001PathAllowed -RelativePath $_)})
@@ -8498,7 +8572,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P05-001' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P05-002' -and $ExitCode -eq 0) {
+    $ModeState=Get-P05002GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P05-001' -and $ExitCode -eq 0) {
     $ModeState=Get-P05001GateModeState
     if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P04-990' -and $ExitCode -eq 0) {
