@@ -7,7 +7,7 @@ The local failure-injection harness initially could not prove that it killed the
 - status: `resolved`
 - severity: `P2`; the defect affected only disposable local test processes, but it could terminate an unrelated local process and therefore could not be left in the harness.
 - owner / reviewer: QA / SRE+Security
-- first_seen / last_updated / timezone: `2026-08-01T12:58+08:00` / `2026-08-01T13:11+08:00` / `Asia/Shanghai`
+- first_seen / last_updated / timezone: `2026-08-01T12:58+08:00` / `2026-08-01T13:16+08:00` / `Asia/Shanghai`
 
 ## Expected and actual result
 
@@ -36,7 +36,10 @@ The first implementation failed with `worker barrier identity is invalid`. A dia
 
 - Failed full-CI JUnit: `D:\GO_NOW-phase-05-ci-p05-006\unit.xml`, SHA-256 `b76e427ee1c0c9b660e888ca949db3cb5a4fa6d1ec81b0937ba40d4c4e021627`.
 - Failed full-CI summary: `D:\GO_NOW-phase-05-ci-p05-006\ci-summary.json`, SHA-256 `2a80dc94e91dbf048a65878f47929254c02a45aa7b67646c9a4269558bdba139`.
-- Repaired matrix report: `docs/execution/evidence/phase-05/P05-006/failure-injection-report.json`, SHA-256 at closure `ccf31cbcd5a96025351338eade6230e6af28f6580b7da01b5dd6d17683638a94` (later gate runs may replace this generated report and bind its final hash).
+- Repaired matrix report: `docs/execution/evidence/phase-05/P05-006/failure-injection-report.json`, SHA-256 at candidate closure `7e503a579285af53d16ba7e27a6c7ab97039c8ab2104bc9ad69080f42dc4bed5` (post-commit evidence binding may replace this generated report and bind its final hash).
+- Successful full-CI summary: `D:\GO_NOW-phase-05-ci-p05-006-retry\ci-summary.json`, SHA-256 `4d8786866de40a579ccdc0fe91dd345a2917c0d32cd12fa08ef96c6dee3e7808`.
+- Successful main-suite JUnit: `D:\GO_NOW-phase-05-ci-p05-006-retry\unit.xml`, SHA-256 `5afcdd8fb8ec98279bcc66898c4a7c907c57f7ab5c68ff52b2d01b7160dc8838`.
+- Successful contract-suite JUnit: `D:\GO_NOW-phase-05-ci-p05-006-retry\contract.xml`, SHA-256 `32113e2df95429a97fb15582696878de199d077e6f47160d0a81b1944bca0741`.
 - Database shutdown/restart evidence: `D:\GO_NOW-toolchain\postgres-17.10-isolated\postgres.log`; only the timestamp and lifecycle conclusion are referenced because the log is an external test artifact.
 
 ## Known facts and remaining uncertainty
@@ -100,9 +103,9 @@ Rejected alternatives:
 
 ## Verification and closure
 
-- Fix commit/PR: pending local candidate commit; no push or PR is authorized.
+- Fix commit/PR: local candidate `5a2f47243c9c680a7ee2f150af182f324c657618`; no push or PR is authorized.
 - Affected regression: focused harness `4 passed`, matrix point count `7`, `kill_confirmed=true`, `orphan_process_count=0`, `dirty_fixture_count=0`, PostgreSQL readiness exit `0`, unchanged PostgreSQL PID.
-- Full regression: pending rerun after this blocker record is committed; its final report/hash will be referenced by Phase 5 acceptance evidence.
-- Final state / close time: `resolved` by local Engineering implementation at `2026-08-01T13:11+08:00`; independent SRE+Security acceptance remains pending.
+- Full regression: main suite `418 passed`; contract suite `96 passed`; dependency audit passed; PostgreSQL PID remained `15744` and readiness passed after the full run.
+- Final state / close time: `resolved` by local Engineering implementation at `2026-08-01T13:16+08:00`; independent SRE+Security acceptance remains pending.
 - Remaining risk: alternate Python distributions may fail the explicit identity assertion. Owner QA; due before Phase 5 formal acceptance; prevention is to keep the assertion and never add raw PID fallback.
 - Documentation follow-up: Phase 5 acceptance and retrospective must list this blocker and its final status. Owner Reliability; due at `TASK-P05-990`.
