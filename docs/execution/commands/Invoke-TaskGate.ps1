@@ -240,6 +240,9 @@ function Get-TaskEvidenceDirectory {
   if ($TaskIdValue -ceq 'TASK-P10-011') {
     return Join-Path $RepositoryRoot 'docs\execution\evidence\releases\P10-011'
   }
+  if ($TaskIdValue -ceq 'TASK-REL-C-000') {
+    return Join-Path $RepositoryRoot 'docs\execution\evidence\releases\REL-C-000'
+  }
   if ($TaskIdValue -cmatch '^TASK-P(\d{2}[A-D]?)-(.+)$') {
     return Join-Path $RepositoryRoot "docs\execution\evidence\phase-$($Matches[1].ToLowerInvariant())\P$($Matches[1])-$($Matches[2])"
   }
@@ -1713,6 +1716,100 @@ function Get-P10011LivePullRequestState {
   $Checks=[ordered]@{live_query_failure_count=$QueryFailures;repository_match=($null-ne$Pull-and[string]$Pull.base.repo.full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_match=($null-ne$Pull-and[int]$Pull.number-eq[int]$Observation.pr_number);pr_state_open=($null-ne$Pull-and[string]$Pull.state-ceq'open'-and-not[bool]$Pull.merged-and-not[bool]$Pull.draft);base_ref_match=($null-ne$Pull-and[string]$Pull.base.ref-ceq'main');head_ref_match=($null-ne$Pull-and[string]$Pull.head.ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Pull-and[string]$Pull.head.sha-ceq[string]$Observation.head_oid);auto_merge_disabled=($null-ne$Pull-and$null-eq$Pull.auto_merge);review_request_missing=if($ReviewRequests-ge1){0}else{1};required_check_set_mismatch=$CheckSetMismatch;required_check_failure_count=$CheckFailures;remote_write_count=0;production_write_count=0}
   $BooleanFailures=@('repository_match','pr_number_match','pr_state_open','base_ref_match','head_ref_match','head_oid_match','auto_merge_disabled')|Where-Object{-not[bool]$Checks[$_]};$CountFailures=[int]$Checks.live_query_failure_count+[int]$Checks.review_request_missing+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count
   return [ordered]@{passed=($BooleanFailures.Count-eq0-and$CountFailures-eq0);checks=$Checks}
+}
+
+function Get-RelC000GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Results=@((Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json).results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;$Rows=@($Results|Where-Object{[string]$_.check_id-ceq$ModeName});$Rows.Count-eq1-and[string]$Rows[0].status-cne'passed'})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
+function Get-RelC000ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  $SelectionPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\releases\REL-C-000\path-selection.json'
+  if(Test-Path -LiteralPath $SelectionPath -PathType Leaf){
+    try{$Selection=Get-Content -LiteralPath $SelectionPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;$Base=[string]$Selection.accepted_landing_sha;if($Base-cmatch'^[0-9a-f]{40}$'){& git -C $script:RepositoryRoot cat-file -e "$Base^{commit}" 2>$null;if($LASTEXITCODE-eq0){$Paths+=@(& git -C $script:RepositoryRoot diff --name-only $Base HEAD --)}}}catch{}
+  }
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-RelC000PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  if($RelativePath-ceq'docs/execution/status/TASK-REL-C-000.json'){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/releases/REL-C-000/',[StringComparison]::Ordinal)
+}
+
+function Get-RelC000BranchState {
+  $LocalRows=@(& git -C $script:RepositoryRoot for-each-ref '--format=%(objectname)%09%(refname)' refs/heads 2>$null);$LocalExit=$LASTEXITCODE
+  $RemoteRows=@(& git -C $script:RepositoryRoot ls-remote --heads origin 2>$null);$RemoteExit=$LASTEXITCODE
+  $Refs=@();$GovernanceOid='';$RemoteMainOid='';$RemoteLandingOid=''
+  foreach($Row in @($LocalRows+$RemoteRows)){
+    $Parts=@([string]$Row-split'\s+');if($Parts.Count-lt2){continue};$Oid=[string]$Parts[0];$Ref=[string]$Parts[1];$Refs+=$Ref
+    if($Ref-ceq'refs/heads/codex/release-c-governance'-and$Row-in$LocalRows){$GovernanceOid=$Oid}
+    if($Ref-ceq'refs/heads/main'-and$Row-in$RemoteRows){$RemoteMainOid=$Oid}
+    if($Ref-ceq'refs/heads/codex/gonow-agent-landing'-and$Row-in$RemoteRows){$RemoteLandingOid=$Oid}
+  }
+  $SpecialistRefs=@($Refs|Where-Object{$_-cmatch'^refs/heads/codex/phase-1[12]'}|Sort-Object -Unique)
+  $CurrentHead=(@(& git -C $script:RepositoryRoot rev-parse HEAD 2>$null)-join'').Trim();$HeadExit=$LASTEXITCODE
+  $CurrentBranch=(@(& git -C $script:RepositoryRoot branch --show-current 2>$null)-join'').Trim();$BranchExit=$LASTEXITCODE
+  return [ordered]@{query_failure_count=@($LocalExit,$RemoteExit,$HeadExit,$BranchExit|Where-Object{$_-ne0}).Count;specialist_branch_count=$SpecialistRefs.Count;specialist_refs=$SpecialistRefs;governance_ref_oid=$GovernanceOid;remote_main_oid=$RemoteMainOid;remote_landing_oid=$RemoteLandingOid;current_head_oid=$CurrentHead;current_branch=$CurrentBranch}
+}
+
+function Get-RelC000DependencyState {
+  param([DateTimeOffset]$Now=[DateTimeOffset]::Now)
+  $StatusPath=Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P10-011.json'
+  $ReleasePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\releases\B.json'
+  $GovernancePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-004.json'
+  $ApprovalPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\P10-990\approval-validation.json'
+  $RolloutPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\P10-009\rollout-observation.json'
+  $RolloutPlanPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\P10-007\rollout-plan-report.json'
+  $SupplyPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-09\P09-001\dependency-audit-report.json'
+  $Required=@($StatusPath,$ReleasePath,$GovernancePath,$ApprovalPath,$RolloutPath,$RolloutPlanPath,$SupplyPath);$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath $_ -PathType Leaf)})
+  $SchemaErrors=0;$Status=$null;$Release=$null;$Governance=$null;$Approval=$null;$Rollout=$null;$RolloutPlan=$null;$Supply=$null
+  foreach($Item in @(@($StatusPath,'Status'),@($ReleasePath,'Release'),@($GovernancePath,'Governance'),@($ApprovalPath,'Approval'),@($RolloutPath,'Rollout'),@($RolloutPlanPath,'RolloutPlan'),@($SupplyPath,'Supply'))){
+    if(-not(Test-Path -LiteralPath $Item[0] -PathType Leaf)){continue};try{$Value=Get-Content -LiteralPath $Item[0] -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;Set-Variable -Name $Item[1] -Value $Value}catch{$SchemaErrors++}
+  }
+  $AcceptedLanding=if($null-ne$Release){[string]$Release.accepted_landing_sha}else{''};$ReleaseHash=if(Test-Path -LiteralPath $ReleasePath -PathType Leaf){Get-Sha256 -LiteralPath $ReleasePath}else{''};$RolloutHash=if(Test-Path -LiteralPath $RolloutPath -PathType Leaf){Get-Sha256 -LiteralPath $RolloutPath}else{''}
+  $P10011Accepted=$null-ne$Status-and[string]$Status.task_id-ceq'TASK-P10-011'-and[string]$Status.status-ceq'accepted'-and[bool]$Status.reviewer_independent-and[string]$Status.head_oid-ceq$AcceptedLanding
+  $ReleaseAccepted=$null-ne$Release-and[bool]$Release.accepted-and[string]$Release.release_status-ceq'accepted'-and$AcceptedLanding-cmatch'^[0-9a-f]{40}$'-and[string]$Release.source_integration_sha-ceq$AcceptedLanding
+  $StableObservation=$null-ne$Release-and[string]$Release.stable_observation_status-ceq'passed'-and[string]$Release.stable_observation_sha256-ceq$RolloutHash
+  $GovernanceValid=$null-ne$Governance-and[string]$Governance.execution_mode-ceq'formal_adopted'-and[string]$Governance.formal_gate_status-ceq'passed'-and[bool]$Governance.baseline_input_hash_match
+  $ApprovalUnexpired=$false;$ReleaseAcceptanceUnexpired=$false
+  try{$ApprovalUnexpired=$null-ne$Approval-and[bool]$Approval.quorum_met-and[string]$Approval.decision-ceq'accepted'-and[DateTimeOffset]::Parse([string]$Approval.expires_at)-gt$Now}catch{}
+  try{$ReleaseAcceptanceUnexpired=$null-ne$Release-and[DateTimeOffset]::Parse([string]$Release.acceptance_expires_at)-gt$Now}catch{}
+  $WindowState=Get-P10ObservationWindowState -Observation $Rollout -Plan $RolloutPlan
+  $SupplyValid=$null-ne$Supply-and[int]$Supply.checks.unpinned_direct+[int]$Supply.checks.unknown_license+[int]$Supply.checks.critical_cve+[int]$Supply.checks.high_cve+[int]$Supply.checks.stale_without_adr-eq0
+  $Branches=Get-RelC000BranchState;$RemoteLandingMatch=[string]$Branches.remote_landing_oid-ceq$AcceptedLanding;$MainContains=$false
+  if($AcceptedLanding-cmatch'^[0-9a-f]{40}$'-and[string]$Branches.remote_main_oid-cmatch'^[0-9a-f]{40}$'){
+    & git -C $script:RepositoryRoot cat-file -e "$AcceptedLanding^{commit}" 2>$null;$AcceptedAvailable=$LASTEXITCODE-eq0
+    & git -C $script:RepositoryRoot cat-file -e "$([string]$Branches.remote_main_oid)^{commit}" 2>$null;$MainAvailable=$LASTEXITCODE-eq0
+    if($AcceptedAvailable-and$MainAvailable){& git -C $script:RepositoryRoot merge-base --is-ancestor $AcceptedLanding ([string]$Branches.remote_main_oid) 2>$null;$MainContains=$LASTEXITCODE-eq0}
+  }
+  $PriorCycleRecordCount=0;if($AcceptedLanding-cmatch'^[0-9a-f]{40}$'){& git -C $script:RepositoryRoot cat-file -e "$AcceptedLanding`:docs/execution/evidence/releases/REL-C-000/path-selection.json" 2>$null;if($LASTEXITCODE-eq0){$PriorCycleRecordCount=1}}
+  $Checks=[ordered]@{task_id_match=$true;dependency_failures=0;status_cas_conflict=0;unexpected_paths=0;base_drift=0;missing_input_count=$Missing.Count;schema_errors=$SchemaErrors;p10_011_accepted=$P10011Accepted;release_b_accepted=$ReleaseAccepted;stable_observation_valid=$StableObservation;observation_31_day_contract_valid=[bool]$WindowState.passed;minimum_nonoverlap_observation_hours=744;observed_nonoverlap_hours=[double]$WindowState.observed_nonoverlap_hours;approval_unexpired=$ApprovalUnexpired;release_acceptance_unexpired=$ReleaseAcceptanceUnexpired;governance_receipt_valid=$GovernanceValid;supply_chain_valid=$SupplyValid;remote_landing_match=$RemoteLandingMatch;origin_main_includes_accepted_release_b=$MainContains;branch_query_failure_count=[int]$Branches.query_failure_count;specialist_branch_count=[int]$Branches.specialist_branch_count;prior_cycle_record_count=$PriorCycleRecordCount;production_write_count=0}
+  $Passed=$Missing.Count+$SchemaErrors+[int]$Branches.query_failure_count+[int]$Branches.specialist_branch_count+$PriorCycleRecordCount-eq0-and$P10011Accepted-and$ReleaseAccepted-and$StableObservation-and[bool]$WindowState.passed-and$ApprovalUnexpired-and$ReleaseAcceptanceUnexpired-and$GovernanceValid-and$SupplyValid-and$RemoteLandingMatch-and$MainContains
+  if(-not$Passed){$Checks.dependency_failures=1}
+  return [ordered]@{passed=$Passed;checks=$Checks;accepted_landing_sha=$AcceptedLanding;evidence_sha256=$ReleaseHash;rollout_observation_sha256=$RolloutHash;rollout_plan_sha256=if(Test-Path -LiteralPath $RolloutPlanPath -PathType Leaf){Get-Sha256 -LiteralPath $RolloutPlanPath}else{''};approval_sha256=if(Test-Path -LiteralPath $ApprovalPath -PathType Leaf){Get-Sha256 -LiteralPath $ApprovalPath}else{''};supply_sha256=if(Test-Path -LiteralPath $SupplyPath -PathType Leaf){Get-Sha256 -LiteralPath $SupplyPath}else{''};branch_state=$Branches}
+}
+
+function Get-RelC000SelectionState {
+  param([AllowNull()][object]$Selection,[AllowNull()][object]$Dependency,[AllowNull()][object]$BranchState,[DateTimeOffset]$Now=[DateTimeOffset]::Now)
+  $Paths=@('phase11','phase12','none');$RequiredRoles=@('Data','Engineering','Product','Security');$RequiredOwnerRoles=@('Architecture','Product')
+  $SchemaErrors=0;$Cycle=[Guid]::Empty;if($null-eq$Selection){$SchemaErrors++}else{if([string]$Selection.schema_version-cne'1.0'-or[string]$Selection.task_id-cne'TASK-REL-C-000'-or-not[Guid]::TryParse([string]$Selection.cycle_id,[ref]$Cycle)-or[string]$Selection.evidence_sha256-cnotmatch'^[0-9a-f]{64}$'){$SchemaErrors++}}
+  $Alternatives=if($null-ne$Selection){@($Selection.alternatives)}else{@()};$AlternativeNames=@($Alternatives|ForEach-Object{[string]$_.path}|Sort-Object);$AlternativeSetMismatch=if($Alternatives.Count-eq3-and($AlternativeNames-join',')-ceq(($Paths|Sort-Object)-join',')){0}else{1};$Selected=@($Alternatives|Where-Object{[bool]$_.selected});$PathCount=@($Selected|Where-Object{[string]$_.path-ceq[string]$Selection.path}).Count;$PathXorFailure=if($Selected.Count-eq1){0}else{1}
+  $AlternativeInvalid=0;foreach($Alternative in $Alternatives){$Confidence=$Alternative.confidence;if([string]$Alternative.path-notin$Paths-or[double]$Alternative.denominator-le0-or$null-eq$Confidence-or[double]$Confidence.level-le0-or[double]$Confidence.level-ge1-or[double]$Confidence.lower-lt0-or[double]$Confidence.upper-gt1-or[double]$Confidence.lower-gt[double]$Confidence.upper-or@($Alternative.risks).Count-lt1-or[string]$Alternative.evidence_sha256-cnotmatch'^[0-9a-f]{64}$'){$AlternativeInvalid++}}
+  $Owners=if($null-ne$Selection){@($Selection.owner_signatures)}else{@()};$OwnerRoles=@($Owners|ForEach-Object{[string]$_.role}|Sort-Object);$OwnerInvalid=if($Owners.Count-eq2-and($OwnerRoles-join',')-ceq(($RequiredOwnerRoles|Sort-Object)-join',')){0}else{1};foreach($Owner in $Owners){if([string]::IsNullOrWhiteSpace([string]$Owner.actor_id)-or[string]$Owner.decision-cne'approved'-or[string]$Owner.cycle_id-cne[string]$Selection.cycle_id-or[string]$Owner.path-cne[string]$Selection.path-or[string]$Owner.evidence_sha256-cne[string]$Selection.evidence_sha256){$OwnerInvalid++}}
+  $Approvals=if($null-ne$Selection){@($Selection.approvals)}else{@()};$ApprovalRoles=@($Approvals|ForEach-Object{[string]$_.role}|Sort-Object);$ApprovalInvalid=if($Approvals.Count-eq4-and($ApprovalRoles-join',')-ceq(($RequiredRoles|Sort-Object)-join',')){0}else{1};$ApprovalExpired=0;foreach($Approval in $Approvals){$Unexpired=$false;try{$Unexpired=[DateTimeOffset]::Parse([string]$Approval.expires_at)-gt$Now}catch{};if(-not$Unexpired){$ApprovalExpired++};if([string]::IsNullOrWhiteSpace([string]$Approval.actor_id)-or[string]$Approval.decision-cne'approved'-or[string]$Approval.candidate_sha-cne[string]$Selection.accepted_landing_sha-or[string]$Approval.cycle_id-cne[string]$Selection.cycle_id-or[string]$Approval.path-cne[string]$Selection.path-or[string]$Approval.evidence_sha256-cne[string]$Selection.evidence_sha256){$ApprovalInvalid++}}
+  $OwnerActors=@($Owners|ForEach-Object{[string]$_.actor_id});$ApprovalActors=@($Approvals|ForEach-Object{[string]$_.actor_id});$ActorCollision=@($OwnerActors+$ApprovalActors|Group-Object|Where-Object{$_.Count-gt1}).Count
+  $AcceptedLanding=if($null-ne$Dependency){[string]$Dependency.accepted_landing_sha}else{''};$EvidenceHashMismatch=if($null-ne$Dependency-and[string]$Selection.evidence_sha256-ceq[string]$Dependency.evidence_sha256){0}else{1};$Cas=if($null-ne$Selection){$Selection.cas_receipt}else{$null};$CasInvalid=if($null-ne$Cas-and[string]$Cas.ref-ceq'refs/heads/codex/release-c-governance'-and[string]$Cas.expected_sha-ceq$AcceptedLanding-and[string]$Cas.actual_sha-ceq$AcceptedLanding-and[string]$Cas.new_sha-cmatch'^[0-9a-f]{40}$'-and[string]$Cas.new_sha-cne$AcceptedLanding-and[string]$Cas.result-ceq'updated'-and[int]$Cas.conflict_count-eq0){0}else{1}
+  $BranchInvalid=if($null-ne$BranchState-and[int]$BranchState.query_failure_count-eq0-and[int]$BranchState.specialist_branch_count-eq0-and[string]$BranchState.current_branch-ceq'codex/release-c-governance'-and$null-ne$Cas-and[string]$BranchState.governance_ref_oid-ceq[string]$Cas.new_sha-and[string]$BranchState.current_head_oid-ceq[string]$Cas.new_sha){0}else{1};$CycleRewrite=if($null-ne$Selection){[int]$Selection.cycle_rewrite_count}else{1};$PriorCycle=if($null-ne$Dependency-and$Dependency.PSObject.Properties.Name-contains'checks'){[int]$Dependency.checks.prior_cycle_record_count}else{0}
+  $Checks=[ordered]@{schema_errors=$SchemaErrors;path_count=$PathCount;path_xor_failure_count=$PathXorFailure;path_valid=($null-ne$Selection-and[string]$Selection.path-in$Paths);alternative_set_mismatch=$AlternativeSetMismatch;alternative_invalid_count=$AlternativeInvalid;owner_signature_invalid_count=$OwnerInvalid;approval_invalid_count=$ApprovalInvalid;approval_expired_count=$ApprovalExpired;actor_collision_count=$ActorCollision;evidence_hash_mismatch=$EvidenceHashMismatch;cas_receipt_invalid_count=$CasInvalid;branch_binding_invalid_count=$BranchInvalid;specialist_branch_count=if($null-ne$BranchState){[int]$BranchState.specialist_branch_count}else{1};cycle_rewrite_count=$CycleRewrite;prior_cycle_record_count=$PriorCycle;dependency_valid=($null-ne$Dependency-and[bool]$Dependency.passed);production_write_count=0}
+  $Passed=$SchemaErrors+$PathXorFailure+$AlternativeSetMismatch+$AlternativeInvalid+$OwnerInvalid+$ApprovalInvalid+$ApprovalExpired+$ActorCollision+$EvidenceHashMismatch+$CasInvalid+$BranchInvalid+$CycleRewrite+$PriorCycle-eq0-and$PathCount-eq1-and[bool]$Checks.path_valid-and[bool]$Checks.dependency_valid
+  return [ordered]@{passed=$Passed;checks=$Checks;selection=$Selection}
 }
 
 function Invoke-P10005DatasetValidation {
@@ -3951,6 +4048,17 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    $Dependency=Get-RelC000DependencyState;$Branches=Get-RelC000BranchState;$SelectionPath=Join-Path $script:TaskEvidenceDirectory 'path-selection.json';$Selection=$null;$SchemaErrors=0
+    if(Test-Path -LiteralPath $SelectionPath -PathType Leaf){try{$Selection=Get-Content -LiteralPath $SelectionPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}}else{$SchemaErrors++}
+    $SelectionState=Get-RelC000SelectionState -Selection $Selection -Dependency $Dependency -BranchState $Branches
+    $Paths=@(Get-RelC000ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC000PathAllowed -RelativePath $_)});$Text=''
+    foreach($Name in @('selection-request.json','path-selection.json','commands.json')){$Path=Join-Path $script:TaskEvidenceDirectory $Name;if(Test-Path -LiteralPath $Path -PathType Leaf){$Text+="`n"+(Get-Content -LiteralPath $Path -Raw -Encoding UTF8)}}
+    $SupplyPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-09\P09-001\dependency-audit-report.json';$Supply=$null;if(Test-Path -LiteralPath $SupplyPath -PathType Leaf){try{$Supply=Get-Content -LiteralPath $SupplyPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}}
+    $Checks=[ordered]@{valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=if([bool]$SelectionState.passed){0}else{1};critical_cve=if($null-ne$Supply){[int]$Supply.checks.critical_cve}else{1};high_cve=if($null-ne$Supply){[int]$Supply.checks.high_cve}else{1};unknown_license=if($null-ne$Supply){[int]$Supply.checks.unknown_license}else{1};arbitrary_sql_executor_count=[regex]::Matches($Text,'(?im)(?:execute\s+arbitrary\s+sql|psql\s+.*(?:-c|--command))').Count;restore_verification_failures=0;raw_user_data_field_count=[regex]::Matches($Text,'(?i)"(?:raw_user_data|prompt|response|reasoning|email|phone)"\s*:').Count;schema_errors=$SchemaErrors;unexpected_paths=$Unexpected.Count;specialist_branch_count=[int]$Branches.specialist_branch_count;main_ref_write_count=[regex]::Matches($Text,'(?im)(?:update-ref\s+refs/heads/main|push\s+[^\r\n]*\bmain\b)').Count;production_write_count=0}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if((@($Checks.Values|Where-Object{$_-is[int]})|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'rel_c_000_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-011') {
     $State=Get-P10011ObservationState;$Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)})
     $Text=@('pr-request.json','pr-observation.json'|ForEach-Object{$Path=Join-Path $script:TaskEvidenceDirectory $_;if(Test-Path -LiteralPath $Path -PathType Leaf){Get-Content -LiteralPath $Path -Raw -Encoding UTF8}})-join"`n";$ReleasePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/B.json';if(Test-Path -LiteralPath $ReleasePath -PathType Leaf){$Text+="`n"+(Get-Content -LiteralPath $ReleasePath -Raw -Encoding UTF8)}
@@ -5274,6 +5382,36 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    $Dependency=Get-RelC000DependencyState;$Branches=Get-RelC000BranchState;$SelectionPath=Join-Path $script:TaskEvidenceDirectory 'path-selection.json';$Selection=$null;$SchemaErrors=0
+    if(Test-Path -LiteralPath $SelectionPath -PathType Leaf){try{$Selection=Get-Content -LiteralPath $SelectionPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}}else{$SchemaErrors++}
+    $State=Get-RelC000SelectionState -Selection $Selection -Dependency $Dependency -BranchState $Branches;$Primary=$SchemaErrors-eq0-and[bool]$State.passed
+    $Detail=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('cGF0aF9jb3VudD0x77yMQ0FTIHJlY2VpcHQg57uR5a6aIGV4cGVjdGVkL2FjdHVhbCBTSEHjgII='))
+    $Checks=[ordered]@{
+      primary_assertion_passed=$Primary
+      detail=$Detail
+      path_count=[int]$State.checks.path_count
+      path=$(if($null-ne$Selection){[string]$Selection.path}else{''})
+      schema_errors=$SchemaErrors+[int]$State.checks.schema_errors
+      dependency_valid=[bool]$State.checks.dependency_valid
+      alternative_set_mismatch=[int]$State.checks.alternative_set_mismatch
+      alternative_invalid_count=[int]$State.checks.alternative_invalid_count
+      owner_signature_invalid_count=[int]$State.checks.owner_signature_invalid_count
+      approval_invalid_count=[int]$State.checks.approval_invalid_count
+      approval_expired_count=[int]$State.checks.approval_expired_count
+      evidence_hash_mismatch=[int]$State.checks.evidence_hash_mismatch
+      cas_receipt_invalid_count=[int]$State.checks.cas_receipt_invalid_count
+      branch_binding_invalid_count=[int]$State.checks.branch_binding_invalid_count
+      specialist_branch_count=[int]$State.checks.specialist_branch_count
+      cycle_rewrite_count=[int]$State.checks.cycle_rewrite_count
+      prior_cycle_record_count=[int]$State.checks.prior_cycle_record_count
+      expected_sha=$(if($null-ne$Selection){[string]$Selection.cas_receipt.expected_sha}else{''})
+      actual_sha=$(if($null-ne$Selection){[string]$Selection.cas_receipt.actual_sha}else{''})
+      new_sha=$(if($null-ne$Selection){[string]$Selection.cas_receipt.new_sha}else{''})
+      production_write_count=0
+    }
+    if(-not$Primary){return New-BlockedResult 'rel_c_000_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-011') {
     $Dependency=Get-P10011DependencyState;$State=Get-P10011ObservationState;$Live=Get-P10011LivePullRequestState -Observation $State.observation;$RolloutRequestBindingMismatch=if($null-ne$State.request-and[string]$State.request.rollout_observation_sha256-ceq[string]$Dependency.rollout_observation_sha256-and[string]$State.request.rollout_plan_sha256-ceq[string]$Dependency.rollout_plan_sha256-and[int]$State.request.minimum_nonoverlap_observation_hours-eq744-and[double]$State.request.observed_nonoverlap_hours-ge744){0}else{1};$Primary=[bool]$Dependency.passed-and[bool]$State.passed-and[bool]$Live.passed-and$RolloutRequestBindingMismatch-eq0;$Checks=[ordered]@{primary_assertion_passed=$Primary;detail='Release B PR base/head, accepted integration SHA, mandatory checks, audit receipt, auto_merge=false, and at least 744 total non-overlapping rollout hours match exactly in the accepted dependency, fresh adapter receipt, and live GitHub API';schema_errors=[int]$State.checks.schema_errors;request_hash_mismatch=[int]$State.checks.request_hash_mismatch;rollout_request_binding_mismatch=$RolloutRequestBindingMismatch;required_check_set_mismatch=[int]$State.checks.required_check_set_mismatch+[int]$Live.checks.required_check_set_mismatch;required_check_failure_count=[int]$State.checks.required_check_failure_count+[int]$Live.checks.required_check_failure_count;live_query_failure_count=[int]$Live.checks.live_query_failure_count;review_request_missing=[int]$Live.checks.review_request_missing;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;observation_31_day_contract_valid=[bool]$Dependency.checks.observation_31_day_contract_valid;minimum_nonoverlap_observation_hours=744;observed_nonoverlap_hours=[double]$Dependency.checks.observed_nonoverlap_hours;nonoverlap_failure_count=[int]$Dependency.checks.nonoverlap_failure_count;duration_binding_failure_count=[int]$Dependency.checks.duration_binding_failure_count;minimum_total_observation_failure_count=[int]$Dependency.checks.minimum_total_observation_failure_count;head_oid=if($null-ne$State.request){[string]$State.request.head_oid}else{''};remote_head_oid=[string]$State.checks.remote_head_oid;main_ref_write_count=[int]$State.checks.main_ref_write_count;auto_merge_disabled=([bool]$State.checks.auto_merge_disabled-and[bool]$Live.checks.auto_merge_disabled);production_write_count=0}
     if(-not$Primary){return New-BlockedResult 'p10_011_verify_failed' $Checks}
@@ -7071,6 +7209,13 @@ raise SystemExit(0 if report["fixture_count"] == 15 and report["passed_count"] =
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    $Required=@('docs/execution/evidence/releases/REL-C-000/selection-request.json','docs/execution/evidence/releases/REL-C-000/path-selection.json','docs/execution/evidence/releases/REL-C-000/security-report.json','docs/execution/evidence/releases/REL-C-000/commands.json','docs/execution/evidence/releases/REL-C-000/gate-results.json');$Optional=@('docs/execution/evidence/releases/REL-C-000/blocker.json','docs/execution/evidence/releases/REL-C-000/rollback-report.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
+    foreach($RelativePath in @($Required+$Optional)){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){if($RelativePath-in$Required){$Missing++};continue};try{$Raw=Get-Content -LiteralPath $Full -Raw -Encoding UTF8;$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++;continue};$Sensitive += [regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType 'application/json' -ArtifactType 'release-c-governance-evidence' -GeneratedByStep 'TASK-REL-C-000:Evidence'}
+    $Known=@('selection-request.json','path-selection.json','security-report.json','commands.json','gate-results.json','artifact-hashes.json','blocker.json','rollback-report.json');$Undeclared=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-notin$Known}).Count
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0})
+    $Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Sensitive;undeclared_evidence_count=$Undeclared;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures+[int]$Checks.undeclared_evidence_count-ne0){return New-BlockedResult 'rel_c_000_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-011') {
     $Required=@('docs/execution/evidence/releases/B.json','docs/execution/evidence/releases/P10-011/pr-request.json','docs/execution/evidence/releases/P10-011/pr-observation.json','docs/execution/evidence/releases/P10-011/security-report.json','docs/execution/evidence/releases/P10-011/commands.json','docs/execution/evidence/releases/P10-011/gate-results.json');$Optional=@('docs/execution/evidence/releases/P10-011/blocker.json','docs/execution/evidence/releases/P10-011/rollback-report.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
     foreach($RelativePath in @($Required+$Optional)){ $Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){if($RelativePath-in$Required){$Missing++};continue};try{$Raw=Get-Content -LiteralPath $Full -Raw -Encoding UTF8;$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++;continue};$Sensitive += [regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType 'application/json' -ArtifactType 'release-b-pr-evidence' -GeneratedByStep 'TASK-P10-011:Evidence' }
@@ -8518,6 +8663,11 @@ function Invoke-ModeEvidence {
 }
 
 function Invoke-ModePreflight {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    $Dependency=Get-RelC000DependencyState;$Paths=@(Get-RelC000ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC000PathAllowed -RelativePath $_)});$SelectionExists=Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'path-selection.json') -PathType Leaf
+    $Checks=[ordered]@{task_id_match=$true;dependency_failures=if([bool]$Dependency.passed){0}else{1};status_cas_conflict=0;unexpected_paths=$Unexpected.Count;base_drift=0;release_b_accepted=[bool]$Dependency.checks.release_b_accepted;stable_observation_valid=[bool]$Dependency.checks.stable_observation_valid;observation_31_day_contract_valid=[bool]$Dependency.checks.observation_31_day_contract_valid;minimum_nonoverlap_observation_hours=744;approval_unexpired=[bool]$Dependency.checks.approval_unexpired;release_acceptance_unexpired=[bool]$Dependency.checks.release_acceptance_unexpired;governance_receipt_valid=[bool]$Dependency.checks.governance_receipt_valid;origin_main_includes_accepted_release_b=[bool]$Dependency.checks.origin_main_includes_accepted_release_b;specialist_branch_count=[int]$Dependency.checks.specialist_branch_count;prior_cycle_record_count=[int]$Dependency.checks.prior_cycle_record_count;selection_already_exists=if($SelectionExists){1}else{0};production_write_count=0}
+    if(-not[bool]$Dependency.passed-or$Unexpected.Count-ne0-or$SelectionExists){return New-BlockedResult 'rel_c_000_preflight_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-011') {
     $State=Get-P10011DependencyState;$Checks=$State.checks;if(-not[bool]$State.passed){return New-BlockedResult 'p10_011_preflight_failed' $Checks};return New-PassedResult $Checks
   }
@@ -9477,6 +9627,13 @@ function Invoke-ModePreflight {
 }
 
 function Invoke-ModeWorkPreflight {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    $Dependency=Get-RelC000DependencyState;$CardBinding='primary assertion and DoD bound to execplan card sha256=d0c4d162f73b174bd737fa7f4a0cc37a6eb2083dcaddc668f013f98b8619a0f3';$RequiredChange=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5qC46aqMIFJlbGVhc2UgQiDmjqXlj5cgU0hB44CB56iz5a6a56qX5Y+j5ZKM5om55YeG5pyJ5pWI5pyfIOKGkiDmr5TovoMgUDEx44CBUDEyIOS4juS4jeaJqeWxle+8jOS/neeVmeWIhuavjeOAgee9ruS/oeW6puWSjOmjjumZqSDihpIg5LuOIGFjY2VwdGVkIGxhbmRpbmcgU0hBIOWIm+W7uiBjbGVhbiBnb3Zlcm5hbmNlIGJyYW5jaC93b3JrdHJlZSDihpIg5YaZ5ZSv5LiAIGBjeWNsZV9pZGDjgIFgcGF0aGDjgIFvd25lciDnrb7lkI3lkozor4Hmja7lk4jluIwg4oaSIOS7pSBleHBlY3RlZC1TSEEgQ0FTIOabtOaWsCBnb3Zlcm5hbmNlIHJlZu+8m+ernuS6ieWksei0peWNs+WBnOatoiDihpIg6K+B5piOIFAxMSDkuI7lhajpg6ggUDEyeCDkuJPpobnliIbmlK/lnYfkuI3lrZjlnKg='));$BindingValid=$CardBinding-in@($Task.expected_assertions);$ChangeValid=@($Task.work_contract.required_changes).Count-eq1-and[string]$Task.work_contract.required_changes[0]-ceq$RequiredChange;$SelectionExists=Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'path-selection.json') -PathType Leaf
+    if(-not[bool]$Dependency.passed-or-not$BindingValid-or-not$ChangeValid-or$SelectionExists){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=if($BindingValid-and$ChangeValid){0}else{1};unresolved_adapter_count=if([bool]$Dependency.passed){0}else{1};implementation_write_count=0;dependency_failures=if([bool]$Dependency.passed){0}else{1};selection_already_exists=if($SelectionExists){1}else{0};production_write_count=0};return New-BlockedResult 'rel_c_000_work_preflight_failed' $Checks}
+    $Request=[ordered]@{schema_version='1.0';task_id=$TaskId;task_card_binding=$CardBinding;required_changes=@($RequiredChange);accepted_landing_sha=[string]$Dependency.accepted_landing_sha;release_b_evidence_sha256=[string]$Dependency.evidence_sha256;rollout_observation_sha256=[string]$Dependency.rollout_observation_sha256;rollout_plan_sha256=[string]$Dependency.rollout_plan_sha256;approval_sha256=[string]$Dependency.approval_sha256;supply_sha256=[string]$Dependency.supply_sha256;minimum_nonoverlap_observation_hours=744;alternatives=@('phase11','phase12','none');required_roles=@('Data','Engineering','Product','Security');required_owner_roles=@('Architecture','Product');required_ref='refs/heads/codex/release-c-governance';required_cas_fields=@('expected_sha','actual_sha','new_sha');specialist_branch_count=[int]$Dependency.branch_state.specialist_branch_count;selection_status='not_selected';branch_creation_status='not_started';external_adapter='approved expected-SHA governance ref adapter';implementation_write_count=0;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'selection-request.json') -Value $Request
+    return New-PassedResult ([ordered]@{work_contract_frozen=$true;ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;task_card_binding=$CardBinding;required_changes=@($RequiredChange);alternatives=@('phase11','phase12','none');required_roles=@('Data','Engineering','Product','Security');required_owner_roles=@('Architecture','Product');specialist_branch_count=0;selection_status='not_selected';branch_creation_status='not_started';production_write_count=0})
+  }
   if ($TaskId -ceq 'TASK-P10-011') {
     $State=Get-P10011DependencyState;if(-not[bool]$State.passed){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=0;unresolved_adapter_count=1;implementation_write_count=0;dependency_failures=1;production_write_count=0};return New-BlockedResult 'p10_011_work_preflight_failed' $Checks}
     $CardBinding='primary assertion and DoD bound to execplan card sha256=313bdd22ef7556241725e34a4c01e9143dc48447368c9bc948a48f2fff5c9d4b';$BindingValid=$CardBinding-in@($Task.expected_assertions);if(-not$BindingValid){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=1;unresolved_adapter_count=0;implementation_write_count=0;dependency_failures=0;production_write_count=0};return New-BlockedResult 'p10_011_work_preflight_failed' $Checks}
@@ -9495,6 +9652,15 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    $Dependency=Get-RelC000DependencyState;$Branches=Get-RelC000BranchState;$SelectionPath=Join-Path $script:TaskEvidenceDirectory 'path-selection.json';$RequestPath=Join-Path $script:TaskEvidenceDirectory 'selection-request.json';$Selection=$null;$Request=$null;$SchemaErrors=0
+    foreach($Item in @(@($SelectionPath,'Selection'),@($RequestPath,'Request'))){if(-not(Test-Path -LiteralPath $Item[0] -PathType Leaf)){$SchemaErrors++;continue};try{$Value=Get-Content -LiteralPath $Item[0] -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;Set-Variable -Name $Item[1] -Value $Value}catch{$SchemaErrors++}}
+    $State=Get-RelC000SelectionState -Selection $Selection -Dependency $Dependency -BranchState $Branches;$Paths=@(Get-RelC000ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC000PathAllowed -RelativePath $_)});$LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=$null;if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){try{$Ledger=Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}}
+    $CasRows=if($null-ne$Ledger){@($Ledger.commands|Where-Object{[string]$_.description-ceq'Update Release C governance ref with expected-SHA CAS'-and[string]$_.command-cmatch'^git update-ref refs/heads/codex/release-c-governance [0-9a-f]{40} [0-9a-f]{40}$'-and[int]$_.exit_code-eq0-and[string]$_.authorization_reference-cnotmatch'^$'-and[string]$_.request_sha256-cmatch'^[0-9a-f]{64}$'-and[string]$_.response_sha256-cmatch'^[0-9a-f]{64}$'})}else{@()};$LatestFailures=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}}
+    $RequestBinding=$null-ne$Request-and[string]$Request.accepted_landing_sha-ceq[string]$Dependency.accepted_landing_sha-and[string]$Request.release_b_evidence_sha256-ceq[string]$Dependency.evidence_sha256-and(@($Request.alternatives|Sort-Object)-join',')-ceq((@('phase11','phase12','none')|Sort-Object)-join',')
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($CasRows.Count-eq1){0}else{1};work_contract_assertion_gaps=$SchemaErrors+$(if([bool]$State.passed-and$RequestBinding){0}else{1});nonzero_exit_count=$LatestFailures;expected_sha=if($null-ne$Selection){[string]$Selection.cas_receipt.expected_sha}else{''};actual_sha=if($null-ne$Selection){[string]$Selection.cas_receipt.actual_sha}else{''};new_sha=if($null-ne$Selection){[string]$Selection.cas_receipt.new_sha}else{''};specialist_branch_count=[int]$Branches.specialist_branch_count;production_write_count=0}
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count+[int]$Checks.specialist_branch_count-ne0){return New-BlockedResult 'rel_c_000_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-011') {
     $Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/releases/B.json','docs/execution/evidence/releases/P10-011/pr-request.json','docs/execution/evidence/releases/P10-011/pr-observation.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$ExternalRows=if($null-ne$Ledger){@($Ledger.commands|Where-Object{[string]$_.description-ceq'Create or update Release B pull request metadata'-and[string]$_.command-cmatch'^github-authorized-adapter create-or-update-release-b-pr request_sha256=[0-9a-f]{64}$'-and[int]$_.exit_code-eq0})}else{@()};$LatestFailures=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}};$Observation=Get-P10011ObservationState
     $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($ExternalRows.Count-eq1-and[int]$Observation.checks.missing_audit_receipt_count-eq0){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if([bool]$Observation.passed){0}else{1});nonzero_exit_count=$LatestFailures;main_ref_write_count=[int]$Observation.checks.main_ref_write_count;remote_ref_write_count=[int]$Observation.checks.remote_ref_write_count;branch_delete_count=[int]$Observation.checks.branch_delete_count;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_011_workset_failed' $Checks};return New-PassedResult $Checks
@@ -10756,6 +10922,13 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    & git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Dependency=Get-RelC000DependencyState;$Paths=@(Get-RelC000ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC000PathAllowed -RelativePath $_)});$SelectionPath=Join-Path $script:TaskEvidenceDirectory 'path-selection.json';$Selection=$null;if(Test-Path -LiteralPath $SelectionPath -PathType Leaf){try{$Selection=Get-Content -LiteralPath $SelectionPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{}}
+    $CycleRewrite=if($null-ne$Selection){[int]$Selection.cycle_rewrite_count}else{1};$ExternalRoot='D:\GO_NOW-release-c-governance';$EmptyUncommittedWorktree=$false;if(Test-Path -LiteralPath $ExternalRoot -PathType Container){$Items=@(Get-ChildItem -LiteralPath $ExternalRoot -Force -ErrorAction SilentlyContinue);$EmptyUncommittedWorktree=$Items.Count-eq0}
+    $Checks=[ordered]@{old_path_failures=if([bool]$Dependency.checks.release_b_accepted-and[bool]$Dependency.checks.origin_main_includes_accepted_release_b){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=0;diff_check_exit_code=$Diff;cycle_rewrite_count=$CycleRewrite;uncommitted_new_empty_worktree_removal_eligible=$EmptyUncommittedWorktree;rollback_strategy='remove only an uncommitted new empty governance worktree; never rewrite the immutable cycle record; keep Release B available';main_ref_write_count=0;branch_delete_count=0;production_write_count=0}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code+[int]$Checks.cycle_rewrite_count-ne0){return New-BlockedResult 'rel_c_000_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-011') {
     & git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)});$State=Get-P10011ObservationState;$Rollback=$State.observation.rollback;$DryRun=$null-ne$Rollback-and[bool]$Rollback.close_permission_verified-and[string]$Rollback.dry_run_status-ceq'passed'-and[string]$Rollback.strategy-ceq'close_pull_request_without_deleting_branch'-and[int]$Rollback.branch_delete_count-eq0-and[int]$Rollback.main_ref_write_count-eq0
     $Checks=[ordered]@{old_path_failures=if([bool]$State.checks.pr_state_open-and[bool]$State.checks.remote_main_match){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($DryRun){0}else{1};diff_check_exit_code=$Diff;close_permission_verified=if($null-ne$Rollback){[bool]$Rollback.close_permission_verified}else{$false};rollback_strategy='close_pull_request_without_deleting_branch';main_ref_write_count=if($null-ne$Rollback){[int]$Rollback.main_ref_write_count}else{1};branch_delete_count=if($null-ne$Rollback){[int]$Rollback.branch_delete_count}else{1};production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code+[int]$Checks.main_ref_write_count+[int]$Checks.branch_delete_count-ne0){return New-BlockedResult 'p10_011_rollback_verification_failed' $Checks};return New-PassedResult $Checks
@@ -12784,7 +12957,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P10-011') {
+  if ($TaskId -ceq 'TASK-REL-C-000') {
+    $ModeState=Get-RelC000GateModeState
+    if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'rel_c_000_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
+  } elseif ($TaskId -ceq 'TASK-P10-011') {
     $ModeState=Get-P10011GateModeState
     if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_011_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-P10-990' -and $ExitCode -eq 0) {

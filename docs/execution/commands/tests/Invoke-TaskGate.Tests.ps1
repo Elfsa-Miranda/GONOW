@@ -292,9 +292,71 @@ $ReleaseRouteIndex=$RunnerText.IndexOf("if (`$TaskIdValue -ceq 'TASK-P10-011')",
 $GenericPhaseRouteIndex=$RunnerText.IndexOf("if (`$TaskIdValue -cmatch '^TASK-P",[StringComparison]::Ordinal)
 if($ReleaseRouteIndex-lt0-or$GenericPhaseRouteIndex-lt0-or$ReleaseRouteIndex-gt$GenericPhaseRouteIndex){throw 'negative: P10-011 release evidence route must precede the generic Phase task route'}
 foreach($P10011Mode in @('Security','Verify','Evidence','Preflight','WorkPreflight','WorksetVerify','RollbackVerify')){
-  $HandlerPattern='(?m)^function Invoke-Mode'+[regex]::Escape($P10011Mode)+' \{\r?\n\s+if \(\$TaskId -ceq ''TASK-P10-011''\) \{'
-  if($RunnerText-cnotmatch$HandlerPattern){throw "negative: P10-011 specialization is missing or shadowed in Invoke-Mode$P10011Mode"}
+  $HandlerAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq("Invoke-Mode"+$P10011Mode)},$true)
+  if($null-eq$HandlerAst-or$HandlerAst.Extent.Text-cnotmatch 'if \(\$TaskId -ceq ''TASK-P10-011''\) \{'){throw "negative: P10-011 specialization is missing in Invoke-Mode$P10011Mode"}
 }
+$RelC000RequiredChange=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5qC46aqMIFJlbGVhc2UgQiDmjqXlj5cgU0hB44CB56iz5a6a56qX5Y+j5ZKM5om55YeG5pyJ5pWI5pyfIOKGkiDmr5TovoMgUDEx44CBUDEyIOS4juS4jeaJqeWxle+8jOS/neeVmeWIhuavjeOAgee9ruS/oeW6puWSjOmjjumZqSDihpIg5LuOIGFjY2VwdGVkIGxhbmRpbmcgU0hBIOWIm+W7uiBjbGVhbiBnb3Zlcm5hbmNlIGJyYW5jaC93b3JrdHJlZSDihpIg5YaZ5ZSv5LiAIGBjeWNsZV9pZGDjgIFgcGF0aGDjgIFvd25lciDnrb7lkI3lkozor4Hmja7lk4jluIwg4oaSIOS7pSBleHBlY3RlZC1TSEEgQ0FTIOabtOaWsCBnb3Zlcm5hbmNlIHJlZu+8m+ernuS6ieWksei0peWNs+WBnOatoiDihpIg6K+B5piOIFAxMSDkuI7lhajpg6ggUDEyeCDkuJPpobnliIbmlK/lnYfkuI3lrZjlnKg='))
+$RelC000Task=$Catalog.Tasks['TASK-REL-C-000']
+if($null-eq$RelC000Task-or@($RelC000Task.work_contract.required_changes).Count-ne1-or[string]$RelC000Task.work_contract.required_changes[0]-cne$RelC000RequiredChange){throw 'negative: REL-C-000 Catalog must preserve the task-card required change verbatim'}
+if($RunnerText -notmatch 'if \(\$TaskIdValue -ceq ''TASK-REL-C-000''\)' -or
+    $RunnerText -notmatch 'Get-RelC000GateModeState' -or
+    $RunnerText -notmatch 'Get-RelC000DependencyState' -or
+    $RunnerText -notmatch 'Get-RelC000SelectionState' -or
+    $RunnerText -notmatch 'Get-RelC000BranchState' -or
+    $RunnerText -notmatch "@\('phase11','phase12','none'\)" -or
+    $RunnerText -notmatch '\$PathCount-eq1' -or
+    $RunnerText -notmatch 'refs/heads/codex/release-c-governance' -or
+    $RunnerText -notmatch 'expected_sha' -or
+    $RunnerText -notmatch 'actual_sha' -or
+    $RunnerText -notmatch 'new_sha' -or
+    $RunnerText -notmatch 'minimum_nonoverlap_observation_hours=744' -or
+    $RunnerText -notmatch "required_roles=@\('Data','Engineering','Product','Security'\)" -or
+    $RunnerText -notmatch "required_owner_roles=@\('Architecture','Product'\)" -or
+    $RunnerText -notmatch 'denominator' -or
+    $RunnerText -notmatch 'confidence' -or
+    $RunnerText -notmatch 'risk' -or
+    $RunnerText -notmatch 'evidence_sha256' -or
+    $RunnerText -notmatch 'specialist_branch_count' -or
+    $RunnerText -notmatch 'cycle_rewrite_count' -or
+    $RunnerText -notmatch 'rel_c_000_preflight_failed' -or
+    $RunnerText -notmatch 'rel_c_000_work_preflight_failed' -or
+    $RunnerText -notmatch 'rel_c_000_workset_failed' -or
+    $RunnerText -notmatch 'rel_c_000_verify_failed' -or
+    $RunnerText -notmatch 'rel_c_000_security_failed' -or
+    $RunnerText -notmatch 'rel_c_000_evidence_failed' -or
+    $RunnerText -notmatch 'rel_c_000_rollback_verification_failed'){
+  throw 'negative: REL-C-000 must enforce Release B acceptance/stability, phase11|phase12|none XOR, immutable evidence, owner/reviewer validity, branch absence, and expected-SHA CAS'
+}
+$RelC000RouteIndex=$RunnerText.IndexOf("if (`$TaskIdValue -ceq 'TASK-REL-C-000')",[StringComparison]::Ordinal)
+if($RelC000RouteIndex-lt0-or$GenericPhaseRouteIndex-lt0-or$RelC000RouteIndex-gt$GenericPhaseRouteIndex){throw 'negative: REL-C-000 releases evidence route must precede the generic Phase/release route'}
+foreach($RelC000Mode in @('Security','Verify','Evidence','Preflight','WorkPreflight','WorksetVerify','RollbackVerify')){
+  $HandlerAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq("Invoke-Mode"+$RelC000Mode)},$true)
+  if($null-eq$HandlerAst-or$HandlerAst.Extent.Text-cnotmatch 'if \(\$TaskId -ceq ''TASK-REL-C-000''\) \{'){throw "negative: REL-C-000 specialization is missing in Invoke-Mode$RelC000Mode"}
+}
+$RelC000SelectionFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-RelC000SelectionState'},$true)
+if($null-eq$RelC000SelectionFunction){throw 'negative: REL-C-000 selection validator AST is unavailable'}
+Invoke-Expression $RelC000SelectionFunction.Extent.Text
+$RelC000Sha='1'*40;$RelC000EvidenceSha='2'*64;$RelC000Cycle=[Guid]::NewGuid().ToString()
+$RelC000Approvals=@('Data','Engineering','Product','Security'|ForEach-Object{[pscustomobject]@{role=$_;actor_id=("reviewer-"+$_.ToLowerInvariant());decision='approved';candidate_sha=$RelC000Sha;cycle_id=$RelC000Cycle;path='phase12';evidence_sha256=$RelC000EvidenceSha;expires_at='2099-01-01T00:00:00Z'}})
+$RelC000Selection=[pscustomobject]@{schema_version='1.0';task_id='TASK-REL-C-000';cycle_id=$RelC000Cycle;path='phase12';accepted_landing_sha=$RelC000Sha;evidence_sha256=$RelC000EvidenceSha;alternatives=@(
+  [pscustomobject]@{path='phase11';selected=$false;denominator=100;confidence=[pscustomobject]@{level=0.95;lower=0.1;upper=0.2};risks=@('retrieval-quality');evidence_sha256=$RelC000EvidenceSha},
+  [pscustomobject]@{path='phase12';selected=$true;denominator=100;confidence=[pscustomobject]@{level=0.95;lower=0.2;upper=0.4};risks=@('coordination-cost');evidence_sha256=$RelC000EvidenceSha},
+  [pscustomobject]@{path='none';selected=$false;denominator=100;confidence=[pscustomobject]@{level=0.95;lower=0.0;upper=0.1};risks=@('opportunity-cost');evidence_sha256=$RelC000EvidenceSha}
+);owner_signatures=@([pscustomobject]@{role='Architecture';actor_id='owner-architecture';decision='approved';cycle_id=$RelC000Cycle;path='phase12';evidence_sha256=$RelC000EvidenceSha},[pscustomobject]@{role='Product';actor_id='owner-product';decision='approved';cycle_id=$RelC000Cycle;path='phase12';evidence_sha256=$RelC000EvidenceSha});approvals=$RelC000Approvals;cas_receipt=[pscustomobject]@{ref='refs/heads/codex/release-c-governance';expected_sha=$RelC000Sha;actual_sha=$RelC000Sha;new_sha=('3'*40);result='updated';conflict_count=0};cycle_rewrite_count=0}
+$RelC000Dependency=[pscustomobject]@{passed=$true;accepted_landing_sha=$RelC000Sha;evidence_sha256=$RelC000EvidenceSha}
+$RelC000Branches=[pscustomobject]@{query_failure_count=0;specialist_branch_count=0;governance_ref_oid=('3'*40);current_head_oid=('3'*40);current_branch='codex/release-c-governance'}
+$RelC000Positive=Get-RelC000SelectionState -Selection $RelC000Selection -Dependency $RelC000Dependency -BranchState $RelC000Branches -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))
+if(-not[bool]$RelC000Positive.passed-or[int]$RelC000Positive.checks.path_count-ne1){throw 'positive: a fully bound REL-C-000 XOR/CAS selection was rejected'}
+$RelC000Overlap=$RelC000Selection.PSObject.Copy();$RelC000Overlap.alternatives=@($RelC000Selection.alternatives|ForEach-Object{$_.PSObject.Copy()});$RelC000Overlap.alternatives[0].selected=$true
+if([bool](Get-RelC000SelectionState -Selection $RelC000Overlap -Dependency $RelC000Dependency -BranchState $RelC000Branches -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: REL-C-000 accepted two selected sibling paths'}
+$RelC000CasConflict=$RelC000Selection.PSObject.Copy();$RelC000CasConflict.cas_receipt=$RelC000Selection.cas_receipt.PSObject.Copy();$RelC000CasConflict.cas_receipt.actual_sha='4'*40;$RelC000CasConflict.cas_receipt.conflict_count=1
+if([bool](Get-RelC000SelectionState -Selection $RelC000CasConflict -Dependency $RelC000Dependency -BranchState $RelC000Branches -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: REL-C-000 accepted a competing expected-SHA CAS result'}
+$RelC000NoDenominator=$RelC000Selection.PSObject.Copy();$RelC000NoDenominator.alternatives=@($RelC000Selection.alternatives|ForEach-Object{$_.PSObject.Copy()});$RelC000NoDenominator.alternatives[0].denominator=0
+if([bool](Get-RelC000SelectionState -Selection $RelC000NoDenominator -Dependency $RelC000Dependency -BranchState $RelC000Branches -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: REL-C-000 accepted an alternative without a positive denominator'}
+$RelC000Expired=$RelC000Selection.PSObject.Copy();$RelC000Expired.approvals=@($RelC000Selection.approvals|ForEach-Object{$_.PSObject.Copy()});$RelC000Expired.approvals[0].expires_at='2026-01-01T00:00:00Z'
+if([bool](Get-RelC000SelectionState -Selection $RelC000Expired -Dependency $RelC000Dependency -BranchState $RelC000Branches -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: REL-C-000 accepted an expired independent approval'}
+$RelC000ExistingSpecialist=$RelC000Branches.PSObject.Copy();$RelC000ExistingSpecialist.specialist_branch_count=1
+if([bool](Get-RelC000SelectionState -Selection $RelC000Selection -Dependency $RelC000Dependency -BranchState $RelC000ExistingSpecialist -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: REL-C-000 accepted an existing Phase 11/12 specialist branch'}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
