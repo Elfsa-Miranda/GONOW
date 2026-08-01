@@ -8,7 +8,7 @@
 
 - Severity: P3 tooling
 - Owner: local coordinator
-- Status: resolved
+- Status: resolved after recurrence
 - Opened: 2026-08-01T10:04:00+08:00
 - Resolved: 2026-08-01T10:05:00+08:00
 - Root-cause hypothesis: PowerShell 5.1 grammar does not accept the compound `foreach` statement as a pipeline element in the generated one-line command.
@@ -17,3 +17,12 @@
 - Complete repair: replaced the command pattern with `$rows=@(foreach(...){...}); $rows | ...`; future PowerShell observations in this task must follow the same form.
 - Rollback: none required because the failed commands were read-only.
 - Recovery condition: the corrected diagnostic returns the exact scanner matches, followed by the affected Security gate passing after any genuine scanner/root-cause repair.
+
+## Recurrence and strengthened repair
+
+The same parse pattern recurred once during P04-089 read-only Harness inventory. The prior
+documentation-only control was therefore insufficient. No command body ran and no file or
+external state changed. The strengthened template is executable and mandatory for the rest of
+the phase: assign compound-loop output with `$rows=@(foreach(...){...})`, end that statement,
+then invoke `$rows | ...` separately. The corrected inventory returned all nine Phase 4
+fragments and their exact control IDs. Further direct `foreach { ... } |` forms are prohibited.
