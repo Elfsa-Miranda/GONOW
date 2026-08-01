@@ -2722,6 +2722,10 @@ function Get-P06089ChangedPaths {
 function Get-P07089ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
   $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  $PhaseBase=Get-PhaseBaseOid
+  foreach($Commit in @(& git -C $script:RepositoryRoot log --format=%H --grep='TASK-P07-089' "$PhaseBase..HEAD")){
+    if($Commit-cmatch'^[0-9a-f]{40,64}$'){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $Commit)}
+  }
   return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
 }
 
@@ -2734,7 +2738,8 @@ function Test-P07089PathAllowed {
     'docs/execution/evidence/phase-07/knowledge-transfer.md','docs/execution/evidence/phase-07/star-records.md',
     'docs/execution/evidence/phase-07/artifact-manifest.premerge.json',
     'docs/execution/schemas/harness-test-catalog.yaml','docs/execution/status/task-board.json',
-    'docs/execution/status/task-board.md','docs/execution/status/TASK-P07-089.json'
+    'docs/execution/status/task-board.md','docs/execution/status/TASK-P07-089.json',
+    'docs/execution/commands/Invoke-TaskGate.ps1'
   )
   if($RelativePath-in$AllowedExact){return $true}
   return $RelativePath.StartsWith('docs/execution/evidence/phase-07/P07-089/',[StringComparison]::Ordinal)-or
@@ -5956,7 +5961,7 @@ function Invoke-ModeEvidence {
       'contracts/errors/validation-error.schema.json','docs/architecture/threat-model/phase-07-review.json',
       'docs/execution/evidence/phase-07/change-summary.md','docs/execution/evidence/phase-07/knowledge-transfer.md',
       'docs/execution/evidence/phase-07/star-records.md','docs/execution/evidence/phase-07/improvements/STAR-solver-cold-start-deadline.md',
-      'docs/execution/evidence/phase-07/P07-089/handoff-verification.json','docs/execution/evidence/phase-07/P07-089/harness-catalog-aggregate.json',
+       'docs/execution/evidence/phase-07/P07-089/handoff-verification.json','docs/execution/evidence/phase-07/P07-089/harness-catalog-aggregate.json','docs/execution/evidence/phase-07/P07-089/blocker.json',
       'docs/execution/evidence/phase-07/P07-007/quality.json','docs/execution/schemas/harness-test-catalog.yaml',
       'docs/execution/status/task-board.json','docs/execution/status/task-board.md'
     );$Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
