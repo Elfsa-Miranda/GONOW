@@ -1,1 +1,1 @@
-{"schema_version":"1.0","task_id":"TASK-P04-000","mode":"Preflight","reason_code":"dependency_not_ready","local_provisional":true,"external_approval_or_authority_required":false,"production_write_count":0,"recorded_at":"2026-08-01T07:57:12.4847576+08:00"}
+{"schema_version":"1.0","task_id":"TASK-P04-000","mode":"Verify","reason_code":"p04_000_e0_contract_validation_failed","local_provisional":true,"external_approval_or_authority_required":false,"production_write_count":0,"recorded_at":"2026-08-01T08:26:17.0450471+08:00"}
