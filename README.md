@@ -214,3 +214,20 @@ GoNow 目前正处于高频迭代期。我们正在寻找热爱的旅行的内�
 4. **核心引擎闭源**：本仓库未公开项目的核心 AI 调度引擎、System Prompt、贪心结算算法以及后端鉴权数据库流。
 
 *如需内测体验、商务合作、源码授权或投资接洽，请通过上述预留的联系方式与作者取得联系。违者必究其法律责任。*
+
+## Agent Run interruption and recovery (local provisional)
+
+Phase 6 contains a local, non-production candidate for durable Run events, resumable typed
+interrupts, and cancellation. PostgreSQL assigns per-Run business sequence numbers; SSE replays
+from `Last-Event-ID`; heartbeat frames carry no business sequence; resume capabilities are
+short-lived, identity-bound, and one-use; cancellation persists `CANCELLING` before a Worker moves
+the Run to `CANCELLED` at a safe boundary. The old client error response remains available through
+the versioned compatibility profile.
+
+The candidate is disabled by default. Enable it only in an authorized environment after the
+Phase 6 migrations and mechanical suites pass. Disable it by turning Agent routing/SSE off and
+routing to the existing non-Agent path; preserve Run/Event/Interrupt rows. Start diagnosis with
+database readiness, tenant/Run identity, the last persisted business sequence, the client cursor,
+interrupt/capability state, and cancellation version. See
+`docs/runbooks/sse-recovery.md` for the full local procedure. Independent review, production
+validation, remote merge, deployment, and formal acceptance remain pending.

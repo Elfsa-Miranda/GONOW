@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 6",
+  "candidate_head_oid": "6d846ad36f9217d85fdb729e45dbfaa012604d48",
+  "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
+  "model_changed": true,
+  "public_api_changed": true,
+  "review_status": "pending_independent_review",
+  "reviewer_is_implementer": true,
+  "security_owner": "Security",
+  "mobile_owner": "Mobile",
+  "sre_owner": "SRE",
+  "local_review": {
+    "event_loss_count": 0,
+    "duplicate_side_effect_count": 0,
+    "heartbeat_business_id_count": 0,
+    "cross_tenant_visibility_count": 0,
+    "resume_replay_accepted_count": 0,
+    "resume_identity_bypass_count": 0,
+    "resume_plaintext_persist_count": 0,
+    "cancelled_reversal_accepted_count": 0,
+    "private_error_detail_leak_count": 0,
+    "force_upgrade_count": 0,
+    "formal_mobile_device_status": "pending_external",
+    "production_write_count": 0,
+    "production_activation_allowed": false
+  },
+  "open_external_items": [
+    "independent Mobile, SRE, and Security review of the immutable Phase 6 candidate",
+    "formal mobile-device background and reconnect run",
+    "authorized production-like proxy, timeout, slow-consumer, and rollback rehearsal",
+    "formal governance adoption, remote required checks, push, merge, deployment, and acceptance"
+  ]
+}
