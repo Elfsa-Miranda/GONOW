@@ -57,6 +57,23 @@ checkpoint metadata、Behavior Package 版本指针、transactional outbox、del
 - 当前只属于 `local_provisional` / `ready_for_review` 候选；生产数据库事实、正式
   备份策略、独立 SRE/Security/Data review、推送、合并、部署和 `accepted` 均为 pending。
 
+## Phase 4 本地单 Agent 行程候选
+
+Phase 4 在服务端建立 typed State、固定六阶段 planning Graph、独立预算熔断、上下文
+编译、两级模型路由、POI/route/weather 三类静态工具、证据校验与 typed Candidate。
+每个 Run 固定一个已认证 Behavior Package digest；模型输出不能直接写正式行程表。
+
+- 架构与启停边界：`docs/architecture/single-agent-behavior.md`
+- Behavior 指针回滚、降级和首查：`docs/runbooks/behavior-rollback.md`
+- Candidate 字段、证据和失败语义：`docs/api/planning-candidate.md`
+- 新行程路由仍默认关闭；旧聊天、导入、Auth 和 fallback 绕过 Agent。关闭或 flag
+  store 不可用时保留旧行程路径，不回退到客户端模型直连。
+- 冻结的 40 条 synthetic E0 在旧兼容 fixture 与 typed Graph fixture 上各运行 40 条，
+  只证明离线、确定性本地候选；没有生产模型、工具、费用或真实用户数据验证。
+- 公共 OpenAPI 没有新增 planning endpoint，Flutter 流量也未接入。当前仅为
+  `local_provisional` / `ready_for_review`；Product/Eval/Privacy/Security 批准、推送、
+  合并、部署、生产启用与 `accepted` 均为 pending。
+
 ## **📱 视觉预览 (Screenshots)**
 
 1.盲盒功能：点击抽取周末/国际盲盒随机旅游目的地，并且一键询问AI规划旅游路线。规划若有不满意之处可继续询问AI进行改进，直至满意即可一键导入行程。给AI的系统prompt经精心设计，综合考虑多因素规划路线，实现住宿-景点-交通-餐饮的全面高质量安排。
