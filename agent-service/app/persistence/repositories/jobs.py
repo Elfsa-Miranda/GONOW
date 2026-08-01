@@ -204,6 +204,136 @@ class JobsRepository:
             replayed=False,
         )
 
+    def reclaim_expired_job(
+        self,
+        *,
+        tenant_id: str,
+        holder_id: str,
+        audit_receipt_id: str,
+        lease_seconds: int,
+    ) -> JobClaim | None:
+        """Claim one expired Job with a strictly newer fencing token.
+
+        The old lease is released through an expiry CAS before the Job token is
+        advanced. A concurrent heartbeat therefore either wins and preserves
+        the old owner, or loses and can never revive after the new lease exists.
+        """
+
+        self._require_transaction()
+        if not tenant_id or not holder_id or not audit_receipt_id:
+            raise ValueError("tenant, holder, and audit receipt are required")
+        if not 1 <= lease_seconds <= 300:
+            raise ValueError("lease duration must be between one and 300 seconds")
+
+        expired = self._session.execute(
+            select(JobRecord, LeaseRecord)
+            .join(
+                LeaseRecord,
+                (LeaseRecord.job_id == JobRecord.job_id)
+                & (LeaseRecord.tenant_id == JobRecord.tenant_id),
+            )
+            .where(
+                JobRecord.tenant_id == tenant_id,
+                JobRecord.status == "leased",
+                JobRecord.attempt_count < JobRecord.max_attempts,
+                LeaseRecord.tenant_id == tenant_id,
+                LeaseRecord.released_at.is_(None),
+                LeaseRecord.expires_at <= func.statement_timestamp(),
+            )
+            .order_by(LeaseRecord.expires_at, JobRecord.job_id)
+            .with_for_update(of=JobRecord, skip_locked=True)
+            .limit(1)
+        ).one_or_none()
+        if expired is None:
+            return None
+        job, old_lease = expired
+
+        released_lease_id = self._session.execute(
+            update(LeaseRecord)
+            .where(
+                LeaseRecord.lease_id == old_lease.lease_id,
+                LeaseRecord.tenant_id == tenant_id,
+                LeaseRecord.fencing_token == old_lease.fencing_token,
+                LeaseRecord.released_at.is_(None),
+                LeaseRecord.expires_at <= func.statement_timestamp(),
+            )
+            .values(released_at=func.statement_timestamp())
+            .returning(LeaseRecord.lease_id)
+        ).scalar_one_or_none()
+        if released_lease_id is None:
+            return None
+
+        job.current_fencing_token += 1
+        job.attempt_count += 1
+        job.updated_at = func.statement_timestamp()
+        self._session.flush()
+        lease = LeaseRecord(
+            lease_id=uuid.uuid4(),
+            job_id=job.job_id,
+            tenant_id=tenant_id,
+            holder_id=holder_id,
+            fencing_token=job.current_fencing_token,
+            audit_receipt_id=audit_receipt_id,
+            expires_at=func.statement_timestamp() + timedelta(seconds=lease_seconds),
+        )
+        self._session.add(lease)
+        self._session.flush()
+        return JobClaim(
+            job_id=job.job_id,
+            run_id=job.run_id,
+            tenant_id=job.tenant_id,
+            job_type=job.job_type,
+            input_ref=job.input_ref,
+            lease_id=lease.lease_id,
+            holder_id=lease.holder_id,
+            fencing_token=lease.fencing_token,
+            attempt_count=job.attempt_count,
+            replayed=False,
+        )
+
+    def renew_lease(
+        self,
+        *,
+        tenant_id: str,
+        job_id: uuid.UUID,
+        holder_id: str,
+        fencing_token: int,
+        lease_seconds: int,
+    ) -> LeaseRecord:
+        """CAS-renew a live lease using only PostgreSQL time and fencing state."""
+
+        self._require_transaction()
+        if not tenant_id or not holder_id or fencing_token <= 0:
+            raise ValueError("tenant, holder, and a positive fencing token are required")
+        if not 1 <= lease_seconds <= 300:
+            raise ValueError("lease duration must be between one and 300 seconds")
+        current_job = select(JobRecord.job_id).where(
+            JobRecord.job_id == job_id,
+            JobRecord.tenant_id == tenant_id,
+            JobRecord.current_fencing_token == fencing_token,
+            JobRecord.status == "leased",
+        )
+        renewed = self._session.execute(
+            update(LeaseRecord)
+            .where(
+                LeaseRecord.job_id == job_id,
+                LeaseRecord.tenant_id == tenant_id,
+                LeaseRecord.holder_id == holder_id,
+                LeaseRecord.fencing_token == fencing_token,
+                LeaseRecord.released_at.is_(None),
+                LeaseRecord.expires_at > func.statement_timestamp(),
+                current_job.exists(),
+            )
+            .values(
+                heartbeat_at=func.statement_timestamp(),
+                expires_at=func.statement_timestamp() + timedelta(seconds=lease_seconds),
+            )
+            .returning(LeaseRecord)
+        ).scalar_one_or_none()
+        if renewed is None:
+            raise StaleFence()
+        return renewed
+
     def acquire_lease(
         self,
         *,
