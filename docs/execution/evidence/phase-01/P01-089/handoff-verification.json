@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P01-089",
+  "candidate_head_oid": "6138a5d8688e496ffa9b56a46ba800f84997d8a9",
+  "handoff_journey_passed": true,
+  "journeys": {
+    "validation_fixtures_loaded": 8,
+    "validation_tests_passed": 3,
+    "validation_tests_failed": 0,
+    "validation_tests_skipped": 0,
+    "fallback_runbook_present": true,
+    "api_consumer_contract_present": true,
+    "traceability_unmapped_count": 0
+  },
+  "reviewer_is_implementer": true,
+  "formal_handoff_pending": true,
+  "nonzero_local_test_exit_count": 0,
+  "production_write_count": 0
+}

@@ -3,9 +3,17 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:gonow/core/constants/ai_config.dart';
+import 'package:gonow/core/services/safe_logger.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+void _safeDiaryLog(String? message) {
+  SafeLogger.instance.event(
+    'diary.legacy_event',
+    fields: const <String, Object?>{'source': 'diary'},
+  );
+}
 
 /// 手账数据模型（本地缓存 + Supabase `public_diaries` 行）
 class DiaryModel {
@@ -270,8 +278,8 @@ class DiaryProvider extends ChangeNotifier {
       _mergeSeedTemplates();
       await _persistLocal();
     } catch (e, st) {
-      debugPrint('获取我的手账失败: $e');
-      debugPrint('$st');
+      _safeDiaryLog('获取我的手账失败: $e');
+      _safeDiaryLog('$st');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -303,8 +311,8 @@ class DiaryProvider extends ChangeNotifier {
       await _persistLocal();
       notifyListeners();
     } catch (e, st) {
-      debugPrint('获取社区手账失败: $e');
-      debugPrint('$st');
+      _safeDiaryLog('获取社区手账失败: $e');
+      _safeDiaryLog('$st');
     }
   }
 
@@ -325,8 +333,8 @@ class DiaryProvider extends ChangeNotifier {
       await _persistLocal();
       return true;
     } catch (e, st) {
-      debugPrint('保存手账至 Supabase 失败: $e');
-      debugPrint('$st');
+      _safeDiaryLog('保存手账至 Supabase 失败: $e');
+      _safeDiaryLog('$st');
       _updateLocalList(sanitized);
       await _persistLocal();
       return false;
@@ -346,7 +354,7 @@ class DiaryProvider extends ChangeNotifier {
     int? customPhotoCount,
   }) async {
     if (_aiApiKey.trim().isEmpty) {
-      debugPrint('手账 AI 生成失败: API Key 为空');
+      _safeDiaryLog('手账 AI 生成失败: API Key 为空');
       return null;
     }
 
@@ -449,7 +457,7 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
           .timeout(const Duration(seconds: 180)); // 延长至 180 秒，支持大行程数据后台生成
 
       if (response.statusCode != 200) {
-        debugPrint('手账 AI 生成失败: HTTP ${response.statusCode}');
+        _safeDiaryLog('手账 AI 生成失败: HTTP ${response.statusCode}');
         return null;
       }
       final Map<String, dynamic> data =
@@ -469,7 +477,7 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
         return parsed;
       }
     } catch (e) {
-      debugPrint('手账 AI 生成失败: $e');
+      _safeDiaryLog('手账 AI 生成失败: $e');
     }
     return null;
   }
@@ -517,7 +525,7 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
     required String style,
   }) async {
     if (_aiApiKey.trim().isEmpty) {
-      debugPrint('AI 润色失败: API Key 为空');
+      _safeDiaryLog('AI 润色失败: API Key 为空');
       return null;
     }
     try {
@@ -554,7 +562,7 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
       if (content.isEmpty) return null;
       return _stripMarkdownFence(content).trim();
     } catch (e) {
-      debugPrint('AI 润色失败: $e');
+      _safeDiaryLog('AI 润色失败: $e');
       return null;
     }
   }
@@ -579,7 +587,7 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
         }
       }
     } catch (e) {
-      debugPrint('上传手账封面失败: $e');
+      _safeDiaryLog('上传手账封面失败: $e');
     }
     return null;
   }
@@ -604,8 +612,8 @@ JSON 格式严格如下（顶层 title、quote、dateLabel、days 均必填）�
     try {
       await _client.from(_tableName).delete().eq('id', diaryId);
     } catch (e, st) {
-      debugPrint('云端删除手账失败 (可能为断网或纯本地数据): $e');
-      debugPrint('$st');
+      _safeDiaryLog('云端删除手账失败 (可能为断网或纯本地数据): $e');
+      _safeDiaryLog('$st');
     }
 
     _drafts = List<DiaryModel>.from(_drafts);

@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 2",
+  "candidate_head_oid": "034f777a9412f93c6d120d3ded753a8048cde199",
+  "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
+  "model_changed": true,
+  "review_status": "pending_independent_review",
+  "reviewer_is_implementer": true,
+  "security_owner": "Security",
+  "local_review": {
+    "rs256_only_and_jwks_fail_closed": true,
+    "tenant_context_server_derived": true,
+    "public_5xx_body_finding_count": 0,
+    "pii_canary_leak_count": 0,
+    "valid_secret_finding_count": 0,
+    "llm_calls": 0,
+    "tool_calls": 0,
+    "graph_runs": 0,
+    "production_write_count": 0,
+    "production_activation_allowed": false
+  },
+  "open_external_items": [
+    "independent SRE and Security review bound to the immutable candidate",
+    "formal remote required-check configuration and governance adoption",
+    "deployment-specific source, stratum, last-sync, offset, and command-exit evidence",
+    "future PostgreSQL, durable job, model, tool, and Domain Command threat-model extensions"
+  ]
+}

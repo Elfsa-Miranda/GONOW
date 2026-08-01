@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-status-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_version", "catalog_version", "task_id", "phase", "status", "previous_status", "transition_seq", "previous_record_sha256", "catalog_sha256", "git_object_format", "phase_base_oid", "head_oid", "owner_alias", "owner_role", "actor_id", "actor_role", "reviewer_independent", "updated_at", "evidence_sha256", "evidence_paths", "blocker_path", "decision_reference", "transition_reason"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "plan_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "catalog_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "task_id": {"type": "string", "pattern": "^TASK-[A-Z0-9-]+$"},
+    "phase": {"type": "string", "minLength": 1},
+    "status": {"enum": ["not_started", "in_progress", "ready_for_review", "accepted", "rejected", "blocked", "cancelled"]},
+    "previous_status": {"enum": ["not_started", "in_progress", "ready_for_review", "accepted", "rejected", "blocked", "cancelled"]},
+    "transition_seq": {"type": "integer", "minimum": 1},
+    "previous_record_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "catalog_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "git_object_format": {"enum": ["sha1", "sha256"]},
+    "phase_base_oid": {"type": "string", "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"},
+    "head_oid": {"type": "string", "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"},
+    "owner_alias": {"type": "string", "minLength": 1},
+    "owner_role": {"enum": ["Engineering", "Architecture", "Security", "Data", "Product", "Privacy", "SRE", "Eval", "Domain", "Compliance"]},
+    "actor_id": {"type": "string", "minLength": 1},
+    "actor_role": {"enum": ["Engineering", "Architecture", "Security", "Data", "Product", "Privacy", "SRE", "Eval", "Domain", "Compliance"]},
+    "reviewer_independent": {"type": "boolean"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "evidence_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "evidence_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "blocker_path": {"type": ["string", "null"]},
+    "decision_reference": {"type": ["string", "null"]},
+    "transition_reason": {"type": "string", "minLength": 1}
+  }
+}

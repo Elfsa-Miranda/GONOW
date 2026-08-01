@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 1",
+  "manifest_state": "local_provisional_premerge",
+  "phase_base_oid": "68d04e230fce0ecf5ecbbded13d8d7ca609d14c9",
+  "implementation_tip_oid": "6138a5d8688e496ffa9b56a46ba800f84997d8a9",
+  "guidance_version": "1.4.0",
+  "sealed_plan_sha256": "e243070be5faed585a4190ed5f430fb2fc43c66d35f33552a513081004ed2c69",
+  "formal_merge_allowed": false,
+  "production_activation_allowed": false,
+  "local_task_checkpoints": {
+    "TASK-P01-001": "4cc506db8bf1b725895943bd0731cc0494de1769",
+    "TASK-P01-002": "a960f0d98b27013cc472406f72ddda356bb49720",
+    "TASK-P01-003": "c9699456c47530964544db7ff103485af44cd920",
+    "TASK-P01-004": "d12d58a46a454348412146b34556a58ebec3a4e3",
+    "TASK-P01-005": "fb940ad611090fab5c1cf4d5b215d4aec31f7401"
+  },
+  "mechanical_results": {
+    "validation_fixtures": 8,
+    "validation_tests_passed": 3,
+    "validation_tests_failed": 0,
+    "validation_tests_skipped": 0,
+    "hard_constraint_markers_mapped": 39,
+    "unmapped_hard_constraints": 0,
+    "domain_write_enablement_count": 0
+  },
+  "formal_blockers": [
+    "independent Product and Security review",
+    "formal governance adoption and landing approval",
+    "production schema, RLS, grant, retention, and deletion evidence"
+  ]
+}

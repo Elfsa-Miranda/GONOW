@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P00-089",
+  "aggregate_executed": false,
+  "reason_code": "pending_accepted_implementation_tasks",
+  "catalog_changed": false,
+  "status_downgrade_count": 0,
+  "implemented_missing_test_path": 0,
+  "production_write_count": 0
+}

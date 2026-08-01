@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P00-004",
+  "repair_policy": "bounded_repair",
+  "attempts": [
+    {
+      "attempt": 1,
+      "failure_class": "allowlist_filename_mismatch",
+      "diagnosis": "The task directory registry permits Invoke-*.ps1 but not scanner.py.",
+      "repair": "Replaced the untracked Python entrypoint with a PowerShell-native scanner and kept Python only as test_secret_scan.py.",
+      "result": "passed"
+    },
+    {
+      "attempt": 2,
+      "failure_class": "powershell_collection_binding",
+      "diagnosis": "PowerShell 5.1 rejected generic-list array conversion and then unwrapped a singleton finding.",
+      "repair": "Used ToArray() for generic lists and explicit object-array casts for sorted findings.",
+      "result": "passed"
+    },
+    {
+      "attempt": 3,
+      "failure_class": "git_blob_byte_array_unrolling",
+      "diagnosis": "An empty reachable blob became null because PowerShell unrolled byte arrays returned by a function.",
+      "repair": "Returned the byte array atomically and reran the complete history scan.",
+      "result": "passed"
+    },
+    {
+      "attempt": 4,
+      "failure_class": "fixture_self_detection",
+      "diagnosis": "A literal synthetic PEM header in the tracked test fixture produced one heuristic worktree finding.",
+      "repair": "Constructed the synthetic header at runtime; test semantics remain unchanged and tracked finding_count is zero.",
+      "result": "passed"
+    },
+    {
+      "attempt": 5,
+      "failure_class": "directory_artifact_metadata",
+      "diagnosis": "Directory mode required aggregate size and a non-file hash representation.",
+      "repair": "Recorded bytes_scanned as directory size, null file hash, and added a log-directory black-box test.",
+      "result": "passed"
+    }
+  ],
+  "final_test_count": 4,
+  "final_failure_count": 0,
+  "secret_value_output_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-07-31T22:37:26.0263068+08:00"
+}

@@ -4,10 +4,18 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gonow/core/services/safe_logger.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+void _safeItineraryLog(String? message) {
+  SafeLogger.instance.event(
+    'itinerary.legacy_event',
+    fields: const <String, Object?>{'source': 'itinerary'},
+  );
+}
 
 enum TripState { preparing, traveling }
 
@@ -424,7 +432,7 @@ class ItineraryProvider extends ChangeNotifier {
       );
       await prefs.setString('my_itineraries_cache_$fallbackUserId', freshJsonStr);
     } catch (e) {
-      debugPrint('本地缓存更新失败(my_itineraries): $e');
+      _safeItineraryLog('本地缓存更新失败(my_itineraries): $e');
     }
   }
 
@@ -451,7 +459,7 @@ class ItineraryProvider extends ChangeNotifier {
         }
       }
     } catch (e) {
-      debugPrint('my_itineraries 读取失败: $e');
+      _safeItineraryLog('my_itineraries 读取失败: $e');
     }
     _myItineraries
       ..clear()
@@ -495,7 +503,7 @@ class ItineraryProvider extends ChangeNotifier {
   void subscribeToItinerary(String itineraryId) {
     unsubscribeItinerary(); // 如果已有监听先取消
 
-    debugPrint('📡 准备连接 Realtime 频道: 行程 ID $itineraryId');
+    _safeItineraryLog('📡 准备连接 Realtime 频道: 行程 ID $itineraryId');
 
     _itineraryChannel =
         _supabase.channel('public:$_tableName:id=eq.$itineraryId');
@@ -538,16 +546,16 @@ class ItineraryProvider extends ChangeNotifier {
 
             _onRemoteUpdate?.call();
             notifyListeners();
-            debugPrint('🔄 监听到好友修改了行程，UI 已实时同步完成！');
+            _safeItineraryLog('🔄 监听到好友修改了行程，UI 已实时同步完成！');
           },
         )
         .subscribe((RealtimeSubscribeStatus status, [Object? error]) {
           // V2 语法：状态变成了枚举 RealtimeSubscribeStatus
           if (status == RealtimeSubscribeStatus.subscribed) {
-            debugPrint('✅ 成功订阅行程实时频道！');
+            _safeItineraryLog('✅ 成功订阅行程实时频道！');
           }
           if (error != null) {
-            debugPrint('⚠️ Realtime 订阅异常: $error');
+            _safeItineraryLog('⚠️ Realtime 订阅异常: $error');
           }
         });
   }
@@ -557,7 +565,7 @@ class ItineraryProvider extends ChangeNotifier {
     if (_itineraryChannel != null) {
       _supabase.removeChannel(_itineraryChannel!);
       _itineraryChannel = null;
-      debugPrint('🛑 已断开行程实时监听频道');
+      _safeItineraryLog('🛑 已断开行程实时监听频道');
     }
   }
 
@@ -614,7 +622,7 @@ class ItineraryProvider extends ChangeNotifier {
             });
           }
           if (error != null) {
-            debugPrint('⚠️ Presence 订阅异常: $error');
+            _safeItineraryLog('⚠️ Presence 订阅异常: $error');
           }
         });
   }
@@ -692,7 +700,7 @@ class ItineraryProvider extends ChangeNotifier {
           await prefs.remove(_prefsKey);
         }
       } catch (e) {
-        debugPrint('current_itinerary 本地更新失败: $e');
+        _safeItineraryLog('current_itinerary 本地更新失败: $e');
       }
     }
     notifyListeners();
@@ -712,12 +720,12 @@ class ItineraryProvider extends ChangeNotifier {
             .delete()
             .eq('id', deleteTargetId)
             .eq('user_id', userId);  // ✅ 加 user_id 二次校验，防止误删他人数据
-        debugPrint('✅ 行程已从云端彻底删除: $deleteTargetId');
+        _safeItineraryLog('✅ 行程已从云端彻底删除: $deleteTargetId');
       } catch (e) {
-        debugPrint('⚠️ 云端删除失败: $e');
+        _safeItineraryLog('⚠️ 云端删除失败: $e');
       }
     } else {
-      debugPrint('ℹ️ 本地行程（无云端 UUID），仅删除本地缓存');
+      _safeItineraryLog('ℹ️ 本地行程（无云端 UUID），仅删除本地缓存');
     }
   }
 
@@ -760,7 +768,7 @@ class ItineraryProvider extends ChangeNotifier {
             return; // ✅ 多行程缓存有效，直接返回，不再读单条 _prefsKey
           }
         } catch (e) {
-          debugPrint('多行程缓存解析失败: $e');
+          _safeItineraryLog('多行程缓存解析失败: $e');
         }
       }
       
@@ -817,9 +825,9 @@ class ItineraryProvider extends ChangeNotifier {
           _activeItinerary = _myItineraries.first;
         }
         notifyListeners();
-        debugPrint('✅ 本地缓存行程加载成功，实现秒开！');
+        _safeItineraryLog('✅ 本地缓存行程加载成功，实现秒开！');
       } catch (e) {
-        debugPrint('❌ 本地缓存解析失败: $e');
+        _safeItineraryLog('❌ 本地缓存解析失败: $e');
       }
     }
 
@@ -863,7 +871,7 @@ class ItineraryProvider extends ChangeNotifier {
         }
       } catch (e) {
         // 协作行程查询失败不影响主流程
-        debugPrint('ℹ️ 协作行程查询失败（不影响自己的行程）: $e');
+        _safeItineraryLog('ℹ️ 协作行程查询失败（不影响自己的行程）: $e');
       }
       
       // 排序：按 start_date 降序（UUID 无法直接比较时间）
@@ -887,9 +895,9 @@ class ItineraryProvider extends ChangeNotifier {
       await prefs.setString('my_itineraries_cache_$userId', freshJsonStr);
       
       notifyListeners();
-      debugPrint('☁️ 云端行程同步完成，共 ${_myItineraries.length} 条');
+      _safeItineraryLog('☁️ 云端行程同步完成，共 ${_myItineraries.length} 条');
     } catch (e) {
-      debugPrint('⚠️ 云端同步失败，继续使用本地缓存: $e');
+      _safeItineraryLog('⚠️ 云端同步失败，继续使用本地缓存: $e');
     }
   }
 
@@ -960,10 +968,10 @@ class ItineraryProvider extends ChangeNotifier {
         // 强制刷新 UI
         notifyListeners();
         
-        debugPrint('✅ 封面更新成功: $publicUrl ${isLocalId ? "(本地行程)" : ""}');
+        _safeItineraryLog('✅ 封面更新成功: $publicUrl ${isLocalId ? "(本地行程)" : ""}');
       }
     } catch (e) {
-      debugPrint('❌ 上传自定义封面失败: $e');
+      _safeItineraryLog('❌ 上传自定义封面失败: $e');
       rethrow; // 重新抛出异常，让调用方知道失败了
     }
   }
@@ -973,7 +981,7 @@ class ItineraryProvider extends ChangeNotifier {
     final String commandText =
         '【GoNow 旅行管家】\n復制这段话，打开 GoNow 立即加入协作：\n📍 行程：《$title》\n🗝️ 专属口令：￥$itineraryId￥';
     await Clipboard.setData(ClipboardData(text: commandText));
-    debugPrint('✅ 已生成口令并复制到剪贴板: $itineraryId');
+    _safeItineraryLog('✅ 已生成口令并复制到剪贴板: $itineraryId');
   }
 
   // 解析剪贴板中的口令 (正则提取)
@@ -1028,7 +1036,7 @@ class ItineraryProvider extends ChangeNotifier {
           context,
         ).showSnackBar(const SnackBar(content: Text('您已经在这个行程中啦！')));
       } else {
-        debugPrint('加入行程失败: $e');
+        _safeItineraryLog('加入行程失败: $e');
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('加入失败，请检查链接或网络')));
@@ -1058,7 +1066,7 @@ class ItineraryProvider extends ChangeNotifier {
         _activeItinerary = _myItineraries.first;
       }
     } catch (e) {
-      debugPrint('⚠️ fetchActiveItinerary 失败，降级本地: $e');
+      _safeItineraryLog('⚠️ fetchActiveItinerary 失败，降级本地: $e');
       await loadFromPrefs();
     } finally {
       _isBusy = false;
@@ -1072,7 +1080,7 @@ class ItineraryProvider extends ChangeNotifier {
     
     // 未登录则跳过云端保存
     if (userId == null) {
-      debugPrint('⚠️ 用户未登录，跳过云端保存');
+      _safeItineraryLog('⚠️ 用户未登录，跳过云端保存');
       return null;
     }
     
@@ -1096,7 +1104,7 @@ class ItineraryProvider extends ChangeNotifier {
     if (rows.isNotEmpty && rows.first is Map<String, dynamic>) {
       final String? newId = (rows.first as Map<String, dynamic>)['id']?.toString();
       if (newId != null && _isValidUuid(newId)) {
-        debugPrint('✅ 行程已上云，remoteId=$newId');
+        _safeItineraryLog('✅ 行程已上云，remoteId=$newId');
         return model.copyWith(remoteId: newId);
       }
     }
@@ -1136,7 +1144,7 @@ class ItineraryProvider extends ChangeNotifier {
         await _persistMyItinerariesList();
       }
     } catch (e) {
-      debugPrint('⚠️ 云端保存失败，降级到本地: $e');
+      _safeItineraryLog('⚠️ 云端保存失败，降级到本地: $e');
       try {
         await _saveToLocal(model);
         await _persistMyItinerariesList();
@@ -1170,7 +1178,7 @@ class ItineraryProvider extends ChangeNotifier {
     await _saveToLocal(updated);
     await _persistMyItinerariesList();
     notifyListeners();
-    debugPrint('✅ 本地行程保存成功（无需云端锁）');
+    _safeItineraryLog('✅ 本地行程保存成功（无需云端锁）');
     return true;
   }
 
@@ -1199,7 +1207,7 @@ class ItineraryProvider extends ChangeNotifier {
           .maybeSingle();
 
       if (latestRow == null) {
-        debugPrint('⚠️ 云端找不到行程 $targetId，降级为本地保存');
+        _safeItineraryLog('⚠️ 云端找不到行程 $targetId，降级为本地保存');
         return _saveLocalOnly(base, newPlanData);
       }
 
@@ -1207,10 +1215,10 @@ class ItineraryProvider extends ChangeNotifier {
           (latestRow['version'] as num?)?.toInt() ?? 0;
       final int localVersion = base.version;
 
-      debugPrint('🔒 乐观锁比对：本地=$localVersion，云端=$cloudVersion');
+      _safeItineraryLog('🔒 乐观锁比对：本地=$localVersion，云端=$cloudVersion');
 
       if (cloudVersion > localVersion) {
-        debugPrint('⚠️ 云端版本更新，执行自动追赶合并（cloudVersion=$cloudVersion）');
+        _safeItineraryLog('⚠️ 云端版本更新，执行自动追赶合并（cloudVersion=$cloudVersion）');
 
         final Map<String, dynamic>? latestFullRow = await _supabase
             .from(_tableName)
@@ -1243,7 +1251,7 @@ class ItineraryProvider extends ChangeNotifier {
             .select();
 
         if (retryResponse.isEmpty) {
-          debugPrint('⚠️ 追赶重试失败，数据已由 UI 更新至最新，建议用户再次手动保存');
+          _safeItineraryLog('⚠️ 追赶重试失败，数据已由 UI 更新至最新，建议用户再次手动保存');
           return false;
         }
 
@@ -1259,7 +1267,7 @@ class ItineraryProvider extends ChangeNotifier {
         await _saveToLocal(retried);
         await _persistMyItinerariesList();
         notifyListeners();
-        debugPrint('✅ 追赶合并保存成功（version: $cloudVersion → $retryVersion）');
+        _safeItineraryLog('✅ 追赶合并保存成功（version: $cloudVersion → $retryVersion）');
         return true;
       }
 
@@ -1275,7 +1283,7 @@ class ItineraryProvider extends ChangeNotifier {
           .select();
 
       if (response.isEmpty) {
-        debugPrint('❌ CAS 写入失败：另一成员在此期间修改了行程');
+        _safeItineraryLog('❌ CAS 写入失败：另一成员在此期间修改了行程');
         return false;
       }
 
@@ -1289,10 +1297,10 @@ class ItineraryProvider extends ChangeNotifier {
       await _persistMyItinerariesList();
       notifyListeners();
 
-      debugPrint('✅ 保存成功（version: $cloudVersion → $nextVersion）');
+      _safeItineraryLog('✅ 保存成功（version: $cloudVersion → $nextVersion）');
       return true;
     } catch (e) {
-      debugPrint('❌ 保存失败（异常）: $e');
+      _safeItineraryLog('❌ 保存失败（异常）: $e');
       return false;
     }
   }
@@ -1347,9 +1355,9 @@ class ItineraryProvider extends ChangeNotifier {
       await _saveToLocal(restored);
       await _persistMyItinerariesList();
       notifyListeners();
-      debugPrint('↩️ 行程已回滚至编辑前快照（version=$snapshotVersion）');
+      _safeItineraryLog('↩️ 行程已回滚至编辑前快照（version=$snapshotVersion）');
     } catch (e) {
-      debugPrint('⚠️ 回滚失败: $e');
+      _safeItineraryLog('⚠️ 回滚失败: $e');
     }
   }
 
@@ -1437,7 +1445,7 @@ class ItineraryProvider extends ChangeNotifier {
       if (_currentItinerary?.id == id) {
         prefs.setString(_prefsKey, jsonEncode(updatedItinerary.toJson()));
       }
-    }).catchError((Object e) => debugPrint('本地缓存更新失败: $e'));
+    }).catchError((Object e) => _safeItineraryLog('本地缓存更新失败: $e'));
 
     // 云端持久化（后台，不 await）
     // ✅ 关键修复：优先用 oldItinerary.remoteId 作为云端主键
@@ -1456,12 +1464,12 @@ class ItineraryProvider extends ChangeNotifier {
         'plan_data': updatedPlanData,   // ✅ 包含 tags / budget / actual_cost 全部字段
         'version': updatedItinerary.version,
       }).eq('id', cloudId).eq('user_id', userId).then((_) {
-        debugPrint('✅ 云端行程信息更新成功（含标签）: cloudId=$cloudId');
+        _safeItineraryLog('✅ 云端行程信息更新成功（含标签）: cloudId=$cloudId');
       }).catchError((Object e) {
-        debugPrint('⚠️ 云端更新失败（本地已保存）: $e');
+        _safeItineraryLog('⚠️ 云端更新失败（本地已保存）: $e');
       });
     } else {
-      debugPrint('ℹ️ 无有效云端 UUID，仅本地保存 (id=$id, remoteId=${oldItinerary.remoteId})');
+      _safeItineraryLog('ℹ️ 无有效云端 UUID，仅本地保存 (id=$id, remoteId=${oldItinerary.remoteId})');
     }
     // ✅ 方法在此立即返回，UI 已刷新，弹窗可以立即关闭
   }
@@ -1611,7 +1619,7 @@ class ItineraryProvider extends ChangeNotifier {
     try {
       final String? userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('用户未登录，无法上传');
+        _safeItineraryLog('用户未登录，无法上传');
         return false;
       }
 
@@ -1654,7 +1662,7 @@ class ItineraryProvider extends ChangeNotifier {
       if (dayIndex < 0 ||
           dayIndex >= targetDays.length ||
           targetDays[dayIndex] is! Map<String, dynamic>) {
-        debugPrint('❌ 索引越界：dayIndex=$dayIndex, 总天数=${targetDays.length}');
+        _safeItineraryLog('❌ 索引越界：dayIndex=$dayIndex, 总天数=${targetDays.length}');
         return false;
       }
 
@@ -1668,7 +1676,7 @@ class ItineraryProvider extends ChangeNotifier {
       if (activityIndex < 0 ||
           activityIndex >= targetActivities.length ||
           targetActivities[activityIndex] is! Map<String, dynamic>) {
-        debugPrint('❌ 索引越界：activityIndex=$activityIndex, 总活动=${targetActivities.length}');
+        _safeItineraryLog('❌ 索引越界：activityIndex=$activityIndex, 总活动=${targetActivities.length}');
         return false;
       }
 
@@ -1690,17 +1698,17 @@ class ItineraryProvider extends ChangeNotifier {
       final String oldImageUrl =
           (targetActivity['imageUrl'] ?? targetActivity['image_url'] ?? '').toString().trim();
       if (imagesToSave.isEmpty && oldImageUrl.isNotEmpty) {
-        debugPrint('✅ 抢救首图：$oldImageUrl');
+        _safeItineraryLog('✅ 抢救首图：$oldImageUrl');
         imagesToSave.add(oldImageUrl);
       } else if (imagesToSave.isNotEmpty && oldImageUrl.isNotEmpty && !imagesToSave.contains(oldImageUrl)) {
         // 如果 images 已有数据，但不包含 imageUrl，也要保留（插入到开头）
-        debugPrint('✅ 补充首图到数组开头：$oldImageUrl');
+        _safeItineraryLog('✅ 补充首图到数组开头：$oldImageUrl');
         imagesToSave.insert(0, oldImageUrl);
       }
 
       // 5️⃣ 追加新上传的照片
       imagesToSave.add(publicUrl);
-      debugPrint('✅ 追加新照片：$publicUrl，当前总数=${imagesToSave.length}');
+      _safeItineraryLog('✅ 追加新照片：$publicUrl，当前总数=${imagesToSave.length}');
 
       // 6️⃣ 反向同步：更新 images 数组和 imageUrl 封面
       targetActivity['images'] = List<dynamic>.from(imagesToSave);
@@ -1728,10 +1736,10 @@ class ItineraryProvider extends ChangeNotifier {
       await saveItinerary(updated);
       notifyListeners();
 
-      debugPrint('✅ 照片上传成功：Day${dayIndex + 1} Activity${activityIndex + 1}');
+      _safeItineraryLog('✅ 照片上传成功：Day${dayIndex + 1} Activity${activityIndex + 1}');
       return true;
     } catch (e) {
-      debugPrint('❌ 上传照片失败: $e');
+      _safeItineraryLog('❌ 上传照片失败: $e');
       return false;
     }
   }
@@ -1759,7 +1767,7 @@ class ItineraryProvider extends ChangeNotifier {
       if (dayIndex < 0 ||
           dayIndex >= targetDays.length ||
           targetDays[dayIndex] is! Map<String, dynamic>) {
-        debugPrint('❌ 删除失败：dayIndex=$dayIndex 越界');
+        _safeItineraryLog('❌ 删除失败：dayIndex=$dayIndex 越界');
         return false;
       }
 
@@ -1773,7 +1781,7 @@ class ItineraryProvider extends ChangeNotifier {
       if (activityIndex < 0 ||
           activityIndex >= targetActivities.length ||
           targetActivities[activityIndex] is! Map<String, dynamic>) {
-        debugPrint('❌ 删除失败：activityIndex=$activityIndex 越界');
+        _safeItineraryLog('❌ 删除失败：activityIndex=$activityIndex 越界');
         return false;
       }
 
@@ -1794,7 +1802,7 @@ class ItineraryProvider extends ChangeNotifier {
       final int beforeCount = currentImages.length;
       currentImages.remove(targetUrl);
       final int afterCount = currentImages.length;
-      debugPrint('✅ 删除照片：$targetUrl，删除前=$beforeCount，删除后=$afterCount');
+      _safeItineraryLog('✅ 删除照片：$targetUrl，删除前=$beforeCount，删除后=$afterCount');
 
       // 4️⃣ 更新 images 数组和首图
       targetActivity['images'] = List<dynamic>.from(currentImages);
@@ -1832,19 +1840,19 @@ class ItineraryProvider extends ChangeNotifier {
               .from('activity_photos')
               .delete()
               .eq('image_url', targetUrl);
-          debugPrint('✅ Supabase 照片记录已删除');
+          _safeItineraryLog('✅ Supabase 照片记录已删除');
         } catch (e) {
-          debugPrint('⚠️ Supabase 删除异常: $e');
+          _safeItineraryLog('⚠️ Supabase 删除异常: $e');
         }
       } else {
-        debugPrint(
+        _safeItineraryLog(
           '⚠️ itineraryId 无效 ($itineraryId)，跳过 Supabase 删除',
         );
       }
 
       return true;
     } catch (e) {
-      debugPrint('❌ 删除照片失败: $e');
+      _safeItineraryLog('❌ 删除照片失败: $e');
       return false;
     }
   }

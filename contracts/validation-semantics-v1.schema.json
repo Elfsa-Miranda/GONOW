@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gonow.example/contracts/validation-semantics-v1.schema.json",
+  "title": "GoNow validation result v1",
+  "description": "A validation result classifies a model-produced Candidate. It never authorizes a formal domain write.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result_id",
+    "classification",
+    "findings",
+    "candidate_import",
+    "fallback",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "result_id": {"type": "string", "pattern": "^val_[a-z0-9][a-z0-9_-]{7,63}$"},
+    "classification": {"enum": ["hard", "warning", "unverified", "verified"]},
+    "findings": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/finding"}
+    },
+    "candidate_import": {"$ref": "#/$defs/candidateImport"},
+    "fallback": {"$ref": "#/$defs/fallback"},
+    "provenance": {"$ref": "#/$defs/provenance"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"classification": {"const": "hard"}}, "required": ["classification"]},
+      "then": {
+        "properties": {
+          "findings": {"contains": {"properties": {"classification": {"const": "hard"}}, "required": ["classification"]}},
+          "candidate_import": {"properties": {"mode": {"const": "raw_candidate_draft"}}},
+          "fallback": {"properties": {"mode": {"const": "raw_input_draft"}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"classification": {"const": "warning"}}, "required": ["classification"]},
+      "then": {
+        "properties": {
+          "findings": {"contains": {"properties": {"classification": {"const": "warning"}}, "required": ["classification"]}},
+          "candidate_import": {"properties": {"mode": {"const": "normalized_candidate_draft"}}},
+          "fallback": {"properties": {"mode": {"const": "normalized_candidate"}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"classification": {"const": "unverified"}}, "required": ["classification"]},
+      "then": {
+        "properties": {
+          "findings": {"contains": {"properties": {"classification": {"const": "unverified"}}, "required": ["classification"]}},
+          "candidate_import": {"properties": {"mode": {"const": "original_candidate_draft"}}},
+          "fallback": {"properties": {"mode": {"const": "original_candidate"}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"classification": {"const": "verified"}}, "required": ["classification"]},
+      "then": {
+        "properties": {
+          "findings": {"maxItems": 0},
+          "candidate_import": {"properties": {"mode": {"const": "normalized_candidate_draft"}}},
+          "fallback": {"properties": {"mode": {"const": "normalized_candidate"}}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_id", "classification", "code", "field_path", "message_key", "resolution"],
+      "properties": {
+        "finding_id": {"type": "string", "pattern": "^finding_[a-z0-9][a-z0-9_-]{5,63}$"},
+        "classification": {"enum": ["hard", "warning", "unverified"]},
+        "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+        "field_path": {"type": "string", "pattern": "^(/([^/~]|~[01])*)*$", "maxLength": 512},
+        "message_key": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,127}$"},
+        "resolution": {"enum": ["use_fallback", "confirm_candidate", "collect_evidence", "edit_candidate"]},
+        "evidence_reference": {"type": ["string", "null"], "maxLength": 1024}
+      }
+    },
+    "candidateImport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "mode", "requires_user_confirmation", "domain_write_allowed"],
+      "properties": {
+        "allowed": {"const": true},
+        "mode": {"enum": ["raw_candidate_draft", "original_candidate_draft", "normalized_candidate_draft"]},
+        "requires_user_confirmation": {"const": true},
+        "domain_write_allowed": {"const": false}
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "mode", "preserves_user_input", "domain_write_allowed"],
+      "properties": {
+        "available": {"const": true},
+        "mode": {"enum": ["raw_input_draft", "original_candidate", "normalized_candidate"]},
+        "preserves_user_input": {"const": true},
+        "domain_write_allowed": {"const": false}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "behavior_package_id", "validator_version", "validated_at"],
+      "properties": {
+        "candidate_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "behavior_package_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "validator_version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "validated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

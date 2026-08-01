@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "blocker_id": "BLK-P03-005-FLUTTER-BASELINE",
+  "task_id": "TASK-P03-005",
+  "status": "isolated_with_reversible_alternative",
+  "root_cause": "The repository baseline contains stale android/test/widget_test.dart and test/widget_test.dart references to missing application entry points/classes; the full analyzer also includes unrelated legacy warnings.",
+  "minimal_reproduction": "Run flutter analyze --machine at the repository root. It returns nonzero with three stale widget-test errors already identified by AGENTS.md section 1.1.",
+  "impact": "The full-repository Flutter analyzer action is pending baseline repair. P03-005 implementation paths have zero findings and their scoped analyzer is green.",
+  "excluded_paths": [
+    "No analyzer finding references lib/core/agent/behavior_digest.dart.",
+    "No analyzer finding references test/behavior_digest_test.dart.",
+    "Python and Dart shared digest vectors pass independently."
+  ],
+  "repair": "Repair or retire both stale widget tests in their owning baseline task, then rerun the full repository analyzer before formal merge. P03-005 uses the explicit scoped analyzer only for local provisional evidence.",
+  "rollback": "Delete the two new Dart files to restore the old path; no dependency, generated-code, production, or remote change is required.",
+  "recovery_condition": "The full repository analyzer returns zero errors after the owning baseline task is repaired.",
+  "formal_gate_status": "pending_baseline_repair",
+  "production_write_count": 0,
+  "remote_mutation_count": 0
+}

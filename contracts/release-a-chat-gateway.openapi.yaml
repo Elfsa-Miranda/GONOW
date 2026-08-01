@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: GoNow Release A Chat Gateway
+  version: 1.0.0
+  description: >-
+    Authenticated server boundary for ordinary Release A chat. Model-provider
+    credentials, provider names, model selection, and system prompts are not
+    client-controlled fields.
+servers:
+  - url: https://security-approved-host.invalid
+    description: Placeholder only; deployments must supply the approved host.
+paths:
+  /v1/release-a/chat:
+    post:
+      operationId: releaseAChat
+      summary: Generate one ordinary-chat response through the server gateway.
+      security:
+        - userBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Typed candidate response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Invalid typed input.
+        '401':
+          description: Missing or invalid user authentication.
+        '403':
+          description: User or tenant is not authorized.
+        '413':
+          description: Request exceeds the server cap.
+        '429':
+          description: User or tenant rate/cost cap reached.
+        '502':
+          description: Provider failure, with no provider response body exposed.
+components:
+  securitySchemes:
+    userBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Supabase access token
+  schemas:
+    ChatMessage:
+      type: object
+      additionalProperties: false
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 20000
+    ChatRequest:
+      type: object
+      additionalProperties: false
+      required: [messages, source]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        source:
+          type: string
+          minLength: 1
+          maxLength: 200
+        current_plan:
+          type: object
+          additionalProperties: true
+    ChatResponse:
+      type: object
+      additionalProperties: false
+      required: [content, request_id]
+      properties:
+        content:
+          type: string
+          minLength: 1
+        itinerary_data:
+          type: [object, 'null']
+          additionalProperties: true
+        request_id:
+          type: string
+          minLength: 1

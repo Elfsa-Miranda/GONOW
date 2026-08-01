@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gonow.example/contracts/interrupt-v1.schema.json",
+  "title": "GoNow typed interrupt v1",
+  "description": "Public, versioned interrupt payloads. Opaque prompts, automatic approval and unknown fields are forbidden.",
+  "oneOf": [
+    { "$ref": "#/$defs/missingInfoInterrupt" },
+    { "$ref": "#/$defs/riskConfirmationInterrupt" },
+    { "$ref": "#/$defs/approvalInterrupt" }
+  ],
+  "$defs": {
+    "messageKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "maxLength": 128
+    },
+    "reference": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]{1,500}$",
+      "maxLength": 512
+    },
+    "missingInfoRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field_key", "label_key", "input_kind", "required", "option_keys"],
+      "properties": {
+        "field_key": { "$ref": "#/$defs/messageKey" },
+        "label_key": { "$ref": "#/$defs/messageKey" },
+        "input_kind": {
+          "enum": ["text", "date", "time", "location", "choice"]
+        },
+        "required": { "const": true },
+        "option_keys": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/messageKey" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "input_kind": { "const": "choice" } },
+            "required": ["input_kind"]
+          },
+          "then": { "properties": { "option_keys": { "minItems": 1 } } },
+          "else": { "properties": { "option_keys": { "maxItems": 0 } } }
+        }
+      ]
+    },
+    "missingInfoInterrupt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "interrupt_id",
+        "run_id",
+        "created_at",
+        "ui_message_key",
+        "kind",
+        "requests"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "interrupt_id": { "type": "string", "format": "uuid" },
+        "run_id": { "type": "string", "format": "uuid" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "ui_message_key": { "$ref": "#/$defs/messageKey" },
+        "kind": { "const": "missing_info" },
+        "requests": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/missingInfoRequest" }
+        }
+      }
+    },
+    "riskConfirmationInterrupt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "interrupt_id",
+        "run_id",
+        "created_at",
+        "ui_message_key",
+        "kind",
+        "risk_code",
+        "severity",
+        "evidence_refs",
+        "explicit_confirmation_required"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "interrupt_id": { "type": "string", "format": "uuid" },
+        "run_id": { "type": "string", "format": "uuid" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "ui_message_key": { "$ref": "#/$defs/messageKey" },
+        "kind": { "const": "risk_confirmation" },
+        "risk_code": { "$ref": "#/$defs/messageKey" },
+        "severity": { "enum": ["low", "medium", "high"] },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/reference" }
+        },
+        "explicit_confirmation_required": { "const": true }
+      }
+    },
+    "approvalInterrupt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "interrupt_id",
+        "run_id",
+        "created_at",
+        "ui_message_key",
+        "kind",
+        "action_code",
+        "resource_ref",
+        "diff_ref",
+        "explicit_approval_required",
+        "audit_receipt_required"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "interrupt_id": { "type": "string", "format": "uuid" },
+        "run_id": { "type": "string", "format": "uuid" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "ui_message_key": { "$ref": "#/$defs/messageKey" },
+        "kind": { "const": "approval" },
+        "action_code": { "$ref": "#/$defs/messageKey" },
+        "resource_ref": { "$ref": "#/$defs/reference" },
+        "diff_ref": { "$ref": "#/$defs/reference" },
+        "explicit_approval_required": { "const": true },
+        "audit_receipt_required": { "const": true }
+      }
+    }
+  }
+}

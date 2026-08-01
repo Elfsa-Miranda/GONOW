@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gonow.example.invalid/contracts/events/runtime-event.schema.json",
+  "title": "GoNow Runtime Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "run_id",
+    "tenant_id",
+    "seq",
+    "event_type",
+    "payload",
+    "audit_receipt_id",
+    "created_at"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "event_type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{0,126}$"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "audit_receipt_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "x-gonow-contract": {
+    "version": "1.0.0",
+    "source_of_truth": "agent_runtime.events",
+    "sequence_scope": "run_id",
+    "tenant_source": "server_context",
+    "transport_status": "not_exposed_until_phase_6"
+  }
+}
