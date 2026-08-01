@@ -39,6 +39,28 @@ def test_ci_wrapper_has_no_mandatory_skip_switch() -> None:
     assert "continue-on-error" not in wrapper
 
 
+def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "agent-ci.yml").read_text(
+        encoding="utf-8"
+    )
+    provisioner = (SERVICE_ROOT / "scripts" / "provision_ci_postgres.ps1").read_text(
+        encoding="utf-8"
+    )
+    provision = workflow.index("Provision isolated PostgreSQL contract database")
+    mandatory = workflow.index("Run every mandatory Agent gate")
+    cleanup = workflow.index("Stop isolated PostgreSQL contract database")
+
+    assert provision < mandatory < cleanup
+    assert "provision_ci_postgres.ps1" in workflow
+    assert "-Port 55432" in workflow
+    assert '"--options=-p $Port -h 127.0.0.1"' in provisioner
+    assert "--auth-host=trust" in provisioner
+    assert "0.0.0.0" not in provisioner
+    assert "CREATE ROLE gonow_migrator_test LOGIN SUPERUSER" in provisioner
+    assert "CREATE ROLE gonow_bootstrap_admin LOGIN SUPERUSER" in provisioner
+    assert "if: ${{ always() }}" in workflow[cleanup:]
+
+
 def test_deployment_clock_gate_fails_closed_on_missing_measurement() -> None:
     wrapper = (SERVICE_ROOT / "scripts" / "ci.ps1").read_text(encoding="utf-8")
     assert "$StatusExit-ne 0" in wrapper
