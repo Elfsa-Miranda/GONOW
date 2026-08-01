@@ -107,6 +107,14 @@ if ($RunnerText -notmatch 'Get-P09004GateModeState' -or
     $RunnerText -notmatch 'p09_004_security_failed') {
   throw 'negative: P09-004 must own bounded SSE recovery, de-duplication, control authorization, and audit gates'
 }
+if ($RunnerText -notmatch 'Get-P09007GateModeState' -or
+    $RunnerText -notmatch 'p09_007_verify_failed' -or
+    $RunnerText -notmatch 'ordinary_chat_bypass_cases_passed' -or
+    $RunnerText -notmatch 'legacy_touched_file_baseline_issue_count=29' -or
+    $RunnerText -notmatch 'no_extra_boundary' -or
+    $RunnerText -notmatch 'p09_007_security_failed') {
+  throw 'negative: P09-007 must own legacy-off, ordinary-chat bypass, generation, kill-switch, and audit gates'
+}
 if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'
