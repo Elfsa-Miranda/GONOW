@@ -1,1 +1,17 @@
-{"schema_version":"1.0","task_id":"TASK-P08-006","mode":"WorksetVerify","reason_code":"p08_006_workset_failed","local_provisional":true,"external_approval_or_authority_required":false,"production_write_count":0,"recorded_at":"2026-08-01T20:03:14.3287332+08:00"}
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P08-006",
+  "mode": "WorksetVerify",
+  "reason_code": "p08_006_workset_failed",
+  "status": "resolved_local",
+  "minimal_reproduction": "Run P08-006 WorksetVerify under Windows PowerShell 5 against the BOM-less runner containing the original non-ASCII preference marker.",
+  "root_cause": "Windows PowerShell 5 decoded the BOM-less runner marker inconsistently, so the literal work-contract check could not find it.",
+  "impact_surface": ["P08-006 workset marker verification only"],
+  "repair": "Use the stable ASCII key user_preference and an ordinal Contains check without changing the recorded preference or decision.",
+  "rollback": "Restore the former marker expression; the decision JSON and architecture conclusion remain unchanged.",
+  "affected_regression": {"mandatory_modes": 7, "failed": 0, "decision": "none", "preference_overrode_evidence": false},
+  "recovery_condition": "All P08-006 modes pass and multi-agent-trigger.json retains user_preference plus decision=none.",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "production_write_count": 0
+}
