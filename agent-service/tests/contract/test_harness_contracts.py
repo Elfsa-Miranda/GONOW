@@ -102,8 +102,8 @@ def test_harness_catalog_rejects_missing_owner_mapping() -> None:
 
 def test_harness_catalog_rejects_fake_implemented_control() -> None:
     text = CATALOG_PATH.read_text("utf-8").replace(
-        "status: contract_only, first_phase: P4, test_file: agent-service/tests/unit/harness/test_07_budget_manager.py",
-        "status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_07_missing.py",
+        "status: contract_only, first_phase: P6, test_file: agent-service/tests/unit/harness/test_14_interrupt_policy.py",
+        "status: implemented, first_phase: P6, test_file: agent-service/tests/unit/harness/test_14_missing.py",
         1,
     )
     with pytest.raises(HarnessMappingError, match="harness.implemented_test_missing"):
