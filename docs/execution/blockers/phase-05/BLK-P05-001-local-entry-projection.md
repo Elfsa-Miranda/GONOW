@@ -17,6 +17,7 @@ The Phase 4 source status, source gate hash, local-verification projection, chec
 ## Complete reversible repair
 
 - Add a P05-001 Preflight handler that runs the cumulative Agent CI, four frozen Flutter journeys, and runner contract suite before feature edits.
+- Resolve `phase_base_oid` from the last commit that changed the prior P04-990 status record, then separately record the current Phase 5 candidate HEAD; require the checkpoint to be an ancestor so an enabler commit cannot silently become the phase base.
 - Create the runtime manifest through the existing create-only `Invoke-PhaseEntryRegression.ps1`, binding `TASK-P04-990`, its status hash, gate evidence hash, BOOT-005 mechanical state, and the exact provisional checkpoint OID.
 - Require `phase_5_local_entry_projection_valid=true` locally while retaining independent `P04-999` and P04 acceptance requirements for `formal_adopted` mode.
 - Do not enable production traffic, writes, push, merge, or accepted status.

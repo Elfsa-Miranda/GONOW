@@ -5583,8 +5583,12 @@ function Invoke-ModePreflight {
     $ManifestState='existing_exact'
     if(-not(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){
       $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      $PhaseBase=(& git -C $script:RepositoryRoot log -1 --format=%H -- 'docs/execution/status/TASK-P04-990.json').Trim()
+      if($PhaseBase-cnotmatch'^[0-9a-f]{40}$'){return New-BlockedResult 'phase_05_checkpoint_resolution_failed' ([ordered]@{dependency_failures=1;prior_phase_regression_failures=0;unexpected_paths=0;base_drift=1;production_write_count=0})}
+      & git -C $script:RepositoryRoot merge-base --is-ancestor $PhaseBase $Head 2>$null
+      if($LASTEXITCODE-ne0){return New-BlockedResult 'phase_05_checkpoint_not_ancestor' ([ordered]@{dependency_failures=1;prior_phase_regression_failures=0;unexpected_paths=0;base_drift=1;production_write_count=0})}
       $ExistingEntryReport=if(Test-Path -LiteralPath $EntryReportPath -PathType Leaf){Get-Content -LiteralPath $EntryReportPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}else{$null}
-      $ReusableEntryReport=$null-ne$ExistingEntryReport-and[string]$ExistingEntryReport.task_id-ceq$TaskId-and[string]$ExistingEntryReport.phase_base_oid-ceq$Head-and[string]$ExistingEntryReport.candidate_head_oid-ceq$Head-and[int]$ExistingEntryReport.failure_count-eq0
+      $ReusableEntryReport=$null-ne$ExistingEntryReport-and[string]$ExistingEntryReport.task_id-ceq$TaskId-and[string]$ExistingEntryReport.phase_base_oid-ceq$PhaseBase-and[string]$ExistingEntryReport.candidate_head_oid-ceq$Head-and[int]$ExistingEntryReport.failure_count-eq0
       if(-not$ReusableEntryReport){
         $AgentReportRoot=Join-Path $script:TaskEvidenceDirectory 'phase-entry-ci'
         if(-not(Test-Path -LiteralPath $AgentReportRoot)){New-Item -ItemType Directory -Path $AgentReportRoot -Force|Out-Null}
@@ -5610,8 +5614,8 @@ function Invoke-ModePreflight {
         $RunnerRun=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'docs\execution\commands\tests\Invoke-TaskGate.Tests.ps1'))
         $FailureCount=[int]$AgentRun.exit_code+$AgentFailures+$AgentGateFailures+$AgentSkipped+$AgentXfailed+$CountFailure+[int]$FlutterRun.exit_code+[int]$RunnerRun.exit_code
         Write-AtomicJson -LiteralPath $EntryReportPath -Value ([ordered]@{
-          schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;phase_base_oid=$Head;candidate_head_oid=$Head
-          prior_phase='Phase 4';prior_phase_checkpoint_oid=$Head
+          schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;phase_base_oid=$PhaseBase;candidate_head_oid=$Head
+          prior_phase='Phase 4';prior_phase_checkpoint_oid=$PhaseBase
           agent_ci=[ordered]@{gate_count=if($null-eq$AgentSummary){0}else{@($AgentSummary.results).Count};unit_tests=$UnitTests;minimum_unit_tests=388;contract_tests=$ContractTests;minimum_contract_tests=93;failed=$AgentFailures+$AgentGateFailures+[int]$AgentRun.exit_code+$CountFailure;not_run=if($null-eq$AgentSummary){1}else{0};skipped=$AgentSkipped;xfailed=$AgentXfailed}
           flutter_regression=[ordered]@{tests=14;failed=if([int]$FlutterRun.exit_code-eq0){0}else{1};not_run=0;skipped=0;xfailed=0;journeys=@('release_a_gateway','validation_semantics','log_redaction','behavior_digest')}
           runner_contract_exit_code=[int]$RunnerRun.exit_code;failure_count=$FailureCount;production_write_count=0;remote_push_count=0;merge_count=0
@@ -5621,7 +5625,7 @@ function Invoke-ModePreflight {
       $PhaseEntryResult=Invoke-RedactedExternal -Executable 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -Arguments @(
         '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'docs\execution\commands\Invoke-PhaseEntryRegression.ps1'),
         '-TaskId',$TaskId,'-SourceRecordPath',(Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P04-990.json'),
-        '-ExpectedHeadOid',$Head,'-PhaseBaseOid',$Head,'-OutputPath',$ManifestPath,'-ExecutionMode',$ExecutionMode
+        '-ExpectedHeadOid',$Head,'-PhaseBaseOid',$PhaseBase,'-OutputPath',$ManifestPath,'-ExecutionMode',$ExecutionMode
       )
       if([int]$PhaseEntryResult.exit_code-ne0){return New-BlockedResult 'phase_05_entry_manifest_creation_failed' ([ordered]@{phase_entry_exit_code=[int]$PhaseEntryResult.exit_code;prior_phase_regression_failures=0;dependency_failures=0;unexpected_paths=0;base_drift=1;production_write_count=0})}
       $ManifestState='created'
