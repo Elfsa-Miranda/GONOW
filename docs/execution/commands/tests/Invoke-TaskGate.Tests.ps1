@@ -121,6 +121,18 @@ if ($RunnerText -notmatch 'Get-P10003GateModeState' -or
     $RunnerText -notmatch 'p10_003_rollback_verification_failed') {
   throw 'negative: P10-003 must keep SLOs hypothetical and bind every alert to owner, runbook, test, and rollback'
 }
+if ($RunnerText -notmatch 'Get-P10004GateModeState' -or
+    $RunnerText -notmatch 'p10_004_verify_failed' -or
+    $RunnerText -notmatch 'new_agent_runs_after_drill' -or
+    $RunnerText -notmatch 'old_path_available' -or
+    $RunnerText -notmatch 'harness_control_id=31' -or
+    $RunnerText -notmatch 'injection_executed_action_count' -or
+    $RunnerText -notmatch 'p10_004_security_failed' -or
+    $RunnerText -notmatch 'p10_004_workset_failed' -or
+    $RunnerText -notmatch 'p10_004_evidence_failed' -or
+    $RunnerText -notmatch 'p10_004_rollback_verification_failed') {
+  throw 'negative: P10-004 must own CAS/auth/propagation/drill/audit, Harness 31, security, evidence, workset, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
