@@ -1556,6 +1556,16 @@ function Get-P06005GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P06006GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json
+  $Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
 function Get-P05002GateModeState {
   $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','DependencyAudit','Evidence','RollbackVerify')
   if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
@@ -2372,6 +2382,22 @@ function Test-P06005PathAllowed {
   return $RelativePath.StartsWith('docs/execution/evidence/phase-06/P06-005/',[StringComparison]::Ordinal)
 }
 
+function Get-P06006ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P06006PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'agent-service/tests/integration/test_sse_races.py','integration_test/agent_network_recovery_test.dart',
+    'docs/execution/commands/Invoke-TaskGate.ps1','docs/execution/status/TASK-P06-006.json'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-06/P06-006/',[StringComparison]::Ordinal)
+}
+
 function Test-P05001PathAllowed {
   param([Parameter(Mandatory=$true)][string]$RelativePath)
   $AllowedExact=@(
@@ -2745,6 +2771,14 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P06-006') {
+    $Paths=@(Get-P06006ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06006PathAllowed -RelativePath $_)})
+    $ScanPaths=@('agent-service/tests/integration/test_sse_races.py','integration_test/agent_network_recovery_test.dart')
+    $ChangedText=@($ScanPaths|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf}|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $BoundaryCount=[regex]::Matches($ChangedText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|import\s+(?:requests|httpx)|from\s+(?:requests|httpx))').Count
+    $Checks=[ordered]@{no_extra_boundary=($Unexpected.Count+$BoundaryCount-eq0);valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($ChangedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count;unexpected_paths=$Unexpected.Count;production_write_count=0}
+    if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p06_006_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-005') {
     $Paths=@(Get-P06005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06005PathAllowed -RelativePath $_)})
     $ScanPaths=@('agent-service/app/api/routes/cancel.py','agent-service/app/runtime/cancellation.py','agent-service/tests/contract/test_cancel.py')
@@ -3847,6 +3881,23 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P06-006') {
+    $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'sse-race-report.json';$PreviousReport=$env:GONOW_P06_006_REPORT
+    try{$env:GONOW_P06_006_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/integration/test_sse_races.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P06_006_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P06_006_REPORT=$PreviousReport}}
+    $Tests=0;$Failures=1;$Skipped=1;if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Tests=0;$Failures=0;$Skipped=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped}}
+    $ToolchainPath=Join-Path $script:RepositoryRoot 'docs/execution/supply-chain/phase-boot/BOOT-005/toolchain-lock.json';$Flutter=if(Test-Path -LiteralPath $ToolchainPath -PathType Leaf){[string](Get-Content -LiteralPath $ToolchainPath -Raw -Encoding UTF8|ConvertFrom-Json).flutter.executable}else{''}
+    $FlutterSource=Join-Path $script:RepositoryRoot 'integration_test/agent_network_recovery_test.dart';$ProbeDirectory=Join-Path $script:RepositoryRoot '.dart_tool/gonow-p06-006';$ProbePath=Join-Path $ProbeDirectory 'agent_network_recovery_test.dart';if(-not(Test-Path -LiteralPath $ProbeDirectory -PathType Container)){New-Item -ItemType Directory -Path $ProbeDirectory -Force|Out-Null};Copy-Item -LiteralPath $FlutterSource -Destination $ProbePath -Force
+    $SourceHash=Get-Sha256 -LiteralPath $FlutterSource;$ProbeHash=Get-Sha256 -LiteralPath $ProbePath;$FlutterText=[IO.File]::ReadAllText($FlutterSource,[Text.UTF8Encoding]::new($false));$FlutterTests=[regex]::Matches($FlutterText,'(?m)^\s*test\(').Count;$FlutterSkipped=[regex]::Matches($FlutterText,'(?i)skip\s*:\s*true').Count
+    $TargetAnalyze=if($Flutter){Invoke-RedactedExternal -Executable $Flutter -Arguments @('analyze','--machine','integration_test/agent_network_recovery_test.dart')}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}}
+    $RootAnalyze=if($Flutter){Invoke-RedactedExternal -Executable $Flutter -Arguments @('analyze','--machine','--no-fatal-warnings','--no-fatal-infos')}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}}
+    $FlutterRun=if($Flutter){Invoke-RedactedExternal -Executable $Flutter -Arguments @('test','--no-pub','.dart_tool/gonow-p06-006/agent_network_recovery_test.dart','--machine')}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}}
+    $FlutterReport=[ordered]@{schema_version='1.0';task_id=$TaskId;source_path='integration_test/agent_network_recovery_test.dart';source_sha256=$SourceHash;probe_path='.dart_tool/gonow-p06-006/agent_network_recovery_test.dart';probe_sha256=$ProbeHash;source_copy_hash_match=($SourceHash-ceq$ProbeHash);local_execution_mode='exact-byte-flutter-vm-copy';flutter_test_count=$FlutterTests;flutter_failure_count=if([int]$FlutterRun.exit_code-eq0){0}else{1};flutter_skip_count=$FlutterSkipped;target_analyze_exit_code=[int]$TargetAnalyze.exit_code;root_analyze_exit_code=[int]$RootAnalyze.exit_code;root_analyzer_diagnostic_line_count=[int]$RootAnalyze.output_line_count;formal_mobile_device_status='pending_external';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'flutter-network-report.json') -Value $FlutterReport
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ReportValid=$null-ne$Report-and[string]$Report.task_id-ceq'TASK-P06-006'-and[string]$Report.database-ceq'isolated-postgresql-17'-and(@($Report.persisted_business_seq)-join',')-ceq'1,2,3,4'-and(@($Report.projected_business_seq)-join',')-ceq'1,2,3,4'-and(@($Report.reconnect_schedule_seconds)-join',')-ceq'0,1,2,4'-and[int]$Report.event_loss_count+[int]$Report.duplicate_side_effect_count+[int]$Report.window_race_loss_count+[int]$Report.heartbeat_business_id_count+[int]$Report.resume_replay_effect_count+[int]$Report.disconnect_triggered_cancel_count+[int]$Report.production_write_count-eq0-and[int]$Report.background_resume_count-eq1-and[int]$Report.slow_consumer_disconnect_count-eq1
+    $FlutterValid=[bool]$FlutterReport.source_copy_hash_match-and[int]$FlutterReport.flutter_test_count-eq4-and[int]$FlutterReport.flutter_failure_count+[int]$FlutterReport.flutter_skip_count+[int]$FlutterReport.target_analyze_exit_code+[int]$FlutterReport.root_analyze_exit_code+[int]$FlutterReport.production_write_count-eq0
+    $Checks=[ordered]@{primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$Tests-eq4-and$Failures-eq0-and$Skipped-eq0-and$ReportValid-and$FlutterValid);detail='replay/live-handoff, duplicate reconnect, background restore, slow consumer, resume and cancel races have event_loss_count=0 and duplicate_side_effect_count=0';tests=$Tests;failures=$Failures;skipped=$Skipped;test_exit_code=[int]$TestRun.exit_code;event_loss_count=if($null-eq$Report){1}else{[int]$Report.event_loss_count};duplicate_side_effect_count=if($null-eq$Report){1}else{[int]$Report.duplicate_side_effect_count};window_race_loss_count=if($null-eq$Report){1}else{[int]$Report.window_race_loss_count};flutter_tests=$FlutterTests;flutter_failures=[int]$FlutterReport.flutter_failure_count;flutter_skipped=[int]$FlutterReport.flutter_skip_count;source_copy_hash_match=[bool]$FlutterReport.source_copy_hash_match;formal_mobile_device_status='pending_external';production_write_count=if($null-eq$Report){1}else{[int]$Report.production_write_count}}
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p06_006_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-005') {
     $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'ct-010.json';$PreviousReport=$env:GONOW_P06_005_REPORT
     try{$env:GONOW_P06_005_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/contract/test_cancel.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P06_005_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P06_005_REPORT=$PreviousReport}}
@@ -5348,6 +5399,13 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P06-006') {
+    $Required=@('agent-service/tests/integration/test_sse_races.py','integration_test/agent_network_recovery_test.dart','docs/execution/evidence/phase-06/P06-006/enabler-integration-test.md','docs/execution/evidence/phase-06/P06-006/direct-pytest.xml','docs/execution/evidence/phase-06/P06-006/sse-race-report.json','docs/execution/evidence/phase-06/P06-006/flutter-network-report.json')
+    $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}};if($RelativePath.EndsWith('.py')-or$RelativePath.EndsWith('.dart')-or$RelativePath.EndsWith('.md')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.dart')){'text/x-dart'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/x-python'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-06-network-race-evidence' -GeneratedByStep 'TASK-P06-006:Evidence'}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p06_006_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-005') {
     $Required=@('agent-service/app/api/routes/cancel.py','agent-service/app/runtime/cancellation.py','agent-service/tests/contract/test_cancel.py','docs/execution/evidence/phase-06/P06-005/direct-pytest.xml','docs/execution/evidence/phase-06/P06-005/ct-010.json')
     $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
@@ -7127,6 +7185,11 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P06-006') {
+    $Paths=@(Get-P06006ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06006PathAllowed -RelativePath $_)});$Required=@('agent-service/tests/integration/test_sse_races.py','integration_test/agent_network_recovery_test.dart','docs/execution/evidence/phase-06/P06-006/direct-pytest.xml','docs/execution/evidence/phase-06/P06-006/sse-race-report.json','docs/execution/evidence/phase-06/P06-006/flutter-network-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('agent-service/tests/integration/test_sse_races.py','integration_test/agent_network_recovery_test.dart');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-match'^(agent-service/tests|integration_test)/'}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p06_006_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-005') {
     $Paths=@(Get-P06005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06005PathAllowed -RelativePath $_)});$Required=@('agent-service/app/api/routes/cancel.py','agent-service/app/runtime/cancellation.py','agent-service/tests/contract/test_cancel.py','docs/execution/evidence/phase-06/P06-005/direct-pytest.xml','docs/execution/evidence/phase-06/P06-005/ct-010.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('agent-service/app/api/routes/cancel.py','agent-service/app/runtime/cancellation.py','agent-service/tests/contract/test_cancel.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
     if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
@@ -8219,6 +8282,9 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P06-006') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P06006ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06006PathAllowed -RelativePath $_)});$RuntimeChanges=@($Paths|Where-Object{$_-match'^agent-service/app/|^lib/'});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'sse-race-report.json';$FlutterPath=Join-Path $script:TaskEvidenceDirectory 'flutter-network-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Flutter=if(Test-Path -LiteralPath $FlutterPath -PathType Leaf){Get-Content -LiteralPath $FlutterPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and$null-ne$Flutter-and[int]$Report.event_loss_count+[int]$Report.duplicate_side_effect_count+[int]$Report.production_write_count-eq0-and[bool]$Flutter.source_copy_hash_match-and[int]$Flutter.flutter_failure_count+[int]$Flutter.flutter_skip_count-eq0;$Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;runtime_change_count=$RuntimeChanges.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='remove only the network-race and exact-byte Flutter contract tests; P06-002 SSE, P06-004 resume, and P06-005 cancellation runtime implementations remain unchanged';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.runtime_change_count+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p06_006_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-005') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P06005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06005PathAllowed -RelativePath $_)});$SchemaChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'ct-010.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[string]$Report.ct_status-ceq'passed'-and[int]$Report.late_success_accepted_count+[int]$Report.cancelled_reversal_accepted_count+[int]$Report.illegal_terminal_count+[int]$Report.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$SchemaChanges.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='unmount the cancel route and revert the cancellation coordinator plus CT-010 test; existing CANCELLING Runs remain recoverable by the prior reconciler';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.schema_change_count+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p06_005_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
@@ -9799,7 +9865,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P06-005' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P06-006' -and $ExitCode -eq 0) {
+    $ModeState=Get-P06006GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P06-005' -and $ExitCode -eq 0) {
     $ModeState=Get-P06005GateModeState
     if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P06-004' -and $ExitCode -eq 0) {
