@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P07-007",
+  "report_scope": "local_synthetic_replay_only",
+  "dataset": {
+    "dataset_id": "phase-07-validation-golden-v1",
+    "sha256": "e302849c83617074a3d781e025b1138bc992bbe92fbceb3c499d37fd34ba061a",
+    "mandatory_cases": 9,
+    "phase1_compatibility_cases": 8,
+    "contains_production_samples": false
+  },
+  "scoring": {
+    "scoring_id": "exact-classification-importability-v1",
+    "implementation_sha256": "e6f9e969d6c15d1d4bf30675ffb9a6f990503bb74da6bd342e45ece038fbe321",
+    "rule": "exact expected classification, evidence state, and import mode; every row mandatory",
+    "judge_used": false
+  },
+  "behavior": {
+    "digest_algorithm": "sha256 of newline-delimited name=sha256 component manifest",
+    "digest": "a8755fd8d09753affc72f1ea7c7f58cc6f32f3827f93c5b6f1f079f4ce02a111",
+    "components": {
+      "canonical_validator": "d04afd2f2a2b0bc8a5f13cba7e6b3fc04f14a801a718be20b278b852a2075649",
+      "evidence_gate": "6c868c24d436fdb4ddff78ef30b0b3cad0f80724628418ba8910f847025108e7",
+      "repair": "2c53958b5823a82b85e6bd639eac5a773f56847b2d7276dd7794c319478759ed",
+      "solver_process": "ffa86f91d43b65230e502dbba0a6e2497d512429da319ef0f5ce6d3edf744004"
+    }
+  },
+  "environment": {
+    "execution_mode": "local_provisional",
+    "os": "Windows",
+    "python": "3.13.9",
+    "timing_source": "pytest JUnit testcase time converted to milliseconds",
+    "production_traffic": false,
+    "production_billing_snapshot": false
+  },
+  "slices": [
+    {
+      "slice_id": "baseline_validator_importability",
+      "quality_numerator": 9,
+      "quality_denominator": 9,
+      "error_count": 0,
+      "latency_sample_count": 3,
+      "latency_p50_ms": 2,
+      "latency_p95_ms": 17,
+      "adopted_task_count": 9,
+      "cost_per_adopted_task": {"value": null, "currency": null, "status": "unknown_no_provider_or_infrastructure_billing_snapshot"}
+    },
+    {
+      "slice_id": "bounded_repair",
+      "quality_numerator": 4,
+      "quality_denominator": 4,
+      "error_count": 0,
+      "latency_sample_count": 4,
+      "latency_p50_ms": 0,
+      "latency_p95_ms": 2,
+      "adopted_task_count": 4,
+      "cost_per_adopted_task": {"value": null, "currency": null, "status": "unknown_no_provider_or_infrastructure_billing_snapshot"}
+    },
+    {
+      "slice_id": "optional_solver_isolation",
+      "quality_numerator": 3,
+      "quality_denominator": 3,
+      "error_count": 0,
+      "latency_sample_count": 3,
+      "latency_p50_ms": 326,
+      "latency_p95_ms": 598,
+      "adopted_task_count": 3,
+      "cost_per_adopted_task": {"value": null, "currency": null, "status": "unknown_no_provider_or_infrastructure_billing_snapshot"}
+    }
+  ],
+  "confidence": {
+    "sample_sufficient_for_production_claim": false,
+    "reason": "Small deterministic local synthetic suites measure contract behavior only; they do not represent production traffic, cold-start distribution, infrastructure pricing, or adoption.",
+    "production_quality": "unknown",
+    "production_latency": "unknown",
+    "production_cost": "unknown"
+  },
+  "metric_accounting": {
+    "missing_metric_count": 0,
+    "unknown_metric_count": 3,
+    "hidden_failure_count": 0,
+    "failed_slice_count": 0
+  },
+  "audit_receipt": {
+    "receipt_id": "audit_p07_007_local_synthetic_v1",
+    "actor_id": "codex-local-implementation",
+    "actor_role": "Engineering",
+    "source_paths": [
+      "docs/execution/evidence/phase-07/P07-003/direct-pytest.xml",
+      "docs/execution/evidence/phase-07/P07-005/direct-pytest.xml",
+      "docs/execution/evidence/phase-07/P07-006/direct-pytest.xml"
+    ],
+    "redacted": true,
+    "recorded_at": "2026-08-01T18:05:00+08:00"
+  },
+  "formal_review_status": "pending_external",
+  "production_write_count": 0
+}
