@@ -74,6 +74,22 @@ Phase 4 在服务端建立 typed State、固定六阶段 planning Graph、独立
   `local_provisional` / `ready_for_review`；Product/Eval/Privacy/Security 批准、推送、
   合并、部署、生产启用与 `accepted` 均为 pending。
 
+## Phase 5 本地持久恢复候选
+
+Phase 5 把 Worker 的 Job 领取、租约、checkpoint、物理 Tool 调用账本和孤儿修复
+落到 PostgreSQL。Worker 被终止或重启后，新 Worker 只能用更大的 fencing token 接管；
+旧 Worker 的迟到写入被拒绝。未知外部调用结果不会退款或盲重试。
+
+- 架构与不变量：`docs/architecture/durable-recovery.md`
+- Worker 启停、降级和首查：`docs/runbooks/worker-recovery.md`
+- checkpoint 字段、版本和失败语义：`docs/api/checkpoint-contract.md`
+- 完整本地演练：`docs/runbooks/no-redis-recovery.md`
+- 7 个进程终止边界和 PostgreSQL-only 恢复均在隔离 PostgreSQL 17 上通过；
+  CT-005/CT-006、重复副作用、孤儿记录、skip 和 xfail 均为零。
+- Redis 不是 Runtime 依赖或恢复事实源；公共 OpenAPI 与 Flutter/Dart 合同未改变。
+- 当前仅为 `local_provisional` / `ready_for_review` 候选。独立 SRE+Data+Security
+  review、正式治理采纳、推送、合并、部署、生产演练和 `accepted` 均为 pending。
+
 ## **📱 视觉预览 (Screenshots)**
 
 1.盲盒功能：点击抽取周末/国际盲盒随机旅游目的地，并且一键询问AI规划旅游路线。规划若有不满意之处可继续询问AI进行改进，直至满意即可一键导入行程。给AI的系统prompt经精心设计，综合考虑多因素规划路线，实现住宿-景点-交通-餐饮的全面高质量安排。

@@ -19,13 +19,13 @@ controls:
   - {id: 15, name: ToolRegistry, status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_15_tool_registry.py, minimum_cases: 4}
   - {id: 16, name: ToolArgValidator, status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_16_tool_arg_validator.py, minimum_cases: 5}
   - {id: 17, name: ToolExecutor, status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_17_tool_executor.py, minimum_cases: 4}
-  - {id: 18, name: PhysicalInvocationLedger, status: contract_only, first_phase: P5, test_file: agent-service/tests/unit/harness/test_18_invocation_ledger.py, minimum_cases: 4}
+  - {id: 18, name: PhysicalInvocationLedger, status: implemented, first_phase: P5, test_file: agent-service/tests/unit/harness/test_18_invocation_ledger.py, minimum_cases: 4}
   - {id: 19, name: CircuitBreaker, status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_19_circuit_breaker.py, minimum_cases: 5}
   - {id: 20, name: RetryPolicy, status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_20_retry_policy.py, minimum_cases: 4}
   - {id: 21, name: OutputSchemaGuard, status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_21_output_schema_guard.py, minimum_cases: 4}
   - {id: 22, name: EvidenceLedger, status: implemented, first_phase: P3/P4, test_file: agent-service/tests/unit/harness/test_22_evidence_ledger.py, minimum_cases: 4}
   - {id: 23, name: CitationAssembler, status: implemented, first_phase: P4/P11, test_file: agent-service/tests/unit/harness/test_23_citation_assembler.py, minimum_cases: 4}
-  - {id: 24, name: CheckpointAdapter, status: contract_only, first_phase: P5, test_file: agent-service/tests/unit/harness/test_24_checkpoint_adapter.py, minimum_cases: 4}
+  - {id: 24, name: CheckpointAdapter, status: implemented, first_phase: P5, test_file: agent-service/tests/unit/harness/test_24_checkpoint_adapter.py, minimum_cases: 4}
   - {id: 25, name: EventWriter, status: implemented, first_phase: P3, test_file: agent-service/tests/unit/harness/test_25_event_writer.py, minimum_cases: 4}
   - {id: 26, name: CandidateProjector, status: implemented, first_phase: P4, test_file: agent-service/tests/unit/harness/test_26_candidate_projector.py, minimum_cases: 4}
   - {id: 27, name: PIIRedactor, status: implemented, first_phase: P0/P2, test_file: agent-service/tests/unit/harness/test_27_pii_redactor.py, minimum_cases: 4}
