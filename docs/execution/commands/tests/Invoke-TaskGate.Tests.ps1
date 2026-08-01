@@ -234,6 +234,36 @@ if ($RunnerText -notmatch 'Get-P10LocalProjection' -or
     $RunnerText -notmatch 'pending_phase_10_independent_approvals') {
   throw 'negative: P10-990 must bind accepted rollout/release gates, E0/E1/CT/cost evidence, full regression, rollback, approvals, and all eight rejection categories'
 }
+if ($RunnerText -notmatch 'if \(\$TaskIdValue -ceq ''TASK-P10-011''\)' -or
+    $RunnerText -notmatch 'Get-P10011GateModeState' -or
+    $RunnerText -notmatch "required_checks=@\('agent-required','baseline-and-candidate','tracked-and-history'\)" -or
+    $RunnerText -notmatch 'pr-request\.json' -or
+    $RunnerText -notmatch 'pr-observation\.json' -or
+    $RunnerText -notmatch 'Get-P10011LivePullRequestState' -or
+    $RunnerText -notmatch 'Invoke-RestMethod -Method Get' -or
+    $RunnerText -notmatch 'X-GitHub-Api-Version' -or
+    $RunnerText -notmatch 'live_query_failure_count' -or
+    $RunnerText -notmatch 'task_card_binding=\$CardBinding' -or
+    $RunnerText -notmatch "required_changes=@\('verify clean','head SHA','open PR','attach gates','await user'\)" -or
+    $RunnerText -notmatch 'remote_head_oid' -or
+    $RunnerText -notmatch 'main_ref_write_count' -or
+    $RunnerText -notmatch 'close_pull_request_without_deleting_branch' -or
+    $RunnerText -notmatch 'p10_011_preflight_failed' -or
+    $RunnerText -notmatch 'p10_011_work_preflight_failed' -or
+    $RunnerText -notmatch 'p10_011_workset_failed' -or
+    $RunnerText -notmatch 'p10_011_verify_failed' -or
+    $RunnerText -notmatch 'p10_011_security_failed' -or
+    $RunnerText -notmatch 'p10_011_evidence_failed' -or
+    $RunnerText -notmatch 'p10_011_rollback_verification_failed') {
+  throw 'negative: P10-011 must use release evidence routing and bind the accepted integration SHA, exact PR refs/checks, auto-merge off, audit receipt, no ref writes, evidence, and reversible close-only rollback'
+}
+$ReleaseRouteIndex=$RunnerText.IndexOf("if (`$TaskIdValue -ceq 'TASK-P10-011')",[StringComparison]::Ordinal)
+$GenericPhaseRouteIndex=$RunnerText.IndexOf("if (`$TaskIdValue -cmatch '^TASK-P",[StringComparison]::Ordinal)
+if($ReleaseRouteIndex-lt0-or$GenericPhaseRouteIndex-lt0-or$ReleaseRouteIndex-gt$GenericPhaseRouteIndex){throw 'negative: P10-011 release evidence route must precede the generic Phase task route'}
+foreach($P10011Mode in @('Security','Verify','Evidence','Preflight','WorkPreflight','WorksetVerify','RollbackVerify')){
+  $HandlerPattern='(?m)^function Invoke-Mode'+[regex]::Escape($P10011Mode)+' \{\r?\n\s+if \(\$TaskId -ceq ''TASK-P10-011''\) \{'
+  if($RunnerText-cnotmatch$HandlerPattern){throw "negative: P10-011 specialization is missing or shadowed in Invoke-Mode$P10011Mode"}
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
