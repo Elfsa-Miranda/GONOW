@@ -107,6 +107,16 @@ if ($RunnerText -notmatch 'Get-P09004GateModeState' -or
     $RunnerText -notmatch 'p09_004_security_failed') {
   throw 'negative: P09-004 must own bounded SSE recovery, de-duplication, control authorization, and audit gates'
 }
+if ($RunnerText -notmatch 'Get-P09005GateModeState' -or
+    $RunnerText -notmatch 'lib/features/itinerary_agent/presentation/' -or
+    $RunnerText -notmatch 'p09_005_verify_failed' -or
+    $RunnerText -notmatch 'unapproved_business_write_count' -or
+    $RunnerText -notmatch 'a11y_fixture_passed' -or
+    $RunnerText -notmatch 'error_fixture_passed' -or
+    $RunnerText -notmatch 'BLK-P09-002-lazy-candidate-semantics.md' -or
+    $RunnerText -notmatch 'p09_005_security_failed') {
+  throw 'negative: P09-005 must own Candidate presentation materialization, no-write, accessibility, error, blocker, and security gates'
+}
 if ($RunnerText -notmatch 'Get-P09007GateModeState' -or
     $RunnerText -notmatch 'p09_007_verify_failed' -or
     $RunnerText -notmatch 'ordinary_chat_bypass_cases_passed' -or
