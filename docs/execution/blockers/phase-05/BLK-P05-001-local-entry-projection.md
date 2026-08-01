@@ -1,6 +1,6 @@
 # BLK-P05-001 — Phase 5 reproducible local entry
 
-- Status: second failure diagnosed; complete repair implemented; affected regression pending
+- Status: resolved locally; formal Phase 4 acceptance remains pending external
 - Scope: `TASK-P05-001` local `Preflight` and Phase 5 runtime manifest creation
 - Production impact: none; no production read/write, deployment, remote push, or merge occurred
 
@@ -37,3 +37,5 @@ Rollback is a revert of the isolated gate-runner enabler and this blocker record
 ## Affected regression and recovery condition
 
 Recovery requires P05-001 Preflight to create and then idempotently revalidate the manifest with base/source drift zero; Agent CI failures/not-run/skips/xfails zero with at least 388 unit and 93 contract tests; 14 Flutter journey assertions passing; runner contract exit zero; exact P04-990 status/gate binding; and production/push/merge counts zero. Formal acceptance remains pending external approval.
+
+The recovery run at candidate `0ebeb36533cbbb447d422472d5b48c83ac9ddc6d` met every local condition: manifest state `created`; phase/provisional base `db0dd8dd05e2db8460c01fe4eb73812bcc330263`; source/base/evidence drift zero; 388 unit, 93 contract, and 14 Flutter assertions passed; runner contract exit zero; skip/xfail and production/push/merge counts zero. Formal acceptance and production-like validation were not claimed.
