@@ -117,6 +117,20 @@ if ($RunnerText -notmatch 'Get-P09005GateModeState' -or
     $RunnerText -notmatch 'p09_005_security_failed') {
   throw 'negative: P09-005 must own Candidate presentation materialization, no-write, accessibility, error, blocker, and security gates'
 }
+if ($RunnerText -notmatch 'Get-P09006GateModeState' -or
+    $RunnerText -notmatch 'agent-service/app/persistence/repositories/domain_commands.py' -or
+    $RunnerText -notmatch 'p09_006_verify_failed' -or
+    $RunnerText -notmatch 'pytest_test_count=\$Tests' -or
+    $RunnerText -notmatch 'stale_version_cases_passed' -or
+    $RunnerText -notmatch 'forged_capability_cases_passed' -or
+    $RunnerText -notmatch 'itinerary_effect_count' -or
+    $RunnerText -notmatch 'outbox_effect_count' -or
+    $RunnerText -notmatch 'no_extra_boundary' -or
+    $RunnerText -notmatch 'BLK-P09-003-production-itinerary-mapping-unknown.md' -or
+    $RunnerText -notmatch 'p09_006_security_failed' -or
+    $RunnerText -notmatch 'p09_006_rollback_verification_failed') {
+  throw 'negative: P09-006 must own its implementation paths, direct JUnit materialization, exact rejection/effect counts, fail-closed production mapping blocker, security, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09007GateModeState' -or
     $RunnerText -notmatch 'p09_007_verify_failed' -or
     $RunnerText -notmatch 'ordinary_chat_bypass_cases_passed' -or
