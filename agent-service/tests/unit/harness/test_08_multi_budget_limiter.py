@@ -25,6 +25,10 @@ from app.runtime.state import (  # noqa: E402
     StateReference,
     WorkflowStage,
 )
+from app.runtime.research.budget import (  # noqa: E402
+    BranchBudgetError,
+    SharedBranchBudget,
+)
 
 
 def _state() -> GoNowAgentState:
@@ -101,3 +105,42 @@ def test_08_multi_budget_limiter_d_failure_does_not_mutate_input() -> None:
             now_monotonic=10,
         )
     assert state.checkpoint_json() == before
+
+
+def test_08_multi_budget_limiter_s_two_branches_share_atomic_global_budget() -> None:
+    budget = SharedBranchBudget(
+        global_limit=4, branch_limits={"branch_a": 2, "branch_b": 2}
+    )
+    for branch_id in ("branch_a", "branch_b", "branch_a", "branch_b"):
+        budget.reserve(branch_id)
+
+    snapshot = budget.snapshot()
+    assert snapshot.global_reserved == 4
+    assert sum(snapshot.branch_reserved.values()) == 4
+
+
+def test_08_multi_budget_limiter_i_branch_cannot_borrow_sibling_budget() -> None:
+    budget = SharedBranchBudget(
+        global_limit=4, branch_limits={"branch_a": 1, "branch_b": 3}
+    )
+    budget.reserve("branch_a")
+
+    with pytest.raises(BranchBudgetError, match="budget.branch_exhausted"):
+        budget.reserve("branch_a")
+
+
+def test_08_multi_budget_limiter_i_rejects_more_than_two_branches() -> None:
+    with pytest.raises(BranchBudgetError, match="budget.invalid_branch_count"):
+        SharedBranchBudget(
+            global_limit=3,
+            branch_limits={"branch_a": 1, "branch_b": 1, "branch_c": 1},
+        )
+
+
+def test_08_multi_budget_limiter_d_global_ledger_unavailable_fails_closed() -> None:
+    budget = SharedBranchBudget(
+        global_limit=1, branch_limits={"branch_a": 1}, ledger_available=False
+    )
+
+    with pytest.raises(BranchBudgetError, match="budget.global_exhausted"):
+        budget.reserve("branch_a")
