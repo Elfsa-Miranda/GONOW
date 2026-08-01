@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 
-EXPECTED_OPENAPI_SHA256 = "b9e5d1b97ca3e14ebebdae11c7178916a36bb1a18577e931dc483482e95c0c70"
+EXPECTED_OPENAPI_SHA256 = "ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed"
 PUBLIC_ERROR_CODES = (
     "auth.forbidden",
     "auth.invalid_token",

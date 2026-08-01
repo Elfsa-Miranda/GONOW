@@ -3,10 +3,10 @@
   "info": {
     "title": "GoNow Agent API",
     "version": "1.0.0",
-    "description": "Phase 2 public process, health, and contract boundary. Run execution is not implemented."
+    "description": "Phase 6 local provisional Agent API contract. Production activation and formal acceptance are pending."
   },
   "x-contract-name": "agent-api",
-  "x-baseline-status": "initial",
+  "x-baseline-status": "phase-06-local-provisional",
   "x-error-codes": [
     "auth.forbidden",
     "auth.invalid_token",
@@ -82,6 +82,66 @@
           "503": {"$ref": "#/components/responses/ServiceUnavailable"}
         }
       }
+    },
+    "/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "streamRunEvents",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "Last-Event-ID", "in": "header", "required": false, "schema": {"type": "string", "pattern": "^[1-9][0-9]*$"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped at-least-once SSE replay followed by live Events.",
+            "headers": {
+              "Cache-Control": {"schema": {"type": "string", "const": "no-cache, no-transform"}}
+            },
+            "content": {"text/event-stream": {"schema": {"type": "string"}}}
+          },
+          "400": {"$ref": "#/components/responses/InvalidContext"},
+          "401": {"$ref": "#/components/responses/AuthenticationError"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    },
+    "/v1/runs/{run_id}/resume": {
+      "post": {
+        "operationId": "resumeRun",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResumeRequest"}}}
+        },
+        "responses": {
+          "200": {"description": "The exact one-use capability was consumed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResumeResponse"}}}},
+          "401": {"$ref": "#/components/responses/AuthenticationError"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/v1/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CancelRequest"}}}
+        },
+        "responses": {
+          "200": {"description": "Cancellation intent is durable or already terminal.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CancelResponse"}}}},
+          "401": {"$ref": "#/components/responses/AuthenticationError"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
     }
   },
   "components": {
@@ -109,6 +169,45 @@
           "spec_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
         }
       },
+      "ResumeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resume_token", "interrupt_id", "command_hash", "command_version"],
+        "properties": {
+          "resume_token": {"type": "string", "minLength": 1, "writeOnly": true},
+          "interrupt_id": {"type": "string", "format": "uuid"},
+          "command_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "command_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"}
+        }
+      },
+      "ResumeResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "run_id", "interrupt_id", "command_version"],
+        "properties": {
+          "status": {"const": "resumed"},
+          "run_id": {"type": "string", "format": "uuid"},
+          "interrupt_id": {"type": "string", "format": "uuid"},
+          "command_version": {"type": "string"}
+        }
+      },
+      "CancelRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected_version"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 0}}
+      },
+      "CancelResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "run_id", "version", "replayed"],
+        "properties": {
+          "status": {"type": "string", "enum": ["cancelling", "cancelled"]},
+          "run_id": {"type": "string", "format": "uuid"},
+          "version": {"type": "integer", "minimum": 0},
+          "replayed": {"type": "boolean"}
+        }
+      },
       "PublicError": {
         "type": "object",
         "additionalProperties": false,
@@ -131,6 +230,18 @@
       "AuthenticationError": {
         "description": "Authentication failed.",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}, "example": {"error": {"code": "auth.invalid_token", "message": "Authentication failed.", "request_id": "req-example"}}}}
+      },
+      "Forbidden": {
+        "description": "The authenticated principal cannot access the Run.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}, "example": {"error": {"code": "auth.forbidden", "message": "This action is not allowed.", "request_id": "req-example"}}}}
+      },
+      "InvalidContext": {
+        "description": "The cursor or request context is invalid.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}, "example": {"error": {"code": "context.invalid", "message": "The request context is invalid.", "request_id": "req-example"}}}}
+      },
+      "Conflict": {
+        "description": "The capability or Run version no longer matches.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}, "example": {"error": {"code": "context.invalid", "message": "The request context is invalid.", "request_id": "req-example"}}}}
       },
       "UnsupportedSchema": {
         "description": "The requested schema major is unsupported.",

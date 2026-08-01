@@ -31,11 +31,15 @@ def test_openapi_lint_errors_are_zero() -> None:
     assert len(operation_ids) == len(set(operation_ids))
 
 
-def test_initial_baseline_has_no_breaking_change() -> None:
+def test_phase_6_additive_run_paths_preserve_v1_contract() -> None:
     specification = _specification()
-    assert specification["x-baseline-status"] == "initial"
+    assert specification["x-baseline-status"] == "phase-06-local-provisional"
     assert "/v1/contracts/{name}/{major}" in specification["paths"]
-    assert not any(path.startswith("/v1/runs") for path in specification["paths"])
+    assert {
+        "/v1/runs/{run_id}/events",
+        "/v1/runs/{run_id}/resume",
+        "/v1/runs/{run_id}/cancel",
+    } <= set(specification["paths"])
 
 
 def test_error_code_corpus_diff_is_zero() -> None:
