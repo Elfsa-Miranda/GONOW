@@ -6886,14 +6886,43 @@ function Invoke-ModePreflight {
     return New-PassedResult $Checks
   }
   $DependencyFailures = 0
+  $LocalProjectionCount = 0
+  $LocalProjectionEvidenceMismatchCount = 0
+  $LocalProjectionAncestryFailureCount = 0
   foreach ($Dependency in @($Task.prerequisite_task_ids)) {
-    $DependencyPath = Join-Path $script:RepositoryRoot "docs\execution\status\$Dependency.json"
+    $ResolvedDependency = [string]$Dependency
+    $UsesLocalPhaseProjection = $false
+    if ($ExecutionMode -ceq 'local_provisional' -and [string]$Dependency -match '^TASK-P([0-9]{2})-999$') {
+      $ResolvedDependency = "TASK-P$($Matches[1])-990"
+      $UsesLocalPhaseProjection = $true
+      $LocalProjectionCount++
+    }
+    $DependencyPath = Join-Path $script:RepositoryRoot "docs\execution\status\$ResolvedDependency.json"
     if (-not (Test-Path -LiteralPath $DependencyPath)) { $DependencyFailures++; continue }
     $DependencyStatus = Get-Content -LiteralPath $DependencyPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $DependencyReady = if ($ExecutionMode -ceq 'formal_adopted') {
       [string]$DependencyStatus.status -ceq 'accepted' -and [bool]$DependencyStatus.reviewer_independent
     } else {
       [string]$DependencyStatus.status -in @('ready_for_review', 'accepted')
+    }
+    if ($DependencyReady -and $UsesLocalPhaseProjection) {
+      $PhaseNumber = $Matches[1]
+      $DependencyGatePath = Join-Path $script:RepositoryRoot "docs\execution\evidence\phase-$PhaseNumber\P$PhaseNumber-990\gate-results.json"
+      if (-not (Test-Path -LiteralPath $DependencyGatePath -PathType Leaf) -or
+          (Get-Sha256 -LiteralPath $DependencyGatePath) -cne [string]$DependencyStatus.evidence_sha256) {
+        $LocalProjectionEvidenceMismatchCount++
+        $DependencyReady = $false
+      }
+      if ([string]$DependencyStatus.head_oid -cnotmatch '^[0-9a-f]{40}$') {
+        $LocalProjectionAncestryFailureCount++
+        $DependencyReady = $false
+      } else {
+        & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$DependencyStatus.head_oid) HEAD 2>$null
+        if ($LASTEXITCODE -ne 0) {
+          $LocalProjectionAncestryFailureCount++
+          $DependencyReady = $false
+        }
+      }
     }
     if (-not $DependencyReady) { $DependencyFailures++ }
   }
@@ -6902,6 +6931,9 @@ function Invoke-ModePreflight {
     unexpected_paths = 0; base_drift = 0; local_dependency_projection_valid = ($ExecutionMode -ceq 'local_provisional')
     formal_dependency_pending = ($ExecutionMode -ceq 'local_provisional')
     formal_requires_independent_accepted_dependencies = $true
+    local_projection_count = $LocalProjectionCount
+    local_projection_evidence_mismatch_count = $LocalProjectionEvidenceMismatchCount
+    local_projection_ancestry_failure_count = $LocalProjectionAncestryFailureCount
   }
   if ($DependencyFailures -ne 0) { return New-BlockedResult 'dependency_not_ready' $Checks }
   return New-PassedResult $Checks
