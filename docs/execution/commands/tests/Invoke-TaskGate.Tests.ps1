@@ -158,6 +158,18 @@ if ($RunnerText -notmatch 'Get-P09008GateModeState' -or
     $RunnerText -notmatch 'p09_008_rollback_verification_failed') {
   throw 'negative: P09-008 must own its four-path source-bound compatibility matrix, failures, report, no-forced-upgrade boundary, security, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P09010GateModeState' -or
+    $RunnerText -notmatch 'integration_test/itinerary_agent_journey_test.dart' -or
+    $RunnerText -notmatch 'integration_test/itinerary_agent_weak_network_test.dart' -or
+    $RunnerText -notmatch 'integration_test/itinerary_agent_accessibility_test.dart' -or
+    $RunnerText -notmatch 'journey_steps_passed' -or
+    $RunnerText -notmatch 'weak_network_cases_passed' -or
+    $RunnerText -notmatch 'accessibility_cases_passed' -or
+    $RunnerText -notmatch 'mandatory_skip_count' -or
+    $RunnerText -notmatch 'p09_010_security_failed' -or
+    $RunnerText -notmatch 'p09_010_rollback_verification_failed') {
+  throw 'negative: P09-010 must own its full journey, weak-network, old-path, accessibility, no-skip, security, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09007GateModeState' -or
     $RunnerText -notmatch 'p09_007_verify_failed' -or
     $RunnerText -notmatch 'ordinary_chat_bypass_cases_passed' -or
