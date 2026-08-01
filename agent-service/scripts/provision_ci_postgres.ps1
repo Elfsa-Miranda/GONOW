@@ -90,16 +90,65 @@ Invoke-PostgresTool $Control @(
 Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
   '--host=127.0.0.1', "--port=$Port", '--username=postgres',
   '--dbname=postgres', '--set=ON_ERROR_STOP=1',
-  '--command=CREATE ROLE gonow_migrator_test LOGIN SUPERUSER'
+  '--command=CREATE ROLE gonow_migrator_test LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS'
 )
 Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
   '--host=127.0.0.1', "--port=$Port", '--username=postgres',
   '--dbname=postgres', '--set=ON_ERROR_STOP=1',
   '--command=CREATE ROLE gonow_bootstrap_admin LOGIN SUPERUSER'
 )
+Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
+  '--host=127.0.0.1', "--port=$Port", '--username=postgres',
+  '--dbname=postgres', '--set=ON_ERROR_STOP=1',
+  '--command=CREATE ROLE gonow_probe_tenant_a NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS'
+)
 Invoke-PostgresTool (Join-Path $PostgresBin 'createdb.exe') @(
   '--host=127.0.0.1', "--port=$Port", '--username=postgres',
   '--owner=gonow_migrator_test', 'gonow_p03_test'
+)
+Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
+  '--host=127.0.0.1', "--port=$Port", '--username=postgres',
+  '--dbname=postgres', '--set=ON_ERROR_STOP=1',
+  '--command=REVOKE CONNECT ON DATABASE gonow_p03_test FROM PUBLIC'
+)
+Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
+  '--host=127.0.0.1', "--port=$Port", '--username=postgres',
+  '--dbname=postgres', '--set=ON_ERROR_STOP=1',
+  '--command=GRANT CONNECT ON DATABASE gonow_p03_test TO gonow_migrator_test'
+)
+Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
+  '--host=127.0.0.1', "--port=$Port", '--username=postgres',
+  '--dbname=postgres', '--set=ON_ERROR_STOP=1',
+  '--command=GRANT CONNECT ON DATABASE gonow_p03_test TO gonow_bootstrap_admin'
+)
+$RoleContractSql = @'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_roles
+    WHERE rolname = 'gonow_migrator_test'
+      AND NOT rolsuper
+      AND NOT rolcreaterole
+      AND NOT rolcreatedb
+      AND NOT rolinherit
+      AND NOT rolreplication
+      AND rolcanlogin
+      AND NOT rolbypassrls
+  ) THEN
+    RAISE EXCEPTION 'migrator role contract failed';
+  END IF;
+  IF has_database_privilege('gonow_probe_tenant_a', 'gonow_p03_test', 'CONNECT') THEN
+    RAISE EXCEPTION 'probe role unexpectedly has CONNECT';
+  END IF;
+  IF NOT has_database_privilege('gonow_migrator_test', 'gonow_p03_test', 'CONNECT') THEN
+    RAISE EXCEPTION 'migrator role is missing CONNECT';
+  END IF;
+END $$;
+'@
+Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
+  '--host=127.0.0.1', "--port=$Port", '--username=postgres',
+  '--dbname=postgres', '--set=ON_ERROR_STOP=1', "--command=$RoleContractSql"
 )
 Invoke-PostgresTool (Join-Path $PostgresBin 'psql.exe') @(
   '--host=127.0.0.1', "--port=$Port", '--username=gonow_migrator_test',

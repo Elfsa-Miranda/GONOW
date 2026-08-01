@@ -56,8 +56,12 @@ def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:
     assert '"--options=-p $Port -h 127.0.0.1"' in provisioner
     assert "--auth-host=trust" in provisioner
     assert "0.0.0.0" not in provisioner
-    assert "CREATE ROLE gonow_migrator_test LOGIN SUPERUSER" in provisioner
+    assert "CREATE ROLE gonow_migrator_test LOGIN NOSUPERUSER" in provisioner
     assert "CREATE ROLE gonow_bootstrap_admin LOGIN SUPERUSER" in provisioner
+    assert "CREATE ROLE gonow_probe_tenant_a NOLOGIN NOSUPERUSER" in provisioner
+    assert "REVOKE CONNECT ON DATABASE gonow_p03_test FROM PUBLIC" in provisioner
+    assert "migrator role contract failed" in provisioner
+    assert "probe role unexpectedly has CONNECT" in provisioner
     assert "if: ${{ always() }}" in workflow[cleanup:]
 
 
