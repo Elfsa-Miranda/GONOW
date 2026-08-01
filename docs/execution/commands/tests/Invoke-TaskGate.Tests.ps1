@@ -125,6 +125,7 @@ if ($RunnerText -notmatch 'Get-P10004GateModeState' -or
     $RunnerText -notmatch 'p10_004_verify_failed' -or
     $RunnerText -notmatch 'new_agent_runs_after_drill' -or
     $RunnerText -notmatch 'old_path_available' -or
+    $RunnerText -notmatch 'ZHJpbGzlkI7mlrBBZ2VudCBydW5zPTDjgIFvbGQgcGF0aOWPr\+eUqA==' -or
     $RunnerText -notmatch 'harness_control_id=31' -or
     $RunnerText -notmatch 'injection_executed_action_count' -or
     $RunnerText -notmatch 'p10_004_security_failed' -or
