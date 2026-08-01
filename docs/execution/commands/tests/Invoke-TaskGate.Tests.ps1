@@ -177,6 +177,17 @@ if ($RunnerText -notmatch 'Get-P10007GateModeState' -or
     $RunnerText -notmatch 'p10_007_rollback_verification_failed') {
   throw 'negative: P10-007 must own sequential cohorts, sample extension, privacy, stop rules, evidence, workset, and allocation-zero rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10008GateModeState' -or
+    $RunnerText -notmatch 'p10_008_verify_failed' -or
+    $RunnerText -notmatch 'blocked_pending_production_measurement' -or
+    $RunnerText -notmatch 'cost_per_adopted_success_usd' -or
+    $RunnerText -notmatch 'route_reason_required' -or
+    $RunnerText -notmatch 'p10_008_security_failed' -or
+    $RunnerText -notmatch 'p10_008_workset_failed' -or
+    $RunnerText -notmatch 'p10_008_evidence_failed' -or
+    $RunnerText -notmatch 'p10_008_rollback_verification_failed') {
+  throw 'negative: P10-008 must own cost join, honest null denominator, budget-or-blocked, security, evidence, workset, and economic-route rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
