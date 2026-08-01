@@ -12,8 +12,12 @@ site.addsitedir(str(SERVICE_ROOT / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(SERVICE_ROOT))
 
 from app.validation.evidence_gate import (  # noqa: E402
+    CitationAssembler,
+    EvidenceLedger,
+    EvidenceRecord,
     EvidenceGate,
     EvidenceObservation,
+    EvidenceStatus,
 )
 
 
@@ -150,3 +154,20 @@ def test_freshness_boundary_is_current_then_stale() -> None:
     )
     assert GATE.classify(at_boundary, now=NOW).status == "verified_current"
     assert GATE.classify(after_boundary, now=NOW).status == "stale"
+
+
+def test_five_state_classifier_preserves_evidence_citation_public_contract() -> None:
+    record = EvidenceRecord(
+        evidence_id="ev_compatibility",
+        source_kind="validator",
+        source_ref="evidence://validation/compatibility",
+        sha256="a" * 64,
+        claim_ids=("claim_compatibility",),
+        status=EvidenceStatus.VERIFIED_CURRENT,
+        version=1,
+    )
+    ledger = EvidenceLedger()
+    ledger.append(record)
+    citation = CitationAssembler(ledger).assemble(("claim_compatibility",))[0]
+    assert citation.evidence_id == record.evidence_id
+    assert citation.sha256 == record.sha256

@@ -1,1 +1,44 @@
-{"schema_version":"1.0","task_id":"TASK-P07-004","mode":"WorksetVerify","reason_code":"recovered_preexisting_anchor_scope","status":"resolved_local","root_causes":["evidence_gate.py existed before TASK-P07-004, so the initial candidate-anchor lookup selected an older multi-file commit and incorrectly projected all 24 paths into this task workset"],"impact_surface":["pre-commit P07-004 workset path accounting"],"excluded_paths":["Evidence Gate five-state semantics","freshness behavior","stable degradation codes","repository or production data"],"repairs":["accept an anchor commit only when it is equal to or descends from the task start head recorded in the CAS status"],"affected_regression":{"unexpected_paths":0,"required_change_missing_count":0,"recovered_diagnostic_failure_count":1},"rollback":"revert only the P07-004 changed-path ancestry guard; retain the Evidence Gate implementation and tests","local_provisional":true,"external_approval_or_authority_required":false,"production_write_count":0,"recorded_at":"2026-08-01T17:45:00+08:00"}
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P07-004",
+  "mode": "root-cause-repair",
+  "reason_code": "recovered_anchor_public_surface_and_gate_cardinality_regressions",
+  "status": "resolved_local",
+  "root_causes": [
+    "the initial changed-path anchor selected an older multi-file commit because evidence_gate.py predated TASK-P07-004",
+    "the five-state implementation replaced rather than extended the module, removing the immutable evidence ledger and citation public surface required by Candidate and Harness 22/23",
+    "the Verify handler encoded the original test count as an exact cardinality, so an additional passing compatibility regression incorrectly blocked the task"
+  ],
+  "impact_surface": [
+    "P07-004 workset accounting",
+    "Candidate import and projection contracts",
+    "Harness 22 and 23",
+    "P07-004 Verify and Phase 7 full regression"
+  ],
+  "excluded_paths": [
+    "freshness and five-state degradation semantics remained correct",
+    "CI lock, format, lint, type, secret, and clock-contract checks passed before the public-surface collection failure",
+    "repository and production data were not accessed or changed"
+  ],
+  "repairs": [
+    "bound the changed-path anchor to the recorded task-start ancestry",
+    "restored the complete immutable evidence and citation public surface alongside the five-state classifier",
+    "added an in-card public-surface compatibility regression",
+    "changed Verify from exact test cardinality to the contractual minimum while retaining zero failure and zero skip requirements"
+  ],
+  "affected_regression": {
+    "unexpected_paths": 0,
+    "required_change_missing_count": 0,
+    "recovered_diagnostic_failure_count": 3,
+    "focused_test_count": 22,
+    "focused_failure_count": 0,
+    "format_failure_count": 0,
+    "lint_failure_count": 0,
+    "type_failure_count": 0
+  },
+  "rollback": "revert only the ancestry guard, public-surface restoration, compatibility test, and minimum-cardinality runner change; retain all immutable failure receipts",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-01T19:10:00+08:00"
+}
