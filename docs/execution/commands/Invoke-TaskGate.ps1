@@ -1506,6 +1506,14 @@ function Get-P05001GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P07001GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json;$Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1});$FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
 function Get-P06001GateModeState {
   $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
   if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
@@ -2361,6 +2369,18 @@ function Get-P05001ChangedPaths {
   return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
 }
 
+function Get-P07001ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P07001PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@('contracts/itinerary-constraints-v1.schema.json','agent-service/app/validation/constraints.py','docs/execution/commands/Invoke-TaskGate.ps1','docs/execution/status/TASK-P07-001.json','docs/execution/evidence/phase-07/phase-runtime-manifest.json')
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('agent-service/tests/fixtures/constraints/',[StringComparison]::Ordinal)-or$RelativePath.StartsWith('docs/execution/evidence/phase-07/P07-001/',[StringComparison]::Ordinal)
+}
+
 function Get-P06001ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
   $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2879,6 +2899,11 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P07-001') {
+    $Paths=@(Get-P07001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07001PathAllowed -RelativePath $_)});$ScanPaths=@('contracts/itinerary-constraints-v1.schema.json','agent-service/app/validation/constraints.py','agent-service/tests/fixtures/constraints/matrix.json');$ChangedText=@($ScanPaths|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf}|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n";$BoundaryCount=[regex]::Matches($ChangedText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|import\s+(?:requests|httpx)|from\s+(?:requests|httpx)|socket\.)').Count;$ModelSourceCount=[regex]::Matches($ChangedText,'(?i)(?:source[^\r\n]{0,80}["'']model["'']|["'']model["''][^\r\n]{0,80}source)').Count
+    $Checks=[ordered]@{no_extra_boundary=($Unexpected.Count+$BoundaryCount-eq0);valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($ChangedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count;unexpected_paths=$Unexpected.Count;model_authored_source_count=$ModelSourceCount;production_write_count=0}
+    if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths+[int]$Checks.model_authored_source_count-ne0){return New-BlockedResult 'p07_001_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-089') {
     $Paths=@(Get-P06089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06089PathAllowed -RelativePath $_)});$AddedLines=@();$Tracked=@(& git -C $script:RepositoryRoot ls-files)
     foreach($RelativePath in $Paths){if($RelativePath-ceq'docs/execution/commands/Invoke-TaskGate.ps1'){continue};$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if($RelativePath-in$Tracked){$AddedLines+=@(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD -- $RelativePath|Where-Object{$_.StartsWith('+')-and-not$_.StartsWith('+++')})}elseif(Test-Path -LiteralPath $FullPath -PathType Leaf){$AddedLines+=[IO.File]::ReadAllLines($FullPath,[Text.UTF8Encoding]::new($false))}}
@@ -4011,6 +4036,41 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P07-001') {
+    $Python=Get-P02ServicePython;$ReportPath=Join-Path $script:TaskEvidenceDirectory 'constraint-matrix-report.json';$SchemaPath=Join-Path $script:RepositoryRoot 'contracts\itinerary-constraints-v1.schema.json';$MatrixPath=Join-Path $script:RepositoryRoot 'agent-service\tests\fixtures\constraints\matrix.json';$ServiceRoot=Join-Path $script:RepositoryRoot 'agent-service'
+    $Probe=@'
+import json, sys
+from pathlib import Path
+from jsonschema import Draft202012Validator
+service_root, schema_path, matrix_path, report_path = sys.argv[2:]
+sys.path.insert(0, service_root)
+from app.validation.constraints import ConstraintEnvelope
+schema = json.loads(Path(schema_path).read_text("utf-8"))
+Draft202012Validator.check_schema(schema)
+validator = Draft202012Validator(schema)
+matrix = json.loads(Path(matrix_path).read_text("utf-8"))
+rows = []
+coverage = set()
+for case in matrix["cases"]:
+    schema_valid = not list(validator.iter_errors(case["payload"]))
+    try:
+        ConstraintEnvelope.model_validate(case["payload"])
+        model_valid = True
+    except Exception:
+        model_valid = False
+    expected = bool(case["expected_valid"])
+    coverage.add((case["kind"], case["class"]))
+    rows.append({"fixture_id": case["fixture_id"], "kind": case["kind"], "class": case["class"], "expected_valid": expected, "schema_valid": schema_valid, "model_valid": model_valid, "passed": expected == schema_valid == model_valid})
+expected_coverage = {(kind, case_class) for kind in ("time", "commute", "opening_hours", "budget", "preference") for case_class in ("valid", "invalid", "boundary")}
+report = {"schema_version": "1.0", "task_id": "TASK-P07-001", "fixture_count": len(rows), "passed_count": sum(row["passed"] for row in rows), "schema_validation_match_count": sum(row["expected_valid"] == row["schema_valid"] for row in rows), "model_validation_match_count": sum(row["expected_valid"] == row["model_valid"] for row in rows), "schema_model_divergence_count": sum(row["schema_valid"] != row["model_valid"] for row in rows), "coverage_missing_count": len(expected_coverage - coverage), "kind_count": len({row["kind"] for row in rows}), "class_count": len({row["class"] for row in rows}), "model_source_kind_count": 0, "hard_constraint_source_kinds": ["user", "verified_tool", "approved_profile"], "rows": rows, "production_write_count": 0}
+target = Path(report_path); target.parent.mkdir(parents=True, exist_ok=True); temporary = target.with_suffix(".json.tmp"); temporary.write_text(json.dumps(report, sort_keys=True, separators=(",", ":")), "utf-8"); temporary.replace(target)
+raise SystemExit(0 if report["fixture_count"] == 15 and report["passed_count"] == 15 and report["schema_validation_match_count"] == 15 and report["model_validation_match_count"] == 15 and report["schema_model_divergence_count"] == 0 and report["coverage_missing_count"] == 0 else 1)
+'@
+    $EncodedProbe=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Probe));$ProbeRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-c','import base64,sys;exec(base64.b64decode(sys.argv[1]))',$EncodedProbe,$ServiceRoot,$SchemaPath,$MatrixPath,$ReportPath);$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$Tests=0;$Failures=1;$Skipped=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Tests=0;$Failures=0;$Skipped=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped}}
+    $Checks=[ordered]@{primary_assertion_passed=([int]$ProbeRun.exit_code-eq0-and$null-ne$Report-and[int]$Report.fixture_count-eq15-and[int]$Report.passed_count-eq15-and[int]$Report.schema_validation_match_count-eq15-and[int]$Report.model_validation_match_count-eq15-and[int]$Report.schema_model_divergence_count+[int]$Report.coverage_missing_count+[int]$Report.model_source_kind_count-eq0-and$Tests-ge460-and$Failures+$Skipped-eq0);detail='time, commute, opening_hours, budget, and preference each have valid/invalid/boundary fixtures; JSON Schema and Pydantic validation match 15/15 with no model-authored source kind';fixture_count=if($null-eq$Report){0}else{[int]$Report.fixture_count};passed_count=if($null-eq$Report){0}else{[int]$Report.passed_count};schema_validation_match_count=if($null-eq$Report){0}else{[int]$Report.schema_validation_match_count};schema_validation_rate=if($null-ne$Report-and[int]$Report.fixture_count-gt0){[double]$Report.schema_validation_match_count/[double]$Report.fixture_count}else{0};model_validation_match_count=if($null-eq$Report){0}else{[int]$Report.model_validation_match_count};schema_model_divergence_count=if($null-eq$Report){1}else{[int]$Report.schema_model_divergence_count};coverage_missing_count=if($null-eq$Report){15}else{[int]$Report.coverage_missing_count};model_source_kind_count=if($null-eq$Report){1}else{[int]$Report.model_source_kind_count};direct_tests=$Tests;direct_failures=$Failures;direct_skipped=$Skipped;production_write_count=0}
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p07_001_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-007') {
     $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'error-compatibility-report.json';$PreviousReport=$env:GONOW_P06_007_REPORT
     try{$env:GONOW_P06_007_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/contract/test_error_compatibility.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P06_007_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P06_007_REPORT=$PreviousReport}}
@@ -5545,6 +5605,11 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P07-001') {
+    $Required=@('contracts/itinerary-constraints-v1.schema.json','agent-service/app/validation/constraints.py','agent-service/tests/fixtures/constraints/matrix.json','docs/execution/evidence/phase-07/phase-runtime-manifest.json','docs/execution/evidence/phase-07/P07-001/direct-pytest.xml','docs/execution/evidence/phase-07/P07-001/constraint-matrix-report.json','docs/execution/evidence/phase-07/P07-001/entry-runner-enabler.md','docs/execution/evidence/phase-07/P07-001/phase-entry-regression.json','docs/execution/evidence/phase-07/P07-001/blocker.json','docs/execution/evidence/phase-07/P07-001/quality/format/ci-summary.json','docs/execution/evidence/phase-07/P07-001/quality/format/format.json','docs/execution/evidence/phase-07/P07-001/quality/lint/ci-summary.json','docs/execution/evidence/phase-07/P07-001/quality/lint/lint.json','docs/execution/evidence/phase-07/P07-001/quality/type/ci-summary.json','docs/execution/evidence/phase-07/P07-001/quality/type/type.json');$Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}};if($RelativePath.EndsWith('.py')-or$RelativePath.EndsWith('.md')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/x-python'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-07-constraint-evidence' -GeneratedByStep 'TASK-P07-001:Evidence'}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts});$Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p07_001_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-089') {
     $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$ManifestFiles=@(
       'README.md','docs/architecture/interrupt-sse.md','docs/runbooks/sse-recovery.md','docs/api/sse-v1.md','contracts/openapi/agent-api.yaml','contracts/events/sse-event.schema.json',
@@ -7405,6 +7470,11 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P07-001') {
+    $Paths=@(Get-P07001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07001PathAllowed -RelativePath $_)});$Required=@('contracts/itinerary-constraints-v1.schema.json','agent-service/app/validation/constraints.py','agent-service/tests/fixtures/constraints/matrix.json','docs/execution/evidence/phase-07/P07-001/direct-pytest.xml','docs/execution/evidence/phase-07/P07-001/constraint-matrix-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('contracts/itinerary-constraints-v1.schema.json','agent-service/app/validation/constraints.py','agent-service/tests/fixtures/constraints/matrix.json');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-match'^(contracts/itinerary-constraints-v1\.schema\.json|agent-service/(app/validation/constraints\.py|tests/fixtures/constraints/))'}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p07_001_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-089') {
     $Paths=@(Get-P06089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06089PathAllowed -RelativePath $_)});$Required=@('README.md','docs/architecture/interrupt-sse.md','docs/runbooks/sse-recovery.md','docs/api/sse-v1.md','contracts/openapi/agent-api.yaml','contracts/events/sse-event.schema.json','docs/architecture/threat-model/phase-06-review.json','docs/execution/evidence/phase-06/change-summary.md','docs/execution/evidence/phase-06/knowledge-transfer.md','docs/execution/evidence/phase-06/star-records.md','docs/execution/evidence/phase-06/improvements/STAR-sse-mobile-recovery-harness.md','docs/execution/evidence/phase-06/P06-089/handoff-verification.json','docs/execution/evidence/phase-06/P06-089/harness-catalog-aggregate.json','docs/execution/schemas/harness-test-catalog.yaml','docs/execution/status/task-board.json','docs/execution/status/task-board.md');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
     if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
@@ -8512,6 +8582,11 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P07-001') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P07001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P07001PathAllowed -RelativePath $_)});$MigrationChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'constraint-matrix-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[int]$Report.fixture_count-eq15-and[int]$Report.passed_count-eq15-and[int]$Report.schema_model_divergence_count+[int]$Report.coverage_missing_count+[int]$Report.production_write_count-eq0
+    $Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$MigrationChanges.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='revert the v1 constraint schema, typed models, synthetic fixture matrix, task evidence, and runner specialization; retain the Phase 7 entry manifest and prior Phase 6 checkpoint';production_write_count=0}
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.schema_change_count+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p07_001_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-089') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P06089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06089PathAllowed -RelativePath $_)});$Implementation=@($Paths|Where-Object{$_-match'^(lib|agent-service/app|agent-service/tests|agent-service/migrations|supabase)/'});$RequiredDocs=@('docs/architecture/interrupt-sse.md','docs/runbooks/sse-recovery.md','docs/api/sse-v1.md');$Missing=@($RequiredDocs|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Checks=[ordered]@{implementation_files_changed=$Implementation.Count;old_path_failures=$Missing.Count;unexpected_writes=$Unexpected.Count;rollback_not_run=0;broken_links=$Missing.Count;diff_check_exit_code=$DiffCheckExit;rollback_strategy='revert only Phase 6 closure documentation and local Catalog/status projections to the P06-007 dependency head; retain implementation evidence and recovered diagnostic history';production_write_count=0};if([int]$Checks.implementation_files_changed+[int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.broken_links+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p06_089_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
@@ -10185,7 +10260,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P06-990' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P07-001' -and $ExitCode -eq 0) {
+    $ModeState=Get-P07001GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P06-990' -and $ExitCode -eq 0) {
     $Projection=Get-P06LocalProjection;$ModeState=Get-P06GateModeState -IncludeVerify
     if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){$LocalVerificationPath=Join-Path $script:TaskEvidenceDirectory 'local-verification.json';if($Mode-ceq'Verify'-or-not(Test-Path -LiteralPath $LocalVerificationPath -PathType Leaf)){Write-P06LocalProjectionEvidence -ReadyForReview $true};Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P06-089' -and $ExitCode -eq 0) {
