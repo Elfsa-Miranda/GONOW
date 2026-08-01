@@ -168,6 +168,8 @@ if ($RunnerText -notmatch 'Get-P09010GateModeState' -or
     $RunnerText -notmatch 'exact-byte-flutter-vm-copy' -or
     $RunnerText -notmatch 'source_copy_hash_mismatch_count' -or
     $RunnerText -notmatch "formal_mobile_device_status='pending_external'" -or
+    $RunnerText -notmatch "status='resolved_local'" -or
+    $RunnerText -notmatch 'P09-010/blocker.json' -or
     $RunnerText -notmatch 'mandatory_skip_count' -or
     $RunnerText -notmatch 'p09_010_security_failed' -or
     $RunnerText -notmatch 'p09_010_rollback_verification_failed') {
