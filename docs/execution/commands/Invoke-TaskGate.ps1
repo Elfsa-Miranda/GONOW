@@ -6164,6 +6164,105 @@ function Invoke-ModeEvidence {
 }
 
 function Invoke-ModePreflight {
+  if ($TaskId -ceq 'TASK-P06-001') {
+    $ManifestPath=Join-Path $script:RepositoryRoot ([string]$script:Task.phase_runtime_manifest_path)
+    $EntryReportPath=Join-Path $script:TaskEvidenceDirectory 'phase-entry-regression.json'
+    $ManifestState='existing_exact'
+    if(-not(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){
+      $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      $PhaseBase=(& git -C $script:RepositoryRoot rev-parse 'codex/phase-05-durable-recovery').Trim()
+      if($PhaseBase-cnotmatch'^[0-9a-f]{40}$'){return New-BlockedResult 'phase_06_checkpoint_resolution_failed' ([ordered]@{dependency_failures=1;prior_phase_regression_failures=0;unexpected_paths=0;base_drift=1;production_write_count=0})}
+      & git -C $script:RepositoryRoot merge-base --is-ancestor $PhaseBase $Head 2>$null
+      if($LASTEXITCODE-ne0){return New-BlockedResult 'phase_06_checkpoint_not_ancestor' ([ordered]@{dependency_failures=1;prior_phase_regression_failures=0;unexpected_paths=0;base_drift=1;production_write_count=0})}
+      $ExistingEntryReport=if(Test-Path -LiteralPath $EntryReportPath -PathType Leaf){Get-Content -LiteralPath $EntryReportPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}else{$null}
+      $ReusableEntryReport=$null-ne$ExistingEntryReport-and[string]$ExistingEntryReport.task_id-ceq$TaskId-and[string]$ExistingEntryReport.phase_base_oid-ceq$PhaseBase-and[string]$ExistingEntryReport.candidate_head_oid-ceq$Head-and[int]$ExistingEntryReport.failure_count-eq0
+      if(-not$ReusableEntryReport){
+        $AgentReportRoot=Join-Path $script:TaskEvidenceDirectory 'phase-entry-ci'
+        if(-not(Test-Path -LiteralPath $AgentReportRoot)){New-Item -ItemType Directory -Path $AgentReportRoot -Force|Out-Null}
+        $AgentRun=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'agent-service\scripts\ci.ps1'),'-Stage','All','-ReportRoot',$AgentReportRoot)
+        $AgentSummaryPath=Join-Path $AgentReportRoot 'ci-summary.json'
+        $AgentSummary=if(Test-Path -LiteralPath $AgentSummaryPath -PathType Leaf){Get-Content -LiteralPath $AgentSummaryPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+        $UnitPath=Join-Path $AgentReportRoot 'unit.xml';$ContractPath=Join-Path $AgentReportRoot 'contract.xml'
+        $UnitTests=0;$ContractTests=0;$AgentFailures=0;$AgentSkipped=0
+        foreach($Entry in @(@{path=$UnitPath;kind='unit'},@{path=$ContractPath;kind='contract'})){
+          if(-not(Test-Path -LiteralPath $Entry.path -PathType Leaf)){$AgentFailures++;continue}
+          [xml]$Xml=Get-Content -LiteralPath $Entry.path -Raw -Encoding UTF8;$Suite=if($null-ne$Xml.testsuites.testsuite){$Xml.testsuites.testsuite}else{$Xml.testsuite}
+          if($Entry.kind-ceq'unit'){$UnitTests=[int]$Suite.tests}else{$ContractTests=[int]$Suite.tests}
+          $AgentFailures += [int]$Suite.failures+[int]$Suite.errors;$AgentSkipped += [int]$Suite.skipped
+        }
+        $AgentGateFailures=if($null-eq$AgentSummary){1}else{@($AgentSummary.results|Where-Object{[int]$_.exit_code-ne0}).Count}
+        $AgentXfailed=if($null-eq$AgentSummary){0}else{[int]$AgentSummary.xfail_count}
+        $CountFailure=if($UnitTests-lt426-or$ContractTests-lt96){1}else{0}
+        $Flutter='D:\flutter\flutter_windows_3.41.7-stable\flutter\bin\flutter.bat'
+        $FlutterPackageConfig=Join-Path $script:RepositoryRoot '.dart_tool\package_config.json'
+        $FlutterLockPath=Join-Path $script:RepositoryRoot 'pubspec.lock'
+        $FlutterLockBefore=Get-Sha256 -LiteralPath $FlutterLockPath
+        $FlutterProvisionState='existing'
+        $FlutterProvisionRun=[ordered]@{exit_code=0;duration_seconds=0;output_line_count=0}
+        if(-not(Test-Path -LiteralPath $FlutterPackageConfig -PathType Leaf)){
+          $FlutterProvisionRun=Invoke-RedactedExternal -Executable $Flutter -Arguments @('pub','get')
+          $FlutterProvisionState='created'
+        }
+        $FlutterLockAfter=Get-Sha256 -LiteralPath $FlutterLockPath
+        $FlutterProvisionFailures=$(if([int]$FlutterProvisionRun.exit_code-ne0-or-not(Test-Path -LiteralPath $FlutterPackageConfig -PathType Leaf)-or$FlutterLockBefore-cne$FlutterLockAfter){1}else{0})
+        $FlutterRun=Invoke-RedactedExternal -Executable $Flutter -Arguments @(
+          'test','--no-pub','test/release_a_gateway_test.dart','test/validation_semantics_test.dart',
+          'test/security/log_redaction_test.dart','test/behavior_digest_test.dart'
+        )
+        $RunnerRun=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'docs\execution\commands\tests\Invoke-TaskGate.Tests.ps1'))
+        $FailureCount=[int]$AgentRun.exit_code+$AgentFailures+$AgentGateFailures+$AgentSkipped+$AgentXfailed+$CountFailure+$FlutterProvisionFailures+[int]$FlutterRun.exit_code+[int]$RunnerRun.exit_code
+        Write-AtomicJson -LiteralPath $EntryReportPath -Value ([ordered]@{
+          schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;phase_base_oid=$PhaseBase;candidate_head_oid=$Head
+          prior_phase='Phase 5';prior_phase_checkpoint_oid=$PhaseBase
+          agent_ci=[ordered]@{gate_count=if($null-eq$AgentSummary){0}else{@($AgentSummary.results).Count};unit_tests=$UnitTests;minimum_unit_tests=426;contract_tests=$ContractTests;minimum_contract_tests=96;failed=$AgentFailures+$AgentGateFailures+[int]$AgentRun.exit_code+$CountFailure;not_run=if($null-eq$AgentSummary){1}else{0};skipped=$AgentSkipped;xfailed=$AgentXfailed}
+          flutter_dependency_provision=[ordered]@{state=$FlutterProvisionState;exit_code=[int]$FlutterProvisionRun.exit_code;package_config_present=(Test-Path -LiteralPath $FlutterPackageConfig -PathType Leaf);lock_sha256_before=$FlutterLockBefore;lock_sha256_after=$FlutterLockAfter;lock_changed=($FlutterLockBefore-cne$FlutterLockAfter);failure_count=$FlutterProvisionFailures}
+          flutter_regression=[ordered]@{tests=14;failed=if([int]$FlutterRun.exit_code-eq0){0}else{1};not_run=0;skipped=0;xfailed=0;journeys=@('release_a_gateway','validation_semantics','log_redaction','behavior_digest')}
+          runner_contract_exit_code=[int]$RunnerRun.exit_code;failure_count=$FailureCount;production_write_count=0;remote_push_count=0;merge_count=0
+        })
+        if($FailureCount-ne0){return New-BlockedResult 'phase_06_entry_regression_failed' ([ordered]@{dependency_failures=0;prior_phase_regression_failures=$FailureCount;unexpected_paths=0;base_drift=0;production_write_count=0})}
+      }
+      $PhaseEntryResult=Invoke-RedactedExternal -Executable 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -Arguments @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'docs\execution\commands\Invoke-PhaseEntryRegression.ps1'),
+        '-TaskId',$TaskId,'-SourceRecordPath',(Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P05-990.json'),
+        '-ExpectedHeadOid',$Head,'-PhaseBaseOid',$PhaseBase,'-OutputPath',$ManifestPath,'-ExecutionMode',$ExecutionMode
+      )
+      if([int]$PhaseEntryResult.exit_code-ne0){return New-BlockedResult 'phase_06_entry_manifest_creation_failed' ([ordered]@{phase_entry_exit_code=[int]$PhaseEntryResult.exit_code;prior_phase_regression_failures=0;dependency_failures=0;unexpected_paths=0;base_drift=1;production_write_count=0})}
+      $ManifestState='created'
+    }
+    $Manifest=Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
+    $EntryReport=if(Test-Path -LiteralPath $EntryReportPath -PathType Leaf){Get-Content -LiteralPath $EntryReportPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}else{$null}
+    $SourcePath=Join-Path $script:RepositoryRoot ([string]$Manifest.source_record_path)
+    $SourceRecord=if(Test-Path -LiteralPath $SourcePath -PathType Leaf){Get-Content -LiteralPath $SourcePath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}else{$null}
+    $SourceHashDrift=if($null-eq$SourceRecord){1}elseif((Get-Sha256 -LiteralPath $SourcePath)-cne[string]$Manifest.source_record_sha256){1}else{0}
+    $SourceGatePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05\P05-990\gate-results.json'
+    $SourceEvidenceHashDrift=if($null-eq$SourceRecord-or-not(Test-Path -LiteralPath $SourceGatePath -PathType Leaf)){1}elseif((Get-Sha256 -LiteralPath $SourceGatePath)-cne[string]$SourceRecord.evidence_sha256){1}else{0}
+    $SourceLocalPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05\P05-990\local-verification.json'
+    $SourceLocal=if(Test-Path -LiteralPath $SourceLocalPath -PathType Leaf){Get-Content -LiteralPath $SourceLocalPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}else{$null}
+    & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) HEAD 2>$null
+    $BaseDrift=if($LASTEXITCODE-eq0){0}else{1}
+    $SourceHeadAncestry=1
+    if($null-ne$SourceRecord-and[string]$SourceRecord.head_oid-cmatch'^[0-9a-f]{40}$'){
+      & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$SourceRecord.head_oid) ([string]$Manifest.phase_base_oid) 2>$null
+      $SourceHeadAncestry=if($LASTEXITCODE-eq0){0}else{1}
+    }
+    $FormalStatusPath=Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P05-999.json'
+    $FormalStatus=if(Test-Path -LiteralPath $FormalStatusPath -PathType Leaf){Get-Content -LiteralPath $FormalStatusPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}else{$null}
+    $FormalDependencySatisfied=$null-ne$FormalStatus-and[string]$FormalStatus.status-ceq'accepted'-and[bool]$FormalStatus.reviewer_independent-and$null-ne$SourceRecord-and[string]$SourceRecord.status-ceq'accepted'-and[bool]$SourceRecord.reviewer_independent-and-not[string]::IsNullOrWhiteSpace([string]$Manifest.formal_phase_base_oid)
+    $LocalProjectionSatisfied=[bool]$Manifest.local_dependency_projection_valid-and$null-ne$SourceRecord-and[string]$SourceRecord.status-in@('ready_for_review','accepted')-and$null-ne$SourceLocal-and[bool]$SourceLocal.phase_6_local_entry_projection_valid-and[string]$Manifest.boot005_mechanical_revalidation-ceq'passed'
+    $DependencyProjectionSatisfied=if($ExecutionMode-ceq'formal_adopted'){$FormalDependencySatisfied}else{$LocalProjectionSatisfied}
+    $Checks=[ordered]@{
+      task_id_match=([string]$Manifest.task_id-ceq$TaskId);phase_match=([string]$Manifest.phase-ceq'Phase 6');manifest_execution_mode_match=([string]$Manifest.execution_mode-ceq$ExecutionMode)
+      dependency_failures=0;status_cas_conflict=0;unexpected_paths=0;base_drift=$BaseDrift;source_head_ancestry_failure=$SourceHeadAncestry;source_hash_drift=$SourceHashDrift;source_evidence_hash_drift=$SourceEvidenceHashDrift
+      prior_phase_regression_failures=if($null-eq$EntryReport){1}else{[int]$EntryReport.failure_count};phase_runtime_manifest=$ManifestState;phase_base_oid=[string]$Manifest.phase_base_oid;provisional_base_oid=[string]$Manifest.provisional_base_oid
+      source_task_id=[string]$Manifest.source_task_id;source_status=if($null-eq$SourceRecord){'missing'}else{[string]$SourceRecord.status}
+      agent_unit_tests=if($null-eq$EntryReport){0}else{[int]$EntryReport.agent_ci.unit_tests};agent_contract_tests=if($null-eq$EntryReport){0}else{[int]$EntryReport.agent_ci.contract_tests};flutter_regression_tests=if($null-eq$EntryReport){0}else{[int]$EntryReport.flutter_regression.tests};runner_contract_exit_code=if($null-eq$EntryReport){1}else{[int]$EntryReport.runner_contract_exit_code}
+      boot005_mechanical_revalidation=[string]$Manifest.boot005_mechanical_revalidation;local_dependency_projection_valid=$LocalProjectionSatisfied;formal_dependency_satisfied=$FormalDependencySatisfied;formal_dependency_pending=($ExecutionMode-ceq'local_provisional');production_write_count=0
+    }
+    if(-not[bool]$Checks.task_id_match-or-not[bool]$Checks.phase_match-or-not[bool]$Checks.manifest_execution_mode_match-or[int]$Checks.base_drift+[int]$Checks.source_head_ancestry_failure+[int]$Checks.source_hash_drift+[int]$Checks.source_evidence_hash_drift+[int]$Checks.prior_phase_regression_failures+[int]$Checks.runner_contract_exit_code-ne0-or[string]$Checks.source_task_id-cne'TASK-P05-990'-or-not$DependencyProjectionSatisfied){
+      $Checks.dependency_failures=1;return New-BlockedResult 'phase_06_entry_manifest_validation_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-001') {
     $ManifestPath=Join-Path $script:RepositoryRoot ([string]$script:Task.phase_runtime_manifest_path)
     $EntryReportPath=Join-Path $script:TaskEvidenceDirectory 'phase-entry-regression.json'
