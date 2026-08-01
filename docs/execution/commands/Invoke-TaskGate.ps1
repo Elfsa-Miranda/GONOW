@@ -1506,6 +1506,16 @@ function Get-P05001GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P06001GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json
+  $Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
 function Get-P05002GateModeState {
   $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','DependencyAudit','Evidence','RollbackVerify')
   if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
@@ -2233,6 +2243,27 @@ function Get-P05001ChangedPaths {
   return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
 }
 
+function Get-P06001ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P06001PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'agent-service/app/persistence/repositories/events.py',
+    'agent-service/app/runtime/event_writer.py',
+    'agent-service/tests/integration/test_event_writer.py',
+    'agent-service/tests/unit/harness/test_25_event_writer.py',
+    'docs/execution/commands/Invoke-TaskGate.ps1',
+    'docs/execution/status/TASK-P06-001.json',
+    'docs/execution/evidence/phase-06/phase-runtime-manifest.json'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-06/P06-001/',[StringComparison]::Ordinal)
+}
+
 function Test-P05001PathAllowed {
   param([Parameter(Mandatory=$true)][string]$RelativePath)
   $AllowedExact=@(
@@ -2606,6 +2637,25 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P06-001') {
+    $AppPaths=@('agent-service/app/persistence/repositories/events.py','agent-service/app/runtime/event_writer.py')
+    $AppText=@($AppPaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $ArbitrarySql=[regex]::Matches($AppText,'(?im)(?:text\s*\(|execute\s*\(\s*[furb]*["'']|exec_driver_sql|\braw_sql\b|subprocess\.|os\.system\s*\(|shell\s*=\s*true|(?<![A-Za-z0-9_.])(?:eval|exec)\s*\()').Count
+    $RestorePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-03\P03-009\backup-restore-report.json'
+    $Restore=if(Test-Path -LiteralPath $RestorePath -PathType Leaf){Get-Content -LiteralPath $RestorePath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'event-writer-report.json'
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Checks=[ordered]@{
+      arbitrary_sql_executor_count=$ArbitrarySql
+      restore_verification_failures=if($null-eq$Restore){1}else{[int]$Restore.restore_verification_failures}
+      missing_audit_receipt_count=if($null-eq$Report){1}else{[int]$Report.missing_audit_receipt_count}
+      notification_before_commit_count=if($null-eq$Report){1}else{[int]$Report.notification_before_commit_count}
+      unsafe_payload_rejection_count=if($null-eq$Report){0}else{[int]$Report.redaction_rejection_count}
+      production_write_count=if($null-eq$Report){1}else{[int]$Report.production_write_count}
+    }
+    if([int]$Checks.arbitrary_sql_executor_count+[int]$Checks.restore_verification_failures+[int]$Checks.missing_audit_receipt_count+[int]$Checks.notification_before_commit_count+[int]$Checks.production_write_count-ne0-or[int]$Checks.unsafe_payload_rejection_count-lt1){return New-BlockedResult 'p06_001_security_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-990') {
     $DiffText=@(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD --)-join"`n";$AddedText=@($DiffText-split"`n"|Where-Object{$_.StartsWith('+')-and-not$_.StartsWith('+++')})-join"`n"
     foreach($RelativePath in @(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(Test-Path -LiteralPath $FullPath -PathType Leaf){$AddedText+="`n"+[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false))}}
@@ -3633,6 +3683,45 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P06-001') {
+    $Python=Get-P02ServicePython
+    $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'event-writer-report.json'
+    $PreviousReport=$env:GONOW_P06_001_REPORT
+    try{
+      $env:GONOW_P06_001_REPORT=$ReportPath
+      $TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/integration/test_event_writer.py','agent-service/tests/unit/harness/test_25_event_writer.py','--maxfail=1','--junitxml',$JunitPath)
+    }finally{
+      if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P06_001_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P06_001_REPORT=$PreviousReport}
+    }
+    $Tests=0;$Failures=1;$Skipped=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
+      [xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8
+      $Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)}
+      $Tests=0;$Failures=0;$Skipped=0
+      foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped}
+    }
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $Control=if(Test-Path -LiteralPath $JunitPath -PathType Leaf){New-P02HarnessControlRecord -ControlId 25 -RelativeTestPath 'agent-service/tests/unit/harness/test_25_event_writer.py' -JunitPath $JunitPath}else{$null}
+    $HarnessValid=$null-ne$Control-and[int]$Control.tests-eq4-and@($Control.case_ids.S).Count-ge1-and@($Control.case_ids.I).Count-ge1-and@($Control.case_ids.D).Count-ge2-and[int]$Control.failures+[int]$Control.errors+[int]$Control.skipped+[int]$Control.xfailed-eq0
+    if($null-ne$Control){
+      $Control.action='extend'
+      Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;operation='extend';catalog_sha256=$script:CatalogSha256;catalog_before_sha256=$script:CatalogSha256;catalog_after_sha256=$script:CatalogSha256;catalog_changed=$false;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();controls=@($Control)})
+    }
+    $ReportValid=$null-ne$Report-and[string]$Report.task_id-ceq'TASK-P06-001'-and[string]$Report.database-ceq'isolated-postgresql-17'-and[string]$Report.allocation_strategy-ceq'per-run-row-lock'-and(@($Report.fixture_persisted_seq)-join',')-ceq'1,2,4'-and[bool]$Report.strictly_increasing-and[bool]$Report.gap_allowed-and[int]$Report.duplicate_seq_count+[int]$Report.stable_conflict_count+[int]$Report.higher_seq_visible_before_lower_count+[int]$Report.heartbeat_business_seq_count+[int]$Report.missing_audit_receipt_count+[int]$Report.notification_before_commit_count+[int]$Report.arbitrary_sql_executor_count+[int]$Report.production_write_count-eq0-and[int]$Report.concurrent_attempt_count-eq6-and[int]$Report.concurrent_success_count-eq6-and[int]$Report.redaction_rejection_count-eq1
+    $Checks=[ordered]@{
+      primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$Tests-eq5-and$Failures-eq0-and$Skipped-eq0-and$ReportValid-and$HarnessValid)
+      detail='same Run seq is strictly increasing; gap_allowed=true with persisted fixture 1,2,4; duplicate_seq_count=0; concurrent writes all succeeded or return stable conflict; heartbeat allocates no business seq'
+      tests=$Tests;failures=$Failures;skipped=$Skipped;test_exit_code=[int]$TestRun.exit_code
+      fixture_persisted_seq=if($null-eq$Report){@()}else{@($Report.fixture_persisted_seq)}
+      strictly_increasing=($null-ne$Report-and[bool]$Report.strictly_increasing);gap_allowed=($null-ne$Report-and[bool]$Report.gap_allowed)
+      duplicate_seq_count=if($null-eq$Report){1}else{[int]$Report.duplicate_seq_count};concurrent_success_count=if($null-eq$Report){0}else{[int]$Report.concurrent_success_count};stable_conflict_count=if($null-eq$Report){1}else{[int]$Report.stable_conflict_count}
+      higher_seq_visible_before_lower_count=if($null-eq$Report){1}else{[int]$Report.higher_seq_visible_before_lower_count};heartbeat_business_seq_count=if($null-eq$Report){1}else{[int]$Report.heartbeat_business_seq_count}
+      harness_valid=$HarnessValid;harness_tests=if($null-eq$Control){0}else{[int]$Control.tests};production_write_count=if($null-eq$Report){1}else{[int]$Report.production_write_count}
+    }
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p06_001_verify_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-990') {
     $Projection=Get-P05LocalProjection;$ModeState=Get-P05GateModeState;$Harness=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05\P05-089\harness-catalog-aggregate.json') -Raw -Encoding UTF8|ConvertFrom-Json
     $Checks=[ordered]@{primary_assertion_passed=([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed);overall_status=if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){'passed'}else{'failed'};local_projection_failure_count=[int]$Projection.local_failure_count;mandatory_mode_missing_count=@($ModeState.missing_modes).Count;mandatory_mode_failed_count=@($ModeState.failed_modes).Count;mapped_count=[int]$Harness.control_count;harness_control_count=[int]$Harness.control_count;implemented_control_count=[int]$Harness.implemented_control_count;first_phase_le_p5_unimplemented_count=[int]$Projection.checks.first_phase_le_p5_unimplemented_count;implemented_missing_test_path=[int]$Harness.implemented_missing_test_path;implemented_missing_fragment=[int]$Harness.implemented_missing_fragment;applicable_ct_passed_count=10;applicable_ct_skipped=0;applicable_ct_xfailed=0;forced_rejection_count=0;formal_approval_status='pending_external';accepted=$false;production_write_count=0}
@@ -5032,6 +5121,28 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P06-001') {
+    $Required=@(
+      'agent-service/app/persistence/repositories/events.py','agent-service/app/runtime/event_writer.py',
+      'agent-service/tests/integration/test_event_writer.py','agent-service/tests/unit/harness/test_25_event_writer.py',
+      'docs/execution/evidence/phase-06/phase-runtime-manifest.json',
+      'docs/execution/evidence/phase-06/P06-001/direct-pytest.xml','docs/execution/evidence/phase-06/P06-001/event-writer-report.json',
+      'docs/execution/evidence/phase-06/P06-001/harness-status-fragment.json'
+    )
+    $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}}
+      if($RelativePath.EndsWith('.py')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count}
+      $Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/x-python'}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-06-event-writer-evidence' -GeneratedByStep 'TASK-P06-001:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p06_001_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-990') {
     $Required=@(
       'docs/execution/evidence/phase-05/acceptance.md','docs/execution/evidence/index.json','docs/execution/evidence/phase-05/artifact-manifest.premerge.json',
@@ -7782,6 +7893,23 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P06-001') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
+    $Paths=@(Get-P06001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06001PathAllowed -RelativePath $_)})
+    $MigrationChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)})
+    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'event-writer-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $FragmentPath=Join-Path $script:TaskEvidenceDirectory 'harness-status-fragment.json';$Fragment=if(Test-Path -LiteralPath $FragmentPath -PathType Leaf){Get-Content -LiteralPath $FragmentPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $EvidenceValid=$null-ne$Report-and[bool]$Report.strictly_increasing-and[bool]$Report.gap_allowed-and[int]$Report.duplicate_seq_count+[int]$Report.higher_seq_visible_before_lower_count+[int]$Report.heartbeat_business_seq_count+[int]$Report.notification_before_commit_count+[int]$Report.production_write_count-eq0
+    $CatalogPreserved=$null-ne$Fragment-and-not[bool]$Fragment.catalog_changed-and[string]$Fragment.catalog_before_sha256-ceq[string]$Fragment.catalog_after_sha256
+    $Checks=[ordered]@{
+      old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$MigrationChanges.Count;catalog_preservation_failures=if($CatalogPreserved){0}else{1}
+      rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit
+      rollback_strategy='stop event publish, then revert the EventWriter adapter, repository conflict mapping, integration test, and control 25 extension; no schema or Catalog mutation is required'
+      production_write_count=0
+    }
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.schema_change_count+[int]$Checks.catalog_preservation_failures+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p06_001_rollback_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-990') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
     $Checks=[ordered]@{old_path_failures=0;unexpected_writes=@($Paths|Where-Object{$_.Replace('\','/')-match'^(lib|agent-service/app|agent-service/tests|agent-service/pyproject\.toml|agent-service/uv\.lock|supabase|contracts)/'}).Count;rollback_not_run=0;diff_check_exit_code=$DiffCheckExit;rollback_strategy='remove only the local Phase 5 acceptance projection and P05-990 evidence while retaining Phase 5 implementation, closure evidence, and resolved blocker history';production_write_count=0}
@@ -9322,7 +9450,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P05-990' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P06-001' -and $ExitCode -eq 0) {
+    $ModeState=Get-P06001GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P05-990' -and $ExitCode -eq 0) {
     $Projection=Get-P05LocalProjection;$ModeState=Get-P05GateModeState -IncludeVerify
     if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){$LocalVerificationPath=Join-Path $script:TaskEvidenceDirectory 'local-verification.json';if($Mode-ceq'Verify'-or-not(Test-Path -LiteralPath $LocalVerificationPath -PathType Leaf)){Write-P05LocalProjectionEvidence -ReadyForReview $true};Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P05-008' -and $ExitCode -eq 0) {
