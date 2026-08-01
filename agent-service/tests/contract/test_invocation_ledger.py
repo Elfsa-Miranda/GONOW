@@ -542,10 +542,23 @@ def test_ct005_ct006_replay_conflict_unknown_and_migration_rollback(
 def test_concurrent_reservations_never_exceed_the_run_budget(
     invocation_database,
 ) -> None:
-    _, _, _, owner_factory, worker_factory = invocation_database
+    _, worker_engine, _, owner_factory, worker_factory = invocation_database
     run_id, job_id, token = _seed(owner_factory, holder_id="worker-concurrent")
     ledger = PhysicalInvocationLedger(worker_factory)
     barrier = threading.Barrier(6)
+    budget_insert_statements: list[str] = []
+
+    def capture_budget_insert(
+        connection,
+        cursor,
+        statement: str,
+        parameters,
+        context,
+        executemany: bool,
+    ) -> None:
+        del connection, cursor, parameters, context, executemany
+        if "INSERT INTO agent_runtime.invocation_budgets" in statement:
+            budget_insert_statements.append(statement)
 
     def reserve(index: int) -> str:
         kwargs = _invoke_kwargs(
@@ -574,8 +587,18 @@ def test_concurrent_reservations_never_exceed_the_run_budget(
         except PhysicalBudgetExceeded:
             return "budget_exceeded"
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        outcomes = list(pool.map(reserve, range(6)))
+    event.listen(worker_engine, "before_cursor_execute", capture_budget_insert)
+    try:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            outcomes = list(pool.map(reserve, range(6)))
+    finally:
+        event.remove(worker_engine, "before_cursor_execute", capture_budget_insert)
+    assert len(budget_insert_statements) == 6
+    assert all(
+        "ON CONFLICT DO NOTHING" in statement
+        and "ON CONFLICT (run_id)" not in statement
+        for statement in budget_insert_statements
+    )
     assert outcomes.count("execute") == 2
     assert outcomes.count("budget_exceeded") == 4
     with worker_factory.begin() as session:

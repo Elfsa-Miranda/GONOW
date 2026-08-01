@@ -225,7 +225,7 @@ class InvocationsRepository:
                 reserved_calls=0,
                 audit_receipt_id=audit_receipt_id,
             )
-            .on_conflict_do_nothing(index_elements=[InvocationBudgetRecord.run_id])
+            .on_conflict_do_nothing()
         )
         budget = self._session.execute(
             select(InvocationBudgetRecord)
