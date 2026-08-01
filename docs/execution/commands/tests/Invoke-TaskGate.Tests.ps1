@@ -357,6 +357,20 @@ $RelC000Expired=$RelC000Selection.PSObject.Copy();$RelC000Expired.approvals=@($R
 if([bool](Get-RelC000SelectionState -Selection $RelC000Expired -Dependency $RelC000Dependency -BranchState $RelC000Branches -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: REL-C-000 accepted an expired independent approval'}
 $RelC000ExistingSpecialist=$RelC000Branches.PSObject.Copy();$RelC000ExistingSpecialist.specialist_branch_count=1
 if([bool](Get-RelC000SelectionState -Selection $RelC000Selection -Dependency $RelC000Dependency -BranchState $RelC000ExistingSpecialist -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: REL-C-000 accepted an existing Phase 11/12 specialist branch'}
+$ConditionalRegistryFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-ConditionalTaskRunnerRegistryState'},$true)
+if($null-eq$ConditionalRegistryFunction-or$RunnerText-cnotmatch 'conditional_task_runner_unimplemented'){throw 'negative: conditional Release C tasks must fail closed before a specialized runner is registered'}
+Invoke-Expression $ConditionalRegistryFunction.Extent.Text
+$ConditionalTaskIds=@($Catalog.Tasks.Keys|Where-Object{$_-cmatch'^TASK-(?:P11|P12(?:[A-D])?|REL-C-)'}|Sort-Object)
+if($ConditionalTaskIds.Count-ne24){throw "positive: expected 24 conditional Release C task cards, observed $($ConditionalTaskIds.Count)"}
+$RegisteredConditionalTasks=@($ConditionalTaskIds|Where-Object{[bool](Get-ConditionalTaskRunnerRegistryState -TaskIdValue $_ -ModeValue 'Preflight').registered})
+if(($RegisteredConditionalTasks-join',')-cne'TASK-REL-C-000'){throw 'negative: an unimplemented Phase 11/12/Release C task remains eligible for generic runner success'}
+$UnimplementedConditionalTasks=@($ConditionalTaskIds|Where-Object{-not[bool](Get-ConditionalTaskRunnerRegistryState -TaskIdValue $_ -ModeValue 'Preflight').registered})
+if($UnimplementedConditionalTasks.Count-ne23){throw 'negative: conditional runner coverage inventory is incomplete'}
+$NonConditionalState=Get-ConditionalTaskRunnerRegistryState -TaskIdValue 'TASK-P10-011' -ModeValue 'Preflight'
+if([bool]$NonConditionalState.required-or-not[bool]$NonConditionalState.registered){throw 'negative: the conditional runner guard shadowed an already implemented non-conditional task'}
+$ConditionalGuardIndex=$RunnerText.IndexOf('$ConditionalRunnerState=Get-ConditionalTaskRunnerRegistryState',[StringComparison]::Ordinal)
+$EvidenceDirectoryIndex=$RunnerText.LastIndexOf('$TaskEvidenceDirectory = Get-TaskEvidenceDirectory',[StringComparison]::Ordinal)
+if($ConditionalGuardIndex-lt0-or$EvidenceDirectoryIndex-lt0-or$ConditionalGuardIndex-gt$EvidenceDirectoryIndex){throw 'negative: the conditional runner guard must reject before evidence/status directories are materialized'}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or

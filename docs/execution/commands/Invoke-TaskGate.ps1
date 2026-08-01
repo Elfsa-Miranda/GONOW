@@ -249,6 +249,17 @@ function Get-TaskEvidenceDirectory {
   return Join-Path $RepositoryRoot "docs\execution\evidence\release\$($TaskIdValue.Substring(5))"
 }
 
+function Get-ConditionalTaskRunnerRegistryState {
+  param([Parameter(Mandatory=$true)][string]$TaskIdValue,[Parameter(Mandatory=$true)][string]$ModeValue)
+  $Required=$TaskIdValue-cmatch'^TASK-(?:P11|P12(?:[A-D])?|REL-C-)'
+  if(-not$Required){return [ordered]@{required=$false;registered=$true;task_id=$TaskIdValue;mode=$ModeValue;reason_code='not_conditional_release_c_task'}}
+  $Registry=@{
+    'TASK-REL-C-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
+  }
+  $TaskRegistered=$Registry.ContainsKey($TaskIdValue);$ModeRegistered=$TaskRegistered-and$ModeValue-in@($Registry[$TaskIdValue])
+  return [ordered]@{required=$true;registered=$ModeRegistered;task_id=$TaskIdValue;mode=$ModeValue;reason_code=if($ModeRegistered){'specialized_runner_registered'}elseif($TaskRegistered){'conditional_task_mode_unimplemented'}else{'conditional_task_runner_unimplemented'}}
+}
+
 function Add-CommandRecord {
   param([string]$Path, [string]$ModeValue, [int]$ExitCode)
   if (Test-Path -LiteralPath $Path) {
@@ -12931,6 +12942,8 @@ if (-not $Catalog.Tasks.ContainsKey($TaskId)) { [Console]::Error.WriteLine("unkn
 $Task = $Catalog.Tasks[$TaskId]
 if (-not $Catalog.TaskGateModeContracts.ContainsKey($Mode)) { [Console]::Error.WriteLine("unknown_mode:$Mode"); exit 2 }
 if (@($Task.allowed_taskgate_modes) -notcontains $Mode) { [Console]::Error.WriteLine("mode_not_allowed_for_task:${TaskId}:$Mode"); exit 2 }
+$ConditionalRunnerState=Get-ConditionalTaskRunnerRegistryState -TaskIdValue $TaskId -ModeValue $Mode
+if([bool]$ConditionalRunnerState.required-and-not[bool]$ConditionalRunnerState.registered){[Console]::Error.WriteLine("$([string]$ConditionalRunnerState.reason_code):${TaskId}:$Mode");exit 2}
 $RepositoryRoot = Resolve-RepositoryRoot
 $CommonGitDirectory = Resolve-CommonGitDirectory -RepositoryRoot $RepositoryRoot
 $TaskEvidenceDirectory = Get-TaskEvidenceDirectory -RepositoryRoot $RepositoryRoot -TaskIdValue $TaskId
