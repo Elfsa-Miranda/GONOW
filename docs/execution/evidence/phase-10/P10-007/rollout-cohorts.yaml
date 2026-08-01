@@ -28,6 +28,7 @@ observation_contract:
   duration_tolerance_hours: 0.01
   timestamp_offset_required: true
   insufficient_total_observation_action: extend_current_gate
+  stop_rules_remain_active_during_extension: true
 risk_slices:
   - id: authentication_boundary
   - id: candidate_rejection

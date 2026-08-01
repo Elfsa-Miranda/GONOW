@@ -3,6 +3,11 @@ task_id: TASK-P10-007
 status: local_candidate
 threshold_status: initial_hypothesis
 default_action: allocation_zero
+observation_extension:
+  trigger: total_nonoverlap_hours_below_744
+  action: extend_current_gate
+  allocation_increase_allowed: false
+  stop_rules_remain_active: true
 stop_rules:
   - id: cross_tenant_access
     numerator_threshold: 0
