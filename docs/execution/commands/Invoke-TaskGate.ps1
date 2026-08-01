@@ -1526,6 +1526,16 @@ function Get-P06002GateModeState {
   return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
 }
 
+function Get-P06003GateModeState {
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
+  $Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json
+  $Results=@($Ledger.results)
+  $MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1})
+  $FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1})
+  return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}
+}
+
 function Get-P05002GateModeState {
   $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','DependencyAudit','Evidence','RollbackVerify')
   if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}}
@@ -2291,6 +2301,23 @@ function Test-P06002PathAllowed {
   return $RelativePath.StartsWith('docs/execution/evidence/phase-06/P06-002/',[StringComparison]::Ordinal)
 }
 
+function Get-P06003ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P06003PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'contracts/interrupt-v1.schema.json','agent-service/app/runtime/interrupts.py',
+    'agent-service/tests/contract/test_interrupts.py','docs/execution/commands/Invoke-TaskGate.ps1',
+    'docs/execution/status/TASK-P06-003.json'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-06/P06-003/',[StringComparison]::Ordinal)
+}
+
 function Test-P05001PathAllowed {
   param([Parameter(Mandatory=$true)][string]$RelativePath)
   $AllowedExact=@(
@@ -2664,6 +2691,20 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P06-003') {
+    $Paths=@(Get-P06003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06003PathAllowed -RelativePath $_)})
+    $ScanPaths=@('contracts/interrupt-v1.schema.json','agent-service/app/runtime/interrupts.py','agent-service/tests/contract/test_interrupts.py')
+    $ChangedText=@($ScanPaths|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf}|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $BoundaryCount=[regex]::Matches($ChangedText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|import\s+(?:requests|httpx|sqlalchemy)|from\s+(?:requests|httpx|sqlalchemy))').Count
+    $Checks=[ordered]@{
+      no_extra_boundary=($Unexpected.Count+$BoundaryCount-eq0)
+      valid_secret_finding_count=[regex]::Matches($ChangedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count=[regex]::Matches($ChangedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unexpected_paths=$Unexpected.Count;new_runtime_boundary_count=$BoundaryCount;production_write_count=0
+    }
+    if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p06_003_security_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-002') {
     $ReportPath=Join-Path $script:TaskEvidenceDirectory 'sse-replay-report.json'
     $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
@@ -3725,6 +3766,16 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P06-003') {
+    $Python=Get-P02ServicePython;$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'interrupt-contract-report.json';$PreviousReport=$env:GONOW_P06_003_REPORT
+    try{$env:GONOW_P06_003_REPORT=$ReportPath;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/contract/test_interrupts.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousReport){Remove-Item Env:\GONOW_P06_003_REPORT -ErrorAction SilentlyContinue}else{$env:GONOW_P06_003_REPORT=$PreviousReport}}
+    $Tests=0;$Failures=1;$Skipped=1
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Tests=0;$Failures=0;$Skipped=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures+[int]$Suite.errors;$Skipped += [int]$Suite.skipped}}
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $ReportValid=$null-ne$Report-and[string]$Report.task_id-ceq'TASK-P06-003'-and(@($Report.supported_versions)-join',')-ceq'1.0'-and(@($Report.interrupt_kinds)-join',')-ceq'missing_info,risk_confirmation,approval'-and[int]$Report.positive_fixture_count-eq3-and[int]$Report.negative_fixture_count-eq5-and[string]$Report.unknown_version_error-ceq'schema.unsupported_version'-and[int]$Report.schema_validation_failures+[int]$Report.unknown_version_write_count+[int]$Report.prompt_field_accept_count+[int]$Report.automatic_approval_accept_count+[int]$Report.production_write_count-eq0
+    $Checks=[ordered]@{primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$Tests-eq10-and$Failures-eq0-and$Skipped-eq0-and$ReportValid);detail='every interrupt version has positive and negative fixtures; unknown_version returns schema.unsupported_version with write_count=0';tests=$Tests;failures=$Failures;skipped=$Skipped;test_exit_code=[int]$TestRun.exit_code;supported_versions=if($null-eq$Report){@()}else{@($Report.supported_versions)};positive_fixture_count=if($null-eq$Report){0}else{[int]$Report.positive_fixture_count};negative_fixture_count=if($null-eq$Report){0}else{[int]$Report.negative_fixture_count};unknown_version_error=if($null-eq$Report){'missing'}else{[string]$Report.unknown_version_error};write_count=if($null-eq$Report){1}else{[int]$Report.unknown_version_write_count};production_write_count=if($null-eq$Report){1}else{[int]$Report.production_write_count}}
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p06_003_verify_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-002') {
     $Python=Get-P02ServicePython
     $JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml'
@@ -5194,6 +5245,13 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P06-003') {
+    $Required=@('contracts/interrupt-v1.schema.json','agent-service/app/runtime/interrupts.py','agent-service/tests/contract/test_interrupts.py','docs/execution/evidence/phase-06/P06-003/direct-pytest.xml','docs/execution/evidence/phase-06/P06-003/interrupt-contract-report.json')
+    $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}};if($RelativePath.EndsWith('.py')){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/x-python'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-06-interrupt-evidence' -GeneratedByStep 'TASK-P06-003:Evidence'}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p06_003_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-002') {
     $Required=@(
       'agent-service/app/api/routes/events.py','agent-service/app/api/sse.py','agent-service/tests/integration/test_sse_replay.py',
@@ -6952,6 +7010,11 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P06-003') {
+    $Paths=@(Get-P06003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06003PathAllowed -RelativePath $_)});$Required=@('contracts/interrupt-v1.schema.json','agent-service/app/runtime/interrupts.py','agent-service/tests/contract/test_interrupts.py','docs/execution/evidence/phase-06/P06-003/direct-pytest.xml','docs/execution/evidence/phase-06/P06-003/interrupt-contract-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('contracts/interrupt-v1.schema.json','agent-service/app/runtime/interrupts.py','agent-service/tests/contract/test_interrupts.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-match'^(contracts/interrupt-v1\.schema\.json|agent-service/(app/runtime/interrupts\.py|tests/contract/test_interrupts\.py))$'}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p06_003_workset_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-002') {
     $Paths=@(Get-P06002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06002PathAllowed -RelativePath $_)})
     $Required=@('agent-service/app/api/routes/events.py','agent-service/app/api/sse.py','agent-service/tests/integration/test_sse_replay.py','docs/execution/evidence/phase-06/P06-002/direct-pytest.xml','docs/execution/evidence/phase-06/P06-002/sse-replay-report.json')
@@ -8029,6 +8092,9 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P06-003') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P06003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06003PathAllowed -RelativePath $_)});$SchemaChanges=@($Paths|Where-Object{$_.StartsWith('agent-service/migrations/',[StringComparison]::Ordinal)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'interrupt-contract-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[string]$Report.unknown_version_error-ceq'schema.unsupported_version'-and[int]$Report.unknown_version_write_count+[int]$Report.prompt_field_accept_count+[int]$Report.automatic_approval_accept_count+[int]$Report.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;schema_change_count=$SchemaChanges.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='revert the v1 interrupt schema, typed parser, and contract test; existing pre-interrupt runtime paths and persisted rows remain unchanged';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.schema_change_count+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p06_003_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P06-002') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
     $Paths=@(Get-P06002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P06002PathAllowed -RelativePath $_)})
@@ -9600,7 +9666,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P06-002' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P06-003' -and $ExitCode -eq 0) {
+    $ModeState=Get-P06003GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P06-002' -and $ExitCode -eq 0) {
     $ModeState=Get-P06002GateModeState
     if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P06-001' -and $ExitCode -eq 0) {
