@@ -70,6 +70,12 @@ if ($RunnerText -notmatch 'manifest_execution_mode_match' -or
 if ($RunnerText -notmatch 'merge-base --is-ancestor \(\[string\]\$Manifest\.phase_base_oid\) \$Head') {
   throw 'negative: phase base must remain an ancestor rather than equal every later task HEAD'
 }
+if ($RunnerText -notmatch "TASK-P09-001" -or
+    $RunnerText -notmatch 'phase_09_entry_manifest_creation_failed' -or
+    $RunnerText -notmatch 'minimum_unit_tests=519' -or
+    $RunnerText -notmatch 'phase_9_local_entry_projection_valid') {
+  throw 'negative: Phase 9 entry must materialize and bind the P08 local checkpoint projection'
+}
 if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'
