@@ -1,4 +1,4 @@
-# BLK-P05-001 — Phase 5 local entry and E0 checkout identity
+# BLK-P05-001 — Phase 5 reproducible local entry
 
 - Status: second failure diagnosed; complete repair implemented; affected regression pending
 - Scope: `TASK-P05-001` local `Preflight` and Phase 5 runtime manifest creation
@@ -10,11 +10,15 @@ From the clean `codex/phase-05-durable-recovery` worktree at provisional Phase 4
 
 After adding the local-entry handler, the second Preflight reached cumulative regression and reported `prior_phase_regression_failures=6`. JUnit isolated the first failure to `test_frozen_e0_identity_is_unchanged`: four dataset files and the scoring file no longer matched their frozen SHA-256. The fail-fast unit run stopped at 104 tests, so contract and Flutter execution were not evidence of six distinct product defects.
 
+After the E0 checkout repair, the next discriminating run completed 388 unit and 93 contract tests with zero failures but retained one Flutter failure. The exact four-journey reproduction reported that neither `flutter_test` nor `test` could be resolved. `pubspec.yaml` already declared `flutter_test`; the new worktree lacked `.dart_tool/package_config.json` because the command intentionally used `--no-pub`. One `flutter pub get` created local dependency metadata, preserved the `pubspec.lock` SHA-256 exactly, and the same 14 assertions then passed.
+
 ## Root cause, exclusions, and impact surface
 
 `Invoke-TaskGate.ps1` had task-specific Phase entry materialization only through Phase 4. Its generic dependency loop inspected the formal `TASK-P04-999` prerequisite literally and did not implement AGENTS.md §0.4.1's local substitute of `P04-990 ready_for_review + mechanical gates passed + provisional checkpoint OID`.
 
 The new worktree also exposed a pre-existing portability defect in the Phase 4 freeze: `core.autocrlf=true`, while immutable E0 dataset and P04-000 evidence paths had no explicit Git text attribute. Their committed blobs contained LF, but a clean Windows checkout materialized CRLF. Eleven tracked text artifacts differed from their Git blobs only by line endings; the E0 verifier correctly rejected five inputs and the derived scoring digest.
+
+The Phase entry handler also assumed Flutter dependency metadata already existed even though every Phase must start in a new clean worktree. `--no-pub` was correct for deterministic regression only after local dependency materialization; without that precondition, the command failed before loading a test.
 
 The Phase 4 source status, source gate hash, local-verification projection, checkpoint commit, exact remote, worktree cleanliness, and formal pending boundary are intact. The affected surface is only Phase 5 local entry validation and evidence creation; Phase 5 product code has not been edited.
 
@@ -25,6 +29,7 @@ The Phase 4 source status, source gate hash, local-verification projection, chec
 - Create the runtime manifest through the existing create-only `Invoke-PhaseEntryRegression.ps1`, binding `TASK-P04-990`, its status hash, gate evidence hash, BOOT-005 mechanical state, and the exact provisional checkpoint OID.
 - Require `phase_5_local_entry_projection_valid=true` locally while retaining independent `P04-999` and P04 acceptance requirements for `formal_adopted` mode.
 - Declare the frozen E0 dataset tree and P04-000 evidence tree as `text eol=lf`, then mechanically restore current clean-checkout files to their exact committed blob bytes; do not update frozen hashes or weaken the verifier.
+- If Flutter package metadata is absent, run `flutter pub get` once, require exact `pubspec.lock` SHA-256 preservation, and only then execute the frozen `--no-pub` journeys. Record provision state and hashes in the entry report.
 - Do not enable production traffic, writes, push, merge, or accepted status.
 
 Rollback is a revert of the isolated gate-runner enabler and this blocker record; the failed P05 evidence can be retained as diagnostic history. No product schema or runtime state exists to roll back.

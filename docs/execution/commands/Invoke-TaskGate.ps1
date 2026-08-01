@@ -5607,16 +5607,28 @@ function Invoke-ModePreflight {
         $AgentXfailed=if($null-eq$AgentSummary){0}else{[int]$AgentSummary.xfail_count}
         $CountFailure=if($UnitTests-lt388-or$ContractTests-lt93){1}else{0}
         $Flutter='D:\flutter\flutter_windows_3.41.7-stable\flutter\bin\flutter.bat'
+        $FlutterPackageConfig=Join-Path $script:RepositoryRoot '.dart_tool\package_config.json'
+        $FlutterLockPath=Join-Path $script:RepositoryRoot 'pubspec.lock'
+        $FlutterLockBefore=Get-Sha256 -LiteralPath $FlutterLockPath
+        $FlutterProvisionState='existing'
+        $FlutterProvisionRun=[ordered]@{exit_code=0;duration_seconds=0;output_line_count=0}
+        if(-not(Test-Path -LiteralPath $FlutterPackageConfig -PathType Leaf)){
+          $FlutterProvisionRun=Invoke-RedactedExternal -Executable $Flutter -Arguments @('pub','get')
+          $FlutterProvisionState='created'
+        }
+        $FlutterLockAfter=Get-Sha256 -LiteralPath $FlutterLockPath
+        $FlutterProvisionFailures=$(if([int]$FlutterProvisionRun.exit_code-ne0-or-not(Test-Path -LiteralPath $FlutterPackageConfig -PathType Leaf)-or$FlutterLockBefore-cne$FlutterLockAfter){1}else{0})
         $FlutterRun=Invoke-RedactedExternal -Executable $Flutter -Arguments @(
           'test','--no-pub','test/release_a_gateway_test.dart','test/validation_semantics_test.dart',
           'test/security/log_redaction_test.dart','test/behavior_digest_test.dart'
         )
         $RunnerRun=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'docs\execution\commands\tests\Invoke-TaskGate.Tests.ps1'))
-        $FailureCount=[int]$AgentRun.exit_code+$AgentFailures+$AgentGateFailures+$AgentSkipped+$AgentXfailed+$CountFailure+[int]$FlutterRun.exit_code+[int]$RunnerRun.exit_code
+        $FailureCount=[int]$AgentRun.exit_code+$AgentFailures+$AgentGateFailures+$AgentSkipped+$AgentXfailed+$CountFailure+$FlutterProvisionFailures+[int]$FlutterRun.exit_code+[int]$RunnerRun.exit_code
         Write-AtomicJson -LiteralPath $EntryReportPath -Value ([ordered]@{
           schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;phase_base_oid=$PhaseBase;candidate_head_oid=$Head
           prior_phase='Phase 4';prior_phase_checkpoint_oid=$PhaseBase
           agent_ci=[ordered]@{gate_count=if($null-eq$AgentSummary){0}else{@($AgentSummary.results).Count};unit_tests=$UnitTests;minimum_unit_tests=388;contract_tests=$ContractTests;minimum_contract_tests=93;failed=$AgentFailures+$AgentGateFailures+[int]$AgentRun.exit_code+$CountFailure;not_run=if($null-eq$AgentSummary){1}else{0};skipped=$AgentSkipped;xfailed=$AgentXfailed}
+          flutter_dependency_provision=[ordered]@{state=$FlutterProvisionState;exit_code=[int]$FlutterProvisionRun.exit_code;package_config_present=(Test-Path -LiteralPath $FlutterPackageConfig -PathType Leaf);lock_sha256_before=$FlutterLockBefore;lock_sha256_after=$FlutterLockAfter;lock_changed=($FlutterLockBefore-cne$FlutterLockAfter);failure_count=$FlutterProvisionFailures}
           flutter_regression=[ordered]@{tests=14;failed=if([int]$FlutterRun.exit_code-eq0){0}else{1};not_run=0;skipped=0;xfailed=0;journeys=@('release_a_gateway','validation_semantics','log_redaction','behavior_digest')}
           runner_contract_exit_code=[int]$RunnerRun.exit_code;failure_count=$FailureCount;production_write_count=0;remote_push_count=0;merge_count=0
         })
