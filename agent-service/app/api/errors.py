@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+CURRENT_ERROR_PROFILE = "error-envelope.v1"
+LEGACY_ERROR_PROFILE = "legacy-detail.v0"
 _PUBLIC_ERRORS: dict[str, tuple[int, str]] = {
     "auth.invalid_token": (401, "Authentication failed."),
     "auth.forbidden": (403, "This action is not allowed."),
@@ -32,6 +34,14 @@ class ErrorEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     error: PublicError
+
+
+class LegacyError(BaseModel):
+    """The historical FastAPI-compatible error body kept for old clients."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    detail: str = Field(min_length=1, max_length=160)
 
 
 class SafeApiError(RuntimeError):
@@ -64,7 +74,7 @@ def build_error_envelope(
         (500, "The service could not complete the request."),
     )
     resolved_status = registered_status if status_code is None else status_code
-    if resolved_status >= 500:
+    if resolved_status >= 500 and (code == "internal.error" or registered_status < 500):
         code = "internal.error"
         message = "The service could not complete the request."
     retry_after = getattr(error, "retry_after_seconds", None)
@@ -81,7 +91,23 @@ def build_error_envelope(
     return resolved_status, envelope
 
 
-def error_response_payload(envelope: ErrorEnvelope) -> dict[str, Any]:
-    """Return the exact JSON-safe response schema, omitting absent optional fields."""
+def resolve_error_profile(requested_profile: str | None) -> str:
+    """Select a response profile without ever forcing an old client to upgrade."""
 
+    if requested_profile in (None, CURRENT_ERROR_PROFILE):
+        return CURRENT_ERROR_PROFILE
+    if requested_profile == LEGACY_ERROR_PROFILE:
+        return LEGACY_ERROR_PROFILE
+    return LEGACY_ERROR_PROFILE
+
+
+def error_response_payload(
+    envelope: ErrorEnvelope,
+    *,
+    profile: str | None = CURRENT_ERROR_PROFILE,
+) -> dict[str, Any]:
+    """Return a public-only payload for the current or legacy client profile."""
+
+    if resolve_error_profile(profile) == LEGACY_ERROR_PROFILE:
+        return LegacyError(detail=envelope.error.message).model_dump(mode="json")
     return envelope.model_dump(mode="json", exclude_none=True)
