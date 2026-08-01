@@ -198,6 +198,35 @@ if ($RunnerText -notmatch 'Get-P10009GateModeState' -or
     $RunnerText -notmatch 'p10_009_rollback_verification_failed') {
   throw 'negative: P10-009 must fail closed on unavailable production rollout observations while retaining security, evidence, workset, and old-route rollback gates'
 }
+$RolloutContractPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path 'docs/execution/evidence/phase-10/P10-007/rollout-cohorts.yaml'
+$RolloutContractText = Get-Content -LiteralPath $RolloutContractPath -Raw -Encoding UTF8
+if ($RunnerText -notmatch 'Get-P10ObservationWindowState' -or
+    $RunnerText -notmatch 'minimum_nonoverlap_observation_hours=744' -or
+    $RunnerText -notmatch 'window_started_at' -or
+    $RunnerText -notmatch 'window_ended_at' -or
+    $RunnerText -notmatch 'nonoverlap_failure_count' -or
+    $RunnerText -notmatch 'duration_binding_failure_count' -or
+    $RunnerText -notmatch 'minimum_total_observation_failure_count' -or
+    $RunnerText -notmatch 'rollout_artifact_hash_mismatch' -or
+    $RunnerText -notmatch 'observation_31_day_contract_valid' -or
+    $RolloutContractText -notmatch '(?m)^  minimum_nonoverlap_observation_hours: 744$' -or
+    $RolloutContractText -notmatch '(?m)^  window_started_at_field: window_started_at$' -or
+    $RolloutContractText -notmatch '(?m)^  window_ended_at_field: window_ended_at$') {
+  throw 'negative: Release B gates must bind explicit non-overlapping timestamps and at least 744 total observed hours from P10-007 through P10-009, P10-010, P10-990, and P10-011'
+}
+$RunnerPath=Join-Path $Root 'Invoke-TaskGate.ps1';$ParserTokens=$null;$ParserErrors=$null;$RunnerAst=[Management.Automation.Language.Parser]::ParseFile($RunnerPath,[ref]$ParserTokens,[ref]$ParserErrors)
+$ObservationFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-P10ObservationWindowState'},$true)
+if($ParserErrors.Count-ne0-or$null-eq$ObservationFunction){throw 'negative: P10 observation-window validator AST is unavailable'}
+Invoke-Expression $ObservationFunction.Extent.Text
+$ObservationPlan=[pscustomobject]@{minimum_nonoverlap_observation_hours=744;windows_must_be_nonoverlapping=$true;window_started_at_field='window_started_at';window_ended_at_field='window_ended_at';duration_field='observed_hours';duration_tolerance_hours=0.01;insufficient_total_observation_action='extend_current_gate';minimum_adopted_runs=@(50,100,250,500,1000);minimum_observation_hours=@(24,48,72,120,168)}
+$GatePercents=@(1,5,20,50,100);$GateSamples=@(50,100,250,500,1000);$GateRequiredHours=@(24,48,72,120,168);$GateObservedHours=@(24,48,72,120,480);$GateStart=[DateTimeOffset]::Parse('2026-01-01T00:00:00Z');$ObservationGates=@()
+for($GateIndex=0;$GateIndex-lt5;$GateIndex++){$GateEnd=$GateStart.AddHours($GateObservedHours[$GateIndex]);$ObservationGates+=[pscustomobject]@{percent=$GatePercents[$GateIndex];required_adopted_runs=$GateSamples[$GateIndex];observed_adopted_runs=$GateSamples[$GateIndex];required_hours=$GateRequiredHours[$GateIndex];observed_hours=$GateObservedHours[$GateIndex];window_started_at=$GateStart.ToString('o');window_ended_at=$GateEnd.ToString('o');satisfied=$true;all_risk_slices_observed=$true;timer_restarted_on_transition=$true};$GateStart=$GateEnd}
+$PositiveObservation=[pscustomobject]@{gates=$ObservationGates};$PositiveWindowState=Get-P10ObservationWindowState -Observation $PositiveObservation -Plan $ObservationPlan
+if(-not[bool]$PositiveWindowState.passed-or[double]$PositiveWindowState.observed_nonoverlap_hours-ne744){throw 'positive: exact 744-hour non-overlapping Release B observation was rejected'}
+$OverlapGates=@($ObservationGates|ForEach-Object{$_.PSObject.Copy()});$OverlapGates[4].window_started_at=([DateTimeOffset]::Parse([string]$OverlapGates[3].window_ended_at)).AddHours(-1).ToString('o');$OverlapGates[4].window_ended_at=([DateTimeOffset]::Parse([string]$OverlapGates[4].window_started_at)).AddHours(480).ToString('o');$OverlapState=Get-P10ObservationWindowState -Observation ([pscustomobject]@{gates=$OverlapGates}) -Plan $ObservationPlan
+if([bool]$OverlapState.passed-or[int]$OverlapState.checks.nonoverlap_failure_count-ne1){throw 'negative: overlapping Release B observation window was accepted'}
+$ShortGates=@($ObservationGates|ForEach-Object{$_.PSObject.Copy()});$ShortGates[4].observed_hours=479;$ShortGates[4].window_ended_at=([DateTimeOffset]::Parse([string]$ShortGates[4].window_started_at)).AddHours(479).ToString('o');$ShortState=Get-P10ObservationWindowState -Observation ([pscustomobject]@{gates=$ShortGates}) -Plan $ObservationPlan
+if([bool]$ShortState.passed-or[int]$ShortState.checks.minimum_total_observation_failure_count-ne1){throw 'negative: 743-hour Release B observation was accepted'}
 if ($RunnerText -notmatch 'Get-P10010GateModeState' -or
     $RunnerText -notmatch 'critical_slices' -or
     $RunnerText -notmatch 'sample_sufficiency' -or

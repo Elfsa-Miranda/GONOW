@@ -6,7 +6,7 @@ At candidate head `ab1c198a50cc90f5aae618dc389afe011b762f44`, P10-010 Preflight 
 
 ## Root cause and impact surface
 
-P10-010 requires the accepted P10-009 head and artifact hash. The missing prerequisite comes from the external production approval/observation dependency documented in `../P10-009/BLK-P10-009-production-rollout-inputs.md`. It blocks the Release B total-gate dossier, Phase 10 handoff/acceptance/integration, Release B PR, and later phases whose entry requires stable Release B. It does not block local runner contract work, static checks, or other reversible evidence tooling.
+P10-010 requires the accepted P10-009 head and exact rollout artifact hash. That artifact must also prove five offset-bearing, ordered, non-overlapping timestamp windows, each per-gate sample/window minimum, and at least 744 total observed hours. The missing prerequisite comes from the external production approval/observation dependency documented in `../P10-009/BLK-P10-009-production-rollout-inputs.md`. It blocks the Release B total-gate dossier, Phase 10 handoff/acceptance/integration, Release B PR, and later phases whose entry requires stable Release B. It does not block local runner contract work, static checks, or other reversible evidence tooling.
 
 ## Excluded paths
 
