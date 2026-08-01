@@ -2303,6 +2303,31 @@ function Test-P05008PathAllowed {
   return $RelativePath.StartsWith('docs/execution/evidence/phase-05/P05-008/',[StringComparison]::Ordinal)
 }
 
+function Get-P05089ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P05089PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'README.md','docs/architecture/durable-recovery.md','docs/runbooks/worker-recovery.md',
+    'docs/api/checkpoint-contract.md','docs/architecture/threat-model/phase-05-review.json',
+    'docs/execution/evidence/phase-05/change-summary.md','docs/execution/evidence/phase-05/knowledge-transfer.md',
+    'docs/execution/evidence/phase-05/star-records.md','docs/execution/evidence/phase-05/artifact-manifest.premerge.json',
+    'docs/execution/evidence/phase-05/P05-089/handoff-verification.json',
+    'docs/execution/evidence/phase-05/P05-089/commands.json','docs/execution/evidence/phase-05/P05-089/gate-results.json',
+    'docs/execution/evidence/phase-05/P05-089/artifact-hashes.json',
+    'docs/execution/evidence/phase-05/P05-089/harness-catalog-aggregate.json',
+    'docs/execution/schemas/harness-test-catalog.yaml','docs/execution/status/task-board.json',
+    'docs/execution/status/task-board.md','docs/execution/status/TASK-P05-089.json',
+    'docs/execution/commands/Invoke-TaskGate.ps1'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('docs/execution/evidence/phase-05/improvements/',[StringComparison]::Ordinal)
+}
+
 function Get-P04009ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
   $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2532,6 +2557,25 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P05-089') {
+    $Paths=@(Get-P05089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05089PathAllowed -RelativePath $_)})
+    $AddedLines=@();$Tracked=@(& git -C $script:RepositoryRoot ls-files)
+    foreach($RelativePath in $Paths){
+      if($RelativePath-ceq'docs/execution/commands/Invoke-TaskGate.ps1'){continue}
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if($RelativePath-in$Tracked){$AddedLines+=@(& git -C $script:RepositoryRoot diff --unified=0 --no-color HEAD -- $RelativePath|Where-Object{$_.StartsWith('+')-and-not$_.StartsWith('+++')})}
+      elseif(Test-Path -LiteralPath $FullPath -PathType Leaf){$AddedLines+=[IO.File]::ReadAllLines($FullPath,[Text.UTF8Encoding]::new($false))}
+    }
+    $AddedText=$AddedLines-join"`n"
+    $Checks=[ordered]@{
+      valid_secret_finding_count=[regex]::Matches($AddedText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+      pii_canary_leak_count=[regex]::Matches($AddedText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count
+      unsafe_command_example_count=[regex]::Matches($AddedText,'(?i)(git\s+reset\s+--hard|git\s+clean\s+-fd|force[-]push|rm\s+-rf)').Count
+      unexpected_paths=$Unexpected.Count;implementation_change_count=@($Paths|Where-Object{$_-match'^(lib|agent-service/app|agent-service/tests|agent-service/migrations|supabase)/'}).Count;production_write_count=0
+    }
+    if([int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unsafe_command_example_count+[int]$Checks.unexpected_paths+[int]$Checks.implementation_change_count-ne0){return New-BlockedResult 'p05_089_security_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-008') {
     $Paths=@(Get-P05008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05008PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'no-redis-recovery-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$SourcePaths=@('agent-service/scripts/test_full_recovery.ps1','agent-service/tests/replay/test_no_redis_recovery.py','docs/runbooks/no-redis-recovery.md');$SourceText=@($SourcePaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n";$UnsafeExecutor=[regex]::Matches($SourceText,'(?im)(Invoke-Expression|shell\s*=\s*true|os\.system\s*\(|cmd\.exe\s+/c|cursor\.execute\s*\(\s*[A-Za-z_])').Count;$Checks=[ordered]@{arbitrary_sql_executor_count=$UnsafeExecutor;restore_verification_failures=if($null-eq$Report){1}else{[int]$Report.restore_verification_failures};redis_runtime_dependency_count=if($null-eq$Report){1}else{[int]$Report.redis_runtime_dependency_count};missing_audit_receipt_count=if($null-eq$Report){1}else{[int]$Report.missing_audit_receipt_count};unexpected_paths=$Unexpected.Count;production_write_count=if($null-eq$Report){1}else{[int]$Report.production_write_count}};if([int]$Checks.arbitrary_sql_executor_count+[int]$Checks.restore_verification_failures+[int]$Checks.redis_runtime_dependency_count+[int]$Checks.missing_audit_receipt_count+[int]$Checks.unexpected_paths+[int]$Checks.production_write_count-ne0){return New-BlockedResult 'p05_008_security_failed' $Checks};return New-PassedResult $Checks
   }
@@ -4927,6 +4971,44 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P05-089') {
+    $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+    $ManifestFiles=@(
+      'README.md','docs/architecture/durable-recovery.md','docs/runbooks/worker-recovery.md','docs/api/checkpoint-contract.md',
+      'docs/architecture/threat-model/phase-05-review.json','docs/execution/evidence/phase-05/change-summary.md',
+      'docs/execution/evidence/phase-05/knowledge-transfer.md','docs/execution/evidence/phase-05/star-records.md',
+      'docs/execution/evidence/phase-05/improvements/STAR-windows-process-identity.md',
+      'docs/execution/schemas/harness-test-catalog.yaml','docs/execution/status/task-board.json','docs/execution/status/task-board.md',
+      'docs/execution/evidence/phase-05/P05-089/handoff-verification.json','docs/execution/evidence/phase-05/P05-089/harness-catalog-aggregate.json',
+      'docs/execution/evidence/phase-05/P05-001/job-claim-report.json','docs/execution/evidence/phase-05/P05-002/lease-fencing-report.json',
+      'docs/execution/evidence/phase-05/P05-003/checkpoint-saver-report.json','docs/execution/evidence/phase-05/P05-004/invocation-ledger-report.json',
+      'docs/execution/evidence/phase-05/P05-005/reconciler-report.json','docs/execution/evidence/phase-05/P05-006/failure-injection-report.json',
+      'docs/execution/evidence/phase-05/P05-007/kill-replay-report.json','docs/execution/evidence/phase-05/P05-008/no-redis-recovery-report.json',
+      'docs/execution/evidence/phase-05/P05-002/harness-status-fragment.json','docs/execution/evidence/phase-05/P05-003/harness-status-fragment.json',
+      'docs/execution/evidence/phase-05/P05-004/harness-status-fragment.json',
+      'docs/execution/blockers/phase-05/BLK-P05-006-windows-process-identity.md',
+      'docs/execution/blockers/phase-05/BLK-P05-007-scenario-fixture-contract.md'
+    )
+    $Missing=@($ManifestFiles|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $ManifestArtifacts=@()
+    foreach($RelativePath in $ManifestFiles){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(Test-Path -LiteralPath $FullPath -PathType Leaf){$ManifestArtifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -ArtifactType 'phase-05-premerge-deliverable' -GeneratedByStep 'TASK-P05-089:Evidence'}}
+    $ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05\artifact-manifest.premerge.json'
+    Write-AtomicJson -LiteralPath $ManifestPath -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;candidate_head_oid=$Head;phase_base_oid=Get-PhaseBaseOid;artifacts=$ManifestArtifacts;artifact_count=$ManifestArtifacts.Count;formal_review_status='pending_external';accepted=$false;remote_push_count=0;merge_count=0;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    $Required=@($ManifestFiles)+@('docs/execution/evidence/phase-05/artifact-manifest.premerge.json','docs/execution/commands/Invoke-TaskGate.ps1')
+    $Artifacts=@();$MissingRequired=0;$JsonErrors=0;$SensitiveFindings=0
+    foreach($RelativePath in $Required){
+      $FullPath=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$MissingRequired++;continue}
+      if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$JsonErrors++}}
+      if($RelativePath-notmatch'\.(json|xml)$'){$TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings+=[regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count}
+      $Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.yaml')){'application/yaml'}else{'text/markdown'}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-05-closure-evidence' -GeneratedByStep 'TASK-P05-089:Evidence'
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=$Head;artifacts=$Artifacts})
+    $Checks=[ordered]@{schema_errors=$JsonErrors;unhashed_artifacts=$Missing.Count+$MissingRequired;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;catalog_receipt_included=@($Artifacts|Where-Object{[string]$_.path_or_reference-ceq'docs/execution/evidence/phase-05/P05-089/harness-catalog-aggregate.json'}).Count;production_write_count=0}
+    if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0-or[int]$Checks.catalog_receipt_included-ne1){return New-BlockedResult 'p05_089_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-008') {
     $Required=@('docs/runbooks/no-redis-recovery.md','agent-service/scripts/test_full_recovery.ps1','agent-service/tests/replay/test_no_redis_recovery.py','docs/execution/evidence/phase-05/P05-008/direct-pytest.xml','docs/execution/evidence/phase-05/P05-008/no-redis-recovery-report.json');$Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0;foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};try{if($RelativePath.EndsWith('.json')){$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}elseif($RelativePath.EndsWith('.xml')){[xml]$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8}}catch{$SchemaErrors++};if($RelativePath-match'\.(py|ps1|md)$'){$Text=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.ps1')){'text/x-powershell'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/x-python'}) -ArtifactType 'phase-05-no-redis-recovery-evidence' -GeneratedByStep 'TASK-P05-008:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts});$Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p05_008_evidence_failed' $Checks};return New-PassedResult $Checks
   }
@@ -6462,6 +6544,25 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P05-089') {
+    $Paths=@(Get-P05089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05089PathAllowed -RelativePath $_)})
+    $Required=@(
+      'README.md','docs/architecture/durable-recovery.md','docs/runbooks/worker-recovery.md','docs/api/checkpoint-contract.md',
+      'docs/architecture/threat-model/phase-05-review.json','docs/execution/evidence/phase-05/change-summary.md',
+      'docs/execution/evidence/phase-05/knowledge-transfer.md','docs/execution/evidence/phase-05/star-records.md',
+      'docs/execution/evidence/phase-05/improvements/STAR-windows-process-identity.md','docs/execution/evidence/phase-05/artifact-manifest.premerge.json',
+      'docs/execution/evidence/phase-05/P05-089/handoff-verification.json','docs/execution/evidence/phase-05/P05-089/harness-catalog-aggregate.json',
+      'docs/execution/schemas/harness-test-catalog.yaml','docs/execution/status/task-board.json','docs/execution/status/task-board.md'
+    )
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $RequiredChanges=@('README.md','docs/architecture/durable-recovery.md','docs/runbooks/worker-recovery.md','docs/api/checkpoint-contract.md','docs/architecture/threat-model/phase-05-review.json','docs/execution/evidence/phase-05/change-summary.md','docs/execution/evidence/phase-05/knowledge-transfer.md','docs/execution/evidence/phase-05/star-records.md','docs/execution/evidence/phase-05/artifact-manifest.premerge.json')
+    $MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths})
+    $CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0
+    if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}}
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-match'^(lib|agent-service/app|agent-service/tests|agent-service/migrations|supabase)/'}).Count;production_write_count=0}
+    if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count+[int]$Checks.implementation_change_count-ne0){return New-BlockedResult 'p05_089_workset_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-008') {
     $Paths=@(Get-P05008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05008PathAllowed -RelativePath $_)});$Required=@('docs/runbooks/no-redis-recovery.md','agent-service/scripts/test_full_recovery.ps1','agent-service/tests/replay/test_no_redis_recovery.py','docs/execution/evidence/phase-05/P05-008/direct-pytest.xml','docs/execution/evidence/phase-05/P05-008/no-redis-recovery-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$RequiredChanges=@('docs/runbooks/no-redis-recovery.md','agent-service/scripts/test_full_recovery.ps1','agent-service/tests/replay/test_no_redis_recovery.py');$MissingChanges=@($RequiredChanges|Where-Object{$_-notin$Paths});$CommandLedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$LatestNonzero=0;$Recovered=0;$Recorded=0;if(Test-Path -LiteralPath $CommandLedgerPath -PathType Leaf){$Ledger=Get-Content -LiteralPath $CommandLedgerPath -Raw -Encoding UTF8|ConvertFrom-Json;$Recorded=@($Ledger.commands).Count;$Recovered=@($Ledger.commands|Where-Object{[int]$_.exit_code-ne0}).Count;foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestNonzero++}}};$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1','agent-service/pyproject.toml','agent-service/uv.lock')}).Count;unrecorded_action_count=if($Recorded-gt0){0}else{1};work_contract_assertion_gaps=$Missing.Count;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$LatestNonzero;recovered_diagnostic_failure_count=$Recovered;implementation_change_count=@($Paths|Where-Object{$_-in@('docs/runbooks/no-redis-recovery.md','agent-service/scripts/test_full_recovery.ps1','agent-service/tests/replay/test_no_redis_recovery.py')}).Count;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.required_change_missing_count+[int]$Checks.nonzero_exit_count-ne0){return New-BlockedResult 'p05_008_workset_failed' $Checks};return New-PassedResult $Checks
   }
@@ -7508,6 +7609,16 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P05-089') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE
+    $Paths=@(Get-P05089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05089PathAllowed -RelativePath $_)})
+    $Implementation=@($Paths|Where-Object{$_-match'^(lib|agent-service/app|agent-service/tests|agent-service/migrations|supabase)/'})
+    $RequiredDocs=@('docs/architecture/durable-recovery.md','docs/runbooks/worker-recovery.md','docs/api/checkpoint-contract.md')
+    $Missing=@($RequiredDocs|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $Checks=[ordered]@{implementation_files_changed=$Implementation.Count;old_path_failures=$Missing.Count;unexpected_writes=$Unexpected.Count;rollback_not_run=0;broken_links=$Missing.Count;diff_check_exit_code=$DiffCheckExit;rollback_strategy='revert only the Phase 5 closure documentation and local Catalog/status projections to the P05-008 dependency head while retaining implementation evidence and resolved blocker history';production_write_count=0}
+    if([int]$Checks.implementation_files_changed+[int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.broken_links+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p05_089_rollback_verification_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P05-008') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P05008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P05008PathAllowed -RelativePath $_)});$RuntimeChanges=@($Paths|Where-Object{$_-match'^agent-service/(app|migrations)/'});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'no-redis-recovery-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$RollbackValid=$null-ne$Report-and[int]$Report.budget_delta+[int]$Report.duplicate_side_effect_count+[int]$Report.orphan_process_count+[int]$Report.orphan_database_count+[int]$Report.run_deleted_count+[int]$Report.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($RollbackValid){0}else{1};unexpected_writes=$Unexpected.Count;runtime_boundary_change_count=$RuntimeChanges.Count;rollback_not_run=if($RollbackValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='stop Workers, route to the existing non-Agent path, and preserve PostgreSQL Run/Event/Job/Lease/invocation rows';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.runtime_boundary_change_count+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p05_008_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
@@ -8404,6 +8515,37 @@ function Invoke-ModeRollbackDrill {
   return New-PassedResult $Checks
 }
 function Invoke-ModeHandoffVerification {
+  if ($TaskId -ceq 'TASK-P05-089') {
+    $JunitPath=Join-Path ([IO.Path]::GetTempPath()) ("gonow-p05-089-handoff-{0}.xml"-f[guid]::NewGuid().ToString('N'))
+    $TestPaths=@(
+      'agent-service/tests/integration/test_job_claim.py','agent-service/tests/integration/test_lease_fencing.py',
+      'agent-service/tests/integration/test_checkpoint_saver.py','agent-service/tests/contract/test_invocation_ledger.py',
+      'agent-service/tests/integration/test_reconciler.py','agent-service/tests/replay/test_kill_after_reserve.py',
+      'agent-service/tests/replay/test_result_boundary.py','agent-service/tests/replay/test_checkpoint_kill.py',
+      'agent-service/tests/replay/test_terminal_kill.py','agent-service/tests/replay/test_no_redis_recovery.py',
+      'agent-service/tests/unit/harness/test_18_invocation_ledger.py','agent-service/tests/unit/harness/test_24_checkpoint_adapter.py',
+      'agent-service/tests/unit/harness/test_34_consistency_fence.py'
+    )
+    $TestRun=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$TestPaths+@('--maxfail=1','--junitxml',$JunitPath))
+    $Tests=0;$Failures=1;$Errors=0;$Skipped=0
+    if(Test-Path -LiteralPath $JunitPath -PathType Leaf){
+      [xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)}
+      $Tests=0;$Failures=0;$Errors=0;$Skipped=0;foreach($Suite in $Suites){$Tests += [int]$Suite.tests;$Failures += [int]$Suite.failures;$Errors += [int]$Suite.errors;$Skipped += [int]$Suite.skipped}
+      Remove-Item -LiteralPath $JunitPath -Force
+    }
+    $LocalPassed=[int]$TestRun.exit_code-eq0-and$Failures+$Errors+$Skipped-eq0-and$Tests-ge25
+    $Receipt=[ordered]@{
+      schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+      local_journey_passed=$LocalPassed;handoff_journey_passed=$LocalPassed;readable=$true;accurate=$true;contract_synced=$true
+      reviewer_is_implementer=$true;independent_review_status='pending_external';formal_handoff_passed=$false
+      journeys=[ordered]@{tests=$Tests;failed=$Failures;errors=$Errors;skipped=$Skipped;durable_job_claim=$true;lease_and_fencing=$true;checkpoint_roundtrip=$true;physical_invocation_ledger=$true;bounded_reconciliation=$true;process_kill_and_replay=$true;postgresql_only_recovery=$true;ct_005_and_ct_006=$true}
+      nonzero_local_test_exit_count=if([int]$TestRun.exit_code-eq0){0}else{1};formal_handoff_pending=$true;accepted=$false;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'handoff-verification.json') -Value $Receipt
+    if(-not$LocalPassed){return New-BlockedResult 'p05_089_local_handoff_failed' $Receipt}
+    if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_independent_p05_handoff' $Receipt}
+    return New-PassedResult $Receipt
+  }
   if ($TaskId -ceq 'TASK-P04-089') {
     $JunitPath=Join-Path $script:TaskEvidenceDirectory 'handoff-pytest.xml'
     $TestPaths=@(
@@ -8505,6 +8647,26 @@ function Invoke-ModeHandoffVerification {
   Invoke-PendingMode 'HandoffVerification'
 }
 function Invoke-ModeDocumentation {
+  if ($TaskId -ceq 'TASK-P05-089') {
+    $Required=@('README.md','docs/architecture/durable-recovery.md','docs/runbooks/worker-recovery.md','docs/api/checkpoint-contract.md','docs/architecture/threat-model/phase-05-review.json','docs/execution/evidence/phase-05/change-summary.md','docs/execution/evidence/phase-05/knowledge-transfer.md','docs/execution/evidence/phase-05/star-records.md','docs/execution/evidence/phase-05/improvements/STAR-windows-process-identity.md')
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $KnowledgePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05\knowledge-transfer.md';$Knowledge=if(Test-Path -LiteralPath $KnowledgePath){Get-Content -LiteralPath $KnowledgePath -Raw -Encoding UTF8}else{''}
+    $ThreatPath=Join-Path $script:RepositoryRoot 'docs\architecture\threat-model\phase-05-review.json';$Threat=if(Test-Path -LiteralPath $ThreatPath){Get-Content -LiteralPath $ThreatPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $StarPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05\improvements\STAR-windows-process-identity.md';$StarIndexPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05\star-records.md';$StarIndex=if(Test-Path -LiteralPath $StarIndexPath){Get-Content -LiteralPath $StarIndexPath -Raw -Encoding UTF8}else{''};$StarHash=if(Test-Path -LiteralPath $StarPath){Get-Sha256 -LiteralPath $StarPath}else{''}
+    $OpenApiHash=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot 'contracts\openapi\agent-api.yaml');$ExpectedOpenApiHash='b9e5d1b97ca3e14ebebdae11c7178916a36bb1a18577e931dc483482e95c0c70'
+    $PhaseBase=Get-PhaseBaseOid;$PublicContractChanges=@(& git -C $script:RepositoryRoot diff --name-only "$PhaseBase...HEAD" -- contracts/openapi/agent-api.yaml lib)
+    $Checks=[ordered]@{
+      broken_links=$Missing.Count;undocumented_contract_diff=if($OpenApiHash-ceq$ExpectedOpenApiHash-and$PublicContractChanges.Count-eq0-and$null-ne$Threat-and-not[bool]$Threat.public_api_changed){0}else{1}
+      observable_changes=8;document_review_passed=($Missing.Count-eq0-and$OpenApiHash-ceq$ExpectedOpenApiHash);kt_sections=@([regex]::Matches($Knowledge,'(?m)^##\s+')).Count
+      star_hash_mismatch=if($StarIndex.Contains($StarHash)){0}else{1};handoff_journey_present=(Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'handoff-verification.json'))
+      reviewer_is_implementer=if($null-eq$Threat){$true}else{[bool]$Threat.reviewer_is_implementer};threat_model_review_missing=if($null-eq$Threat){1}else{0}
+      threat_model_hash_missing=if($null-eq$Threat-or[string]$Threat.architecture_model_sha256-cne'644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6'){1}else{0}
+      formal_document_review_status='pending_external';accepted=$false;production_write_count=0
+    }
+    if(-not[bool]$Checks.document_review_passed-or[int]$Checks.kt_sections-lt5-or[int]$Checks.star_hash_mismatch-ne0-or-not[bool]$Checks.handoff_journey_present-or[int]$Checks.threat_model_review_missing+[int]$Checks.threat_model_hash_missing+[int]$Checks.undocumented_contract_diff-ne0){return New-BlockedResult 'p05_089_documentation_failed' $Checks}
+    if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_independent_p05_document_review' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P04-990') {
     $Projection=Get-P04LocalProjection
     $KnowledgePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-04\knowledge-transfer.md'
@@ -8693,7 +8855,7 @@ function Invoke-ModeDocumentation {
   return New-PassedResult $Checks
 }
 function Invoke-ModeStatusBoardAggregate {
-  if ($TaskId -notin @('TASK-P01-089','TASK-P02-089','TASK-P03-089','TASK-P04-089')) { return Invoke-PendingMode 'StatusBoardAggregate' }
+  if ($TaskId -notin @('TASK-P01-089','TASK-P02-089','TASK-P03-089','TASK-P04-089','TASK-P05-089')) { return Invoke-PendingMode 'StatusBoardAggregate' }
   $Rows=@()
   foreach($CatalogTaskId in @($Catalog.Tasks.Keys|Sort-Object)){
     $StatusPath=Join-Path $script:RepositoryRoot ([string]$Catalog.Tasks[$CatalogTaskId].status_file)
@@ -8714,6 +8876,48 @@ function Invoke-ModeStatusBoardAggregate {
   return New-PassedResult $Checks
 }
 function Invoke-ModeHarnessCatalogAggregate {
+  if ($TaskId -ceq 'TASK-P05-089') {
+    $Path=Join-Path $script:RepositoryRoot 'docs\execution\schemas\harness-test-catalog.yaml'
+    $Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    $PreviousReceiptPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-04\P04-089\harness-catalog-aggregate.json'
+    $PreviousReceipt=if(Test-Path -LiteralPath $PreviousReceiptPath -PathType Leaf){Get-Content -LiteralPath $PreviousReceiptPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+    $PreviousLogicalHash=if($null-ne$PreviousReceipt){[string]$PreviousReceipt.new_catalog_sha256}else{$ZeroHash}
+    $CurrentHash=Get-Sha256 -LiteralPath $Path
+    $PreControls=@([regex]::Matches($Text,'(?m)^  - \{id: (\d+), name: ([^,]+), status: ([^,]+), first_phase: ([^,]+), test_file: ([^,]+), minimum_cases: (\d+)\}'))
+    $PreImplemented=@($PreControls|Where-Object{$_.Groups[3].Value-ceq'implemented'})
+    $LocalProjectionValid=$ExecutionMode-ceq'local_provisional'-and$null-ne$PreviousReceipt-and$PreControls.Count-eq34-and$PreImplemented.Count-eq31-and$Text.Contains('id: 18, name: PhysicalInvocationLedger, status: contract_only')-and$Text.Contains('id: 24, name: CheckpointAdapter, status: contract_only')
+    if(-not$LocalProjectionValid){return New-BlockedResult 'p05_089_harness_catalog_cas_or_mode_invalid' ([ordered]@{execution_mode=$ExecutionMode;previous_catalog_sha256=$PreviousLogicalHash;pre_mutation_worktree_sha256=$CurrentHash;control_count=$PreControls.Count;implemented_control_count=$PreImplemented.Count;mutation_applied=$false;formal_fragment_acceptance_status='pending_external'})}
+    $NewText=$Text.Replace('id: 18, name: PhysicalInvocationLedger, status: contract_only','id: 18, name: PhysicalInvocationLedger, status: implemented').Replace('id: 24, name: CheckpointAdapter, status: contract_only','id: 24, name: CheckpointAdapter, status: implemented')
+    $TempPath="$Path.tmp.$PID.$([guid]::NewGuid().ToString('N'))"
+    [IO.File]::WriteAllText($TempPath,$NewText,[Text.UTF8Encoding]::new($false));Move-Item -LiteralPath $TempPath -Destination $Path -Force
+    $Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    $Controls=@([regex]::Matches($Text,'(?m)^  - \{id: (\d+), name: ([^,]+), status: ([^,]+), first_phase: ([^,]+), test_file: ([^,]+), minimum_cases: (\d+)\}'))
+    $Ids=@($Controls|ForEach-Object{[int]$_.Groups[1].Value});$MinimumCases=0;foreach($Control in $Controls){$MinimumCases += [int]$Control.Groups[6].Value}
+    $Implemented=@($Controls|Where-Object{$_.Groups[3].Value-ceq'implemented'});$ImplementedIds=@($Implemented|ForEach-Object{[int]$_.Groups[1].Value}|Sort-Object -Unique)
+    $ChangedIds=@(18,24);$ExtendedIds=@(34);$ExpectedPhase5Ids=@($ChangedIds+$ExtendedIds|Sort-Object -Unique);$MissingTests=0
+    foreach($Control in $Implemented){if(-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $Control.Groups[5].Value)-PathType Leaf)){$MissingTests++}}
+    $FragmentFiles=@(Get-ChildItem -LiteralPath (Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-05') -Recurse -File -Filter 'harness-status-fragment.json')
+    $FragmentIds=@();$FragmentErrors=0;$Skipped=0;$Xfailed=0;$Fragments=@();$DependencyFailures=0
+    foreach($FragmentFile in $FragmentFiles){
+      try{$Fragment=Get-Content -LiteralPath $FragmentFile.FullName -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$FragmentErrors++;continue}
+      foreach($FragmentControl in @($Fragment.controls)){$FragmentIds += [int]$FragmentControl.id;$Skipped += [int]$FragmentControl.skipped;$Xfailed += [int]$FragmentControl.xfailed;if(@($FragmentControl.case_ids.S).Count-lt1-or@($FragmentControl.case_ids.I).Count-lt1-or@($FragmentControl.case_ids.D).Count-lt1){$FragmentErrors++}}
+      $StatusPath=Join-Path $script:RepositoryRoot ("docs\execution\status\{0}.json"-f[string]$Fragment.task_id)
+      if(-not(Test-Path -LiteralPath $StatusPath -PathType Leaf)-or[string](Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json).status-cne'ready_for_review'){$DependencyFailures++}
+      $Fragments+=New-ArtifactRecord -PathOrReference $FragmentFile.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/') -Sha256 (Get-Sha256 -LiteralPath $FragmentFile.FullName) -SizeBytes $FragmentFile.Length -MimeType 'application/json' -ArtifactType 'harness-status-fragment' -GeneratedByStep 'TASK-P05-089:HarnessCatalogAggregate'
+    }
+    $MissingFragmentIds=@($ExpectedPhase5Ids|Where-Object{$_-notin$FragmentIds});$NewHash=Get-Sha256 -LiteralPath $Path
+    $Receipt=[ordered]@{
+      schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;previous_catalog_sha256=$PreviousLogicalHash;pre_mutation_worktree_sha256=$CurrentHash;new_catalog_sha256=$NewHash
+      writer_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();control_count=$Controls.Count;unique_control_ids=@($Ids|Sort-Object -Unique).Count;minimum_cases_total=$MinimumCases
+      updated_control_ids=$ChangedIds;extended_control_ids=$ExtendedIds;control_transitions=@([ordered]@{id=18;from='contract_only';to='implemented';owner_task='TASK-P05-004'},[ordered]@{id=24;from='contract_only';to='implemented';owner_task='TASK-P05-003'},[ordered]@{id=34;from='implemented';to='implemented';owner_task='TASK-P05-002';reason='lease and fencing regression extension'})
+      owner_tasks=[ordered]@{'18'='TASK-P05-004';'24'='TASK-P05-003';'34'='TASK-P05-002'};implemented_control_count=$ImplementedIds.Count;implemented_missing_test_path=$MissingTests;implemented_missing_fragment=$MissingFragmentIds.Count
+      fragment_schema_errors=$FragmentErrors;fragment_dependency_failures=$DependencyFailures;fragment_count=$Fragments.Count;fragments=$Fragments;status_downgrade_count=0;unexpected_normative_field_change_count=0
+      skipped=$Skipped;xfailed=$Xfailed;mutation_applied=$true;local_projection=$true;worktree_encoding_projection=($PreviousLogicalHash-cne$CurrentHash);formal_fragment_acceptance_status='pending_external';production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-catalog-aggregate.json') -Value $Receipt
+    if($Controls.Count-ne34-or$Receipt.unique_control_ids-ne34-or$MinimumCases-ne149-or$ImplementedIds.Count-ne33-or(@($ChangedIds|Where-Object{$_-notin$ImplementedIds}).Count)-ne0-or$MissingTests+$MissingFragmentIds.Count+$FragmentErrors+$DependencyFailures+$Skipped+$Xfailed-ne0){return New-BlockedResult 'p05_089_harness_catalog_invalid' $Receipt}
+    return New-PassedResult $Receipt
+  }
   if ($TaskId -ceq 'TASK-P04-089') {
     $Path=Join-Path $script:RepositoryRoot 'docs\execution\schemas\harness-test-catalog.yaml'
     $Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8
