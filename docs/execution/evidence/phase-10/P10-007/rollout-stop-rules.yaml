@@ -1,0 +1,39 @@
+schema_version: "1.0"
+task_id: TASK-P10-007
+status: local_candidate
+threshold_status: initial_hypothesis
+default_action: allocation_zero
+stop_rules:
+  - id: cross_tenant_access
+    numerator_threshold: 0
+    comparison: greater_than
+    action: allocation_zero
+  - id: unauthorized_formal_write
+    numerator_threshold: 0
+    comparison: greater_than
+    action: allocation_zero
+  - id: secret_or_pii_exposure
+    numerator_threshold: 0
+    comparison: greater_than
+    action: allocation_zero
+  - id: durable_data_loss
+    numerator_threshold: 0
+    comparison: greater_than
+    action: allocation_zero
+  - id: old_path_unavailable
+    numerator_threshold: 0
+    comparison: greater_than
+    action: allocation_zero
+  - id: unresolved_adoption_conflict
+    numerator_threshold: 0
+    comparison: greater_than
+    action: allocation_zero
+rollback:
+  first_action: allocation_zero
+  activate_behavior_or_route_kill_switch: true
+  preserve_durable_data: true
+  old_path_required: true
+  audit_receipt_required: true
+  resume_requires_new_generation: true
+durable_data_delete_count: 0
+production_write_count: 0

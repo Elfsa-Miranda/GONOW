@@ -1,0 +1,1 @@
+{"schema_version":"1.0","task_id":"TASK-P10-007","checks":{"pii_canary_leak_count":0,"missing_audit_receipt_count":0,"unreviewed_user_eligible_count":0,"unbounded_allocation_count":0,"unexpected_paths":0,"production_write_count":0},"recorded_at":"2026-08-02T04:38:13.0261015+08:00"}
