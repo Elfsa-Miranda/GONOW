@@ -76,6 +76,14 @@ if ($RunnerText -notmatch "TASK-P09-001" -or
     $RunnerText -notmatch 'phase_9_local_entry_projection_valid') {
   throw 'negative: Phase 9 entry must materialize and bind the P08 local checkpoint projection'
 }
+if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
+    $RunnerText -notmatch 'p09_001_verify_failed' -or
+    $RunnerText -notmatch 'breaking_changes' -or
+    $RunnerText -notmatch 'root_baseline_issue_count=109' -or
+    $RunnerText -notmatch 'p09_001_dependency_audit_failed' -or
+    $RunnerText -notmatch 'Set-ReadyForReviewStatus') {
+  throw 'negative: P09-001 must own deterministic codegen, non-regression, supply-chain, and status gates'
+}
 if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'
