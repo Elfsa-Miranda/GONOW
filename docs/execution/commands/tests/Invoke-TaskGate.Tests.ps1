@@ -209,6 +209,17 @@ if ($RunnerText -notmatch 'Get-P10010GateModeState' -or
     $RunnerText -notmatch 'p10_010_rollback_verification_failed') {
   throw 'negative: P10-010 must own six-slice threshold, accepted P10-009 binding, approvals, P0/P1, rollback, security, evidence, and workset gates'
 }
+if ($RunnerText -notmatch 'Get-P10089GateModeState' -or
+    $RunnerText -notmatch 'TASK-P10-089:HarnessCatalogAggregate' -or
+    $RunnerText -notmatch "extended_control_ids=@\(29,30,31\)" -or
+    $RunnerText -notmatch 'hardest_item_count' -or
+    $RunnerText -notmatch 'not_applicable' -or
+    $RunnerText -notmatch 'p10_089_security_failed' -or
+    $RunnerText -notmatch 'p10_089_workset_failed' -or
+    $RunnerText -notmatch 'p10_089_evidence_failed' -or
+    $RunnerText -notmatch 'p10_089_rollback_verification_failed') {
+  throw 'negative: P10-089 must own STAR, documentation, handoff, Harness 29/30/31 CAS, status board, security, evidence, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
