@@ -7,7 +7,7 @@ The first real kill/replay scenario did not reach its process barrier, and the n
 - status: `resolved`
 - severity: `P2`; only the isolated local test fixture failed, with no production or external action, but two failures in the same mandatory verification step required a durable record.
 - owner / reviewer: Reliability / Security+Data
-- first_seen / last_updated / timezone: `2026-08-01T13:21+08:00` / `2026-08-01T13:27+08:00` / `Asia/Shanghai`
+- first_seen / last_updated / timezone: `2026-08-01T13:21+08:00` / `2026-08-01T13:34+08:00` / `Asia/Shanghai`
 
 ## Expected and actual result
 
@@ -32,6 +32,10 @@ The first real kill/replay scenario did not reach its process barrier, and the n
 
 - Redacted diagnostic record: `docs/execution/evidence/phase-05/P05-007/repair-diagnostics.json`.
 - Diagnostic SHA-256 at closure: `46da5615b55630d05b4bedeefd6dd11ef1b8a95081f2fddfaaaafa9445ae169c`.
+- Candidate kill/replay report: `docs/execution/evidence/phase-05/P05-007/kill-replay-report.json`, SHA-256 `cb8a5a084d4854ddcc06ce354f26da5838a9dc81025305dce56e84a91f3defe1` (post-commit binding may regenerate and rebind it).
+- Successful full-CI summary: `D:\GO_NOW-phase-05-ci-p05-007\ci-summary.json`, SHA-256 `2c9cbd08104ea59fdee1e5a52ab1024a5d927eb5fa3a8a5ea900765b8c972d40`.
+- Successful main-suite JUnit: `D:\GO_NOW-phase-05-ci-p05-007\unit.xml`, SHA-256 `7071c248507f84c03eb6618e0ea82a6181765cc925a24f084c45894603fff4a0`.
+- Successful contract-suite JUnit: `D:\GO_NOW-phase-05-ci-p05-007\contract.xml`, SHA-256 `d3c1e97119980612e6645ed454a136a730edc5d5eedcd8c86fade024c009a964`.
 
 ## Known facts, uncertainty, and invariant
 
@@ -81,8 +85,9 @@ Rejected alternatives:
 
 ## Verification and closure
 
-- Fix commit/PR: pending local candidate; no push or PR is authorized.
+- Fix commit/PR: local candidate `73822229f209d03cb0c13d5bf85030e4b3cdbe6d`; no push or PR is authorized.
 - Verification: affected test exit `0`; complete P05-007 direct suite `7 passed in 13.29s`; skip `0`; expected-failure `0`.
-- Final state / close time: `resolved` by local Engineering implementation at `2026-08-01T13:27+08:00`; independent Security+Data acceptance remains pending.
-- Remaining risk: full gate and CI have not yet run. Owner Reliability; due before `TASK-P05-007` is marked `ready_for_review`.
+- Full regression: main suite `425 passed`; contract suite `96 passed`; dependency audit passed; PostgreSQL PID remained `15744` and readiness passed after the full run.
+- Final state / close time: `resolved` by local Engineering implementation at `2026-08-01T13:34+08:00`; independent Security+Data acceptance remains pending.
+- Remaining risk: post-commit evidence binding and independent review remain. Owner Reliability; due before Phase 5 formal acceptance.
 - Prevention: keep child stderr capture on barrier failure and preserve the lease timeline helper. Owner QA; due before Phase 5 formal acceptance.
