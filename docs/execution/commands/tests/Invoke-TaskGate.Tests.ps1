@@ -96,6 +96,7 @@ if ($P10EntryBlock -notmatch '\$script:Task\.phase_runtime_manifest_path' -or
 if ($RunnerText -notmatch 'Get-P10001GateModeState' -or
     $RunnerText -notmatch 'p10_001_verify_failed' -or
     $RunnerText -notmatch 'trace-topology-report\.json' -or
+    $RunnerText -notmatch 'P09-089\\harness-catalog-aggregate\.json' -or
     $RunnerText -notmatch 'pii_canary_leak_count' -or
     $RunnerText -notmatch 'harness-status-fragment\.json' -or
     $RunnerText -notmatch 'p10_001_security_failed' -or
