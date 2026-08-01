@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "branch-experiment-e1-v1",
+  "slices": [
+    {
+      "slice_id": "simple_itinerary",
+      "sample_ids": ["simple-01", "simple-02", "simple-03", "simple-04", "simple-05", "simple-06", "simple-07", "simple-08", "simple-09", "simple-10", "simple-11", "simple-12"],
+      "quality_delta_percentage_points": [2.0, 2.4, 1.8, 2.2, 2.6, 1.9, 2.1, 2.5, 2.3, 1.7, 2.0, 2.4],
+      "latency_ratio": [1.10, 1.12, 1.08, 1.11, 1.14, 1.09, 1.10, 1.13, 1.12, 1.08, 1.11, 1.10],
+      "cost_ratio": [1.14, 1.16, 1.13, 1.15, 1.17, 1.14, 1.15, 1.16, 1.15, 1.13, 1.14, 1.15],
+      "risk_pass": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    },
+    {
+      "slice_id": "hard_constraints",
+      "sample_ids": ["constraint-01", "constraint-02", "constraint-03", "constraint-04", "constraint-05", "constraint-06", "constraint-07", "constraint-08", "constraint-09", "constraint-10", "constraint-11", "constraint-12"],
+      "quality_delta_percentage_points": [2.6, 2.9, 2.3, 2.7, 3.0, 2.4, 2.8, 2.5, 2.7, 2.2, 2.6, 2.8],
+      "latency_ratio": [1.14, 1.16, 1.13, 1.15, 1.18, 1.14, 1.16, 1.15, 1.17, 1.13, 1.14, 1.16],
+      "cost_ratio": [1.18, 1.19, 1.17, 1.18, 1.20, 1.17, 1.19, 1.18, 1.19, 1.16, 1.18, 1.19],
+      "risk_pass": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    },
+    {
+      "slice_id": "provider_degradation",
+      "sample_ids": ["provider-01", "provider-02", "provider-03", "provider-04", "provider-05", "provider-06", "provider-07", "provider-08", "provider-09", "provider-10", "provider-11", "provider-12"],
+      "quality_delta_percentage_points": [1.0, 1.4, 0.8, 1.2, 1.6, 0.9, 1.1, 1.5, 1.3, 0.7, 1.0, 1.4],
+      "latency_ratio": [1.15, 1.18, 1.14, 1.16, 1.19, 1.15, 1.17, 1.18, 1.16, 1.14, 1.15, 1.17],
+      "cost_ratio": [1.12, 1.14, 1.11, 1.13, 1.15, 1.12, 1.13, 1.14, 1.13, 1.11, 1.12, 1.13],
+      "risk_pass": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    },
+    {
+      "slice_id": "safety_boundary",
+      "sample_ids": ["safety-01", "safety-02", "safety-03", "safety-04", "safety-05", "safety-06", "safety-07", "safety-08", "safety-09", "safety-10", "safety-11", "safety-12"],
+      "quality_delta_percentage_points": [0.5, 0.8, 0.3, 0.6, 0.9, 0.4, 0.7, 0.6, 0.8, 0.2, 0.5, 0.7],
+      "latency_ratio": [1.08, 1.10, 1.07, 1.09, 1.11, 1.08, 1.10, 1.09, 1.10, 1.07, 1.08, 1.09],
+      "cost_ratio": [1.09, 1.11, 1.08, 1.10, 1.12, 1.09, 1.10, 1.11, 1.10, 1.08, 1.09, 1.10],
+      "risk_pass": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    }
+  ],
+  "excluded_samples": [
+    {
+      "sample_id": "provider-preflight-00",
+      "reason_code": "fixture.provider_clock_missing",
+      "included": false
+    }
+  ]
+}
