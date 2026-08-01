@@ -1,6 +1,6 @@
 # Phase 5 acceptance report
 
-Candidate implementation tip: `d057a564edd703b12557586c95d4ab7525c48105`
+Candidate implementation tip: `096526f81bdf50dbd80f20e80d945d5ca51b77a0`
 
 Phase base OID: `db0dd8dd05e2db8460c01fe4eb73812bcc330263`
 
@@ -31,8 +31,6 @@ Applicable CT-001 through CT-008 plus CT-012 and CT-013 pass in the local projec
 The isolated recovery rollback drill covered the seven in-flight kill boundaries plus PostgreSQL-only restart; local duration seconds: `23`.
 
 Resolved blockers: the Phase 5 entry projection repaired missing Flutter dependency hydration without lock drift; the checkpoint lock gap added the exact LangGraph dependency and ADR; the Windows process-identity repair replaced unsafe launcher/PID assumptions with retained-handle identity; the scenario fixture repair made every kill boundary create and prove its own state.
-
-The P05-990 rollback gate initially guessed 14 collected tests although its literal suite contains 13. All 13 had passed; the bounded repair tied the threshold to that explicit collection and the affected drill then passed with every behavioral postcondition unchanged.
 
 RPO and RTO remain `unknown_not_claimed`; authorized same-configuration production evidence is pending.
 
