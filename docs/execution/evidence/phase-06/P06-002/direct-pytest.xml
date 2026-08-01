@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="1.194" timestamp="2026-08-01T15:08:46.794062+08:00" hostname="PC-20251206ZQVX"><testcase classname="tests.integration.test_sse_replay" name="test_replay_live_handoff_heartbeat_and_backpressure" time="0.700" /></testsuite></testsuites>
