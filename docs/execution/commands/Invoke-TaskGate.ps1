@@ -1776,6 +1776,24 @@ function New-P02HarnessControlRecord {
   }
 }
 
+function Get-P04003ChangedPaths {
+  $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
+  $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+}
+
+function Test-P04003PathAllowed {
+  param([Parameter(Mandatory=$true)][string]$RelativePath)
+  $AllowedExact=@(
+    'agent-service/tests/contract/test_harness_contracts.py',
+    'docs/execution/commands/Invoke-TaskGate.ps1',
+    'docs/execution/status/TASK-P04-003.json'
+  )
+  if($RelativePath-in$AllowedExact){return $true}
+  return $RelativePath.StartsWith('agent-service/app/harness/',[StringComparison]::Ordinal) -or
+    $RelativePath.StartsWith('docs/execution/evidence/phase-04/P04-003/',[StringComparison]::Ordinal)
+}
+
 function Get-P04001ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --)
   $Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
@@ -2022,6 +2040,16 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P04-003') {
+    $Paths=@(Get-P04003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P04003PathAllowed -RelativePath $_)})
+    $AppPaths=@('agent-service/app/harness/__init__.py','agent-service/app/harness/catalog.py','agent-service/app/harness/validation.py')
+    $AppText=@($AppPaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
+    $AllText=$AppText+"`n"+[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot 'agent-service/tests/contract/test_harness_contracts.py'),[Text.UTF8Encoding]::new($false))
+    $ForbiddenExecutor=[regex]::Matches($AppText,'(?im)(subprocess\.|os\.system\s*\(|shell\s*=\s*true|(?<![A-Za-z0-9_.])(?:eval|exec)\s*\(|urllib\.|requests\.|httpx\.|socket\.|\.write_(?:text|bytes)\s*\(|open\s*\([^\r\n]*,[^\r\n]*["''](?:w|a|x))').Count
+    $CatalogPath='docs/execution/schemas/harness-test-catalog.yaml';$CatalogWriteCount=@($Paths|Where-Object{$_-ceq$CatalogPath}).Count
+    $Checks=[ordered]@{no_extra_boundary=$true;new_public_boundary_count=0;forbidden_executor_or_network_or_app_write_count=$ForbiddenExecutor;catalog_write_count=$CatalogWriteCount;valid_secret_finding_count=[regex]::Matches($AllText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($AllText,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count;unexpected_paths=$Unexpected.Count;production_write_count=0}
+    if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.forbidden_executor_or_network_or_app_write_count+[int]$Checks.catalog_write_count+[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p04_003_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P04-009') {
     $Paths=@(Get-P04009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P04009PathAllowed -RelativePath $_)})
     $SourcePaths=@('agent-service/app/api/routes/itinerary_agent.py','agent-service/app/api/routing.py','agent-service/tests/contract/test_legacy_bypass.py','agent-service/tests/unit/harness/test_31_feature_flags.py');$SourceText=@($SourcePaths|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n"
@@ -2830,6 +2858,15 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P04-003') {
+    $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe';$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'harness-mapping-report.json';$PreviousEvidence=$env:GONOW_P04_003_EVIDENCE_DIR
+    try{$env:GONOW_P04_003_EVIDENCE_DIR=$script:TaskEvidenceDirectory;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/contract/test_harness_contracts.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousEvidence){Remove-Item Env:\GONOW_P04_003_EVIDENCE_DIR -ErrorAction SilentlyContinue}else{$env:GONOW_P04_003_EVIDENCE_DIR=$PreviousEvidence}}
+    $Tests=0;$Failures=1;$Skipped=1;if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$Junit=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$Junit.testsuites.testsuite){@($Junit.testsuites.testsuite)}else{@($Junit.testsuite)};$Tests=[int](($Suites|Measure-Object -Property tests -Sum).Sum);$Failures=[int](($Suites|Measure-Object -Property failures -Sum).Sum)+[int](($Suites|Measure-Object -Property errors -Sum).Sum);$Skipped=[int](($Suites|Measure-Object -Property skipped -Sum).Sum)}
+    $Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$CatalogPath=Join-Path $script:RepositoryRoot 'docs\execution\schemas\harness-test-catalog.yaml';$CatalogHash=Get-Sha256 -LiteralPath $CatalogPath
+    $ExpectedIds=@(1..34|ForEach-Object{'{0:D2}'-f$_});$ReportValid=$null-ne$Report-and[string]$Report.task_id-ceq$TaskId-and[int]$Report.mapped_count-eq34-and(@($Report.control_ids)-join',')-ceq($ExpectedIds-join',')-and[int]$Report.duplicate_id+[int]$Report.missing_owner+[int]$Report.missing_exact_test_path+[int]$Report.missing_failure_contract-eq0-and-not[bool]$Report.catalog_sha_changed-and[string]$Report.catalog_sha_before-ceq$CatalogHash-and[string]$Report.catalog_sha_after-ceq$CatalogHash-and@($Report.implemented_control_ids).Count-eq0-and[int]$Report.production_write_count-eq0
+    $Checks=[ordered]@{primary_assertion_passed=([int]$TestRun.exit_code-eq0-and$Tests-eq7-and$Failures-eq0-and$Skipped-eq0-and$ReportValid);mapped_count=if($null-eq$Report){0}else{[int]$Report.mapped_count};duplicate_id=if($null-eq$Report){1}else{[int]$Report.duplicate_id};missing_owner=if($null-eq$Report){1}else{[int]$Report.missing_owner};missing_exact_test_path=if($null-eq$Report){1}else{[int]$Report.missing_exact_test_path};missing_failure_contract=if($null-eq$Report){1}else{[int]$Report.missing_failure_contract};catalog_sha_changed=if($null-eq$Report){$true}else{[bool]$Report.catalog_sha_changed};implemented_control_ids=if($null-eq$Report){@('unknown')}else{@($Report.implemented_control_ids)};test_exit_code=[int]$TestRun.exit_code;tests=$Tests;failures=$Failures;skipped=$Skipped;production_write_count=0}
+    if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p04_003_harness_mapping_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P04-009') {
     $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe';$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'legacy-bypass-report.json';$PreviousEvidence=$env:GONOW_P04_009_EVIDENCE_DIR
     try{$env:GONOW_P04_009_EVIDENCE_DIR=$script:TaskEvidenceDirectory;$TestRun=Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','agent-service/tests/contract/test_legacy_bypass.py','agent-service/tests/unit/harness/test_31_feature_flags.py','--maxfail=1','--junitxml',$JunitPath)}finally{if($null-eq$PreviousEvidence){Remove-Item Env:\GONOW_P04_009_EVIDENCE_DIR -ErrorAction SilentlyContinue}else{$env:GONOW_P04_009_EVIDENCE_DIR=$PreviousEvidence}}
@@ -3991,6 +4028,11 @@ function Invoke-ModeVerify {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P04-003') {
+    $Required=@('agent-service/app/harness/__init__.py','agent-service/app/harness/catalog.py','agent-service/app/harness/validation.py','agent-service/tests/contract/test_harness_contracts.py','docs/execution/evidence/phase-04/P04-003/direct-pytest.xml','docs/execution/evidence/phase-04/P04-003/harness-mapping-report.json','docs/execution/evidence/phase-04/P04-003/ci-reports/ci-summary.json','docs/execution/evidence/phase-04/P04-003/ci-reports/clock-contract.json','docs/execution/evidence/phase-04/P04-003/ci-reports/contract.xml','docs/execution/evidence/phase-04/P04-003/ci-reports/format.json','docs/execution/evidence/phase-04/P04-003/ci-reports/licenses.json','docs/execution/evidence/phase-04/P04-003/ci-reports/lint.json','docs/execution/evidence/phase-04/P04-003/ci-reports/secret.json','docs/execution/evidence/phase-04/P04-003/ci-reports/type.json','docs/execution/evidence/phase-04/P04-003/ci-reports/unit-report.json','docs/execution/evidence/phase-04/P04-003/ci-reports/unit.xml')
+    $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0;foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}};if($RelativePath-notmatch'\.(json|xml)$'){$TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/x-python'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-04-harness-mapping' -GeneratedByStep 'TASK-P04-003:Evidence'}
+    $Checks=[ordered]@{required_artifact_count=$Required.Count;artifact_count=$Artifacts.Count;missing_artifacts=$Missing;schema_errors=$SchemaErrors;sensitive_findings=$SensitiveFindings;production_write_count=0};if([int]$Checks.missing_artifacts+[int]$Checks.schema_errors+[int]$Checks.sensitive_findings-ne0){return New-BlockedResult 'p04_003_evidence_incomplete' $Checks};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;checks=$Checks});return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P04-009') {
     $Required=@('agent-service/app/api/routes/itinerary_agent.py','agent-service/app/api/routing.py','agent-service/tests/contract/test_legacy_bypass.py','agent-service/tests/unit/harness/test_31_feature_flags.py','docs/execution/evidence/phase-04/P04-009/direct-pytest.xml','docs/execution/evidence/phase-04/P04-009/legacy-bypass-report.json','docs/execution/evidence/phase-04/P04-009/harness-status-fragment.json','docs/execution/evidence/phase-04/P04-009/ci-reports/ci-summary.json','docs/execution/evidence/phase-04/P04-009/ci-reports/clock-contract.json','docs/execution/evidence/phase-04/P04-009/ci-reports/contract.xml','docs/execution/evidence/phase-04/P04-009/ci-reports/format.json','docs/execution/evidence/phase-04/P04-009/ci-reports/licenses.json','docs/execution/evidence/phase-04/P04-009/ci-reports/lint.json','docs/execution/evidence/phase-04/P04-009/ci-reports/secret.json','docs/execution/evidence/phase-04/P04-009/ci-reports/type.json','docs/execution/evidence/phase-04/P04-009/ci-reports/unit-report.json','docs/execution/evidence/phase-04/P04-009/ci-reports/unit.xml')
     $Artifacts=@();$Missing=0;$SchemaErrors=0;$SensitiveFindings=0;foreach($RelativePath in $Required){$FullPath=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $FullPath -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $FullPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}};if($RelativePath-notmatch'\.(json|xml)$'){$TextValue=[IO.File]::ReadAllText($FullPath,[Text.UTF8Encoding]::new($false));$SensitiveFindings += [regex]::Matches($TextValue,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count};$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/x-python'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $FullPath) -SizeBytes (Get-Item -LiteralPath $FullPath).Length -MimeType $Mime -ArtifactType 'phase-04-legacy-bypass' -GeneratedByStep 'TASK-P04-009:Evidence'}
@@ -6161,6 +6203,10 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P04-003') {
+    & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P04003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P04003PathAllowed -RelativePath $_)});$CatalogWrites=@($Paths|Where-Object{$_-ceq'docs/execution/schemas/harness-test-catalog.yaml'});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'harness-mapping-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[int]$Report.mapped_count-eq34-and-not[bool]$Report.catalog_sha_changed-and@($Report.implemented_control_ids).Count-eq0-and[int]$Report.production_write_count-eq0
+    $Checks=[ordered]@{old_path_failures=if($EvidenceValid){0}else{1};unexpected_writes=$Unexpected.Count;catalog_write_count=$CatalogWrites.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='remove the new read-only mapping package, its contract test, and task evidence; preserve the frozen Harness Catalog bytes';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.catalog_write_count+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p04_003_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P04-009') {
     & git -C $script:RepositoryRoot diff --check;$DiffCheckExit=$LASTEXITCODE;$Paths=@(Get-P04009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P04009PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'legacy-bypass-report.json';$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$EvidenceValid=$null-ne$Report-and[int]$Report.legacy_fixture_failures-eq0-and[int]$Report.agent_call_count-eq0-and[int]$Report.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=0;unexpected_writes=$Unexpected.Count;rollback_not_run=if($EvidenceValid){0}else{1};diff_check_exit_code=$DiffCheckExit;rollback_strategy='remove the unmounted Agent routing modules and tests; legacy Flutter chat/import/auth/fallback code remains unchanged';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p04_009_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
