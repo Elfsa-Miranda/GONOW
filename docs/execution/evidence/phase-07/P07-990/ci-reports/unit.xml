@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.685" timestamp="2026-08-01T18:40:48.393859+08:00" hostname="PC-20251206ZQVX"><testcase classname="" name="tests.contract.test_candidate" time="0.000"><error message="collection failure">ImportError while importing test module 'D:\GO_NOW-phase-07-worktree\agent-service\tests\contract\test_candidate.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+D:\Anaconda\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\contract\test_candidate.py:17: in &lt;module&gt;
+    from app.runtime.candidate import (  # noqa: E402
+app\runtime\candidate.py:10: in &lt;module&gt;
+    from app.validation.evidence_gate import Citation
+E   ImportError: cannot import name 'Citation' from 'app.validation.evidence_gate' (D:\GO_NOW-phase-07-worktree\agent-service\app\validation\evidence_gate.py)</error></testcase></testsuite></testsuites>

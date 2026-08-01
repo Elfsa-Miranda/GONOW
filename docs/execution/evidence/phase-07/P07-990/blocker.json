@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P07-990",
+  "mode": "Regression",
+  "reason_code": "p07_evidence_gate_public_surface_regression",
+  "severity": "P1-local-regression",
+  "root_cause": {
+    "status": "verified",
+    "summary": "TASK-P07-004 replaced the pre-existing evidence_gate module with the five-state classifier and unintentionally removed the Citation, EvidenceRecord, EvidenceLedger, CitationAssembler, EvidenceError, CitationError, and enum-compatible EvidenceStatus public surface consumed by Candidate and Harness 22/23.",
+    "first_failure": "pytest collection failed in tests.contract.test_candidate because app.runtime.candidate could not import Citation",
+    "reproduction_artifact": "docs/execution/evidence/phase-07/P07-990/ci-reports/unit.xml"
+  },
+  "impact_surface": [
+    "agent-service/app/runtime/candidate.py",
+    "agent-service/tests/contract/test_candidate.py",
+    "agent-service/tests/unit/harness/test_22_evidence_ledger.py",
+    "agent-service/tests/unit/harness/test_23_citation_assembler.py",
+    "Phase 7 full unit and contract regression"
+  ],
+  "excluded_paths": [
+    "CI lock, frozen-sync, format, lint, type, secret, and clock-contract gates passed before collection",
+    "No production write or external object mutation occurred",
+    "No evidence of a dependency or interpreter mismatch"
+  ],
+  "repair_plan": "Restore the complete immutable evidence/citation compatibility surface alongside the five-state classifier, preserve EvidenceStatus as a StrEnum, add a compatibility regression, then run the P07-004 focused suite followed by the full Phase 7 regression exactly once after a distinguishing repair.",
+  "rollback": "Revert only the compatibility repair commits; keep this blocker and failed CI artifacts immutable for audit.",
+  "recovery_condition": "Candidate, Harness 22/23, P07-004 five-state tests, and the full P07-990 regression all pass with zero skip/xfail and refreshed OID-bound evidence.",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-01T18:40:50.0623123+08:00"
+}
