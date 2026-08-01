@@ -76,6 +76,113 @@ if ($RunnerText -notmatch "TASK-P09-001" -or
     $RunnerText -notmatch 'phase_9_local_entry_projection_valid') {
   throw 'negative: Phase 9 entry must materialize and bind the P08 local checkpoint projection'
 }
+if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
+    $RunnerText -notmatch 'p09_001_verify_failed' -or
+    $RunnerText -notmatch 'breaking_changes' -or
+    $RunnerText -notmatch 'root_baseline_issue_count=109' -or
+    $RunnerText -notmatch 'p09_001_dependency_audit_failed' -or
+    $RunnerText -notmatch 'Set-ReadyForReviewStatus') {
+  throw 'negative: P09-001 must own deterministic codegen, non-regression, supply-chain, and status gates'
+}
+if ($RunnerText -notmatch 'Get-P09002GateModeState' -or
+    $RunnerText -notmatch 'p09_002_verify_failed' -or
+    $RunnerText -notmatch 'http_error_corpus_total=9' -or
+    $RunnerText -notmatch 'repository_exception_leak_count' -or
+    $RunnerText -notmatch 'p09_002_security_failed') {
+  throw 'negative: P09-002 must own typed HTTP corpus, safe fallback, exception containment, and security gates'
+}
+if ($RunnerText -notmatch 'Get-P09003GateModeState' -or
+    $RunnerText -notmatch 'p09_003_verify_failed' -or
+    $RunnerText -notmatch 'restart_restore_passed' -or
+    $RunnerText -notmatch 'persisted_field_count=4' -or
+    $RunnerText -notmatch 'arbitrary_sql_executor_count' -or
+    $RunnerText -notmatch 'p09_003_security_failed') {
+  throw 'negative: P09-003 must own restart recovery, minimal persistence, terminal cleanup, and storage security gates'
+}
+if ($RunnerText -notmatch 'Get-P09004GateModeState' -or
+    $RunnerText -notmatch 'p09_004_verify_failed' -or
+    $RunnerText -notmatch 'backoff_attempts_total=15' -or
+    $RunnerText -notmatch 'duplicate_side_effect_count=0' -or
+    $RunnerText -notmatch 'identity_denied_mismatch' -or
+    $RunnerText -notmatch 'p09_004_security_failed') {
+  throw 'negative: P09-004 must own bounded SSE recovery, de-duplication, control authorization, and audit gates'
+}
+if ($RunnerText -notmatch 'Get-P09005GateModeState' -or
+    $RunnerText -notmatch 'lib/features/itinerary_agent/presentation/' -or
+    $RunnerText -notmatch 'p09_005_verify_failed' -or
+    $RunnerText -notmatch 'unapproved_business_write_count' -or
+    $RunnerText -notmatch 'a11y_fixture_passed' -or
+    $RunnerText -notmatch 'error_fixture_passed' -or
+    $RunnerText -notmatch 'BLK-P09-002-lazy-candidate-semantics.md' -or
+    $RunnerText -notmatch 'p09_005_security_failed') {
+  throw 'negative: P09-005 must own Candidate presentation materialization, no-write, accessibility, error, blocker, and security gates'
+}
+if ($RunnerText -notmatch 'Get-P09006GateModeState' -or
+    $RunnerText -notmatch 'agent-service/app/persistence/repositories/domain_commands.py' -or
+    $RunnerText -notmatch 'p09_006_verify_failed' -or
+    $RunnerText -notmatch 'pytest_test_count=\$Tests' -or
+    $RunnerText -notmatch 'stale_version_cases_passed' -or
+    $RunnerText -notmatch 'forged_capability_cases_passed' -or
+    $RunnerText -notmatch 'itinerary_effect_count' -or
+    $RunnerText -notmatch 'outbox_effect_count' -or
+    $RunnerText -notmatch 'no_extra_boundary' -or
+    $RunnerText -notmatch 'BLK-P09-006-production-itinerary-mapping-unknown.md' -or
+    $RunnerText -notmatch 'p09_006_security_failed' -or
+    $RunnerText -notmatch 'p09_006_rollback_verification_failed') {
+  throw 'negative: P09-006 must own its implementation paths, direct JUnit materialization, exact rejection/effect counts, fail-closed production mapping blocker, security, and rollback gates'
+}
+if ($RunnerText -notmatch 'Get-P09009GateModeState' -or
+    $RunnerText -notmatch 'agent-service/tests/performance/test_read_model_need.py' -or
+    $RunnerText -notmatch 'p09_009_verify_failed' -or
+    $RunnerText -notmatch 'query_profile_count' -or
+    $RunnerText -notmatch 'total_query_samples-eq120' -or
+    $RunnerText -notmatch 'visibility_sample_count' -or
+    $RunnerText -notmatch "status='resolved_local'" -or
+    $RunnerText -notmatch 'P09-009/blocker.json' -or
+    $RunnerText -notmatch 'production_claim_authorized' -or
+    $RunnerText -notmatch 'runtime_or_schema_change_count' -or
+    $RunnerText -notmatch 'p09_009_security_failed' -or
+    $RunnerText -notmatch 'p09_009_rollback_verification_failed') {
+  throw 'negative: P09-009 must own its query/SLA/sample report, resolved diagnostic receipt, no-production-claim boundary, no-read-model decision, security, and rollback gates'
+}
+if ($RunnerText -notmatch 'Get-P09008GateModeState' -or
+    $RunnerText -notmatch 'agent-service/tests/contract/test_client_compatibility.py' -or
+    $RunnerText -notmatch 'test/itinerary_agent/service_compatibility_test.dart' -or
+    $RunnerText -notmatch 'old_app_old_service' -or
+    $RunnerText -notmatch 'new_app_new_service' -or
+    $RunnerText -notmatch 'matrix_passed_count' -or
+    $RunnerText -notmatch 'historical_source_artifacts_available' -or
+    $RunnerText -notmatch 'service_contract_blob_equal' -or
+    $RunnerText -notmatch 'forced_upgrade_count' -or
+    $RunnerText -notmatch 'p09_008_security_failed' -or
+    $RunnerText -notmatch 'p09_008_rollback_verification_failed') {
+  throw 'negative: P09-008 must own its four-path source-bound compatibility matrix, failures, report, no-forced-upgrade boundary, security, and rollback gates'
+}
+if ($RunnerText -notmatch 'Get-P09010GateModeState' -or
+    $RunnerText -notmatch 'integration_test/itinerary_agent_journey_test.dart' -or
+    $RunnerText -notmatch 'integration_test/itinerary_agent_weak_network_test.dart' -or
+    $RunnerText -notmatch 'integration_test/itinerary_agent_accessibility_test.dart' -or
+    $RunnerText -notmatch 'journey_steps_passed' -or
+    $RunnerText -notmatch 'weak_network_cases_passed' -or
+    $RunnerText -notmatch 'accessibility_cases_passed' -or
+    $RunnerText -notmatch 'exact-byte-flutter-vm-copy' -or
+    $RunnerText -notmatch 'source_copy_hash_mismatch_count' -or
+    $RunnerText -notmatch "formal_mobile_device_status='pending_external'" -or
+    $RunnerText -notmatch "status='resolved_local'" -or
+    $RunnerText -notmatch 'P09-010/blocker.json' -or
+    $RunnerText -notmatch 'mandatory_skip_count' -or
+    $RunnerText -notmatch 'p09_010_security_failed' -or
+    $RunnerText -notmatch 'p09_010_rollback_verification_failed') {
+  throw 'negative: P09-010 must own its full journey, weak-network, old-path, accessibility, no-skip, security, and rollback gates'
+}
+if ($RunnerText -notmatch 'Get-P09007GateModeState' -or
+    $RunnerText -notmatch 'p09_007_verify_failed' -or
+    $RunnerText -notmatch 'ordinary_chat_bypass_cases_passed' -or
+    $RunnerText -notmatch 'legacy_touched_file_baseline_issue_count=29' -or
+    $RunnerText -notmatch 'no_extra_boundary' -or
+    $RunnerText -notmatch 'p09_007_security_failed') {
+  throw 'negative: P09-007 must own legacy-off, ordinary-chat bypass, generation, kill-switch, and audit gates'
+}
 if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'

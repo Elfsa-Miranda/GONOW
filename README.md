@@ -271,3 +271,24 @@ digest, then inspect the typed request version, branch allocation ledger, physic
 and deterministic merge digest. See `docs/architecture/bounded-research.md`,
 `docs/api/branch-experiment.md`, and `docs/runbooks/research-flag.md`. Independent review,
 production traffic evidence, remote merge, deployment, and formal acceptance remain pending.
+
+## Flutter itinerary Agent integration (local provisional)
+
+Phase 9 adds a typed, default-off Flutter itinerary-planning route over the versioned Agent API.
+The client can create a Run, persist only a minimal active-Run cursor, replay SSE events, present a
+typed Candidate, and submit an approved adoption request through the guarded Domain Command path.
+Ordinary chat always bypasses Agent planning. The legacy itinerary route remains available for
+flag-off, kill-switch, generation-mismatch, contract-mismatch, and unavailable-service states.
+
+Enable only for an authorized local or isolated environment after the Phase 9 gates pass: clear
+the kill switch, enable `gonow_itinerary_agent_v1`, and use matching nonzero client/server
+generations. Disable by setting the kill switch or feature flag off. Degrade to the legacy route on
+any typed compatibility, transport, replay, or availability failure. First checks are the route
+reason code, client/server generation, API contract digest, active Run reference, last event ID,
+and Domain Command receipt. The contract digest is
+`ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed`.
+
+See `docs/architecture/flutter-agent-integration.md`, `docs/api/flutter-agent-client.md`, and
+`docs/runbooks/flutter-agent-rollback.md`. The local suite does not authorize production mapping,
+real-device acceptance, remote merge, deployment, or formal acceptance; those remain
+`pending_external`.

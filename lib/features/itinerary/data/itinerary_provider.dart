@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gonow/core/config/agent_feature_flags.dart';
 import 'package:gonow/core/services/safe_logger.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
@@ -354,9 +355,17 @@ class ItineraryModel {
 }
 
 class ItineraryProvider extends ChangeNotifier {
+  ItineraryProvider({
+    AgentFeatureFlags agentFeatureFlags = const AgentFeatureFlags(),
+  }) : _agentFeatureFlags = agentFeatureFlags;
+
   static const String _prefsKey = 'current_itinerary_json';
   static const String _tableName = 'user_itineraries';
-  final SupabaseClient _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
+  AgentFeatureFlags _agentFeatureFlags;
+  final List<AgentPlanningRouteAudit> _agentRouteAudit =
+      <AgentPlanningRouteAudit>[];
+  int _agentRouteAuditSequence = 0;
   RealtimeChannel? _itineraryChannel;
   RealtimeChannel? _presenceChannel;
   List<Map<String, dynamic>> _onlineUsers = <Map<String, dynamic>>[];
@@ -387,6 +396,55 @@ class ItineraryProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get onlineUsers =>
       List<Map<String, dynamic>>.unmodifiable(_onlineUsers);
   String? get someoneElseEditingName => _someoneElseEditingName;
+  AgentFeatureFlags get agentFeatureFlags => _agentFeatureFlags;
+  List<AgentPlanningRouteAudit> get agentRouteAudit =>
+      List<AgentPlanningRouteAudit>.unmodifiable(_agentRouteAudit);
+
+  void applyAgentFeatureFlags(AgentFeatureFlags flags) {
+    if (_agentFeatureFlags.itineraryPlanningEnabled ==
+            flags.itineraryPlanningEnabled &&
+        _agentFeatureFlags.itineraryPlanningKillSwitch ==
+            flags.itineraryPlanningKillSwitch &&
+        _agentFeatureFlags.clientGeneration == flags.clientGeneration &&
+        _agentFeatureFlags.serverGeneration == flags.serverGeneration) {
+      return;
+    }
+    _agentFeatureFlags = flags;
+    notifyListeners();
+  }
+
+  AgentRouteDecision previewAgentRoute(
+    AgentEntryKind entry, {
+    required bool agentRouteAvailable,
+  }) => _agentFeatureFlags.evaluate(
+    entry,
+    agentRouteAvailable: agentRouteAvailable,
+  );
+
+  AgentRouteDecision selectAgentRoute(
+    AgentEntryKind entry, {
+    required bool agentRouteAvailable,
+  }) {
+    final AgentRouteDecision decision = previewAgentRoute(
+      entry,
+      agentRouteAvailable: agentRouteAvailable,
+    );
+    _agentRouteAuditSequence += 1;
+    _agentRouteAudit.add(
+      AgentPlanningRouteAudit(
+        sequence: _agentRouteAuditSequence,
+        entry: decision.entry,
+        route: decision.route,
+        reasonCode: decision.reasonCode,
+        clientGeneration: decision.clientGeneration,
+        serverGeneration: decision.serverGeneration,
+      ),
+    );
+    if (_agentRouteAudit.length > 32) {
+      _agentRouteAudit.removeAt(0);
+    }
+    return decision;
+  }
 
   // 双模式状态管理
   TripMode _currentMode = TripMode.planning;
