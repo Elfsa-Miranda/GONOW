@@ -1,6 +1,6 @@
 # Phase 6 acceptance report
 
-Candidate implementation tip: `b94df60e4882495f5c16214c8b480bd6fa9358ba`
+Candidate implementation tip: `017660b5b9c2146636277bf8729a1f9b9ab0648e`
 
 Phase base OID: `1b996a2da9cc2abe46242afe3174da21cdd0455e`
 
