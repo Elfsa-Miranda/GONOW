@@ -131,6 +131,18 @@ if ($RunnerText -notmatch 'Get-P09006GateModeState' -or
     $RunnerText -notmatch 'p09_006_rollback_verification_failed') {
   throw 'negative: P09-006 must own its implementation paths, direct JUnit materialization, exact rejection/effect counts, fail-closed production mapping blocker, security, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P09009GateModeState' -or
+    $RunnerText -notmatch 'agent-service/tests/performance/test_read_model_need.py' -or
+    $RunnerText -notmatch 'p09_009_verify_failed' -or
+    $RunnerText -notmatch 'query_profile_count' -or
+    $RunnerText -notmatch 'total_query_samples-eq120' -or
+    $RunnerText -notmatch 'visibility_sample_count' -or
+    $RunnerText -notmatch 'production_claim_authorized' -or
+    $RunnerText -notmatch 'runtime_or_schema_change_count' -or
+    $RunnerText -notmatch 'p09_009_security_failed' -or
+    $RunnerText -notmatch 'p09_009_rollback_verification_failed') {
+  throw 'negative: P09-009 must own its query/SLA/sample report, no-production-claim boundary, no-read-model decision, security, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09007GateModeState' -or
     $RunnerText -notmatch 'p09_007_verify_failed' -or
     $RunnerText -notmatch 'ordinary_chat_bypass_cases_passed' -or
