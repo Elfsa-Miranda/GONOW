@@ -38,6 +38,12 @@ tests. Mandatory skips and production writes are zero. SQLite timing is not a Po
 fixture is not a physical mobile device, and the isolated command schema is not the unresolved
 production itinerary mapping. Independent review and all formal/production actions remain pending.
 
+During closeout, the first 153-row status board claimed success but failed a direct JSON round-trip:
+the BOM-less PowerShell 5 load had mojibake at the Release B phase label and the aggregate lacked a
+write-after-parse assertion. The reversible repair derives stable phase labels from task IDs,
+special-cases the post-Phase-10 Release B task, and makes a 153-row JSON round-trip mandatory. The
+affected board, Evidence, and Workset gates then passed; no task status or Catalog control changed.
+
 ## Estimate, decision, rollback, and next owner actions
 
 The plan estimated Phase 9 cards for sequencing; no human-hour or delivery claim is inferred. The

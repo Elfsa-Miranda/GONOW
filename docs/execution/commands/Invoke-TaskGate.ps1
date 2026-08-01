@@ -11487,21 +11487,23 @@ function Invoke-ModeStatusBoardAggregate {
   if ($TaskId -notin @('TASK-P01-089','TASK-P02-089','TASK-P03-089','TASK-P04-089','TASK-P05-089','TASK-P06-089','TASK-P07-089','TASK-P08-089','TASK-P09-089')) { return Invoke-PendingMode 'StatusBoardAggregate' }
   $Rows=@()
   foreach($CatalogTaskId in @($Catalog.Tasks.Keys|Sort-Object)){
+    $PhaseLabel=if($CatalogTaskId-cmatch'^TASK-BOOT-'){'BOOT'}elseif($CatalogTaskId-ceq'TASK-P10-011'){'Release B (post Phase 10)'}elseif($CatalogTaskId-cmatch'^TASK-P12([A-D])-'){"Phase 12$($Matches[1])"}elseif($CatalogTaskId-cmatch'^TASK-P(\d{2})-'){"Phase $([int]$Matches[1])"}elseif($CatalogTaskId-ceq'TASK-REL-A-001'){'Release A'}elseif($CatalogTaskId-ceq'TASK-REL-C-000'){'Conditional Release C Governance'}elseif($CatalogTaskId-ceq'TASK-REL-C-001'){'Conditional Release C'}else{[string]$Catalog.Tasks[$CatalogTaskId].phase}
     $StatusPath=Join-Path $script:RepositoryRoot ([string]$Catalog.Tasks[$CatalogTaskId].status_file)
     if(Test-Path -LiteralPath $StatusPath -PathType Leaf){
       $StatusRecord=Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json
-      $Rows+= [ordered]@{task_id=$CatalogTaskId;phase=[string]$Catalog.Tasks[$CatalogTaskId].phase;status=[string]$StatusRecord.status;source_sha256=Get-Sha256 -LiteralPath $StatusPath}
+      $Rows+= [ordered]@{task_id=$CatalogTaskId;phase=$PhaseLabel;status=[string]$StatusRecord.status;source_sha256=Get-Sha256 -LiteralPath $StatusPath}
     }else{
-      $Rows+= [ordered]@{task_id=$CatalogTaskId;phase=[string]$Catalog.Tasks[$CatalogTaskId].phase;status='not_started';source_sha256=$CatalogSha256;source_kind='catalog_initial_not_started'}
+      $Rows+= [ordered]@{task_id=$CatalogTaskId;phase=$PhaseLabel;status='not_started';source_sha256=$CatalogSha256;source_kind='catalog_initial_not_started'}
     }
   }
   $JsonPath=Join-Path $script:RepositoryRoot 'docs\execution\status\task-board.json'
   Write-AtomicJson -LiteralPath $JsonPath -Value ([ordered]@{schema_version='1.0';plan_version='1.4.0';task_count=$Rows.Count;tasks=$Rows;generated_at=[DateTimeOffset]::Now.ToString('o')})
+  $JsonRoundTripFailure=0;try{$RoundTrip=Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;if([int]$RoundTrip.task_count-ne153-or@($RoundTrip.tasks).Count-ne153){$JsonRoundTripFailure=1}}catch{$JsonRoundTripFailure=1}
   $Markdown=@('# Task board','','Generated from the 1.4.0 TaskGate Catalog and per-task status records.','','| Task | Phase | Status |','|---|---|---|')
   foreach($Row in $Rows){$Markdown+="| $($Row.task_id) | $($Row.phase) | $($Row.status) |"}
   [IO.File]::WriteAllText((Join-Path $script:RepositoryRoot 'docs\execution\status\task-board.md'),($Markdown-join"`n")+"`n",[Text.UTF8Encoding]::new($false))
-  $Checks=[ordered]@{task_count=$Rows.Count;duplicate_task_id=0;status_split_brain=0;invalid_transition=0;source_hash_missing=0;execplan_changed=$false;production_write_count=0}
-  if($Rows.Count-ne 153){return New-BlockedResult 'task_board_catalog_count_mismatch' $Checks}
+  $Checks=[ordered]@{task_count=$Rows.Count;duplicate_task_id=0;status_split_brain=0;invalid_transition=0;source_hash_missing=0;json_roundtrip_failure_count=$JsonRoundTripFailure;execplan_changed=$false;production_write_count=0}
+  if($Rows.Count-ne153-or$JsonRoundTripFailure-ne0){return New-BlockedResult 'task_board_catalog_count_or_json_mismatch' $Checks}
   return New-PassedResult $Checks
 }
 function Invoke-ModeHarnessCatalogAggregate {
