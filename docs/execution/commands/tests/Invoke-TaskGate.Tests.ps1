@@ -188,6 +188,16 @@ if ($RunnerText -notmatch 'Get-P10008GateModeState' -or
     $RunnerText -notmatch 'p10_008_rollback_verification_failed') {
   throw 'negative: P10-008 must own cost join, honest null denominator, budget-or-blocked, security, evidence, workset, and economic-route rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10009GateModeState' -or
+    $RunnerText -notmatch 'pending_p10_009_approved_production_rollout_observation' -or
+    $RunnerText -notmatch 'stop_rule_bypass_count' -or
+    $RunnerText -notmatch 'timer_restarted_on_transition' -or
+    $RunnerText -notmatch 'p10_009_security_failed' -or
+    $RunnerText -notmatch 'p10_009_workset_failed' -or
+    $RunnerText -notmatch 'p10_009_evidence_failed' -or
+    $RunnerText -notmatch 'p10_009_rollback_verification_failed') {
+  throw 'negative: P10-009 must fail closed on unavailable production rollout observations while retaining security, evidence, workset, and old-route rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
