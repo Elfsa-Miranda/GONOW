@@ -134,6 +134,20 @@ if ($RunnerText -notmatch 'Get-P10004GateModeState' -or
     $RunnerText -notmatch 'p10_004_rollback_verification_failed') {
   throw 'negative: P10-004 must own CAS/auth/propagation/drill/audit, Harness 31, security, evidence, workset, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10005GateModeState' -or
+    $RunnerText -notmatch 'Invoke-P10005DatasetValidation' -or
+    $RunnerText -notmatch 'p10_005_verify_failed' -or
+    $RunnerText -notmatch 'p04_e0_digest_unchanged' -or
+    $RunnerText -notmatch 'overwritten_dataset_versions' -or
+    $RunnerText -notmatch 'baseline_recent_holdout_separated' -or
+    $RunnerText -notmatch 'canonical_digest_cross_platform_match' -or
+    $RunnerText -notmatch 'dataset_git_tree_oid' -or
+    $RunnerText -notmatch 'p10_005_security_failed' -or
+    $RunnerText -notmatch 'p10_005_workset_failed' -or
+    $RunnerText -notmatch 'p10_005_evidence_failed' -or
+    $RunnerText -notmatch 'p10_005_rollback_verification_failed') {
+  throw 'negative: P10-005 must own E0 immutability, versioned split, canonical digest, change control, security, evidence, workset, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or

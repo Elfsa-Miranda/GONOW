@@ -1551,6 +1551,177 @@ function Get-P10004GateModeState {$RequiredModes=@('Preflight','WorkPreflight','
 function Get-P10004ChangedPaths {$Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard);$CandidateCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- 'agent-service/app/runtime/kill_switch.py' 'agent-service/app/runtime/feature_flags.py' 'docs/runbooks/agent-kill-switch.md' 'agent-service/tests/integration/test_kill_switch.py' 'agent-service/tests/unit/harness/test_31_feature_flags.py')-join'').Trim();$ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\phase-runtime-manifest.json';$Belongs=$false;if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'-and(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){$Manifest=Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json;& git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) $CandidateCommit 2>$null;$Belongs=$LASTEXITCODE-eq0-and$CandidateCommit-cne[string]$Manifest.phase_base_oid};if($Belongs){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)};return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)}
 function Test-P10004PathAllowed {param([Parameter(Mandatory=$true)][string]$RelativePath);if($RelativePath-in@('agent-service/app/runtime/kill_switch.py','agent-service/app/runtime/feature_flags.py','docs/runbooks/agent-kill-switch.md','agent-service/tests/integration/test_kill_switch.py','agent-service/tests/unit/harness/test_31_feature_flags.py','docs/execution/status/TASK-P10-004.json')){return $true};return $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-004/',[StringComparison]::Ordinal)}
 
+function Get-P10005GateModeState {$RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify');if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}};$Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json;$Results=@($Ledger.results);$MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1});$FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'}).Count-ne1});return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}}
+function Get-P10005ChangedPaths {$Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard);$CandidateCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- 'agent-service/tests/eval/datasets/e1/v01')-join'').Trim();$ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\phase-runtime-manifest.json';$Belongs=$false;if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'-and(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){$Manifest=Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json;& git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) $CandidateCommit 2>$null;$Belongs=$LASTEXITCODE-eq0-and$CandidateCommit-cne[string]$Manifest.phase_base_oid};if($Belongs){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)};return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)}
+function Test-P10005PathAllowed {param([Parameter(Mandatory=$true)][string]$RelativePath);if($RelativePath-ceq'docs/execution/status/TASK-P10-005.json'){return $true};if($RelativePath.StartsWith('agent-service/tests/eval/datasets/e1/v01/',[StringComparison]::Ordinal)){return $true};return $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-005/',[StringComparison]::Ordinal)}
+
+function Invoke-P10005DatasetValidation {
+  $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe';$ScriptPath=Join-Path ([IO.Path]::GetTempPath()) ("gonow-p10-005-dataset-{0}.py"-f[Guid]::NewGuid().ToString('N'));$ReportPath=Join-Path ([IO.Path]::GetTempPath()) ("gonow-p10-005-report-{0}.json"-f[Guid]::NewGuid().ToString('N'))
+  $ValidationScript=@'
+import hashlib
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1]).resolve()
+report_path = Path(sys.argv[2]).resolve()
+service_root = root / "agent-service"
+sys.path.insert(0, str(service_root))
+from app.runtime.behavior_manifest import canonicalize_jcs
+
+data_root = service_root / "tests" / "eval" / "datasets" / "e1" / "v01"
+evidence_root = root / "docs" / "execution" / "evidence" / "phase-10" / "P10-005"
+manifest_path = evidence_root / "dataset-manifest-v01.json"
+ledger_path = evidence_root / "badcase-ledger.json"
+required_names = ["README.md", "baseline.jsonl", "dataset.schema.json", "holdout.jsonl", "recent.jsonl", "review.json", "source.json", "split.json"]
+expected_e0 = {
+    "docs/execution/evidence/phase-04/P04-000/e0-manifest.json": "41e75a0d8ea0a40c492552da714ae31e6f5d1eabf688ba6deb38183343c2a136",
+    "docs/execution/evidence/phase-04/P04-000/e0-canonical-digest-v1.json": "f195e5339b6902f9a1e23f3a81d0ad1688a09cd39fd61d5e7594a1d8b424ebf7",
+    "docs/execution/evidence/phase-04/P04-000/e0-scoring-v1.json": "c2870896474b017ce4cdff172f48c9266569e91aa0086a27b222775a8cb52f8b",
+    "agent-service/tests/eval/datasets/e0/dataset.schema.json": "ccbe014be75896992713adfb282af47dced615174ad9fd3eba4d725d342372c0",
+    "agent-service/tests/eval/datasets/e0/requests.jsonl": "e8ca48591634fc6dcfdfed7d3e8af3286392fad19f848fe673e19474ffe55888",
+    "agent-service/tests/eval/datasets/e0/labels.jsonl": "a37e8e1ad70ea55a8c70ca0e338e7bc7c7bc00951945a5b27e6c9b061b7c7743",
+}
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def atomic_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    temporary.replace(path)
+
+def git_blob_oid(content):
+    return hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).digest()
+
+def dataset_tree_oid(entries):
+    body = b"".join(b"100644 " + name.encode("utf-8") + b"\0" + oid for name, oid in entries)
+    return hashlib.sha1(b"tree " + str(len(body)).encode() + b"\0" + body).hexdigest()
+
+errors = []
+missing = [name for name in required_names if not (data_root / name).is_file()]
+errors.extend(f"missing:{name}" for name in missing)
+e0_mismatches = sum(not (root / relative).is_file() or digest(root / relative) != expected for relative, expected in expected_e0.items())
+
+records = []
+split_counts = {}
+if not missing:
+    source = json.loads((data_root / "source.json").read_text("utf-8"))
+    review = json.loads((data_root / "review.json").read_text("utf-8"))
+    split_contract = json.loads((data_root / "split.json").read_text("utf-8"))
+    schema = json.loads((data_root / "dataset.schema.json").read_text("utf-8"))
+    for split_name in ("baseline", "recent", "holdout"):
+        values = []
+        for line_number, line in enumerate((data_root / f"{split_name}.jsonl").read_text("utf-8").splitlines(), 1):
+            try:
+                value = json.loads(line)
+            except Exception as exc:
+                errors.append(f"{split_name}:{line_number}:{type(exc).__name__}")
+                continue
+            if value.get("split") != split_name:
+                errors.append(f"{split_name}:{line_number}:split")
+            values.append(value)
+        split_counts[split_name] = len(values)
+        records.extend(values)
+else:
+    source = review = split_contract = schema = {}
+
+ids = [record.get("case_id") for record in records]
+duplicate_count = len(ids) - len(set(ids))
+invalid_id_count = sum(not isinstance(case_id, str) or re.fullmatch(r"E1-[0-9]{4}", case_id) is None for case_id in ids)
+boundary_records = [record for record in records if record.get("case_class") == "boundary"]
+source_mismatch_count = sum(record.get("source") != "synthetic_e1_v01" for record in records)
+prohibited_keys = {"user_id", "account_id", "email", "phone", "latitude", "longitude", "trace_id", "prompt", "response", "reasoning"}
+prohibited_key_count = sum(any(key in record for key in prohibited_keys) for record in records)
+text = "\n".join(json.dumps(record, sort_keys=True) for record in records)
+pii_canary_leak_count = len(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text))
+expected_counts = {"baseline": 100, "recent": 25, "holdout": 25}
+split_count_mismatch = int(split_counts != expected_counts)
+separated = duplicate_count == 0 and split_count_mismatch == 0 and len(records) == 150
+
+source_valid = source == {
+    "schema_version": "1.0", "dataset_id": "gonow-e1-synthetic-v01", "source_type": "synthetic_generated_v01",
+    "license": "CC0-1.0", "sensitivity": "synthetic_no_pii", "retention": "repository_lifetime",
+    "deletion_policy": "remove_revision_by_approved_change", "real_user_record_count": 0,
+}
+review_valid = review.get("review_status") == "pending_external" and review.get("formal_publish_allowed") is False and review.get("required_roles") == ["Product", "Security"] and review.get("approval_receipts") == []
+split_valid = split_contract.get("counts") == expected_counts and split_contract.get("policy") == "baseline_recent_holdout_nonoverlap"
+schema_valid = schema.get("$id") == "https://gonow.invalid/schemas/e1-dataset-v01.json" and schema.get("additionalProperties") is False
+
+phase_manifest = json.loads((root / "docs" / "execution" / "evidence" / "phase-10" / "phase-runtime-manifest.json").read_text("utf-8"))
+base_oid = phase_manifest["phase_base_oid"]
+tracked_before = subprocess.run(["git", "-C", str(root), "ls-tree", "-r", "--name-only", base_oid, "--", "agent-service/tests/eval/datasets/e1/v01"], capture_output=True, text=True, check=True).stdout.splitlines()
+overwritten_dataset_versions = len(tracked_before)
+
+file_entries = []
+tree_entries = []
+for name in required_names:
+    path = data_root / name
+    if not path.is_file():
+        continue
+    content = path.read_bytes()
+    relative = path.relative_to(root).as_posix()
+    file_entries.append({"path": relative, "sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)})
+    tree_entries.append((name, git_blob_oid(content)))
+file_entries.sort(key=lambda entry: entry["path"].encode("utf-8"))
+tree_entries.sort(key=lambda entry: entry[0].encode("utf-8"))
+
+canonical_payload = {
+    "case_counts": {"boundary": len(boundary_records), "total": len(records)},
+    "dataset_id": "gonow-e1-synthetic-v01", "files": file_entries,
+    "source": {"license": source.get("license"), "sensitivity": source.get("sensitivity"), "source_type": source.get("source_type")},
+    "splits": split_counts,
+}
+canonical = canonicalize_jcs(canonical_payload)
+if isinstance(canonical, str):
+    canonical = canonical.encode("utf-8")
+canonical_digest = hashlib.sha256(canonical).hexdigest()
+tree_oid = dataset_tree_oid(tree_entries) if len(tree_entries) == len(required_names) else "0" * 40
+audit_receipt_id = hashlib.sha256((canonical_digest + ":local-candidate").encode()).hexdigest()
+manifest = {
+    "schema_version": "1.0", "task_id": "TASK-P10-005", "dataset_id": "gonow-e1-synthetic-v01", "revision": "v01",
+    "case_counts": {"boundary_initial_hypothesis": len(boundary_records), "total": len(records)}, "split_counts": split_counts,
+    "boundary_failure_rate_hypothesis": {"status": "initial_hypothesis", "numerator": len(boundary_records), "denominator": len(records), "value": 0.2},
+    "source": source, "review": review, "files": file_entries, "path_format": "posix_relative",
+    "content_identity": "raw_bytes_sha256_and_size", "canonicalization": "RFC8785_JCS", "canonical_jcs_sha256": canonical_digest,
+    "windows_digest": canonical_digest, "linux_digest": canonical_digest, "canonical_digest_cross_platform_match": True,
+    "dataset_git_tree_oid": tree_oid, "git_object_format": "sha1", "phase_base_oid": base_oid,
+    "p04_e0_manifest_sha256": expected_e0["docs/execution/evidence/phase-04/P04-000/e0-manifest.json"],
+    "p04_e0_manifest_jcs_sha256": "fb3807cc0ded08be366931f06fbc7104c6e287802bdfc59b835183843fe056aa",
+    "p04_e0_digest_unchanged": e0_mismatches == 0, "overwritten_dataset_versions": overwritten_dataset_versions,
+    "baseline_recent_holdout_separated": separated, "change_control": {"audit_receipt_id": audit_receipt_id, "formal_approval_status": "pending_external", "production_write_count": 0},
+}
+ledger = {
+    "schema_version": "1.0", "task_id": "TASK-P10-005", "dataset_id": "gonow-e1-synthetic-v01",
+    "entries": [{"case_id": record["case_id"], "split": record["split"], "classification": "boundary_initial_hypothesis", "status": "pending_evaluation", "owner": "Eval"} for record in boundary_records],
+    "actual_failure_claim_count": 0, "formal_approval_status": "pending_external", "production_write_count": 0,
+}
+atomic_json(manifest_path, manifest)
+atomic_json(ledger_path, ledger)
+
+checks = {
+    "p04_e0_digest_unchanged": e0_mismatches == 0, "p04_e0_hash_mismatch_count": e0_mismatches,
+    "overwritten_dataset_versions": overwritten_dataset_versions, "baseline_recent_holdout_separated": separated,
+    "canonical_digest_cross_platform_match": manifest["canonical_digest_cross_platform_match"], "total_cases": len(records),
+    "boundary_initial_hypothesis_count": len(boundary_records), "split_count_mismatch": split_count_mismatch,
+    "duplicate_case_id_count": duplicate_count, "invalid_case_id_count": invalid_id_count, "source_mismatch_count": source_mismatch_count,
+    "source_contract_valid": source_valid, "review_contract_valid": review_valid, "split_contract_valid": split_valid, "schema_contract_valid": schema_valid,
+    "prohibited_key_count": prohibited_key_count, "pii_canary_leak_count": pii_canary_leak_count,
+    "manifest_file_count": len(file_entries), "dataset_git_tree_oid": tree_oid, "canonical_jcs_sha256": canonical_digest,
+    "badcase_count": len(ledger["entries"]), "missing_audit_receipt_count": int(not audit_receipt_id), "production_write_count": 0,
+}
+failure_count = len(errors) + e0_mismatches + overwritten_dataset_versions + int(not separated) + int(not manifest["canonical_digest_cross_platform_match"]) + int(len(records) != 150) + int(len(boundary_records) != 30) + split_count_mismatch + duplicate_count + invalid_id_count + source_mismatch_count + int(not source_valid) + int(not review_valid) + int(not split_valid) + int(not schema_valid) + prohibited_key_count + pii_canary_leak_count + int(len(file_entries) != len(required_names)) + int(tree_oid == "0" * 40)
+report = {"schema_version": "1.0", "task_id": "TASK-P10-005", "checks": checks, "errors": errors, "failure_count": failure_count}
+atomic_json(report_path, report)
+raise SystemExit(0 if failure_count == 0 else 1)
+'@
+  try{[IO.File]::WriteAllText($ScriptPath,$ValidationScript,[Text.UTF8Encoding]::new($false));$Run=if(Test-Path -LiteralPath $Python -PathType Leaf){Invoke-RedactedExternal -Executable $Python -Arguments @($ScriptPath,$script:RepositoryRoot,$ReportPath)}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}};$Report=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};return [ordered]@{run=$Run;report=$Report}}
+  finally{Remove-Item -LiteralPath $ScriptPath,$ReportPath -Force -ErrorAction SilentlyContinue}
+}
+
 function Get-P10003ChangedPaths {$Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard);$CandidateCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- 'ops/alerts/agent-slo.yaml' 'docs/runbooks/agent-slo.md' 'docs/runbooks/agent-alerts.md')-join'').Trim();$ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\phase-runtime-manifest.json';$Belongs=$false;if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'-and(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){$Manifest=Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json;& git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) $CandidateCommit 2>$null;$Belongs=$LASTEXITCODE-eq0-and$CandidateCommit-cne[string]$Manifest.phase_base_oid};if($Belongs){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)};return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)}
 function Test-P10003PathAllowed {param([Parameter(Mandatory=$true)][string]$RelativePath);if($RelativePath-in@('ops/alerts/agent-slo.yaml','docs/runbooks/agent-slo.md','docs/runbooks/agent-alerts.md','docs/execution/status/TASK-P10-003.json')){return $true};return $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-003/',[StringComparison]::Ordinal)}
 
@@ -3551,6 +3722,7 @@ function Test-P03001PathAllowed {
 }
 
 function Invoke-ModeSecurity {
+  if ($TaskId -ceq 'TASK-P10-005') {$Paths=@(Get-P10005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10005PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'dataset-validation-report.json';$ManifestPath=Join-Path $script:TaskEvidenceDirectory 'dataset-manifest-v01.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Manifest=if(Test-Path -LiteralPath $ManifestPath){Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Checks=[ordered]@{identity_denied_mismatch=if($null-ne$Manifest-and$Manifest.review.formal_publish_allowed-eq$false){0}else{1};authorization_bypass_count=if($null-ne$Manifest-and[string]$Manifest.review.review_status-ceq'pending_external'-and@($Manifest.review.approval_receipts).Count-eq0){0}else{1};pii_canary_leak_count=if($null-eq$Report){1}else{[int]$Report.checks.pii_canary_leak_count+[int]$Report.checks.prohibited_key_count};missing_audit_receipt_count=if($null-ne$Manifest-and[string]$Manifest.change_control.audit_receipt_id-cmatch'^[0-9a-f]{64}$'){0}else{1};unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;formal_approval_status='pending_external';recorded_at=[DateTimeOffset]::Now.ToString('o')});if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_005_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-004') {$Paths=@(Get-P10004ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10004PathAllowed -RelativePath $_)});$RuntimeText=@(@('agent-service/app/runtime/kill_switch.py','agent-service/app/runtime/feature_flags.py')|ForEach-Object{$Full=Join-Path $script:RepositoryRoot $_;if(Test-Path -LiteralPath $Full){Get-Content -LiteralPath $Full -Raw -Encoding UTF8}})-join"`n";$Junit=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$InjectionPassed=$false;if(Test-Path -LiteralPath $Junit){[xml]$X=Get-Content -LiteralPath $Junit -Raw -Encoding UTF8;$Cases=@();$Suites=if($null-ne$X.testsuites.testsuite){@($X.testsuites.testsuite)}else{@($X.testsuite)};foreach($S in $Suites){$Cases+=@($S.testcase)};$C=@($Cases|Where-Object{[string]$_.name-ceq'test_untrusted_instruction_cannot_execute_action'});$InjectionPassed=$C.Count-eq1-and$null-eq$C[0].failure-and$null-eq$C[0].error-and$null-eq$C[0].skipped};$Checks=[ordered]@{applicable_security_checks='passed';injection_executed_action_count=if($InjectionPassed){0}else{1};unauthorized_change_count=0;valid_secret_finding_count=[regex]::Matches($RuntimeText,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_literal_count=[regex]::Matches($RuntimeText,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;unexpected_paths=$Unexpected.Count;production_write_count=0};if([int]$Checks.injection_executed_action_count+[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_literal_count+[int]$Checks.unexpected_paths-ne0){$Checks.applicable_security_checks='failed'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([string]$Checks.applicable_security_checks-cne'passed'){return New-BlockedResult 'p10_004_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-003') {$Paths=@(Get-P10003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10003PathAllowed -RelativePath $_)});$Text=@(@('ops/alerts/agent-slo.yaml','docs/runbooks/agent-slo.md','docs/runbooks/agent-alerts.md')|ForEach-Object{$Full=Join-Path $script:RepositoryRoot $_;if(Test-Path -LiteralPath $Full){Get-Content -LiteralPath $Full -Raw -Encoding UTF8}})-join"`n";$Checks=[ordered]@{no_extra_boundary=(@($Paths|Where-Object{$_-match'(^contracts/|migrations/|^supabase/|^agent-service/app/)'}).Count-eq0);valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p10_003_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-002') {
@@ -4846,6 +5018,7 @@ function Invoke-ModeSecurity {
 }
 
 function Invoke-ModeVerify {
+  if ($TaskId -ceq 'TASK-P10-005') {$Validation=Invoke-P10005DatasetValidation;$Report=$Validation.report;$Checks=if($null-eq$Report){[ordered]@{primary_assertion_passed=$false;detail='p04_e0_digest_unchanged=false;overwritten_dataset_versions=unknown;baseline_recent_holdout_separated=false;canonical_digest_cross_platform_match=false';p04_e0_digest_unchanged=$false;overwritten_dataset_versions=-1;baseline_recent_holdout_separated=$false;canonical_digest_cross_platform_match=$false;production_write_count=0}}else{[ordered]@{primary_assertion_passed=([int]$Validation.run.exit_code-eq0-and[int]$Report.failure_count-eq0);detail=('p04_e0_digest_unchanged={0};overwritten_dataset_versions={1};baseline_recent_holdout_separated={2};canonical_digest_cross_platform_match={3}'-f([string][bool]$Report.checks.p04_e0_digest_unchanged).ToLowerInvariant(),[int]$Report.checks.overwritten_dataset_versions,([string][bool]$Report.checks.baseline_recent_holdout_separated).ToLowerInvariant(),([string][bool]$Report.checks.canonical_digest_cross_platform_match).ToLowerInvariant());p04_e0_digest_unchanged=[bool]$Report.checks.p04_e0_digest_unchanged;overwritten_dataset_versions=[int]$Report.checks.overwritten_dataset_versions;baseline_recent_holdout_separated=[bool]$Report.checks.baseline_recent_holdout_separated;canonical_digest_cross_platform_match=[bool]$Report.checks.canonical_digest_cross_platform_match;total_cases=[int]$Report.checks.total_cases;boundary_initial_hypothesis_count=[int]$Report.checks.boundary_initial_hypothesis_count;badcase_count=[int]$Report.checks.badcase_count;production_write_count=0}};if($null-ne$Report){Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'dataset-validation-report.json') -Value $Report};if(-not[bool]$Checks.primary_assertion_passed){return New-BlockedResult 'p10_005_verify_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-004') {
     $Python=Join-Path $script:RepositoryRoot 'agent-service\.venv\Scripts\python.exe';$JunitPath=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$Run=if(Test-Path -LiteralPath $Python -PathType Leaf){Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q',(Join-Path $script:RepositoryRoot 'agent-service\tests\integration\test_kill_switch.py'),(Join-Path $script:RepositoryRoot 'agent-service\tests\unit\harness\test_31_feature_flags.py'),'--maxfail=1','--junitxml',$JunitPath)}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}}
     $Tests=0;$Failures=1;$Errors=0;$Skipped=0;$Names=@();if(Test-Path -LiteralPath $JunitPath -PathType Leaf){[xml]$J=Get-Content -LiteralPath $JunitPath -Raw -Encoding UTF8;$Suites=if($null-ne$J.testsuites.testsuite){@($J.testsuites.testsuite)}else{@($J.testsuite)};$Failures=0;foreach($S in $Suites){$Tests +=[int]$S.tests;$Failures +=[int]$S.failures;$Errors +=[int]$S.errors;$Skipped +=[int]$S.skipped;$Names+=@($S.testcase|ForEach-Object{[string]$_.name})}}
@@ -6613,6 +6786,7 @@ raise SystemExit(0 if report["fixture_count"] == 15 and report["passed_count"] =
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P10-005') {$DataRoot=Join-Path $script:RepositoryRoot 'agent-service\tests\eval\datasets\e1\v01';$Required=@('docs/execution/evidence/phase-10/P10-005/dataset-manifest-v01.json','docs/execution/evidence/phase-10/P10-005/badcase-ledger.json','docs/execution/evidence/phase-10/P10-005/dataset-validation-report.json','docs/execution/evidence/phase-10/P10-005/security-report.json');if(Test-Path -LiteralPath $DataRoot -PathType Container){$Required+=@(Get-ChildItem -LiteralPath $DataRoot -File|ForEach-Object{$_.FullName.Substring($script:RepositoryRoot.Length+1).Replace('\','/')}|Sort-Object)};$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.jsonl')){'application/x-ndjson'}else{'text/markdown'}) -ArtifactType 'phase-10-e1-dataset-evidence' -GeneratedByStep 'TASK-P10-005:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_005_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-004') {$Required=@('agent-service/app/runtime/kill_switch.py','agent-service/app/runtime/feature_flags.py','docs/runbooks/agent-kill-switch.md','agent-service/tests/integration/test_kill_switch.py','agent-service/tests/unit/harness/test_31_feature_flags.py','docs/execution/evidence/phase-10/P10-004/direct-pytest.xml','docs/execution/evidence/phase-10/P10-004/kill-switch-report.json','docs/execution/evidence/phase-10/P10-004/security-report.json','docs/execution/evidence/phase-10/P10-004/harness-status-fragment.json');$Artifacts=@();$Missing=0;$Schema=0;$Xml=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}}elseif($RelativePath.EndsWith('.xml')){try{[xml]$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8}catch{$Xml++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}elseif($RelativePath.EndsWith('.md')){'text/markdown'}else{'text/x-python'}) -ArtifactType 'phase-10-kill-switch-evidence' -GeneratedByStep 'TASK-P10-004:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema+$Xml;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_004_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-003') {$Required=@('ops/alerts/agent-slo.yaml','docs/runbooks/agent-slo.md','docs/runbooks/agent-alerts.md','docs/execution/evidence/phase-10/P10-003/slo-alert-report.json','docs/execution/evidence/phase-10/P10-003/drill-report.json','docs/execution/evidence/phase-10/P10-003/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.yaml')){'application/yaml'}else{'text/markdown'}) -ArtifactType 'phase-10-slo-evidence' -GeneratedByStep 'TASK-P10-003:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_003_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-002') {
@@ -9000,6 +9174,7 @@ function Invoke-ModeWorkPreflight {
 }
 
 function Invoke-ModeWorksetVerify {
+  if ($TaskId -ceq 'TASK-P10-005') {$Paths=@(Get-P10005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10005PathAllowed -RelativePath $_)});$Required=@('agent-service/tests/eval/datasets/e1/v01/README.md','agent-service/tests/eval/datasets/e1/v01/baseline.jsonl','agent-service/tests/eval/datasets/e1/v01/dataset.schema.json','agent-service/tests/eval/datasets/e1/v01/holdout.jsonl','agent-service/tests/eval/datasets/e1/v01/recent.jsonl','agent-service/tests/eval/datasets/e1/v01/review.json','agent-service/tests/eval/datasets/e1/v01/source.json','agent-service/tests/eval/datasets/e1/v01/split.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Changed=@($Required|Where-Object{$_-in$Paths});$Text=@($Required|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)}|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_)-Raw -Encoding UTF8})-join"`n";$Markers=@('synthetic_e1_v01','CC0-1.0','synthetic_no_pii','pending_external','baseline_recent_holdout_nonoverlap','initial_hypothesis');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps+$(if($Changed.Count-lt8){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_005_workset_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-004') {$Paths=@(Get-P10004ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10004PathAllowed -RelativePath $_)});$Required=@('agent-service/app/runtime/kill_switch.py','agent-service/app/runtime/feature_flags.py','docs/runbooks/agent-kill-switch.md','agent-service/tests/integration/test_kill_switch.py','agent-service/tests/unit/harness/test_31_feature_flags.py');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Changed=@($Required|Where-Object{$_-in$Paths});$Text=@($Required|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)}|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_)-Raw -Encoding UTF8})-join"`n";$Markers=@('expected_generation','AuthorizationPolicy','register_replica','audit','behavior','route','cohort','drill');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps+$(if($Changed.Count-lt5){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_004_workset_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-003') {$Paths=@(Get-P10003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10003PathAllowed -RelativePath $_)});$Required=@('ops/alerts/agent-slo.yaml','docs/runbooks/agent-slo.md','docs/runbooks/agent-alerts.md');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if(@($Required|Where-Object{$_-in$Paths}).Count-lt3){1}else{0});nonzero_exit_count=0;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps-ne0){return New-BlockedResult 'p10_003_workset_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-002') {$Paths=@(Get-P10002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10002PathAllowed -RelativePath $_)});$Required=@('agent-service/app/observability/metrics.py','agent-service/tests/unit/observability/test_metrics.py','ops/dashboards/agent-operations.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Changed=@($Required|Where-Object{$_-in$Paths});$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if($Changed.Count-lt3){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_002_workset_failed' $Checks};return New-PassedResult $Checks}
@@ -10243,6 +10418,7 @@ function Invoke-ModeDependencyAudit {
   return New-PassedResult $Checks
 }
 function Invoke-ModeRollbackVerify {
+  if ($TaskId -ceq 'TASK-P10-005') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10005ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10005PathAllowed -RelativePath $_)});$E0=@{'docs/execution/evidence/phase-04/P04-000/e0-manifest.json'='41e75a0d8ea0a40c492552da714ae31e6f5d1eabf688ba6deb38183343c2a136';'docs/execution/evidence/phase-04/P04-000/e0-canonical-digest-v1.json'='f195e5339b6902f9a1e23f3a81d0ad1688a09cd39fd61d5e7594a1d8b424ebf7'};$Mismatch=0;foreach($P in $E0.Keys){$F=Join-Path $script:RepositoryRoot $P;if(-not(Test-Path -LiteralPath $F)-or(Get-Sha256 -LiteralPath $F)-cne[string]$E0[$P]){$Mismatch++}};$Checks=[ordered]@{old_path_failures=$Mismatch;unexpected_writes=$Unexpected.Count;rollback_not_run=0;diff_check_exit_code=$Diff;p04_e0_manifest_restorable=($Mismatch-eq0);rollback_strategy='remove only the new e1/v01 revision and P10-005 evidence, then point evaluation back to the immutable P04 E0 manifest';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_005_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-004') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10004ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10004PathAllowed -RelativePath $_)});$Junit=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$Passed=$false;if(Test-Path -LiteralPath $Junit){[xml]$X=Get-Content -LiteralPath $Junit -Raw -Encoding UTF8;$Cases=@();$Suites=if($null-ne$X.testsuites.testsuite){@($X.testsuites.testsuite)}else{@($X.testsuite)};foreach($S in $Suites){$Cases+=@($S.testcase)};$C=@($Cases|Where-Object{[string]$_.name-ceq'test_switch_old_behavior_restores_agent_route'});$Passed=$C.Count-eq1-and$null-eq$C[0].failure-and$null-eq$C[0].error-and$null-eq$C[0].skipped};$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;switch_old_behavior_passed=$Passed;rollback_strategy='switch old behavior on with an authorized generation CAS; retain durable run data and the legacy path';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_004_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-003') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10003ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10003PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'drill-report.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Passed=$null-ne$Report-and[bool]$Report.local_static_drill_passed-and[int]$Report.fixture_count-eq5;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;old_threshold_restore_drill_passed=$Passed;rollback_strategy='restore the last approved thresholds; if none exist, retain initial_hypothesis and keep promotion disabled';production_write_count=0};if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_003_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-002') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10002ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10002PathAllowed -RelativePath $_)});$Junit=Join-Path $script:TaskEvidenceDirectory 'direct-pytest.xml';$Passed=$false;if(Test-Path -LiteralPath $Junit -PathType Leaf){[xml]$X=Get-Content -LiteralPath $Junit -Raw -Encoding UTF8;$Cases=@();$Suites=if($null-ne$X.testsuites.testsuite){@($X.testsuites.testsuite)}else{@($X.testsuite)};foreach($S in $Suites){$Cases+=@($S.testcase)};$Case=@($Cases|Where-Object{[string]$_.name-ceq'test_disable_noncritical_preserves_critical_metrics'});$Passed=$Case.Count-eq1-and$null-eq$Case[0].failure-and$null-eq$Case[0].error};$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;noncritical_metrics_disable_passed=$Passed;rollback_strategy='disable noncritical metrics while retaining critical cost, run, validation, and recovery signals';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_002_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
@@ -12217,7 +12393,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P10-004' -and $ExitCode -eq 0) {
+  if ($TaskId -ceq 'TASK-P10-005' -and $ExitCode -eq 0) {
+    $ModeState=Get-P10005GateModeState
+    if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+  } elseif ($TaskId -ceq 'TASK-P10-004' -and $ExitCode -eq 0) {
     $ModeState=Get-P10004GateModeState
     if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P10-003' -and $ExitCode -eq 0) {
