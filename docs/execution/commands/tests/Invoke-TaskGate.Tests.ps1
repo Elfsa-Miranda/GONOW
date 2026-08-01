@@ -113,6 +113,14 @@ if ($RunnerText -notmatch 'Get-P10002GateModeState' -or
     $RunnerText -notmatch 'p10_002_rollback_verification_failed') {
   throw 'negative: P10-002 must own bounded metrics, dashboard, security, evidence, workset, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10003GateModeState' -or
+    $RunnerText -notmatch 'p10_003_verify_failed' -or
+    $RunnerText -notmatch 'every alert has owner/runbook/test' -or
+    $RunnerText -notmatch 'unknown_pending_production_measurement' -or
+    $RunnerText -notmatch 'p10_003_security_failed' -or
+    $RunnerText -notmatch 'p10_003_rollback_verification_failed') {
+  throw 'negative: P10-003 must keep SLOs hypothetical and bind every alert to owner, runbook, test, and rollback'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
