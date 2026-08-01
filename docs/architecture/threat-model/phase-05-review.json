@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "phase": "Phase 5",
-  "candidate_head_oid": "78ffc2b5b22a784826536291f8f9f38a9acb5dab",
+  "candidate_head_oid": "6d35213a16cbcb0dffd56fae5cd8978a5fb536ba",
   "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
   "model_changed": true,
   "public_api_changed": false,
