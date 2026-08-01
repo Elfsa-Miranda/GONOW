@@ -145,6 +145,19 @@ if ($RunnerText -notmatch 'Get-P09009GateModeState' -or
     $RunnerText -notmatch 'p09_009_rollback_verification_failed') {
   throw 'negative: P09-009 must own its query/SLA/sample report, resolved diagnostic receipt, no-production-claim boundary, no-read-model decision, security, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P09008GateModeState' -or
+    $RunnerText -notmatch 'agent-service/tests/contract/test_client_compatibility.py' -or
+    $RunnerText -notmatch 'test/itinerary_agent/service_compatibility_test.dart' -or
+    $RunnerText -notmatch 'old_app_old_service' -or
+    $RunnerText -notmatch 'new_app_new_service' -or
+    $RunnerText -notmatch 'matrix_passed_count' -or
+    $RunnerText -notmatch 'historical_source_artifacts_available' -or
+    $RunnerText -notmatch 'service_contract_blob_equal' -or
+    $RunnerText -notmatch 'forced_upgrade_count' -or
+    $RunnerText -notmatch 'p09_008_security_failed' -or
+    $RunnerText -notmatch 'p09_008_rollback_verification_failed') {
+  throw 'negative: P09-008 must own its four-path source-bound compatibility matrix, failures, report, no-forced-upgrade boundary, security, and rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09007GateModeState' -or
     $RunnerText -notmatch 'p09_007_verify_failed' -or
     $RunnerText -notmatch 'ordinary_chat_bypass_cases_passed' -or
