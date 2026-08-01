@@ -1,0 +1,71 @@
+schema_version: "1.0"
+status: initial_hypothesis
+baseline_status: unknown_pending_production_measurement
+owner: SRE
+calibration_policy:
+  minimum_observation_days: 30
+  minimum_adopted_runs: 500
+  change_requires: [SRE, Product, Security]
+  no_baseline_promise: true
+slos:
+  - id: run_success_ratio
+    sli: "sum(gonow_run_completed_total{outcome=success}) / sum(gonow_run_completed_total)"
+    initial_target: 0.990
+    window: 30d
+    unit: ratio
+    owner: SRE
+  - id: run_duration_p95
+    sli: "p95(gonow_run_duration_ms{outcome=success})"
+    initial_target: 60000
+    comparison: less_than_ms
+    window: 30d
+    unit: ms
+    owner: SRE
+  - id: validation_non_failure_ratio
+    sli: "sum(gonow_validation_total{validation_result=valid|warning|unverified}) / sum(gonow_validation_total)"
+    initial_target: 0.995
+    window: 30d
+    unit: ratio
+    owner: Quality
+  - id: recovery_success_ratio
+    sli: "sum(gonow_recovery_attempts_total{outcome=success}) / sum(gonow_recovery_attempts_total)"
+    initial_target: 0.990
+    window: 30d
+    unit: ratio
+    owner: SRE
+alerts:
+  - id: run_success_fast_burn
+    source_slo: run_success_ratio
+    condition: "error_budget_burn_rate > 14.4 for 1h"
+    severity: page
+    owner: SRE
+    runbook: "docs/runbooks/agent-alerts.md#run-success-fast-burn"
+    test: {fixture: run_success_fast_burn, expected: firing}
+  - id: run_duration_slow_burn
+    source_slo: run_duration_p95
+    condition: "error_budget_burn_rate > 2 for 6h"
+    severity: ticket
+    owner: SRE
+    runbook: "docs/runbooks/agent-alerts.md#run-duration-slow-burn"
+    test: {fixture: run_duration_slow_burn, expected: firing}
+  - id: validation_failure_spike
+    source_slo: validation_non_failure_ratio
+    condition: "invalid ratio > 0.02 for 15m"
+    severity: page
+    owner: Quality
+    runbook: "docs/runbooks/agent-alerts.md#validation-failure-spike"
+    test: {fixture: validation_failure_spike, expected: firing}
+  - id: recovery_failure_spike
+    source_slo: recovery_success_ratio
+    condition: "failed or degraded recovery ratio > 0.05 for 15m"
+    severity: page
+    owner: SRE
+    runbook: "docs/runbooks/agent-alerts.md#recovery-failure-spike"
+    test: {fixture: recovery_failure_spike, expected: firing}
+  - id: adopted_task_cost_guardrail
+    source_metric: gonow_adopted_task_cost_usd
+    condition: "p95 exceeds the approved cohort budget for 30m"
+    severity: ticket
+    owner: Finance
+    runbook: "docs/runbooks/agent-alerts.md#adopted-task-cost-guardrail"
+    test: {fixture: adopted_task_cost_guardrail, expected: firing}
