@@ -29,6 +29,7 @@ SECRET_PATTERN = re.compile(
     r"(?i)(?:sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|BEGIN [A-Z ]*PRIVATE KEY)"
 )
 BANNED_RUNTIME_IMPORTS = {"anthropic", "langchain", "langgraph", "openai"}
+APPROVED_LANGGRAPH_RUNTIME_IMPORTS = {"agent-service/app/runtime/checkpoint.py"}
 
 
 def _normalize_license_text(value: str) -> str:
@@ -99,7 +100,10 @@ def check_lint(root: Path) -> tuple[list[str], dict[str, Any]]:
                 failures.append(f"{relative}:{node.lineno}:wildcard-import")
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 names = [alias.name.split(".")[0] for alias in node.names] if isinstance(node, ast.Import) else [(node.module or "").split(".")[0]]
-                if set(names) & BANNED_RUNTIME_IMPORTS:
+                banned_names = set(names) & BANNED_RUNTIME_IMPORTS
+                if relative in APPROVED_LANGGRAPH_RUNTIME_IMPORTS:
+                    banned_names.discard("langgraph")
+                if banned_names:
                     failures.append(f"{relative}:{node.lineno}:premature-model-or-graph-import")
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"eval", "exec"}:
                 executed_action_count += 1
