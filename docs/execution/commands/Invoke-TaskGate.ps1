@@ -1548,7 +1548,14 @@ function Get-P10001ChangedPaths {
     'agent-service/app/observability/redaction.py'
     'agent-service/tests/security/test_trace_redaction.py'
     'agent-service/tests/unit/harness/test_29_telemetry.py')-join'').Trim()
-  if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)}
+  $ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\phase-runtime-manifest.json'
+  $CandidateBelongsToPhase=$false
+  if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'-and(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){
+    $Manifest=Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json
+    & git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) $CandidateCommit 2>$null
+    $CandidateBelongsToPhase=$LASTEXITCODE-eq0-and$CandidateCommit-cne[string]$Manifest.phase_base_oid
+  }
+  if($CandidateBelongsToPhase){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)}
   return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
 }
 

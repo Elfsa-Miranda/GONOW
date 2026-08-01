@@ -100,6 +100,7 @@ if ($RunnerText -notmatch 'Get-P10001GateModeState' -or
     $RunnerText -notmatch 'harness-status-fragment\.json' -or
     $RunnerText -notmatch 'p10_001_security_failed' -or
     $RunnerText -notmatch 'p10_001_workset_failed' -or
+    $RunnerText -notmatch 'CandidateBelongsToPhase' -or
     $RunnerText -notmatch 'p10_001_rollback_verification_failed') {
   throw 'negative: P10-001 must own trace, redaction, harness, workset, evidence, and rollback gates'
 }
