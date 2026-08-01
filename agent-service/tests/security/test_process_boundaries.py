@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 import site
 import socket
 import sys
@@ -58,9 +59,21 @@ def test_service_does_not_spawn_child_processes() -> None:
 
 
 def test_public_contract_has_no_run_execution_route() -> None:
-    specification = (REPO_ROOT / "contracts" / "openapi" / "agent-api.yaml").read_text(encoding="utf-8")
-    assert '"/v1/runs' not in specification
-    assert '"/v1/contracts/{name}/{major}"' in specification
+    specification = json.loads(
+        (REPO_ROOT / "contracts" / "openapi" / "agent-api.yaml").read_text(encoding="utf-8")
+    )
+    run_paths = {
+        path: set(methods)
+        for path, methods in specification["paths"].items()
+        if path.startswith("/v1/runs")
+    }
+    assert run_paths == {
+        "/v1/runs/{run_id}/events": {"get"},
+        "/v1/runs/{run_id}/resume": {"post"},
+        "/v1/runs/{run_id}/cancel": {"post"},
+    }
+    assert "/v1/runs" not in run_paths
+    assert "/v1/contracts/{name}/{major}" in specification["paths"]
 
 
 def test_worker_runtime_exposes_no_job_claim_method() -> None:
