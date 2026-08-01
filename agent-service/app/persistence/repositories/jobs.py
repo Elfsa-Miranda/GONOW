@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import func, select, update
@@ -14,6 +15,22 @@ from app.persistence.repositories.runs import TransactionRequired
 
 
 JOB_REF_PATTERN = re.compile(r"^job-input://sha256/[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True, slots=True)
+class JobClaim:
+    """A transactionally acquired Job and its durable fencing identity."""
+
+    job_id: uuid.UUID
+    run_id: uuid.UUID
+    tenant_id: str
+    job_type: str
+    input_ref: str
+    lease_id: uuid.UUID
+    holder_id: str
+    fencing_token: int
+    attempt_count: int
+    replayed: bool
 
 
 class JobNotFound(RuntimeError):
@@ -87,6 +104,105 @@ class JobsRepository:
         self._session.add(record)
         self._session.flush()
         return record
+
+    def claim_next_job(
+        self,
+        *,
+        tenant_id: str,
+        holder_id: str,
+        audit_receipt_id: str,
+        lease_seconds: int,
+    ) -> JobClaim | None:
+        """Claim one ready Job without blocking concurrent claimers.
+
+        ``holder_id`` is the durable identity of one physical claim attempt. A
+        response-lost retry with the same holder replays its live lease and
+        fencing token instead of consuming a second attempt or Job.
+        """
+
+        self._require_transaction()
+        if not tenant_id or not holder_id or not audit_receipt_id:
+            raise ValueError("tenant, holder, and audit receipt are required")
+        if not 1 <= lease_seconds <= 300:
+            raise ValueError("lease duration must be between one and 300 seconds")
+
+        replay = self._session.execute(
+            select(JobRecord, LeaseRecord)
+            .join(
+                LeaseRecord,
+                (LeaseRecord.job_id == JobRecord.job_id)
+                & (LeaseRecord.tenant_id == JobRecord.tenant_id),
+            )
+            .where(
+                JobRecord.tenant_id == tenant_id,
+                JobRecord.status == "leased",
+                LeaseRecord.tenant_id == tenant_id,
+                LeaseRecord.holder_id == holder_id,
+                LeaseRecord.released_at.is_(None),
+                LeaseRecord.expires_at > func.statement_timestamp(),
+            )
+            .order_by(LeaseRecord.acquired_at, LeaseRecord.lease_id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        ).one_or_none()
+        if replay is not None:
+            job, lease = replay
+            return JobClaim(
+                job_id=job.job_id,
+                run_id=job.run_id,
+                tenant_id=job.tenant_id,
+                job_type=job.job_type,
+                input_ref=job.input_ref,
+                lease_id=lease.lease_id,
+                holder_id=lease.holder_id,
+                fencing_token=lease.fencing_token,
+                attempt_count=job.attempt_count,
+                replayed=True,
+            )
+
+        job = self._session.execute(
+            select(JobRecord)
+            .where(
+                JobRecord.tenant_id == tenant_id,
+                JobRecord.status == "queued",
+                JobRecord.available_at <= func.statement_timestamp(),
+                JobRecord.attempt_count < JobRecord.max_attempts,
+            )
+            .order_by(JobRecord.available_at, JobRecord.created_at, JobRecord.job_id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        ).scalar_one_or_none()
+        if job is None:
+            return None
+
+        job.current_fencing_token += 1
+        job.status = "leased"
+        job.attempt_count += 1
+        job.updated_at = func.statement_timestamp()
+        self._session.flush()
+        lease = LeaseRecord(
+            lease_id=uuid.uuid4(),
+            job_id=job.job_id,
+            tenant_id=tenant_id,
+            holder_id=holder_id,
+            fencing_token=job.current_fencing_token,
+            audit_receipt_id=audit_receipt_id,
+            expires_at=func.statement_timestamp() + timedelta(seconds=lease_seconds),
+        )
+        self._session.add(lease)
+        self._session.flush()
+        return JobClaim(
+            job_id=job.job_id,
+            run_id=job.run_id,
+            tenant_id=job.tenant_id,
+            job_type=job.job_type,
+            input_ref=job.input_ref,
+            lease_id=lease.lease_id,
+            holder_id=lease.holder_id,
+            fencing_token=lease.fencing_token,
+            attempt_count=job.attempt_count,
+            replayed=False,
+        )
 
     def acquire_lease(
         self,
