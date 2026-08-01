@@ -132,4 +132,3 @@ class ConstraintEnvelope(BaseModel):
 
 
 CONSTRAINT_ADAPTER = TypeAdapter(Constraint)
-

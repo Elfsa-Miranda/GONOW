@@ -2371,6 +2371,8 @@ function Get-P05001ChangedPaths {
 
 function Get-P07001ChangedPaths {
   $Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard)
+  $CandidateCommit=(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- 'contracts/itinerary-constraints-v1.schema.json').Trim()
+  if($CandidateCommit-cmatch'^[0-9a-f]{40}$'){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)}
   return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
 }
 
