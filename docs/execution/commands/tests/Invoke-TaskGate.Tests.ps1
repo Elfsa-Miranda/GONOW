@@ -99,6 +99,14 @@ if ($RunnerText -notmatch 'Get-P09003GateModeState' -or
     $RunnerText -notmatch 'p09_003_security_failed') {
   throw 'negative: P09-003 must own restart recovery, minimal persistence, terminal cleanup, and storage security gates'
 }
+if ($RunnerText -notmatch 'Get-P09004GateModeState' -or
+    $RunnerText -notmatch 'p09_004_verify_failed' -or
+    $RunnerText -notmatch 'backoff_attempts_total=15' -or
+    $RunnerText -notmatch 'duplicate_side_effect_count=0' -or
+    $RunnerText -notmatch 'identity_denied_mismatch' -or
+    $RunnerText -notmatch 'p09_004_security_failed') {
+  throw 'negative: P09-004 must own bounded SSE recovery, de-duplication, control authorization, and audit gates'
+}
 if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'
