@@ -15,12 +15,11 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-import pytest
-
-
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 site.addsitedir(str(SERVICE_ROOT / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(SERVICE_ROOT))
+
+import pytest  # noqa: E402
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
@@ -99,6 +98,11 @@ PROBE_EXECUTABLE = Path(getattr(sys, "_base_executable", sys.executable)).resolv
 
 class WorkerSession(Session):
     pass
+
+
+def test_scenario_worker_bootstrap_precedes_third_party_imports() -> None:
+    source = Path(__file__).read_text(encoding="utf-8")
+    assert source.index("site.addsitedir") < source.index("import pytest")
 
 
 @event.listens_for(WorkerSession, "after_begin")
