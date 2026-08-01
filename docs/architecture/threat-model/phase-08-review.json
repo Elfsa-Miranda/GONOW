@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 8",
+  "candidate_head_oid": "c8a2f4f30284fee1141d12212011fd8beace8838",
+  "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
+  "reviewed_contract": "docs/architecture/bounded-research.md",
+  "model_changed": true,
+  "security_owner": "Security",
+  "reviewer_actor_id": "codex-phase-08-implementer-local-review",
+  "reviewer_is_implementer": true,
+  "independent_review_status": "pending_external",
+  "formal_review_status": "pending_external",
+  "accepted": false,
+  "local_review": {
+    "production_activation_allowed": false,
+    "write_capability_count": 0,
+    "prompt_or_secret_contract_field_count": 0,
+    "unknown_version_fail_open_count": 0,
+    "branch_budget_overrun_count": 0,
+    "cross_branch_budget_borrow_count": 0,
+    "conflicting_source_deletion_count": 0,
+    "active_cohort_count": 0,
+    "production_sample_count": 0,
+    "multi_agent_candidate_opened_count": 0,
+    "kill_switch_verified": true,
+    "phase_7_byte_compatibility_verified": true
+  },
+  "production_write_count": 0,
+  "remote_push_count": 0
+}

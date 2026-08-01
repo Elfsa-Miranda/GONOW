@@ -249,3 +249,25 @@ stop reason, then the solver child/deadline only when the solver was enabled. Se
 `docs/architecture/validation-repair.md`, `docs/api/validation-errors.md`, and
 `docs/runbooks/solver-isolation.md`. Independent review, production-like validation, remote merge,
 deployment, and formal acceptance remain pending.
+
+## Bounded research experiment (local provisional)
+
+Phase 8 adds a local, read-only research-branch candidate. Strict typed contracts admit only
+versioned `ResearchRequest`, `EvidenceBundle`, and `MergeDecision` values. A shared per-Run budget
+allows at most two branches, does not lend unused quota between branches, and accounts for every
+physical retry. The deterministic merger preserves conflicting evidence and produces the same
+decision digest for every permutation of equivalent inputs.
+
+The experiment router is disabled by default. `off`, active-cohort, or kill-switch states use the
+Phase 7 path byte-for-byte and make zero research calls. Authorized local exercises are limited to
+offline, replay, or shadow modes; they do not write domain data or activate a production cohort.
+The pre-registered 48-observation synthetic A/B dataset did not meet the strict quality, latency,
+or cost trigger, so the recorded decision is `none`: no Multi-Agent Phase 12C candidate was opened.
+This conclusion preserves the stated preference for Multi-Agent as context but does not treat a
+preference or synthetic fixture as production evidence.
+
+If the path misbehaves, set the kill switch or leave the feature off, verify the Phase 7 output
+digest, then inspect the typed request version, branch allocation ledger, physical retry counts,
+and deterministic merge digest. See `docs/architecture/bounded-research.md`,
+`docs/api/branch-experiment.md`, and `docs/runbooks/research-flag.md`. Independent review,
+production traffic evidence, remote merge, deployment, and formal acceptance remain pending.
