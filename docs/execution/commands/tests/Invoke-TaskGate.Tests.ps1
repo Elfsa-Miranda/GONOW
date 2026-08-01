@@ -165,6 +165,18 @@ if ($RunnerText -notmatch 'Get-P10006GateModeState' -or
     $RunnerText -notmatch 'p10_006_rollback_verification_failed') {
   throw 'negative: P10-006 must own double-label calibration metrics, advisory fallback, Harness 30, security, evidence, workset, and rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10007GateModeState' -or
+    $RunnerText -notmatch 'p10_007_verify_failed' -or
+    $RunnerText -notmatch 'allocation_sequence' -or
+    $RunnerText -notmatch 'extend_current_gate' -or
+    $RunnerText -notmatch 'skip_gate_allowed' -or
+    $RunnerText -notmatch 'p10_007_security_failed' -or
+    $RunnerText -notmatch 'unreviewed_user_eligible_count' -or
+    $RunnerText -notmatch 'p10_007_workset_failed' -or
+    $RunnerText -notmatch 'p10_007_evidence_failed' -or
+    $RunnerText -notmatch 'p10_007_rollback_verification_failed') {
+  throw 'negative: P10-007 must own sequential cohorts, sample extension, privacy, stop rules, evidence, workset, and allocation-zero rollback gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
