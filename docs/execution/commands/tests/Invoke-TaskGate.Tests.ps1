@@ -91,6 +91,14 @@ if ($RunnerText -notmatch 'Get-P09002GateModeState' -or
     $RunnerText -notmatch 'p09_002_security_failed') {
   throw 'negative: P09-002 must own typed HTTP corpus, safe fallback, exception containment, and security gates'
 }
+if ($RunnerText -notmatch 'Get-P09003GateModeState' -or
+    $RunnerText -notmatch 'p09_003_verify_failed' -or
+    $RunnerText -notmatch 'restart_restore_passed' -or
+    $RunnerText -notmatch 'persisted_field_count=4' -or
+    $RunnerText -notmatch 'arbitrary_sql_executor_count' -or
+    $RunnerText -notmatch 'p09_003_security_failed') {
+  throw 'negative: P09-003 must own restart recovery, minimal persistence, terminal cleanup, and storage security gates'
+}
 if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'
