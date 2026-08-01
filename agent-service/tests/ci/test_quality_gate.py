@@ -200,6 +200,10 @@ def check_licenses(root: Path) -> tuple[list[str], dict[str, Any]]:
 
 def check_workflow(root: Path) -> tuple[list[str], dict[str, Any]]:
     workflow = (root / ".github" / "workflows" / "agent-ci.yml").read_text(encoding="utf-8")
+    provisioner = (root / "agent-service" / "scripts" / "provision_ci_postgres.ps1").read_text(
+        encoding="utf-8"
+    )
+    contract = f"{workflow}\n{provisioner}"
     required = [
         "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
         "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b",
@@ -207,11 +211,27 @@ def check_workflow(root: Path) -> tuple[list[str], dict[str, Any]]:
         'version: "0.10.9"',
         "uv python install 3.13.9",
         "contents: read",
+        "Provision isolated PostgreSQL contract database",
+        "initdb.exe",
+        "pg_ctl.exe",
+        "--auth-host=trust",
+        '"--options=-p $Port -h 127.0.0.1"',
+        "CREATE ROLE gonow_migrator_test LOGIN SUPERUSER",
+        "CREATE ROLE gonow_bootstrap_admin LOGIN SUPERUSER",
+        "--owner=gonow_migrator_test",
+        "gonow_p03_test",
+        "GONOW_P03_009_POSTGRES_BIN",
+        "Stop isolated PostgreSQL contract database",
     ]
-    forbidden = ["continue-on-error:", "|| true", "--no-locked", "deploy"]
-    failures = [f"missing:{value}" for value in required if value not in workflow]
-    failures += [f"forbidden:{value}" for value in forbidden if value in workflow.lower()]
-    return failures, {"immutable_action_count": 3, "floating_install_count": 0, "automatic_deploy_count": 0}
+    forbidden = ["continue-on-error:", "|| true", "--no-locked", "deploy", "0.0.0.0"]
+    failures = [f"missing:{value}" for value in required if value not in contract]
+    failures += [f"forbidden:{value}" for value in forbidden if value in contract.lower()]
+    return failures, {
+        "immutable_action_count": 3,
+        "floating_install_count": 0,
+        "automatic_deploy_count": 0,
+        "isolated_postgres_contract": 1,
+    }
 
 
 def main() -> int:

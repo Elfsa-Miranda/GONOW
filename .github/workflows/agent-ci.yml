@@ -44,12 +44,31 @@ jobs:
         shell: pwsh
         run: uv python install 3.13.9
 
+      - name: Provision isolated PostgreSQL contract database
+        shell: powershell
+        run: >-
+          .\agent-service\scripts\provision_ci_postgres.ps1
+          -Mode Start
+          -Port 55432
+          -DataRoot "$env:RUNNER_TEMP\gonow-postgres-17"
+          -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
+
       - name: Run every mandatory Agent gate
         shell: powershell
         run: >-
           .\agent-service\scripts\ci.ps1
           -UvPath (Get-Command uv).Source
           -PythonVersion 3.13.9
+          -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
+
+      - name: Stop isolated PostgreSQL contract database
+        if: ${{ always() }}
+        shell: powershell
+        run: >-
+          .\agent-service\scripts\provision_ci_postgres.ps1
+          -Mode Stop
+          -Port 55432
+          -DataRoot "$env:RUNNER_TEMP\gonow-postgres-17"
           -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
 
       - name: Upload bounded gate reports

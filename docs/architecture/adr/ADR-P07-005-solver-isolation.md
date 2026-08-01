@@ -15,9 +15,9 @@ The official package index identified `ortools==9.15.6755` as the current releas
 
 1. Pin `ortools==9.15.6755` and regenerate the complete `uv.lock` graph.
 2. Keep the feature disabled unless an explicit process-local flag constructs `SolverProcessRunner(enabled=True)`. The initial trigger is also bounded by a typed item-count threshold.
-3. Import OR-Tools only inside a spawned, daemonized child process. The parent and child exchange one versioned Pydantic JSON request/result; no URL, command, module, environment override, tenant data, Prompt, secret, or arbitrary callable crosses IPC.
-4. Set the CP-SAT soft limit from a bounded typed field. The parent joins only until the later hard deadline, then kills and joins the child before returning a deterministic original-order fallback.
-5. A child crash, missing result, soft timeout, hard timeout, disabled flag, or unmet trigger always returns a typed stable reason and a valid fallback. It never retries, performs a Domain Command, or changes canonical validation results.
+3. Import OR-Tools only inside a spawned, daemonized child process. The parent sends one versioned Pydantic JSON request, and the child returns typed, versioned `ready` and `result` messages; no URL, command, module, environment override, tenant data, Prompt, secret, or arbitrary callable crosses IPC.
+4. Bound native import/process readiness separately from solver execution. The child emits a typed, versioned `ready` message only after the OR-Tools import succeeds; the parent then starts the solver hard deadline. Startup timeout and solver hard timeout both kill and join the child before returning a deterministic original-order fallback. This prevents Windows spawn/native cold-import latency from consuming the solver execution budget while preserving a parent-owned upper bound for both stages.
+5. A child crash, invalid readiness/result IPC, missing result, startup timeout, soft timeout, hard timeout, disabled flag, or unmet trigger always returns a typed stable reason and a valid fallback. It never retries, performs a Domain Command, or changes canonical validation results.
 6. Treat CT-014 as mandatory while the dependency and enabled execution path exist. The replay test must prove the killed solver is gone, the test/main process remains alive, and fallback remains importable.
 
 ## Alternatives considered
@@ -33,7 +33,7 @@ The official package index identified `ortools==9.15.6755` as the current releas
 
 - OR-Tools and its transitive native/data-science packages increase artifact size and supply-chain review scope; exact lock, SBOM, license, vulnerability, maintenance, and provenance evidence are mandatory.
 - No default production enablement, traffic allocation, or performance claim is made. Production activation requires formal approvals and measured evidence.
-- The child accepts only bounded scheduling primitives and cannot execute tools or reach network locations.
+- The child accepts only bounded scheduling primitives and cannot execute tools or reach network locations. `startup_timeout_seconds` is typed to 1–60 seconds and defaults to 30 seconds; the solver soft/hard budgets remain independently bounded at 10/15 seconds maximum.
 - Formal adoption is pending; this ADR does not authorize push, merge, deployment, production traffic, or Release acceptance.
 
 ## Rollback

@@ -20,8 +20,9 @@ def _problem(*, simulate_hang: bool = False) -> SolverProblem:
     return SolverProblem(
         item_ids=("item_a", "item_b"),
         durations=(30, 45),
-        soft_timeout_seconds=0.1 if simulate_hang else 1.0,
-        hard_timeout_seconds=0.3 if simulate_hang else 15.0,
+        startup_timeout_seconds=30.0,
+        soft_timeout_seconds=0.1 if simulate_hang else 0.2,
+        hard_timeout_seconds=0.3 if simulate_hang else 0.5,
         simulate_hang=simulate_hang,
     )
 
@@ -84,3 +85,11 @@ def test_isolated_solver_returns_typed_result() -> None:
     assert result.optimized
     assert result.fallback_valid
     assert result.child_pid not in (None, os.getpid())
+
+
+def test_native_import_startup_budget_is_separate_from_solver_deadline() -> None:
+    problem = _problem()
+    assert problem.startup_timeout_seconds > problem.hard_timeout_seconds
+    result = SolverProcessRunner(enabled=True, trigger_item_count=2).solve(problem)
+    assert result.reason_code == "solver.completed"
+    assert result.optimized
