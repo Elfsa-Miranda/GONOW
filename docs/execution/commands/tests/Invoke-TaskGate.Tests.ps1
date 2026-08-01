@@ -84,6 +84,13 @@ if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'Set-ReadyForReviewStatus') {
   throw 'negative: P09-001 must own deterministic codegen, non-regression, supply-chain, and status gates'
 }
+if ($RunnerText -notmatch 'Get-P09002GateModeState' -or
+    $RunnerText -notmatch 'p09_002_verify_failed' -or
+    $RunnerText -notmatch 'http_error_corpus_total=9' -or
+    $RunnerText -notmatch 'repository_exception_leak_count' -or
+    $RunnerText -notmatch 'p09_002_security_failed') {
+  throw 'negative: P09-002 must own typed HTTP corpus, safe fallback, exception containment, and security gates'
+}
 if ($RunnerText -notmatch "TASK-P01-002" -or
     $RunnerText -notmatch 'domain_write_const_false_count') {
   throw 'negative: P01-002 must keep validation results outside the formal write authority'
