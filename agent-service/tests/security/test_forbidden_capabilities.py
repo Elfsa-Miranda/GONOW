@@ -7,7 +7,8 @@ from pathlib import Path
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = SERVICE_ROOT / "app"
-BANNED_DEPENDENCIES = {"anthropic", "langchain", "langgraph", "llama-index", "openai"}
+BANNED_DEPENDENCIES = {"anthropic", "langchain", "llama-index", "openai"}
+LOCKED_LANGGRAPH_VERSION = "1.2.9"
 
 
 def _source() -> str:
@@ -26,15 +27,20 @@ def _imports() -> set[str]:
     return imported
 
 
-def test_no_model_or_graph_provider_imports() -> None:
+def test_no_model_provider_or_unapproved_framework_imports() -> None:
     assert _imports().isdisjoint(BANNED_DEPENDENCIES)
 
 
-def test_no_model_or_graph_dependencies_are_locked() -> None:
+def test_only_approved_graph_dependency_is_locked() -> None:
     pyproject = (SERVICE_ROOT / "pyproject.toml").read_text(encoding="utf-8").lower()
     lock = (SERVICE_ROOT / "uv.lock").read_text(encoding="utf-8").lower()
     assert all(f'name = "{name}"' not in lock for name in BANNED_DEPENDENCIES)
     assert all(f'"{name}' not in pyproject for name in BANNED_DEPENDENCIES)
+    assert f'"langgraph=={LOCKED_LANGGRAPH_VERSION}"' in pyproject
+    assert (
+        'name = "langgraph"' in lock
+        and f'version = "{LOCKED_LANGGRAPH_VERSION}"' in lock
+    )
 
 
 def test_llm_tool_and_graph_execution_call_counts_are_zero() -> None:
