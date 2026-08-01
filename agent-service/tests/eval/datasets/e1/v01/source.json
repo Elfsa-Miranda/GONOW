@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "gonow-e1-synthetic-v01",
+  "source_type": "synthetic_generated_v01",
+  "license": "CC0-1.0",
+  "sensitivity": "synthetic_no_pii",
+  "retention": "repository_lifetime",
+  "deletion_policy": "remove_revision_by_approved_change",
+  "real_user_record_count": 0
+}
