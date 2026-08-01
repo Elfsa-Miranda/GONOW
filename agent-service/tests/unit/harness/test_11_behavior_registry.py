@@ -148,6 +148,26 @@ def test_11_behavior_registry_s_reads_immutable_release(registry_database) -> No
     assert persisted.lifecycle_state == "offline_qualified"
 
 
+def test_11_behavior_registry_s_resolves_qualified_deployment(registry_database) -> None:
+    factory = registry_database
+    release = _release(factory, 1)
+    with factory.begin() as session:
+        repository = BehaviorRepository(session)
+        repository.create_deployment(
+            context=_context("audit-harness-deployment-resolve"),
+            behavior_key=BEHAVIOR_KEY,
+            environment="test",
+            release_id=release.release_id,
+        )
+        resolved = repository.resolve_deployed_release(
+            behavior_key=BEHAVIOR_KEY,
+            environment="test",
+        )
+    assert resolved.release_id == release.release_id
+    assert resolved.package_digest == release.package_digest
+    assert resolved.audit_receipt_id
+
+
 def test_11_behavior_registry_i_modifying_existing_digest_is_rejected(registry_database) -> None:
     factory = registry_database
     release = _release(factory, 1)

@@ -57,6 +57,17 @@ class BehaviorWriteContext:
     audit_receipt_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class ResolvedBehaviorRelease:
+    release_id: uuid.UUID
+    behavior_key: str
+    release_version: str
+    package_digest: str
+    certification_id: uuid.UUID
+    audit_receipt_id: str
+    generation: int
+
+
 class BehaviorRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -228,6 +239,50 @@ class BehaviorRepository:
         )
         self._session.flush()
         return deployment
+
+    def resolve_deployed_release(
+        self,
+        *,
+        behavior_key: str,
+        environment: str,
+    ) -> ResolvedBehaviorRelease:
+        """Resolve one qualified deployment into a detached immutable release view."""
+
+        row = self._session.execute(
+            select(
+                BehaviorReleaseRecord,
+                BehaviorDeploymentRecord.generation,
+            )
+            .join(
+                BehaviorDeploymentRecord,
+                BehaviorDeploymentRecord.release_id == BehaviorReleaseRecord.release_id,
+            )
+            .join(
+                BehaviorCertificationRecord,
+                BehaviorCertificationRecord.certification_id
+                == BehaviorReleaseRecord.certification_id,
+            )
+            .where(
+                BehaviorDeploymentRecord.behavior_key == behavior_key,
+                BehaviorDeploymentRecord.environment == environment,
+                BehaviorReleaseRecord.behavior_key == behavior_key,
+                BehaviorCertificationRecord.result == "qualified",
+            )
+        ).one_or_none()
+        if row is None:
+            raise BehaviorNotQualified()
+        release, generation = row
+        if not release.audit_receipt_id:
+            raise BehaviorNotQualified()
+        return ResolvedBehaviorRelease(
+            release_id=release.release_id,
+            behavior_key=release.behavior_key,
+            release_version=release.release_version,
+            package_digest=release.package_digest,
+            certification_id=release.certification_id,
+            audit_receipt_id=release.audit_receipt_id,
+            generation=generation,
+        )
 
     def move_pointer(
         self,
