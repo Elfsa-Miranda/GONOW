@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import re
+import time
 from typing import Any, cast
 import uuid
 
@@ -42,6 +43,8 @@ from app.persistence.repositories.jobs import JobsRepository
 
 CURRENT_ENVELOPE_VERSION = 2
 MAX_CHECKPOINT_BYTES = 1_048_576
+CHECKPOINT_VISIBILITY_TIMEOUT_SECONDS = 5.0
+CHECKPOINT_VISIBILITY_POLL_SECONDS = 0.01
 SCHEMA_DIGEST = hashlib.sha256(b"gonow-checkpoint-envelope-v2").hexdigest()
 SECRET_CANARY = re.compile(
     r"(?i)(sk-[a-z0-9]{16,}|github_pat_[a-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)"
@@ -120,6 +123,13 @@ class UnsupportedCheckpointVersion(RuntimeError):
 
 class CorruptCheckpoint(RuntimeError):
     code = "checkpoint.corrupt"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
+class CheckpointVisibilityTimeout(RuntimeError):
+    code = "checkpoint.metadata_not_visible"
 
     def __init__(self) -> None:
         super().__init__(self.code)
@@ -382,15 +392,24 @@ class GoNowPostgresCheckpointSaver(BaseCheckpointSaver[str]):
         with self._session_factory.begin() as session:
             self._set_tenant(session, identity.tenant_id)
             self._assert_fence(session, identity)
-            metadata_record = session.execute(
-                select(CheckpointMetadataRecord)
-                .where(
-                    CheckpointMetadataRecord.checkpoint_id == identity.checkpoint_id,
-                    CheckpointMetadataRecord.tenant_id == identity.tenant_id,
-                    CheckpointMetadataRecord.run_id == identity.run_id,
-                )
-                .with_for_update()
-            ).scalar_one()
+            deadline = time.monotonic() + CHECKPOINT_VISIBILITY_TIMEOUT_SECONDS
+            while True:
+                metadata_record = session.execute(
+                    select(CheckpointMetadataRecord)
+                    .where(
+                        CheckpointMetadataRecord.checkpoint_id == identity.checkpoint_id,
+                        CheckpointMetadataRecord.tenant_id == identity.tenant_id,
+                        CheckpointMetadataRecord.run_id == identity.run_id,
+                    )
+                    .with_for_update()
+                ).scalar_one_or_none()
+                if metadata_record is not None:
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise CheckpointVisibilityTimeout()
+                time.sleep(min(CHECKPOINT_VISIBILITY_POLL_SECONDS, remaining))
+            self._assert_fence(session, identity)
             for index, channel, value, digest in normalized_writes:
                 inserted = session.execute(
                     pg_insert(checkpoint_pending_writes)

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import importlib.metadata
 import json
 import os
 import site
 import sys
+import threading
 import uuid
 from pathlib import Path
 from typing import TypedDict
@@ -17,6 +19,7 @@ from sqlalchemy import create_engine, event, func, inspect, select, text, update
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.schema import CreateSchema, DropSchema
+from langgraph.checkpoint.base import empty_checkpoint
 from langgraph.graph import END, START, StateGraph
 
 
@@ -34,6 +37,7 @@ from app.runtime.checkpoint import (  # noqa: E402
     UnsafeCheckpoint,
     _canonical_json,
     checkpoint_payloads,
+    checkpoint_pending_writes,
 )
 
 
@@ -358,6 +362,73 @@ def test_langgraph_roundtrip_v1_upgrade_and_migration_rebuild(
             "production_write_count": 0,
         }
     )
+
+
+def test_pending_writes_wait_for_concurrent_checkpoint_commit(
+    checkpoint_database,
+) -> None:
+    _, admin_engine, _, owner_factory, worker_factory = checkpoint_database
+    run_id, job_id, token = _seed(owner_factory)
+    saver = GoNowPostgresCheckpointSaver(worker_factory)
+    checkpoint = empty_checkpoint()
+    checkpoint_id = uuid.UUID(str(checkpoint["id"]))
+    base_config = _graph_config(run_id, job_id, token)
+    writes_config = {
+        **base_config,
+        "configurable": {
+            **base_config["configurable"],
+            "checkpoint_id": str(checkpoint_id),
+        },
+    }
+    first_metadata_read = threading.Event()
+
+    def observe_metadata_read(
+        connection,
+        cursor,
+        statement: str,
+        parameters,
+        context,
+        executemany: bool,
+    ) -> None:
+        del connection, cursor, parameters, context, executemany
+        normalized = " ".join(statement.lower().split())
+        if "from agent_runtime.checkpoint_metadata" in normalized and "for update" in normalized:
+            first_metadata_read.set()
+
+    event.listen(admin_engine, "after_cursor_execute", observe_metadata_read)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(
+                saver.put_writes,
+                writes_config,
+                [("checkpoint_race", {"value": 1})],
+                "task-checkpoint-race",
+            )
+            assert first_metadata_read.wait(timeout=2.0)
+            returned = saver.put(
+                base_config,
+                checkpoint,
+                {"source": "loop", "step": 0, "parents": {}},
+                {},
+            )
+            pending.result(timeout=5.0)
+    finally:
+        event.remove(admin_engine, "after_cursor_execute", observe_metadata_read)
+
+    assert returned["configurable"]["checkpoint_id"] == str(checkpoint_id)
+    with owner_factory.begin() as session:
+        _set_tenant(session, TENANT)
+        record = session.get(CheckpointMetadataRecord, checkpoint_id)
+        assert record is not None
+        assert record.pending_writes_ref is not None
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(checkpoint_pending_writes)
+                .where(checkpoint_pending_writes.c.checkpoint_id == checkpoint_id)
+            )
+            == 1
+        )
 
 
 def test_unsafe_checkpoint_is_rejected_before_any_payload_write(
