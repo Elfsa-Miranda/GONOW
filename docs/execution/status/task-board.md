@@ -103,19 +103,19 @@ Generated from the 1.4.0 TaskGate Catalog and per-task status records.
 | TASK-P08-005 | Phase 8 | ready_for_review |
 | TASK-P08-006 | Phase 8 | ready_for_review |
 | TASK-P08-089 | Phase 8 | ready_for_review |
-| TASK-P08-990 | Phase 8 | not_started |
+| TASK-P08-990 | Phase 8 | ready_for_review |
 | TASK-P08-999 | Phase 8 | not_started |
-| TASK-P09-001 | Phase 9 | not_started |
-| TASK-P09-002 | Phase 9 | not_started |
-| TASK-P09-003 | Phase 9 | not_started |
-| TASK-P09-004 | Phase 9 | not_started |
-| TASK-P09-005 | Phase 9 | not_started |
-| TASK-P09-006 | Phase 9 | not_started |
-| TASK-P09-007 | Phase 9 | not_started |
-| TASK-P09-008 | Phase 9 | not_started |
-| TASK-P09-009 | Phase 9 | not_started |
-| TASK-P09-010 | Phase 9 | not_started |
-| TASK-P09-089 | Phase 9 | not_started |
+| TASK-P09-001 | Phase 9 | ready_for_review |
+| TASK-P09-002 | Phase 9 | ready_for_review |
+| TASK-P09-003 | Phase 9 | ready_for_review |
+| TASK-P09-004 | Phase 9 | ready_for_review |
+| TASK-P09-005 | Phase 9 | ready_for_review |
+| TASK-P09-006 | Phase 9 | ready_for_review |
+| TASK-P09-007 | Phase 9 | ready_for_review |
+| TASK-P09-008 | Phase 9 | ready_for_review |
+| TASK-P09-009 | Phase 9 | ready_for_review |
+| TASK-P09-010 | Phase 9 | ready_for_review |
+| TASK-P09-089 | Phase 9 | ready_for_review |
 | TASK-P09-990 | Phase 9 | not_started |
 | TASK-P09-999 | Phase 9 | not_started |
 | TASK-P10-001 | Phase 10 | not_started |
@@ -128,7 +128,7 @@ Generated from the 1.4.0 TaskGate Catalog and per-task status records.
 | TASK-P10-008 | Phase 10 | not_started |
 | TASK-P10-009 | Phase 10 | not_started |
 | TASK-P10-010 | Phase 10 | not_started |
-| TASK-P10-011 | Release B（Phase 10 后置，不计入接受分母） | not_started |
+| TASK-P10-011 | Release B (post Phase 10) | not_started |
 | TASK-P10-089 | Phase 10 | not_started |
 | TASK-P10-990 | Phase 10 | not_started |
 | TASK-P10-999 | Phase 10 | not_started |
