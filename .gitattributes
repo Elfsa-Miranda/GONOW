@@ -8,9 +8,11 @@
 /agent-service/*.toml text eol=lf
 /agent-service/**/*.mako text eol=lf
 /agent-service/**/*.ps1 text eol=lf
+/agent-service/tests/eval/datasets/e0/** text eol=lf
 /docs/architecture/adr/ADR-P03-001-postgresql-driver.md text eol=lf
 /docs/execution/blockers/phase-03/**/*.md text eol=lf
 /docs/execution/commands/Invoke-TaskGate.ps1 text eol=lf
+/docs/execution/evidence/phase-04/P04-000/** text eol=lf
 /docs/execution/evidence/phase-03/**/*.json text eol=lf
 /docs/execution/evidence/phase-03/**/*.md text eol=lf
 /docs/execution/evidence/phase-03/**/*.xml text eol=lf
