@@ -198,6 +198,17 @@ if ($RunnerText -notmatch 'Get-P10009GateModeState' -or
     $RunnerText -notmatch 'p10_009_rollback_verification_failed') {
   throw 'negative: P10-009 must fail closed on unavailable production rollout observations while retaining security, evidence, workset, and old-route rollback gates'
 }
+if ($RunnerText -notmatch 'Get-P10010GateModeState' -or
+    $RunnerText -notmatch 'critical_slices' -or
+    $RunnerText -notmatch 'sample_sufficiency' -or
+    $RunnerText -notmatch 'required_owner_approval_missing' -or
+    $RunnerText -notmatch 'p10_009\.artifact_sha256' -or
+    $RunnerText -notmatch 'p10_010_security_failed' -or
+    $RunnerText -notmatch 'p10_010_workset_failed' -or
+    $RunnerText -notmatch 'p10_010_evidence_failed' -or
+    $RunnerText -notmatch 'p10_010_rollback_verification_failed') {
+  throw 'negative: P10-010 must own six-slice threshold, accepted P10-009 binding, approvals, P0/P1, rollback, security, evidence, and workset gates'
+}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
