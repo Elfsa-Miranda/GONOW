@@ -9,12 +9,16 @@ network protocol were deliberately not added.
 
 ## Hardest items
 
-Two items required root-cause closure. First, the canonical validator runner initially invoked the
-wrong quality target; the call was corrected and the affected validator/format/lint/type suite was
-rerun. Second, Windows/Python 3.13 native OR-Tools cold import measured 8.9795798 seconds, exceeding
-the original normal test deadline. Queue deadlock and model infeasibility were excluded; one-way
-typed Pipe IPC was retained, the bounded normal deadline became 15 seconds, and deterministic hang
-injection moved before native import so CT-014 tests the intended hard-kill boundary.
+Three items required root-cause closure. First, the P07-001 runner lost quoted inline-probe arguments
+and, after commit, lost the task write set; base64 transport with the correct argument offset plus a
+task-start ancestry union restored 15/15 fixtures and zero unexpected paths without changing schema
+semantics. Second, P07-004 initially anchored to an older multi-file commit because
+`evidence_gate.py` pre-existed the task; requiring the anchor to descend from the task-start CAS head
+restored exact workset accounting without changing Evidence Gate behavior. Third, Windows/Python
+3.13 native OR-Tools cold import measured 8.9795798 seconds, exceeding the original normal test
+deadline. Queue deadlock and model infeasibility were excluded; one-way typed Pipe IPC was retained,
+the bounded normal deadline became 15 seconds, and deterministic hang injection moved before native
+import so CT-014 tests the intended hard-kill boundary.
 
 ## Operations must know
 
