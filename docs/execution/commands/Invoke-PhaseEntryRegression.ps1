@@ -109,6 +109,16 @@ if ($LASTEXITCODE -ne 0) {
   exit 3
 }
 $Source = Get-Content -LiteralPath $SourceRecordPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+$SourceHeadOid = [string]$Source.head_oid
+if ($SourceHeadOid -cnotmatch '^[0-9a-f]{40}$') {
+  [Console]::Error.WriteLine('phase_entry_source_head_invalid')
+  exit 3
+}
+& git -C $RepositoryRoot merge-base --is-ancestor $SourceHeadOid $Head 2>$null
+if ($LASTEXITCODE -ne 0) {
+  [Console]::Error.WriteLine('phase_entry_source_head_not_ancestor')
+  exit 3
+}
 $SourceReady = [string]$Source.status -in @('ready_for_review', 'accepted')
 $SourceIndependent = [bool]$Source.reviewer_independent
 $Boot005ReportPath = Join-Path $RepositoryRoot 'docs\execution\evidence\boot\BOOT-005\bootstrap-toolchain-revalidation.json'
@@ -140,10 +150,11 @@ $Manifest = [ordered]@{
   phase_base_source_ref = "phase-base-source:$($TargetPhaseCode.ToLowerInvariant())"
   phase_base_oid = $ResolvedPhaseBaseOid
   provisional_base_oid = if ($ExecutionMode -ceq 'local_provisional') { $ResolvedPhaseBaseOid } else { $null }
-  formal_phase_base_oid = if ($FormalAccepted) { [string]$Source.head_oid } else { $null }
+  formal_phase_base_oid = if ($FormalAccepted) { $ResolvedPhaseBaseOid } else { $null }
   source_record_path = $SourceRecordPath.Replace($RepositoryRoot + '\', '').Replace('\', '/')
   source_record_sha256 = $SourceHash
   source_task_id = [string]$Source.task_id
+  source_head_oid = $SourceHeadOid
   source_status = [string]$Source.status
   catalog_path = $CatalogPath.Replace($RepositoryRoot + '\', '').Replace('\', '/')
   catalog_sha256 = $CatalogHash
@@ -166,6 +177,7 @@ if (Test-Path -LiteralPath $OutputPath -PathType Leaf) {
   $Conflict =
     [string]$Existing.task_id -cne $TaskId -or
     [string]$Existing.phase_base_oid -cne $ResolvedPhaseBaseOid -or
+    [string]$Existing.source_head_oid -cne $SourceHeadOid -or
     [string]$Existing.source_record_sha256 -cne $SourceHash -or
     [string]$Existing.catalog_sha256 -cne $CatalogHash -or
     [string]$Existing.plan_sha256 -cne $PlanHash
@@ -183,6 +195,7 @@ if (Test-Path -LiteralPath $OutputPath -PathType Leaf) {
   task_id = $TaskId
   phase_runtime_manifest = if ($Created) { 'created' } else { 'existing_exact' }
   phase_base_oid = $ResolvedPhaseBaseOid
+  source_head_oid = $SourceHeadOid
   source_record_path = $Manifest.source_record_path
   source_record_sha256 = $SourceHash
   catalog_sha256 = $CatalogHash

@@ -363,14 +363,71 @@ Invoke-Expression $ConditionalRegistryFunction.Extent.Text
 $ConditionalTaskIds=@($Catalog.Tasks.Keys|Where-Object{$_-cmatch'^TASK-(?:P11|P12(?:[A-D])?|REL-C-)'}|Sort-Object)
 if($ConditionalTaskIds.Count-ne24){throw "positive: expected 24 conditional Release C task cards, observed $($ConditionalTaskIds.Count)"}
 $RegisteredConditionalTasks=@($ConditionalTaskIds|Where-Object{[bool](Get-ConditionalTaskRunnerRegistryState -TaskIdValue $_ -ModeValue 'Preflight').registered})
-if(($RegisteredConditionalTasks-join',')-cne'TASK-REL-C-000'){throw 'negative: an unimplemented Phase 11/12/Release C task remains eligible for generic runner success'}
+if(($RegisteredConditionalTasks-join',')-cne'TASK-P11-000,TASK-REL-C-000'){throw 'negative: conditional runner registry differs from the two fully specialized entry tasks'}
 $UnimplementedConditionalTasks=@($ConditionalTaskIds|Where-Object{-not[bool](Get-ConditionalTaskRunnerRegistryState -TaskIdValue $_ -ModeValue 'Preflight').registered})
-if($UnimplementedConditionalTasks.Count-ne23){throw 'negative: conditional runner coverage inventory is incomplete'}
+if($UnimplementedConditionalTasks.Count-ne22){throw 'negative: conditional runner coverage inventory is incomplete'}
 $NonConditionalState=Get-ConditionalTaskRunnerRegistryState -TaskIdValue 'TASK-P10-011' -ModeValue 'Preflight'
 if([bool]$NonConditionalState.required-or-not[bool]$NonConditionalState.registered){throw 'negative: the conditional runner guard shadowed an already implemented non-conditional task'}
 $ConditionalGuardIndex=$RunnerText.IndexOf('$ConditionalRunnerState=Get-ConditionalTaskRunnerRegistryState',[StringComparison]::Ordinal)
 $EvidenceDirectoryIndex=$RunnerText.LastIndexOf('$TaskEvidenceDirectory = Get-TaskEvidenceDirectory',[StringComparison]::Ordinal)
 if($ConditionalGuardIndex-lt0-or$EvidenceDirectoryIndex-lt0-or$ConditionalGuardIndex-gt$EvidenceDirectoryIndex){throw 'negative: the conditional runner guard must reject before evidence/status directories are materialized'}
+$P11000RequiredChange=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6aqM6K+BIFJlbGVhc2UgQyBwYXRoPWBwaGFzZTExYOOAgeetvuWQjeOAgWN5Y2xlX2lkIOS4jiBDQVMgcmVjZWlwdCDihpIg54us56uL5aSN5qC4ID4yMCUg5YGH6K6+44CB5YiG5q+NL+eql+WPoy/or6/lt67lj4rorrjlj68v6ZqQ56eBL+WMuuWfny/liKDpmaTor4Hmja4gaGFzaCDihpIg5LuOIGFjY2VwdGVkIFNIQSDliJvlu7ogY2xlYW4gYnJhbmNoL3dvcmt0cmVlIOKGkiDlr7zlhaXlvJXnlKgvaGFzaOW5tuiusOW9lSBwaGFzZV9iYXNlX3NoYSDihpIg6K+B5piOIFBoYXNlIDEyIOS4juWFqOmDqOS4k+mhueWIhuaUr+S4jeWtmOWcqA=='))
+$P11000DetailBase64='5ZCI5qC86KeE5YiS5aSx6LSl5Lit56iz5a6a55+l6K+G57y65Y+j5Y2g5q+UID4yMCXvvIjpmIjlgLzlt7LmoKHlh4bvvInvvIxSZWxlYXNlIELnqLPlrprjgIHlkIzmnJ/ml6Dlhbbku5ZD6IO95Yqb44CBQURS562+572y44CC'
+$P11000Detail=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($P11000DetailBase64))
+$P11000Task=$Catalog.Tasks['TASK-P11-000']
+$P11000Inputs=@(
+  'docs/execution/evidence/releases/REL-C-000/path-selection.json',
+  'docs/execution/evidence/releases/REL-C-000/rag-trigger-evidence.json',
+  'docs/execution/status/TASK-REL-C-000.json',
+  'docs/execution/evidence/releases/B.json'
+)
+if($null-eq$P11000Task-or@($P11000Task.work_contract.required_changes).Count-ne1-or[string]$P11000Task.work_contract.required_changes[0]-cne$P11000RequiredChange-or
+   @($P11000Inputs|Where-Object{$_-notin@($P11000Task.read_only_inputs)}).Count-ne0){throw 'negative: P11-000 Catalog does not bind its exact required change and immutable Release C/Release B inputs'}
+foreach($P11000Mode in @('Security','Verify','Evidence','Preflight','WorkPreflight','WorksetVerify','RollbackVerify')){
+  $HandlerAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq("Invoke-Mode"+$P11000Mode)},$true)
+  if($null-eq$HandlerAst-or$HandlerAst.Extent.Text-cnotmatch 'if \(\$TaskId -ceq ''TASK-P11-000''\) \{'){throw "negative: P11-000 specialization is missing in Invoke-Mode$P11000Mode"}
+}
+if($RunnerText -notmatch 'Get-P11000TriggerState' -or$RunnerText -notmatch 'Get-P11000DependencyState' -or
+   $RunnerText -notmatch 'Get-P11000BranchState' -or$RunnerText -notmatch 'Get-P11000GateModeState' -or
+   -not$RunnerText.Contains($P11000DetailBase64) -or$RunnerText -notmatch 'minimum_unit_tests=542' -or
+   $RunnerText -notmatch 'minimum_contract_tests=144' -or$RunnerText -notmatch 'minimum_flutter_tests=82' -or
+   $RunnerText -notmatch '\[IO\.Path\]::GetFullPath\(\$Top\)' -or$RunnerText -notmatch '\$Head-ceq\$ExpectedBaseOid' -or
+   $RunnerText -notmatch 'phase11_alternative_evidence_hash_match'){
+  throw 'negative: P11-000 must own the trigger, immutable dependency, branch isolation, exact detail, and full historical entry regression contracts'
+}
+$P11000BranchFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-P11000BranchState'},$true)
+if($null-eq$P11000BranchFunction-or$P11000BranchFunction.Extent.Text-cnotmatch "phase-12" -or
+   $P11000BranchFunction.Extent.Text-cnotmatch 'forbidden_specialist_branch_count'){
+  throw 'negative: P11-000 branch isolation does not reject every Phase 12 specialist ref'
+}
+$P11000TriggerFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-P11000TriggerState'},$true)
+if($null-eq$P11000TriggerFunction){throw 'negative: P11-000 trigger validator AST is unavailable'}
+Invoke-Expression $P11000TriggerFunction.Extent.Text
+$P11000Sha='5'*40;$P11000EvidenceSha='6'*64;$P11000SelectionSha='7'*64;$P11000ReleaseSha='8'*64;$P11000Cycle=[Guid]::NewGuid().ToString()
+$P11000Approvals=@('Data','Engineering','Security'|ForEach-Object{[pscustomobject]@{role=$_;actor_id=("reviewer-"+$_.ToLowerInvariant());decision='approved';candidate_sha=$P11000Sha;cycle_id=$P11000Cycle;evidence_sha256=$P11000EvidenceSha;expires_at='2099-01-01T00:00:00Z'}})
+$P11000Trigger=[pscustomobject]@{
+  schema_version='1.0';task_id='TASK-P11-000';cycle_id=$P11000Cycle;path='phase11';accepted_landing_sha=$P11000Sha
+  path_selection_sha256=$P11000SelectionSha;release_b_sha256=$P11000ReleaseSha;evidence_sha256=$P11000EvidenceSha
+  measurement=[pscustomobject]@{window_start='2026-01-01T00:00:00+08:00';window_end='2026-02-01T00:00:00+08:00';timezone='Asia/Shanghai';denominator=100;stable_knowledge_gap_count=25;rate=0.25;threshold=0.20;threshold_calibrated=$true;confidence=[pscustomobject]@{level=0.95;lower=0.21;upper=0.30};classified_failure_sha256=('9'*64);raw_user_data_included=$false}
+  governance=[pscustomobject]@{adr=[pscustomobject]@{locator='immutable://adr/rag';sha256=('a'*64);status='signed'};license=[pscustomobject]@{locator='immutable://evidence/license';sha256=('b'*64)};privacy=[pscustomobject]@{locator='immutable://evidence/privacy';sha256=('c'*64)};residency=[pscustomobject]@{locator='immutable://evidence/residency';sha256=('d'*64)};deletion=[pscustomobject]@{locator='immutable://evidence/deletion';sha256=('e'*64)}}
+  owner_signature=[pscustomobject]@{role='Product';actor_id='owner-product';decision='approved';candidate_sha=$P11000Sha;cycle_id=$P11000Cycle;evidence_sha256=$P11000EvidenceSha}
+  approvals=$P11000Approvals
+}
+$P11000Dependency=[pscustomobject]@{passed=$true;accepted_landing_sha=$P11000Sha;cycle_id=$P11000Cycle;path_selection_sha256=$P11000SelectionSha;release_b_sha256=$P11000ReleaseSha}
+$P11000Positive=Get-P11000TriggerState -Trigger $P11000Trigger -Dependency $P11000Dependency -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))
+if(-not[bool]$P11000Positive.passed-or[double]$P11000Positive.checks.knowledge_gap_rate-ne0.25){throw 'positive: a calibrated and independently approved P11-000 trigger was rejected'}
+$P11000AtThreshold=$P11000Trigger.PSObject.Copy();$P11000AtThreshold.measurement=$P11000Trigger.measurement.PSObject.Copy();$P11000AtThreshold.measurement.stable_knowledge_gap_count=20;$P11000AtThreshold.measurement.rate=0.20
+if([bool](Get-P11000TriggerState -Trigger $P11000AtThreshold -Dependency $P11000Dependency -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: P11-000 accepted a knowledge-gap share equal to rather than greater than 20 percent'}
+$P11000NoDenominator=$P11000Trigger.PSObject.Copy();$P11000NoDenominator.measurement=$P11000Trigger.measurement.PSObject.Copy();$P11000NoDenominator.measurement.denominator=0
+if([bool](Get-P11000TriggerState -Trigger $P11000NoDenominator -Dependency $P11000Dependency -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: P11-000 accepted a trigger without a positive eligible-failure denominator'}
+$P11000WeakConfidence=$P11000Trigger.PSObject.Copy();$P11000WeakConfidence.measurement=$P11000Trigger.measurement.PSObject.Copy();$P11000WeakConfidence.measurement.confidence=$P11000Trigger.measurement.confidence.PSObject.Copy();$P11000WeakConfidence.measurement.confidence.lower=0.19
+if([bool](Get-P11000TriggerState -Trigger $P11000WeakConfidence -Dependency $P11000Dependency -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: P11-000 accepted a confidence interval whose lower bound did not clear the calibrated threshold'}
+$P11000Expired=$P11000Trigger.PSObject.Copy();$P11000Expired.approvals=@($P11000Trigger.approvals|ForEach-Object{$_.PSObject.Copy()});$P11000Expired.approvals[0].expires_at='2026-01-01T00:00:00Z'
+if([bool](Get-P11000TriggerState -Trigger $P11000Expired -Dependency $P11000Dependency -Now ([DateTimeOffset]::Parse('2027-01-01T00:00:00Z'))).passed){throw 'negative: P11-000 accepted an expired independent approval'}
+$P11000Registry=Get-ConditionalTaskRunnerRegistryState -TaskIdValue 'TASK-P11-000' -ModeValue 'Preflight'
+if(-not[bool]$P11000Registry.registered){throw 'negative: a fully specialized P11-000 runner remains fail-closed in the conditional registry'}
+$P11001Registry=Get-ConditionalTaskRunnerRegistryState -TaskIdValue 'TASK-P11-001' -ModeValue 'Preflight'
+if([bool]$P11001Registry.registered){throw 'negative: P11-001 was registered before all seven specialized modes existed'}
 if ($RunnerText -notmatch 'Get-P09001GateModeState' -or
     $RunnerText -notmatch 'p09_001_verify_failed' -or
     $RunnerText -notmatch 'breaking_changes' -or
