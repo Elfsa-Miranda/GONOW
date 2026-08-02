@@ -285,6 +285,7 @@ function Get-ConditionalTaskRunnerRegistryState {
     'TASK-P11-010'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P11-089'=@('Documentation','Evidence','HandoffVerification','HarnessCatalogAggregate','Preflight','RollbackVerify','Security','StatusBoardAggregate','WorkPreflight','WorksetVerify')
     'TASK-P11-990'=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security','Verify')
+    'TASK-P11-999'=@('Evidence')
     'TASK-P12-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12-001'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12-002'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
@@ -7964,7 +7965,34 @@ raise SystemExit(0 if report["fixture_count"] == 15 and report["passed_count"] =
   return New-PassedResult $Checks
 }
 
+function Get-P11999FinalEvidenceState {
+  $Base='docs/execution/evidence/phase-11';$Task="$Base/P11-999";$Paths=[ordered]@{
+    merge="$Base/merge.json";index='docs/execution/evidence/index.json';retrospective="$Base/retrospective.md";cleanup="$Base/cleanup-result.json";manifest="$Base/artifact-manifest-v01.json";close="$Base/phase-close-v01.json";authorization="$Task/merge-authorization.json";artifact="$Task/artifact-hashes.json";commands="$Task/commands.json";gate="$Task/gate-results.json";status='docs/execution/status/TASK-P11-999.json'
+  }
+  $Missing=0;$Schema=0;$Values=@{};foreach($Name in @('merge','index','cleanup','manifest','close','authorization','artifact','commands','gate','status')){$Relative=[string]$Paths[$Name];$Full=Join-Path $script:RepositoryRoot $Relative;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};try{$Values[$Name]=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}}
+  $RetrospectivePath=Join-Path $script:RepositoryRoot ([string]$Paths.retrospective);$Retrospective=if(Test-Path -LiteralPath $RetrospectivePath -PathType Leaf){Get-Content -LiteralPath $RetrospectivePath -Raw -Encoding UTF8}else{$Missing++;''}
+  if($Missing+$Schema-ne0){return [ordered]@{passed=$false;checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;primary_assertion_passed=$false;production_write_count=0}}}
+  $Merge=$Values.merge;$MergeOid=[string]$Merge.merge_oid;$IntegrationTree="docs/execution/evidence/integration/$MergeOid/merge-tree-verification.json";$IntegrationSmoke="docs/execution/evidence/integration/$MergeOid/smoke-results.json";$TreePath=Join-Path $script:RepositoryRoot $IntegrationTree;$SmokePath=Join-Path $script:RepositoryRoot $IntegrationSmoke;$Tree=$null;$Smoke=$null;foreach($Item in @(@($TreePath,'Tree'),@($SmokePath,'Smoke'))){if(-not(Test-Path -LiteralPath $Item[0] -PathType Leaf)){$Missing++;continue};try{Set-Variable -Name $Item[1] -Value (Get-Content -LiteralPath $Item[0] -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop)}catch{$Schema++}}
+  $OidPattern='^[0-9a-f]{40}$';$Parents=if($MergeOid-cmatch$OidPattern){@((& git -C $script:RepositoryRoot rev-list --parents -n1 $MergeOid 2>$null)-split' ')}else{@()};$MergeTree=if($MergeOid-cmatch$OidPattern){(@(& git -C $script:RepositoryRoot rev-parse "$MergeOid^{tree}" 2>$null)-join'').Trim()}else{''};$ApprovalTree=if([string]$Merge.approval_tip_oid-cmatch$OidPattern){(@(& git -C $script:RepositoryRoot rev-parse "$([string]$Merge.approval_tip_oid)^{tree}" 2>$null)-join'').Trim()}else{''}
+  $TreeValid=$null-ne$Tree-and[string]$Tree.merge_oid-ceq$MergeOid-and[int]$Tree.parent_count-eq2-and[string]$Tree.parent1-ceq[string]$Merge.phase_base_oid-and[string]$Tree.parent2-ceq[string]$Merge.approval_tip_oid-and[string]$Tree.merge_tree-ceq[string]$Tree.approval_tip_tree-and$Parents.Count-eq3-and$Parents[1]-ceq[string]$Merge.phase_base_oid-and$Parents[2]-ceq[string]$Merge.approval_tip_oid-and$MergeTree-ceq$ApprovalTree-and$MergeTree-ceq[string]$Tree.merge_tree
+  $SmokeValid=$null-ne$Smoke-and[string]$Smoke.merge_oid-ceq$MergeOid-and[int]$Smoke.failed+[int]$Smoke.not_run+[int]$Smoke.skipped+[int]$Smoke.xfailed+[int]$Smoke.tracked_write_count-eq0-and[double]$Smoke.duration_seconds-le300
+  $Cleanup=$Values.cleanup;$CleanupValid=$null-ne$Cleanup-and[int]$Cleanup.checks.debug_hits+[int]$Cleanup.checks.hardcoded_non_test_hits+[int]$Cleanup.checks.temp_files+[int]$Cleanup.checks.coverage_drop-eq0
+  $Manifest=$Values.manifest;$Close=$Values.close;$ManifestPath=Join-Path $script:RepositoryRoot ([string]$Paths.manifest);$ManifestRows=@($Manifest.artifacts);$ManifestHashInvalid=0;foreach($Row in $ManifestRows){$Full=Join-Path $script:RepositoryRoot ([string]$Row.path);if(-not(Test-Path -LiteralPath $Full -PathType Leaf)-or[string]$Row.sha256-cne(Get-Sha256 -LiteralPath $Full)-or[long]$Row.size_bytes-ne(Get-Item -LiteralPath $Full).Length){$ManifestHashInvalid++}}
+  $ManifestValid=[string]$Manifest.phase-ceq'Phase 11'-and[int]$Manifest.revision-eq1-and$null-eq$Manifest.supersedes_manifest_sha256-and[int]$Manifest.manifest_self_reference_count+[int]$Manifest.phase_close_self_reference_count-eq0-and[string]$Manifest.merge_oid-ceq$MergeOid-and$ManifestHashInvalid-eq0;$CloseValid=[string]$Close.phase-ceq'Phase 11'-and[string]$Close.task_id-ceq'TASK-P11-999'-and[string]$Close.merge_oid-ceq$MergeOid-and[string]$Close.artifact_manifest_path-ceq[string]$Paths.manifest-and[string]$Close.artifact_manifest_sha256-ceq(Get-Sha256 -LiteralPath $ManifestPath)-and[string]$Close.phase_close_oid_locator-ceq'the git commit containing this record'-and[string]$Close.next_phase_base_rule-ceq'use the exact commit containing this record'
+  $HashDoc=$Values.artifact;$HashInvalid=0;$HashedPaths=@($HashDoc.artifacts|ForEach-Object{[string]$_.path});foreach($Row in @($HashDoc.artifacts)){$Full=Join-Path $script:RepositoryRoot ([string]$Row.path);if(-not(Test-Path -LiteralPath $Full -PathType Leaf)-or[string]$Row.sha256-cne(Get-Sha256 -LiteralPath $Full)-or[long]$Row.size_bytes-ne(Get-Item -LiteralPath $Full).Length){$HashInvalid++}};$RequiredHashPaths=@($Paths.Keys|Where-Object{$_-notin@('artifact')}|ForEach-Object{[string]$Paths[$_]})+@($IntegrationTree,$IntegrationSmoke);$Unhashed=@($RequiredHashPaths|Where-Object{$_-notin$HashedPaths}).Count
+  $Gate=$Values.gate;$RequiredModes=@('MergePreflight','Cleanup','Merge','MergeTreeVerification','Security','IntegrationSmoke','PostMergeEvidence','Retrospective','RollbackVerify');$GateInvalid=@($RequiredModes|Where-Object{$Name=$_;@($Gate.results|Where-Object{[string]$_.check_id-ceq$Name-and[string]$_.status-ceq'passed'}).Count-ne1}).Count;$SecurityRow=@($Gate.results|Where-Object{[string]$_.check_id-ceq'Security'-and[string]$_.status-ceq'passed'});$SecurityDetail=if($SecurityRow.Count-eq1){try{[string]$SecurityRow[0].detail|ConvertFrom-Json -ErrorAction Stop}catch{$null}}else{$null};$SecurityFailure=if($null-ne$SecurityDetail){[int]$SecurityDetail.checks.valid_secret_finding_count+[int]$SecurityDetail.checks.pii_canary_leak_count+[int]$SecurityDetail.checks.missing_audit_receipt_count+[int]$SecurityDetail.checks.identity_denied_mismatch+[int]$SecurityDetail.checks.authorization_bypass_count}else{1}
+  $IndexRow=@($Values.index.phases|Where-Object{[string]$_.phase-ceq'Phase 11'-and[bool]$_.accepted-and[string]$_.formal_acceptance_status-ceq'accepted'-and[string]$_.merge_oid-ceq$MergeOid});$Status=$Values.status;$StatusValid=[string]$Status.task_id-ceq'TASK-P11-999'-and[string]$Status.status-ceq'accepted'-and[bool]$Status.reviewer_independent-and[string]$Status.decision_reference-ceq[string]$Paths.authorization-and@($Status.evidence_paths)-contains[string]$Paths.close
+  $CloseCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- ([string]$Paths.close))-join'').Trim();$Head=(@(& git -C $script:RepositoryRoot rev-parse HEAD 2>$null)-join'').Trim();$CloseCommitValid=$CloseCommit-cmatch$OidPattern-and$CloseCommit-ceq$Head;$LandingClean=@(& git -C $script:RepositoryRoot status --porcelain=v1).Count-eq0
+  $TextTargets=@($Paths.Values)+@($IntegrationTree,$IntegrationSmoke);$Redaction=0;foreach($Relative in $TextTargets){$Full=Join-Path $script:RepositoryRoot ([string]$Relative);if(Test-Path -LiteralPath $Full -PathType Leaf){$Raw=[IO.File]::ReadAllText($Full,[Text.UTF8Encoding]::new($false));$Redaction+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:raw_user_data|prompt|response|reasoning)"\s*:)').Count}}
+  $Primary=$Missing+$Schema+$HashInvalid+$Unhashed+$GateInvalid+$SecurityFailure+$Redaction-eq0-and$TreeValid-and$SmokeValid-and$CleanupValid-and$ManifestValid-and$CloseValid-and$IndexRow.Count-eq1-and$StatusValid-and$CloseCommitValid-and$LandingClean-and$Retrospective-cmatch'(?m)^## STAR and difficulties$'
+  $Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Unhashed+$Missing;artifact_hash_mismatch_count=$HashInvalid;redaction_failures=$Redaction;undeclared_evidence_count=0;primary_assertion_passed=$Primary;merge_oid=$MergeOid;parent_count=if($null-ne$Tree){[int]$Tree.parent_count}else{0};tree_equivalence_valid=$TreeValid;smoke_valid=$SmokeValid;cleanup_valid=$CleanupValid;manifest_valid=$ManifestValid;phase_close_chain_valid=$CloseCommitValid;phase_close_oid=$CloseCommit;landing_clean=$LandingClean;mandatory_mode_invalid_count=$GateInvalid;security_failure_count=$SecurityFailure;status_valid=$StatusValid;production_write_count=0}
+  return [ordered]@{passed=$Primary;checks=$Checks}
+}
+
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P11-999') {
+    $State=Get-P11999FinalEvidenceState;if(-not[bool]$State.passed){return New-BlockedResult 'p11_999_final_evidence_failed' $State.checks};return New-PassedResult $State.checks
+  }
   if ($TaskId -ceq 'TASK-P11-990') {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_evidence_boundary_failed' $Boundary};$State=Write-P11990ArtifactEvidence;$Checks=[ordered]@{schema_errors=[int]$State.schema_errors;unhashed_artifacts=[int]$State.unhashed_artifacts;redaction_failures=[int]$State.redaction_failures;artifact_count=[int]$State.artifact_count;base_head_oid_match=([bool]$Boundary.dependency.passed-and[bool]$Boundary.branch.passed);accepted_predecessor_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0};if(-not[bool]$State.passed-or-not[bool]$Checks.base_head_oid_match-or[int]$Checks.accepted_predecessor_count-ne11){return New-BlockedResult 'p11_990_evidence_failed' $Checks};return New-PassedResult $Checks
   }
@@ -13905,16 +13933,16 @@ if (-not $Catalog.TaskGateModeContracts.ContainsKey($Mode)) { [Console]::Error.W
 if (@($Task.allowed_taskgate_modes) -notcontains $Mode) { [Console]::Error.WriteLine("mode_not_allowed_for_task:${TaskId}:$Mode"); exit 2 }
 $ConditionalRunnerState=Get-ConditionalTaskRunnerRegistryState -TaskIdValue $TaskId -ModeValue $Mode
 if([bool]$ConditionalRunnerState.required-and-not[bool]$ConditionalRunnerState.registered){[Console]::Error.WriteLine("$([string]$ConditionalRunnerState.reason_code):${TaskId}:$Mode");exit 2}
-if(((Test-P11AtomicTask -TaskIdValue $TaskId)-or$TaskId-in@('TASK-P11-089','TASK-P11-990'))-and$ExecutionMode-cne'formal_adopted'){[Console]::Error.WriteLine("p11_formal_predecessor_required:${TaskId}:$Mode");exit 2}
+if(((Test-P11AtomicTask -TaskIdValue $TaskId)-or$TaskId-in@('TASK-P11-089','TASK-P11-990','TASK-P11-999'))-and$ExecutionMode-cne'formal_adopted'){[Console]::Error.WriteLine("p11_formal_predecessor_required:${TaskId}:$Mode");exit 2}
 $RepositoryRoot = Resolve-RepositoryRoot
 $CommonGitDirectory = Resolve-CommonGitDirectory -RepositoryRoot $RepositoryRoot
 $TaskEvidenceDirectory = Get-TaskEvidenceDirectory -RepositoryRoot $RepositoryRoot -TaskIdValue $TaskId
-if (-not (Test-Path -LiteralPath $TaskEvidenceDirectory)) { New-Item -ItemType Directory -Path $TaskEvidenceDirectory -Force | Out-Null }
+if ($TaskId -cne 'TASK-P11-999' -and -not (Test-Path -LiteralPath $TaskEvidenceDirectory)) { New-Item -ItemType Directory -Path $TaskEvidenceDirectory -Force | Out-Null }
 $ArtifactPath = Join-Path $TaskEvidenceDirectory 'artifact-hashes.json'
 $CommandPath = Join-Path $TaskEvidenceDirectory 'commands.json'
 $GatePath = Join-Path $TaskEvidenceDirectory 'gate-results.json'
 
-if ($Mode -ne 'BootstrapToolchainRevalidation') {
+if ($Mode -ne 'BootstrapToolchainRevalidation' -and $TaskId -cne 'TASK-P11-999') {
   $StatusPath = Join-Path $RepositoryRoot ([string]$Task.status_file)
   if (-not (Test-Path -LiteralPath $StatusPath)) {
     Set-TaskStatus -Status 'in_progress' -EvidenceSha256 $ZeroHash
@@ -13931,6 +13959,10 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   try {
   $Result = & $HandlerName
   $ExitCode = if ([string]$Result.status -ceq 'passed') { 0 } else { 3 }
+  if ($TaskId -ceq 'TASK-P11-999') {
+    $Result | ConvertTo-Json -Depth 20
+    exit $ExitCode
+  }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
   if ($TaskId -ceq 'TASK-P12-089') {
