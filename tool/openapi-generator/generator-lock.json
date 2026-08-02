@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
   "generator": "gonow-deterministic-openapi-dart",
-  "generator_version": "1.0.0",
+  "generator_version": "1.1.0",
   "runtime": "python-standard-library",
   "runtime_dependency_count": 0,
   "formatter": "locked-dart-sdk",
   "license": "MIT",
   "specification": "contracts/openapi/agent-api.yaml",
-  "expected_spec_sha256": "ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed",
+  "expected_spec_sha256": "bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0",
   "compatibility_baseline": "tool/openapi-generator/compatibility-baseline.json",
   "output_directory": "lib/core/api/generated"
 }

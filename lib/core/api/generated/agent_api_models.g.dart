@@ -81,7 +81,7 @@ final class ContractDescriptor {
     );
     if (descriptor.name != 'agent-api' ||
         descriptor.major != 1 ||
-        descriptor.version != '1.0.0' ||
+        descriptor.version != '1.1.0' ||
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(descriptor.specSha256)) {
       throw const AgentApiProtocolException('contract_descriptor.invalid');
     }
@@ -92,6 +92,106 @@ final class ContractDescriptor {
   final int major;
   final String version;
   final String specSha256;
+}
+
+final class ItineraryPlanningInput {
+  const ItineraryPlanningInput({
+    required this.origin,
+    required this.destination,
+    required this.startsOn,
+    required this.days,
+    required this.budgetMinor,
+    required this.currency,
+    required this.locale,
+    required this.timezone,
+    required this.hardConstraints,
+  });
+
+  final String origin;
+  final String destination;
+  final String startsOn;
+  final int days;
+  final int budgetMinor;
+  final String currency;
+  final String locale;
+  final String timezone;
+  final List<String> hardConstraints;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'schema_version': '1.0',
+    'origin': origin,
+    'destination': destination,
+    'starts_on': startsOn,
+    'days': days,
+    'budget_minor': budgetMinor,
+    'currency': currency,
+    'locale': locale,
+    'timezone': timezone,
+    'hard_constraints': hardConstraints,
+  };
+}
+
+final class RunStartRequest {
+  const RunStartRequest({required this.threadId, required this.itinerary});
+
+  final String threadId;
+  final ItineraryPlanningInput itinerary;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'schema_version': '1.0',
+    'thread_id': threadId,
+    'itinerary': itinerary.toJson(),
+  };
+}
+
+final class RunStartResponse {
+  const RunStartResponse({
+    required this.runId,
+    required this.threadId,
+    required this.state,
+    required this.version,
+    required this.replayed,
+    required this.behaviorDigest,
+  });
+
+  factory RunStartResponse.fromJson(Object? value) {
+    final Map<String, dynamic> json = _object(value, 'run_start_response');
+    _keys(json, 'run_start_response', const <String>{
+      'run_id',
+      'thread_id',
+      'state',
+      'version',
+      'replayed',
+      'behavior_digest',
+    });
+    final String state = _required<String>(json, 'run_start_response', 'state');
+    final int version = _required<int>(json, 'run_start_response', 'version');
+    final String digest = _required<String>(
+      json,
+      'run_start_response',
+      'behavior_digest',
+    );
+    if (state != 'queued' ||
+        version < 1 ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
+      throw const AgentApiProtocolException('run_start_response.invalid');
+    }
+    return RunStartResponse(
+      runId: _required<String>(json, 'run_start_response', 'run_id'),
+      threadId: _required<String>(json, 'run_start_response', 'thread_id'),
+      state: state,
+      version: version,
+      replayed: _required<bool>(json, 'run_start_response', 'replayed'),
+      behaviorDigest: digest,
+    );
+  }
+
+  final String runId;
+  final String threadId;
+  final String state;
+  final int version;
+  final bool replayed;
+  final String behaviorDigest;
 }
 
 final class ResumeRequest {

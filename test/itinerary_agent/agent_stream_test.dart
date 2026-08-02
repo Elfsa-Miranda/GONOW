@@ -392,6 +392,15 @@ final class _FakeRunRepository implements AgentRunRepository {
   final List<CancelAgentRunCommand> cancelCommands = <CancelAgentRunCommand>[];
 
   @override
+  Future<AgentRunResult<StartAgentRunReceipt>> startRun(
+    StartAgentRunCommand command,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<AgentRunResult<AgentRunCandidateReceipt>> getCandidate(String runId) =>
+      throw UnimplementedError();
+
+  @override
   Future<AgentRunResult<CancelAgentRunReceipt>> cancelRun(
     CancelAgentRunCommand command,
   ) async {
@@ -437,9 +446,9 @@ final class _FakeRunRepository implements AgentRunRepository {
     AgentApiContractReceipt(
       name: 'agent-api',
       major: 1,
-      version: '1.0.0',
+      version: '1.1.0',
       specSha256:
-          'ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed',
+          'bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0',
     ),
   );
 }

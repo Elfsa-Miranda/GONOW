@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:app_links/app_links.dart';
+import 'package:gonow/core/config/agent_service_config.dart';
 import 'package:gonow/features/itinerary/data/itinerary_provider.dart';
 import 'package:gonow/features/main_nav/data/main_nav_provider.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,7 @@ import '../../../ai_custom/presentation/screens/ai_custom_screen.dart';
 import '../../../diary/presentation/screens/diary_center_screen.dart';
 import '../../../discover/presentation/screens/discover_screen.dart';
 import '../../../itinerary/presentation/screens/itinerary_screen.dart';
+import '../../../itinerary_agent/presentation/screens/agent_planning_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import '../widgets/custom_bottom_bar.dart';
 import '../widgets/custom_fab.dart';
@@ -28,16 +30,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   StreamSubscription<Uri>? _linkSubscription;
   String? _lastProcessedCommand;
 
-  late final List<Widget> _pages = <Widget>[
-    const DiscoverScreen(),
-    const ItineraryScreen(),
-    const DiaryCenterScreen(),
-    const ProfileScreen(),
-  ];
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    const AgentServiceConfig config = AgentServiceConfig.environment;
+    _pages = <Widget>[
+      const DiscoverScreen(),
+      ItineraryScreen(
+        onOpenAgentPlanning: config.routeAvailable
+            ? () => _openAgentPlanning(config)
+            : null,
+      ),
+      const DiaryCenterScreen(),
+      const ProfileScreen(),
+    ];
     WidgetsBinding.instance.addObserver(this);
     _initDeepLinkListener();
     _checkClipboardForCommand();
@@ -45,6 +53,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _onTabChanged(int index) {
     context.read<MainNavProvider>().setTab(index);
+  }
+
+  void _openAgentPlanning(AgentServiceConfig config) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AgentPlanningScreen(config: config),
+      ),
+    );
   }
 
   void _onAiFabPressed() {
@@ -193,7 +209,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             },
             child: const Text(
               '立即加入',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -213,7 +232,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // 在打开 sheet 前读取 autoSend 意图，然后立即清除 provider 状态。
     // 这样 AiCustomScreen 内部不再需要监听全局 shouldAutoSendAi，
     // 避免 sheet rebuild 时重复触发或状态残留导致误触发。
-    final bool autoSend = provider.shouldAutoSendAi &&
+    final bool autoSend =
+        provider.shouldAutoSendAi &&
         initialPrompt != null &&
         initialPrompt.isNotEmpty;
     provider.clearAiPendingState();

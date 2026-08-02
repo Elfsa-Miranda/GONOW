@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from app.api.context_resolver import ContextResolver, resolve_request_context
 from app.auth.context import AuthorizationPolicy, RequestContext
 from app.auth.resume_token import (
     ResumeCapabilityRecord,
@@ -17,7 +18,6 @@ from app.auth.resume_token import (
 )
 
 
-ContextResolver = Callable[[Request], RequestContext]
 ResumeHandler = Callable[[RequestContext, ResumeCapabilityRecord], None]
 
 
@@ -57,7 +57,7 @@ def create_resume_router(
         body: ResumeRequest,
         request: Request,
     ) -> ResumeResponse:
-        context = context_resolver(request)
+        context = await resolve_request_context(context_resolver, request)
         policy.authorize(
             context,
             action="run.resume",

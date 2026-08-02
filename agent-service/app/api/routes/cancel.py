@@ -9,11 +9,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.api.context_resolver import ContextResolver, resolve_request_context
 from app.auth.context import AuthorizationPolicy, RequestContext
 from app.runtime.cancellation import CancelRejected, CancellationService
 
 
-ContextResolver = Callable[[Request], RequestContext]
 AuditReceiptResolver = Callable[[RequestContext, UUID], str]
 
 
@@ -48,7 +48,7 @@ def create_cancel_router(
         body: CancelRequest,
         request: Request,
     ) -> CancelResponse:
-        context = context_resolver(request)
+        context = await resolve_request_context(context_resolver, request)
         policy.authorize(
             context,
             action="run.cancel",

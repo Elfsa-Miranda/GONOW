@@ -12,12 +12,19 @@ _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 CURRENT_ERROR_PROFILE = "error-envelope.v1"
 LEGACY_ERROR_PROFILE = "legacy-detail.v0"
 _PUBLIC_ERRORS: dict[str, tuple[int, str]] = {
-    "auth.invalid_token": (401, "Authentication failed."),
     "auth.forbidden": (403, "This action is not allowed."),
+    "auth.invalid_token": (401, "Authentication failed."),
+    "cancel.conflict": (409, "The Run cancellation state changed."),
     "context.invalid": (400, "The request context is invalid."),
-    "tenant.scope_missing": (403, "A tenant scope is required."),
+    "idempotency.conflict": (409, "The idempotency key conflicts with an earlier request."),
+    "internal.error": (500, "The service could not complete the request."),
     "rate.limit": (429, "Too many requests."),
+    "resume.invalid_or_expired": (409, "The resume capability is invalid or expired."),
+    "run.start_rejected": (409, "The Run could not be started."),
+    "schema.unsupported": (404, "The requested schema is unsupported."),
     "service.unavailable": (503, "The service is temporarily unavailable."),
+    "sse.last_event_id_invalid": (400, "The event cursor is invalid."),
+    "tenant.scope_missing": (403, "A tenant scope is required."),
 }
 
 

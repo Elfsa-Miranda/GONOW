@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:gonow/core/providers/travel_provider.dart';
+import 'package:gonow/core/config/agent_service_config.dart';
 import 'package:gonow/core/services/notification_service.dart';
 import 'package:gonow/features/auth/data/auth_provider.dart';
 import 'package:gonow/features/auth/presentation/auth_screen.dart';
@@ -22,7 +23,7 @@ import 'features/main_nav/presentation/screens/main_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // ✅ 只做必须的初始化（Supabase 必须在 runApp 前完成）
   await Supabase.initialize(
     url: 'https://axoewadtumvbxzsxpsuc.supabase.co',
@@ -41,16 +42,14 @@ Future<void> main() async {
         ),
         // ❌ 移除了 create 时的 fetchCulturalCustoms() 调用
         // ✅ 改为在需要时懒加载（在对应页面的 initState 中调用）
-        ChangeNotifierProvider<TravelProvider>(
-          create: (_) => TravelProvider(),
-        ),
+        ChangeNotifierProvider<TravelProvider>(create: (_) => TravelProvider()),
         // ❌ 移除了 create 时的 fetchActiveItinerary() 调用
         ChangeNotifierProvider<ItineraryProvider>(
-          create: (_) => ItineraryProvider(),
+          create: (_) => ItineraryProvider(
+            agentFeatureFlags: AgentServiceConfig.environment.featureFlags,
+          ),
         ),
-        ChangeNotifierProvider<AuthProvider>(
-          create: (_) => AuthProvider(),
-        ),
+        ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         // ❌ 移除了 create 时的 fetchProfile() 调用
         ChangeNotifierProvider<ProfileProvider>(
           create: (_) => ProfileProvider(),
@@ -58,12 +57,8 @@ Future<void> main() async {
         ChangeNotifierProvider<FootprintProvider>(
           create: (_) => FootprintProvider(),
         ),
-        ChangeNotifierProvider<DiaryProvider>(
-          create: (_) => DiaryProvider(),
-        ),
-        ChangeNotifierProvider<LedgerProvider>(
-          create: (_) => LedgerProvider(),
-        ),
+        ChangeNotifierProvider<DiaryProvider>(create: (_) => DiaryProvider()),
+        ChangeNotifierProvider<LedgerProvider>(create: (_) => LedgerProvider()),
       ],
       child: const GoNowApp(),
     ),
@@ -84,10 +79,7 @@ class GoNowApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const <Locale>[
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
       home: const SplashWrapper(),
     );
   }
@@ -109,9 +101,7 @@ class _SplashWrapperState extends State<SplashWrapper> {
     Future<void>.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => const AuthGate(),
-          ),
+          MaterialPageRoute<void>(builder: (_) => const AuthGate()),
         );
       }
     });
@@ -144,8 +134,9 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    _authSubscription =
-        Supabase.instance.client.auth.onAuthStateChange.listen((AuthState data) {
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
+      AuthState data,
+    ) {
       if (data.event == AuthChangeEvent.passwordRecovery) {
         setState(() => _awaitingPasswordReset = true);
         if (!_recoveryDialogScheduled) {
@@ -159,35 +150,37 @@ class _AuthGateState extends State<AuthGate> {
 
       final Session? session = data.session;
       if (session != null) {
-        if (data.event == AuthChangeEvent.passwordRecovery || _awaitingPasswordReset) {
+        if (data.event == AuthChangeEvent.passwordRecovery ||
+            _awaitingPasswordReset) {
           return;
         }
         final String currentUserId = session.user.id;
         if (_diarySyncedForUserId != currentUserId) {
           _diarySyncedForUserId = currentUserId;
           if (kDebugMode) {
-            debugPrint(
-              '🔐 [AuthGate] 监听到用户切换 ($currentUserId)，开始全局数据同步...',
-            );
+            debugPrint('🔐 [AuthGate] 监听到用户切换 ($currentUserId)，开始全局数据同步...');
           }
           if (!mounted) return;
-          
+
           // ✅ 在用户登录后，异步加载所有数据（不阻塞 UI）
           final DiaryProvider diaryProvider = context.read<DiaryProvider>();
           diaryProvider.fetchMyData();
           diaryProvider.fetchCommunityDiaries();
-          
+
           // ✅ 懒加载其他 Provider 的数据
           final TravelProvider travelProvider = context.read<TravelProvider>();
           travelProvider.fetchCulturalCustoms();
-          
-          final ItineraryProvider itineraryProvider = context.read<ItineraryProvider>();
+
+          final ItineraryProvider itineraryProvider = context
+              .read<ItineraryProvider>();
           itineraryProvider.fetchActiveItinerary();
-          
-          final ProfileProvider profileProvider = context.read<ProfileProvider>();
+
+          final ProfileProvider profileProvider = context
+              .read<ProfileProvider>();
           profileProvider.fetchProfile();
-          
-          final FootprintProvider footprintProvider = context.read<FootprintProvider>();
+
+          final FootprintProvider footprintProvider = context
+              .read<FootprintProvider>();
           footprintProvider.fetchFootprint();
         }
       } else {
@@ -253,15 +246,15 @@ class _AuthGateState extends State<AuthGate> {
                 final String p = passwordController.text.trim();
                 final String c = confirmController.text.trim();
                 if (p.length < 6) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('密码至少 6 位')),
-                  );
+                  ScaffoldMessenger.of(
+                    dialogContext,
+                  ).showSnackBar(const SnackBar(content: Text('密码至少 6 位')));
                   return;
                 }
                 if (p != c) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('两次密码不一致')),
-                  );
+                  ScaffoldMessenger.of(
+                    dialogContext,
+                  ).showSnackBar(const SnackBar(content: Text('两次密码不一致')));
                   return;
                 }
                 final AuthProvider auth = originContext.read<AuthProvider>();
@@ -301,15 +294,13 @@ class _AuthGateState extends State<AuthGate> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: Colors.black,
-            body: Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
+            body: Center(child: CircularProgressIndicator(color: Colors.white)),
           );
         }
-        final AuthState? authState =
-            snapshot.hasData ? snapshot.data : null;
+        final AuthState? authState = snapshot.hasData ? snapshot.data : null;
         final Session? session = authState?.session;
-        final bool recoveryGate = _awaitingPasswordReset ||
+        final bool recoveryGate =
+            _awaitingPasswordReset ||
             authState?.event == AuthChangeEvent.passwordRecovery;
         if (session != null && recoveryGate) {
           return Scaffold(
@@ -319,11 +310,18 @@ class _AuthGateState extends State<AuthGate> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Icon(Icons.lock_reset, size: 48, color: Colors.grey.shade600),
+                    Icon(
+                      Icons.lock_reset,
+                      size: 48,
+                      color: Colors.grey.shade600,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       '请在新窗口中设置新密码',
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 15,
+                      ),
                     ),
                   ],
                 ),

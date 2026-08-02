@@ -75,6 +75,36 @@ final class AgentApiClient {
     return ContractDescriptor.fromJson(_decodeSuccess(response));
   }
 
+  Future<RunStartResponse> startRun({
+    required String idempotencyKey,
+    required RunStartRequest request,
+  }) async {
+    if (idempotencyKey.length < 16 ||
+        idempotencyKey.length > 128 ||
+        idempotencyKey.contains('\r') ||
+        idempotencyKey.contains('\n')) {
+      throw ArgumentError.value(idempotencyKey, 'idempotencyKey');
+    }
+    final http.Response response = await _post(
+      '/v1/runs',
+      request.toJson(),
+      extraHeaders: <String, String>{'Idempotency-Key': idempotencyKey},
+    );
+    return RunStartResponse.fromJson(_decodeSuccess(response));
+  }
+
+  Future<Map<String, dynamic>> getRunCandidate({required String runId}) async {
+    final http.Response response = await _get(
+      '/v1/runs/${Uri.encodeComponent(runId)}/candidate',
+      authenticated: true,
+    );
+    final Object? decoded = _decodeSuccess(response);
+    if (decoded is! Map) {
+      throw const AgentApiProtocolException('candidate.invalid_object');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
   Future<ResumeResponse> resumeRun({
     required String runId,
     required ResumeRequest request,
@@ -148,14 +178,16 @@ final class AgentApiClient {
     }
   }
 
-  Future<http.Response> _post(String path, Map<String, dynamic> body) async {
+  Future<http.Response> _post(
+    String path,
+    Map<String, dynamic> body, {
+    Map<String, String> extraHeaders = const <String, String>{},
+  }) async {
     try {
+      final Map<String, String> headers = await _headers(authenticated: true)
+        ..addAll(extraHeaders);
       final http.Response response = await _httpClient
-          .post(
-            _endpoint(path),
-            headers: await _headers(authenticated: true),
-            body: jsonEncode(body),
-          )
+          .post(_endpoint(path), headers: headers, body: jsonEncode(body))
           .timeout(_timeout);
       _ensureSuccess(response);
       return response;

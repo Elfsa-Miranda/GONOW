@@ -26,6 +26,28 @@ void main() {
         const ActiveRunReference(runId: _runId, lastEventId: 2, version: 1),
       );
       final _JourneyRepository repository = _JourneyRepository();
+      final AgentRunResult<StartAgentRunReceipt> started = await repository
+          .startRun(
+            const StartAgentRunCommand(
+              idempotencyKey: 'journey-request-00000001',
+              threadId: '33333333-3333-4333-8333-333333333333',
+              origin: 'Shanghai',
+              destination: 'Hangzhou',
+              startsOn: '2026-08-03',
+              days: 2,
+              budgetMinor: 200000,
+              currency: 'CNY',
+              locale: 'zh-CN',
+              timezone: 'Asia/Shanghai',
+              hardConstraints: <String>['no red-eye travel'],
+            ),
+          );
+      final AgentRunResult<AgentRunCandidateReceipt> loaded = await repository
+          .getCandidate(_runId);
+      final ItineraryCandidateView loadedCandidate =
+          ItineraryCandidateView.fromJson(
+            (loaded as AgentRunSuccess<AgentRunCandidateReceipt>).value.payload,
+          );
       final AgentControlClient control = AgentControlClient(
         repository: repository,
         auditSink: _ControlAuditSink(),
@@ -53,11 +75,15 @@ void main() {
       );
 
       expect((await store.read())?.lastEventId, 2);
+      expect(started, isA<AgentRunSuccess<StartAgentRunReceipt>>());
+      expect(loadedCandidate.runId, _runId);
       expect(resumed.result, isA<AgentRunSuccess<ResumeAgentRunReceipt>>());
       expect(cancelled.result, isA<AgentRunSuccess<CancelAgentRunReceipt>>());
       expect(adoption.kind, CandidateDecisionKind.requestAdoption);
       expect(repository.resumeCommands, hasLength(1));
       expect(repository.cancelCommands, hasLength(1));
+      expect(repository.startCommands, hasLength(1));
+      expect(repository.candidateReads, <String>[_runId]);
       expect(rollback.route, AgentPlanningRoute.legacy);
     },
   );
@@ -163,8 +189,37 @@ final class _CandidateAuditSink implements CandidateDecisionAuditSink {
 }
 
 final class _JourneyRepository implements AgentRunRepository {
+  final List<StartAgentRunCommand> startCommands = <StartAgentRunCommand>[];
+  final List<String> candidateReads = <String>[];
   final List<ResumeAgentRunCommand> resumeCommands = <ResumeAgentRunCommand>[];
   final List<CancelAgentRunCommand> cancelCommands = <CancelAgentRunCommand>[];
+
+  @override
+  Future<AgentRunResult<StartAgentRunReceipt>> startRun(
+    StartAgentRunCommand command,
+  ) async {
+    startCommands.add(command);
+    return AgentRunSuccess<StartAgentRunReceipt>(
+      StartAgentRunReceipt(
+        runId: _runId,
+        threadId: command.threadId,
+        state: 'queued',
+        version: 1,
+        replayed: false,
+        behaviorDigest: 'b' * 64,
+      ),
+    );
+  }
+
+  @override
+  Future<AgentRunResult<AgentRunCandidateReceipt>> getCandidate(
+    String runId,
+  ) async {
+    candidateReads.add(runId);
+    return AgentRunSuccess<AgentRunCandidateReceipt>(
+      AgentRunCandidateReceipt(runId: runId, payload: _candidateJson()),
+    );
+  }
 
   @override
   Future<AgentRunResult<ResumeAgentRunReceipt>> resumeRun(
@@ -196,14 +251,14 @@ final class _JourneyRepository implements AgentRunRepository {
   }
 
   @override
-  Future<AgentRunResult<AgentApiContractReceipt>> verifyContract() async =>
-      const AgentRunSuccess<AgentApiContractReceipt>(
-        AgentApiContractReceipt(
-          name: 'agent-api',
-          major: 1,
-          version: '1.0.0',
-          specSha256:
-              'ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed',
-        ),
-      );
+  Future<AgentRunResult<AgentApiContractReceipt>>
+  verifyContract() async => const AgentRunSuccess<AgentApiContractReceipt>(
+    AgentApiContractReceipt(
+      name: 'agent-api',
+      major: 1,
+      version: '1.1.0',
+      specSha256:
+          'bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0',
+    ),
+  );
 }

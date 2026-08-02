@@ -9,6 +9,13 @@ import 'package:gonow/features/itinerary_agent/domain/agent_run_result.dart';
 abstract interface class AgentRunGateway {
   Future<ContractDescriptor> getContractDescriptor();
 
+  Future<RunStartResponse> startRun({
+    required String idempotencyKey,
+    required RunStartRequest request,
+  });
+
+  Future<Map<String, dynamic>> getRunCandidate({required String runId});
+
   Future<ResumeResponse> resumeRun({
     required String runId,
     required ResumeRequest request,
@@ -30,6 +37,16 @@ final class GeneratedAgentRunGateway implements AgentRunGateway {
       _client.getContractDescriptor();
 
   @override
+  Future<RunStartResponse> startRun({
+    required String idempotencyKey,
+    required RunStartRequest request,
+  }) => _client.startRun(idempotencyKey: idempotencyKey, request: request);
+
+  @override
+  Future<Map<String, dynamic>> getRunCandidate({required String runId}) =>
+      _client.getRunCandidate(runId: runId);
+
+  @override
   Future<ResumeResponse> resumeRun({
     required String runId,
     required ResumeRequest request,
@@ -44,6 +61,12 @@ final class GeneratedAgentRunGateway implements AgentRunGateway {
 
 abstract interface class AgentRunRepository {
   Future<AgentRunResult<AgentApiContractReceipt>> verifyContract();
+
+  Future<AgentRunResult<StartAgentRunReceipt>> startRun(
+    StartAgentRunCommand command,
+  );
+
+  Future<AgentRunResult<AgentRunCandidateReceipt>> getCandidate(String runId);
 
   Future<AgentRunResult<ResumeAgentRunReceipt>> resumeRun(
     ResumeAgentRunCommand command,
@@ -91,6 +114,82 @@ final class DefaultAgentRunRepository implements AgentRunRepository {
           ),
         );
       });
+
+  @override
+  Future<AgentRunResult<StartAgentRunReceipt>> startRun(
+    StartAgentRunCommand command,
+  ) {
+    if (!_validStart(command)) {
+      return Future<AgentRunResult<StartAgentRunReceipt>>.value(
+        const AgentRunRejected<StartAgentRunReceipt>(
+          AgentRunFailure(
+            kind: AgentRunFailureKind.invalidRequest,
+            safeMessage: 'The planning request is invalid.',
+            retryable: false,
+          ),
+        ),
+      );
+    }
+    return _guard<StartAgentRunReceipt>(() async {
+      final RunStartResponse response = await _gateway
+          .startRun(
+            idempotencyKey: command.idempotencyKey,
+            request: RunStartRequest(
+              threadId: command.threadId,
+              itinerary: ItineraryPlanningInput(
+                origin: command.origin.trim(),
+                destination: command.destination.trim(),
+                startsOn: command.startsOn,
+                days: command.days,
+                budgetMinor: command.budgetMinor,
+                currency: command.currency,
+                locale: command.locale,
+                timezone: command.timezone,
+                hardConstraints: List<String>.unmodifiable(
+                  command.hardConstraints.map((String value) => value.trim()),
+                ),
+              ),
+            ),
+          )
+          .timeout(_timeout);
+      return AgentRunSuccess<StartAgentRunReceipt>(
+        StartAgentRunReceipt(
+          runId: response.runId,
+          threadId: response.threadId,
+          state: response.state,
+          version: response.version,
+          replayed: response.replayed,
+          behaviorDigest: response.behaviorDigest,
+        ),
+      );
+    });
+  }
+
+  @override
+  Future<AgentRunResult<AgentRunCandidateReceipt>> getCandidate(String runId) {
+    if (!_uuid.hasMatch(runId)) {
+      return Future<AgentRunResult<AgentRunCandidateReceipt>>.value(
+        const AgentRunRejected<AgentRunCandidateReceipt>(
+          AgentRunFailure(
+            kind: AgentRunFailureKind.invalidRequest,
+            safeMessage: 'The Candidate request is invalid.',
+            retryable: false,
+          ),
+        ),
+      );
+    }
+    return _guard<AgentRunCandidateReceipt>(() async {
+      final Map<String, dynamic> payload = await _gateway
+          .getRunCandidate(runId: runId)
+          .timeout(_timeout);
+      if (payload['run_id'] != runId) {
+        return AgentRunRejected<AgentRunCandidateReceipt>(_invalidResponse());
+      }
+      return AgentRunSuccess<AgentRunCandidateReceipt>(
+        AgentRunCandidateReceipt(runId: runId, payload: payload),
+      );
+    });
+  }
 
   @override
   Future<AgentRunResult<ResumeAgentRunReceipt>> resumeRun(
@@ -189,6 +288,11 @@ final class DefaultAgentRunRepository implements AgentRunRepository {
       'auth.invalid_token' => AgentRunFailureKind.authenticationRequired,
       'auth.forbidden' => AgentRunFailureKind.forbidden,
       'context.invalid' => AgentRunFailureKind.invalidContext,
+      'idempotency.conflict' => AgentRunFailureKind.idempotencyConflict,
+      'run.start_rejected' => AgentRunFailureKind.runStartRejected,
+      'cancel.conflict' => AgentRunFailureKind.cancelConflict,
+      'resume.invalid_or_expired' => AgentRunFailureKind.resumeInvalidOrExpired,
+      'sse.last_event_id_invalid' => AgentRunFailureKind.invalidEventCursor,
       'tenant.scope_missing' => AgentRunFailureKind.tenantScopeMissing,
       'rate.limit' => AgentRunFailureKind.rateLimited,
       'schema.unsupported' => AgentRunFailureKind.unsupportedSchema,
@@ -251,6 +355,16 @@ final class DefaultAgentRunRepository implements AgentRunRepository {
     AgentRunFailureKind.forbidden => 'This action is not allowed.',
     AgentRunFailureKind.invalidContext =>
       'The Run changed. Refresh it and try again.',
+    AgentRunFailureKind.idempotencyConflict =>
+      'This planning request conflicts with an earlier request.',
+    AgentRunFailureKind.runStartRejected =>
+      'The planning Run could not be started.',
+    AgentRunFailureKind.cancelConflict =>
+      'The Run changed before it could be cancelled.',
+    AgentRunFailureKind.resumeInvalidOrExpired =>
+      'This approval has expired. Refresh the Run and try again.',
+    AgentRunFailureKind.invalidEventCursor =>
+      'The event position is invalid. Refresh the Run.',
     AgentRunFailureKind.tenantScopeMissing =>
       'Your account context is unavailable.',
     AgentRunFailureKind.rateLimited => 'Please wait before trying again.',
@@ -261,4 +375,41 @@ final class DefaultAgentRunRepository implements AgentRunRepository {
       'The Agent service is temporarily unavailable.',
     _ => 'Something went wrong. Try again.',
   };
+
+  bool _validStart(StartAgentRunCommand command) {
+    final String origin = command.origin.trim();
+    final String destination = command.destination.trim();
+    final String timezone = command.timezone.trim();
+    final DateTime? startsOn = DateTime.tryParse(command.startsOn);
+    return command.idempotencyKey.length >= 16 &&
+        command.idempotencyKey.length <= 128 &&
+        !command.idempotencyKey.contains('\r') &&
+        !command.idempotencyKey.contains('\n') &&
+        _uuid.hasMatch(command.threadId) &&
+        origin.isNotEmpty &&
+        origin.length <= 160 &&
+        destination.isNotEmpty &&
+        destination.length <= 160 &&
+        RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(command.startsOn) &&
+        startsOn != null &&
+        command.days >= 1 &&
+        command.days <= 31 &&
+        command.budgetMinor >= 0 &&
+        command.budgetMinor <= 1000000000 &&
+        RegExp(r'^[A-Z]{3}$').hasMatch(command.currency) &&
+        RegExp(r'^[a-z]{2}(?:-[A-Z]{2})?$').hasMatch(command.locale) &&
+        timezone.isNotEmpty &&
+        timezone.length <= 64 &&
+        RegExp(r'^[A-Za-z0-9_+./-]+$').hasMatch(timezone) &&
+        command.hardConstraints.length <= 20 &&
+        command.hardConstraints.every(
+          (String value) =>
+              value.trim().isNotEmpty && value.trim().length <= 160,
+        );
+  }
+
+  static final RegExp _uuid = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
 }

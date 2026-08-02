@@ -11,10 +11,10 @@ void main() {
   test('generated digest is bound to the server OpenAPI bytes', () {
     expect(
       agentApiSpecSha256,
-      'ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed',
+      'bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0',
     );
-    expect(agentApiContractVersion, '1.0.0');
-    expect(agentApiGeneratorVersion, '1.0.0');
+    expect(agentApiContractVersion, '1.1.0');
+    expect(agentApiGeneratorVersion, '1.1.0');
   });
 
   test('health response is decoded without requesting a token', () async {
@@ -57,7 +57,7 @@ void main() {
             jsonEncode(<String, Object>{
               'name': 'agent-api',
               'major': 1,
-              'version': '1.0.0',
+              'version': '1.1.0',
               'spec_sha256': agentApiSpecSha256,
             }),
             200,
@@ -72,6 +72,111 @@ void main() {
       expect(descriptor.specSha256, agentApiSpecSha256);
     },
   );
+
+  test('start Run carries an idempotency key and typed itinerary', () async {
+    final AgentApiClient client = AgentApiClient(
+      baseUri: Uri.parse('https://agent.example.test'),
+      httpClient: MockClient((http.Request request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/v1/runs');
+        expect(request.headers['idempotency-key'], 'itinerary-start-0001');
+        expect(jsonDecode(request.body), <String, Object>{
+          'schema_version': '1.0',
+          'thread_id': '22222222-2222-4222-8222-222222222222',
+          'itinerary': <String, Object>{
+            'schema_version': '1.0',
+            'origin': 'Shanghai',
+            'destination': 'Hangzhou',
+            'starts_on': '2026-08-03',
+            'days': 2,
+            'budget_minor': 200000,
+            'currency': 'CNY',
+            'locale': 'zh-CN',
+            'timezone': 'Asia/Shanghai',
+            'hard_constraints': <String>['no red-eye travel'],
+          },
+        });
+        return http.Response(
+          jsonEncode(<String, Object>{
+            'run_id': runId,
+            'thread_id': '22222222-2222-4222-8222-222222222222',
+            'state': 'queued',
+            'version': 1,
+            'replayed': false,
+            'behavior_digest': 'b' * 64,
+          }),
+          202,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+      accessTokenProvider: () async => 'session-token',
+    );
+
+    final RunStartResponse response = await client.startRun(
+      idempotencyKey: 'itinerary-start-0001',
+      request: const RunStartRequest(
+        threadId: '22222222-2222-4222-8222-222222222222',
+        itinerary: ItineraryPlanningInput(
+          origin: 'Shanghai',
+          destination: 'Hangzhou',
+          startsOn: '2026-08-03',
+          days: 2,
+          budgetMinor: 200000,
+          currency: 'CNY',
+          locale: 'zh-CN',
+          timezone: 'Asia/Shanghai',
+          hardConstraints: <String>['no red-eye travel'],
+        ),
+      ),
+    );
+    expect(response.runId, runId);
+    expect(response.state, 'queued');
+    expect(response.replayed, isFalse);
+  });
+
+  test('Candidate read is authenticated and preserves the strict payload', () async {
+    final AgentApiClient client = AgentApiClient(
+      baseUri: Uri.parse('https://agent.example.test'),
+      httpClient: MockClient((http.Request request) async {
+        expect(request.url.path, '/v1/runs/$runId/candidate');
+        expect(request.headers['authorization'], 'Bearer session-token');
+        return http.Response(
+          jsonEncode(<String, Object>{
+            'schema_version': '1.0',
+            'candidate_id': 'cand_${'a' * 32}',
+            'run_id': runId,
+            'behavior_digest': 'b' * 64,
+            'input_digest': 'c' * 64,
+            'title': 'Typed Candidate',
+            'days': <Object>[
+              <String, Object>{
+                'day_number': 1,
+                'items': <Object>[
+                  <String, Object>{
+                    'item_id': 'item_arrival',
+                    'title': 'Arrive',
+                    'start_minute': 600,
+                    'duration_minutes': 90,
+                    'claim_ids': <String>[],
+                  },
+                ],
+              },
+            ],
+            'citations': <Object>[],
+            'evidence_refs': <Object>[],
+            'status': 'candidate',
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+      accessTokenProvider: () async => 'session-token',
+    );
+    final Map<String, dynamic> candidate = await client.getRunCandidate(
+      runId: runId,
+    );
+    expect(candidate['candidate_id'], 'cand_${'a' * 32}');
+  });
 
   test(
     'resume emits the exact typed body and parses a typed response',

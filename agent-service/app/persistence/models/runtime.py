@@ -186,3 +186,141 @@ class IdempotencyRecord(RuntimeBase):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.statement_timestamp()
     )
+
+
+class JobInputRecord(RuntimeBase):
+    """Tenant-scoped, content-addressed structured input for one or more replayed Jobs."""
+
+    __tablename__ = "job_inputs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "input_ref", name="uq_job_inputs_tenant_ref"),
+        CheckConstraint(
+            "input_ref ~ '^job-input://sha256/[0-9a-f]{64}$'",
+            name="ck_job_inputs_ref",
+        ),
+        CheckConstraint(
+            "input_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_job_inputs_digest",
+        ),
+        CheckConstraint("schema_version = '1.0'", name="ck_job_inputs_schema_version"),
+        Index("ix_job_inputs_tenant_created", "tenant_id", "created_at"),
+        {"schema": RUNTIME_SCHEMA},
+    )
+
+    input_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_ref: Mapped[str] = mapped_column(String(96), nullable=False)
+    input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.statement_timestamp()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class ResumeCapabilityRow(RuntimeBase):
+    """Persist only the digest and exact binding of a one-use resume capability."""
+
+    __tablename__ = "resume_capabilities"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["run_id", "tenant_id"],
+            [f"{RUNTIME_SCHEMA}.runs.run_id", f"{RUNTIME_SCHEMA}.runs.tenant_id"],
+            name="fk_resume_capabilities_run_tenant",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("token_hash", name="uq_resume_capabilities_token_hash"),
+        CheckConstraint(
+            "token_hash ~ '^[0-9a-f]{64}$' AND command_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_resume_capabilities_hashes",
+        ),
+        CheckConstraint(
+            "command_version ~ '^[0-9]+\\.[0-9]+$'",
+            name="ck_resume_capabilities_command_version",
+        ),
+        CheckConstraint("expires_at > issued_at", name="ck_resume_capabilities_expiry"),
+        Index(
+            "ix_resume_capabilities_binding",
+            "tenant_id",
+            "principal_id",
+            "run_id",
+            "interrupt_id",
+        ),
+        {"schema": RUNTIME_SCHEMA},
+    )
+
+    capability_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    nonce: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    principal_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    interrupt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    command_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    command_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CandidateRecord(RuntimeBase):
+    """A recoverable typed Candidate, separate from every formal itinerary table."""
+
+    __tablename__ = "candidates"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_job_id", "tenant_id", "run_id"],
+            [
+                f"{RUNTIME_SCHEMA}.jobs.job_id",
+                f"{RUNTIME_SCHEMA}.jobs.tenant_id",
+                f"{RUNTIME_SCHEMA}.jobs.run_id",
+            ],
+            name="fk_candidates_job_tenant_run",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("tenant_id", "candidate_id", name="uq_candidates_tenant_id"),
+        UniqueConstraint("tenant_id", "run_id", name="uq_candidates_tenant_run"),
+        CheckConstraint(
+            "candidate_id ~ '^cand_[0-9a-f]{32}$'",
+            name="ck_candidates_public_id",
+        ),
+        CheckConstraint(
+            "candidate_digest ~ '^[0-9a-f]{64}$' AND "
+            "behavior_digest ~ '^[0-9a-f]{64}$' AND "
+            "input_digest ~ '^[0-9a-f]{64}$'",
+            name="ck_candidates_digests",
+        ),
+        CheckConstraint(
+            "candidate_ref = 'candidate://sha256/' || candidate_digest",
+            name="ck_candidates_ref",
+        ),
+        CheckConstraint("schema_version = '1.0'", name="ck_candidates_schema_version"),
+        CheckConstraint("fencing_token > 0", name="ck_candidates_fence_positive"),
+        Index("ix_candidates_tenant_created", "tenant_id", "created_at"),
+        {"schema": RUNTIME_SCHEMA},
+    )
+
+    candidate_record_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True
+    )
+    candidate_id: Mapped[str] = mapped_column(String(37), nullable=False)
+    candidate_ref: Mapped[str] = mapped_column(String(96), nullable=False)
+    candidate_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    behavior_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.statement_timestamp()
+    )
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

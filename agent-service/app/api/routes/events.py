@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Annotated
 import uuid
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from app.api.context_resolver import ContextResolver, resolve_request_context
 from app.api.sse import LastEventIdInvalid, SseReplayService, parse_last_event_id
 from app.auth.context import AuthorizationPolicy, RequestContext
 from app.runtime.event_writer import EventWriter
-
-
-ContextResolver = Callable[[Request], RequestContext]
 
 
 def create_events_router(
@@ -38,7 +35,7 @@ def create_events_router(
         request: Request,
         last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
     ) -> StreamingResponse:
-        context = context_resolver(request)
+        context = await resolve_request_context(context_resolver, request)
         policy.authorize(
             context,
             action="run.events.read",

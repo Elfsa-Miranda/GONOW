@@ -2,19 +2,24 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GoNow Agent API",
-    "version": "1.0.0",
-    "description": "Phase 6 local provisional Agent API contract. Production activation and formal acceptance are pending."
+    "version": "1.1.0",
+    "description": "Phase 10 runtime-composition repair contract. Production activation remains gated."
   },
   "x-contract-name": "agent-api",
-  "x-baseline-status": "phase-06-local-provisional",
+  "x-baseline-status": "phase-10-composition-repair-provisional",
   "x-error-codes": [
     "auth.forbidden",
     "auth.invalid_token",
+    "cancel.conflict",
     "context.invalid",
+    "idempotency.conflict",
     "internal.error",
     "rate.limit",
+    "resume.invalid_or_expired",
+    "run.start_rejected",
     "schema.unsupported",
     "service.unavailable",
+    "sse.last_event_id_invalid",
     "tenant.scope_missing"
   ],
   "paths": {
@@ -80,6 +85,40 @@
           "401": {"$ref": "#/components/responses/AuthenticationError"},
           "404": {"$ref": "#/components/responses/UnsupportedSchema"},
           "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
+    "/v1/runs": {
+      "post": {
+        "operationId": "startRun",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 16, "maxLength": 128}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RunStartRequest"}}}
+        },
+        "responses": {
+          "202": {"description": "A durable Run and Job were created or replayed atomically.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RunStartResponse"}}}},
+          "401": {"$ref": "#/components/responses/AuthenticationError"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
+    "/v1/runs/{run_id}/candidate": {
+      "get": {
+        "operationId": "getRunCandidate",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "run_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "The authenticated owner's durable typed Candidate.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ItineraryCandidate"}}}},
+          "401": {"$ref": "#/components/responses/AuthenticationError"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
         }
       }
     },
@@ -165,8 +204,97 @@
         "properties": {
           "name": {"type": "string", "const": "agent-api"},
           "major": {"type": "integer", "const": 1},
-          "version": {"type": "string", "const": "1.0.0"},
+          "version": {"type": "string", "const": "1.1.0"},
           "spec_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      },
+      "ItineraryPlanningInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "origin", "destination", "starts_on", "days", "budget_minor", "currency", "locale", "timezone", "hard_constraints"],
+        "properties": {
+          "schema_version": {"const": "1.0"},
+          "origin": {"type": "string", "minLength": 1, "maxLength": 160},
+          "destination": {"type": "string", "minLength": 1, "maxLength": 160},
+          "starts_on": {"type": "string", "format": "date"},
+          "days": {"type": "integer", "minimum": 1, "maximum": 31},
+          "budget_minor": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+          "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+          "locale": {"type": "string", "pattern": "^[a-z]{2}(?:-[A-Z]{2})?$"},
+          "timezone": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_+./-]+$"},
+          "hard_constraints": {"type": "array", "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 160}}
+        }
+      },
+      "RunStartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "thread_id", "itinerary"],
+        "properties": {
+          "schema_version": {"const": "1.0"},
+          "thread_id": {"type": "string", "format": "uuid"},
+          "itinerary": {"$ref": "#/components/schemas/ItineraryPlanningInput"}
+        }
+      },
+      "RunStartResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["run_id", "thread_id", "state", "version", "replayed", "behavior_digest"],
+        "properties": {
+          "run_id": {"type": "string", "format": "uuid"},
+          "thread_id": {"type": "string", "format": "uuid"},
+          "state": {"const": "queued"},
+          "version": {"type": "integer", "minimum": 1},
+          "replayed": {"type": "boolean"},
+          "behavior_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      },
+      "CandidateCitation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "evidence_id", "source_ref", "sha256"],
+        "properties": {
+          "claim_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "evidence_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "source_ref": {"type": "string", "pattern": "^evidence://[^\\s]{1,500}$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      },
+      "CandidateItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["item_id", "title", "start_minute", "duration_minutes", "claim_ids"],
+        "properties": {
+          "item_id": {"type": "string", "pattern": "^item_[a-z0-9_-]{1,80}$"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 160},
+          "start_minute": {"type": "integer", "minimum": 0, "maximum": 1439},
+          "duration_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+          "claim_ids": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}}
+        }
+      },
+      "CandidateDay": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["day_number", "items"],
+        "properties": {
+          "day_number": {"type": "integer", "minimum": 1, "maximum": 31},
+          "items": {"type": "array", "minItems": 1, "maxItems": 30, "items": {"$ref": "#/components/schemas/CandidateItem"}}
+        }
+      },
+      "ItineraryCandidate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "candidate_id", "run_id", "behavior_digest", "input_digest", "title", "days", "citations", "evidence_refs", "status"],
+        "properties": {
+          "schema_version": {"const": "1.0"},
+          "candidate_id": {"type": "string", "pattern": "^cand_[0-9a-f]{32}$"},
+          "run_id": {"type": "string", "format": "uuid"},
+          "behavior_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "input_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 160},
+          "days": {"type": "array", "minItems": 1, "maxItems": 31, "items": {"$ref": "#/components/schemas/CandidateDay"}},
+          "citations": {"type": "array", "items": {"$ref": "#/components/schemas/CandidateCitation"}},
+          "evidence_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^evidence://[^\\s]{1,500}$"}},
+          "status": {"const": "candidate"}
         }
       },
       "ResumeRequest": {
@@ -213,7 +341,7 @@
         "additionalProperties": false,
         "required": ["code", "message", "request_id"],
         "properties": {
-          "code": {"type": "string", "enum": ["auth.forbidden", "auth.invalid_token", "context.invalid", "internal.error", "rate.limit", "schema.unsupported", "service.unavailable", "tenant.scope_missing"]},
+          "code": {"type": "string", "enum": ["auth.forbidden", "auth.invalid_token", "cancel.conflict", "context.invalid", "idempotency.conflict", "internal.error", "rate.limit", "resume.invalid_or_expired", "run.start_rejected", "schema.unsupported", "service.unavailable", "sse.last_event_id_invalid", "tenant.scope_missing"]},
           "message": {"type": "string", "minLength": 1, "maxLength": 160},
           "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
           "retry_after_seconds": {"type": "integer", "minimum": 1, "maximum": 86400}

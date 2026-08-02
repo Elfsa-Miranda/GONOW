@@ -10,13 +10,34 @@ import argparse
 import asyncio
 import signal
 from collections.abc import Sequence
+from typing import Protocol
+from uuid import uuid4
+
+from app.worker.execution import DurableWorkerExecutor, WorkerExecutionState
+
+
+class TenantWorkSource(Protocol):
+    def ready_tenants(self) -> tuple[str, ...]: ...
 
 
 class WorkerRuntime:
     """Minimal independently controlled worker lifecycle."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        executor: DurableWorkerExecutor | None = None,
+        tenant_source: TenantWorkSource | None = None,
+        worker_id: str = "worker-unconfigured",
+        poll_interval_seconds: float = 0.25,
+    ) -> None:
+        if poll_interval_seconds <= 0 or poll_interval_seconds > 30:
+            raise ValueError("worker poll interval is invalid")
         self._stop_requested = asyncio.Event()
+        self._executor = executor
+        self._tenant_source = tenant_source
+        self._worker_id = worker_id
+        self._poll_interval_seconds = poll_interval_seconds
         self.started = False
 
     async def startup(self) -> None:
@@ -31,9 +52,36 @@ class WorkerRuntime:
     async def run(self) -> None:
         await self.startup()
         try:
-            await self._stop_requested.wait()
+            if self._executor is None or self._tenant_source is None:
+                raise RuntimeError("worker.dependencies_unavailable")
+            while not self._stop_requested.is_set():
+                processed = await self.poll_once()
+                if processed == 0:
+                    try:
+                        await asyncio.wait_for(
+                            self._stop_requested.wait(),
+                            timeout=self._poll_interval_seconds,
+                        )
+                    except TimeoutError:
+                        pass
         finally:
             await self.shutdown()
+
+    async def poll_once(self) -> int:
+        if self._executor is None or self._tenant_source is None:
+            raise RuntimeError("worker.dependencies_unavailable")
+        processed = 0
+        for tenant_id in self._tenant_source.ready_tenants():
+            attempt_id = uuid4()
+            result = await asyncio.to_thread(
+                self._executor.execute_once,
+                tenant_id=tenant_id,
+                holder_id=f"{self._worker_id}:{attempt_id}",
+                audit_receipt_id=f"worker:{attempt_id}",
+            )
+            if result.state is not WorkerExecutionState.EMPTY:
+                processed += 1
+        return processed
 
 
 async def check_lifecycle(runtime: WorkerRuntime | None = None) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.persistence.repositories.jobs import JobClaim, JobsRepository
@@ -43,6 +44,7 @@ class DurableJobRunner:
         lease_seconds: int = 30,
     ) -> ClaimAttempt:
         with self._session_factory.begin() as session:
+            session.execute(select(func.set_config("app.tenant_id", tenant_id, True)))
             claim = JobsRepository(session).claim_next_job(
                 tenant_id=tenant_id,
                 holder_id=holder_id,

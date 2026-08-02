@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.persistence.models.jobs import LeaseRecord
@@ -26,6 +27,7 @@ class DurableLeaseCoordinator:
         lease_seconds: int = 30,
     ) -> LeaseRecord:
         with self._session_factory.begin() as session:
+            session.execute(select(func.set_config("app.tenant_id", tenant_id, True)))
             return JobsRepository(session).renew_lease(
                 tenant_id=tenant_id,
                 job_id=job_id,
@@ -43,6 +45,7 @@ class DurableLeaseCoordinator:
         lease_seconds: int = 30,
     ) -> JobClaim | None:
         with self._session_factory.begin() as session:
+            session.execute(select(func.set_config("app.tenant_id", tenant_id, True)))
             return JobsRepository(session).reclaim_expired_job(
                 tenant_id=tenant_id,
                 holder_id=holder_id,

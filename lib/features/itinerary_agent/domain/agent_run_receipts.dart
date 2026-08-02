@@ -12,6 +12,34 @@ final class AgentApiContractReceipt {
   final String specSha256;
 }
 
+final class StartAgentRunReceipt {
+  const StartAgentRunReceipt({
+    required this.runId,
+    required this.threadId,
+    required this.state,
+    required this.version,
+    required this.replayed,
+    required this.behaviorDigest,
+  });
+
+  final String runId;
+  final String threadId;
+  final String state;
+  final int version;
+  final bool replayed;
+  final String behaviorDigest;
+}
+
+final class AgentRunCandidateReceipt {
+  AgentRunCandidateReceipt({
+    required this.runId,
+    required Map<String, dynamic> payload,
+  }) : payload = Map<String, dynamic>.unmodifiable(payload);
+
+  final String runId;
+  final Map<String, dynamic> payload;
+}
+
 final class ResumeAgentRunReceipt {
   const ResumeAgentRunReceipt({
     required this.runId,
