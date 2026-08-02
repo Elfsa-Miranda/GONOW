@@ -3,6 +3,11 @@ param(
   [ValidateSet('ReleaseBDeep')][string]$Profile = 'ReleaseBDeep',
   [string]$EvidenceRoot = '.\docs\execution\evidence\phase-10\P10-009',
   [string]$CandidateHeadOid = '',
+  [ValidateSet('none','regression','c1','c2','c3','c4-fast','c4-soak','c4','c5-observe','c5','all-ready')]
+  [string]$ExecuteShard = 'none',
+  [string]$PythonExecutable = '',
+  [string]$FlutterExecutable = '',
+  [string]$DatabaseUrl = 'postgresql+pg8000://gonow_migrator_test@127.0.0.1:55432/gonow_p03_test',
   [switch]$SelfTest,
   [ValidateSet('none','c1_state_count','c2_live_boundary','c2_redline','c3_slice_size','c4_soak','c5_rollback','candidate_drift','enterprise_substitution')]
   [string]$SelfTestFailure = 'none'
@@ -127,6 +132,63 @@ function Test-GateReport {
   return $Failures
 }
 
+function Test-ExecutableSourceEvidence {
+  param([object]$Report,[string]$GateId,[string]$Root)
+  $Failures = [Collections.Generic.List[string]]::new()
+  if ($null -eq $Report) { return $Failures }
+  function Read-Source([string]$Name) {
+    $Path = Join-Path $Root $Name
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  }
+  $M = $Report.metrics
+  switch ($GateId) {
+    'C1' {
+      $Regression = Read-Source 'regression-report.json'
+      $State = Read-Source 'state-space-report.json'
+      $E0 = Read-Source 'c1-e0-expanded.json'
+      Add-Failure $Failures 'c1_regression_not_passed' ($null-ne$Regression -and [string]$Regression.status-ceq'passed' -and [int]$Regression.failure_count-eq0 -and [int]$Regression.mandatory_skip_count-eq0)
+      Add-Failure $Failures 'c1_state_source_mismatch' ($null-ne$State -and [long]$State.sequence_count-eq[long]$M.state_sequence_count -and [int]$State.failure_count-eq0 -and [double]$State.hard_invariant_pass_rate-eq1.0)
+      Add-Failure $Failures 'c1_e0_source_mismatch' ($null-ne$E0 -and [int]$E0.case_count-eq[int]$M.e0_case_count -and [int]$E0.unique_input_count-ge160 -and [int]$E0.failure_count-eq0)
+    }
+    'C2' {
+      $Security = Read-Source 'security-matrix.json'
+      $Performance = Read-Source 'performance-cost-report.json'
+      $Load = Read-Source 'c2-postgresql-load.json'
+      Add-Failure $Failures 'c2_security_source_mismatch' ($null-ne$Security -and [long]$Security.generated_security_attempt_count-eq[long]$M.generated_security_attempt_count -and [int]$Security.failure_count-eq0 -and [double]$Security.critical_mutation_kill_rate-eq[double]$M.critical_mutation_kill_rate)
+      Add-Failure $Failures 'c2_postgresql_source_mismatch' ($null-ne$Load -and [int]$Load.local_complete_run_count-eq[int]$M.local_complete_run_count -and [int]$Load.terminal_failure_count-eq0 -and [int]$Load.rls_cross_tenant_leak_count-eq0)
+      Add-Failure $Failures 'c2_performance_source_mismatch' ($null-ne$Performance -and [double]$Performance.api_p95_upper_ms-eq[double]$M.api_p95_upper_ms -and [bool]$Performance.real_postgresql)
+    }
+    'C3' {
+      $Quality = Read-Source 'quality-slice-report.json'
+      Add-Failure $Failures 'c3_quality_source_mismatch' ($null-ne$Quality -and [int]$Quality.generated_case_count-eq[int]$M.e1_case_count -and [int]$Quality.minimum_cases_per_critical_slice-eq[int]$M.minimum_cases_per_critical_slice -and @($Quality.slices).Count-ge11 -and [int]$Quality.failure_count-eq0)
+    }
+    'C4' {
+      $Fault = Read-Source 'fault-injection-report.json'
+      $Virtual = Read-Source 'virtual-time-report.json'
+      $Soak = Read-Source 'soak-report.json'
+      $Samples = Read-Source 'soak-samples.json'
+      $Judge = Read-Source 'c4-judge-calibration.json'
+      Add-Failure $Failures 'c4_fault_source_mismatch' ($null-ne$Fault -and [int]$Fault.minimum_schedules_per_killpoint_outcome-eq[int]$M.minimum_schedules_per_killpoint_outcome -and [int]$Fault.schedule_count-ge420 -and [int]$Fault.stale_worker_denial_failure_count-eq0)
+      Add-Failure $Failures 'c4_virtual_source_mismatch' ($null-ne$Virtual -and [int]$Virtual.virtual_days-eq[int]$M.virtual_days -and [long]$Virtual.fake_provider_lifecycle_count-eq[long]$M.fake_provider_lifecycle_count -and [int]$Virtual.boundary_failure_count-eq0)
+      Add-Failure $Failures 'c4_judge_source_mismatch' ($null-ne$Judge -and [int]$Judge.annotation_count-eq[int]$M.judge_annotation_count -and [int]$Judge.minimum_primary_slice_annotations-eq[int]$M.minimum_judge_primary_slice_annotations)
+      if ($null-ne$Soak) {
+        $SamplesPath=Join-Path $Root 'soak-samples.json'
+        Add-Failure $Failures 'c4_soak_sample_binding_invalid' ($null-ne$Samples -and [string]$Soak.samples_path-ceq'soak-samples.json' -and [string]$Soak.samples_artifact_sha256-ceq(Get-Sha256 -LiteralPath $SamplesPath) -and @($Samples.samples).Count-eq[int]$Soak.sample_count)
+        $Previous=-1.0;$Monotonic=$true
+        foreach($Sample in @($Samples.samples)){if([double]$Sample.elapsed_seconds-lt$Previous){$Monotonic=$false};$Previous=[double]$Sample.elapsed_seconds}
+        Add-Failure $Failures 'c4_soak_samples_not_monotonic' $Monotonic
+        Add-Failure $Failures 'c4_soak_source_mismatch' ([double]$Soak.real_soak_seconds-eq[double]$M.real_soak_seconds -and [string]$Soak.status-ceq'passed' -and [int]$Soak.failure_count-eq0)
+      }
+    }
+    'C5' {
+      $Operations = Read-Source 'rollback-operations-report.json'
+      Add-Failure $Failures 'c5_operations_source_mismatch' ($null-ne$Operations -and [int]$Operations.fault_class_count-eq[int]$M.fault_class_count -and [int]$Operations.fault_failure_count-eq0 -and [int]$Operations.traceability_failure_count-eq0 -and [double]$Operations.observation_seconds-ge300 -and [bool]$Operations.rollback_passed)
+    }
+  }
+  return $Failures
+}
+
 function New-SelfTestReport {
   param([string]$GateId,[string]$Candidate,[string]$Failure,[object[]]$SourceArtifacts)
   $Metrics = switch ($GateId) {
@@ -186,6 +248,29 @@ if ($SelfTest) {
 }
 $ManifestHash = Get-Sha256 -LiteralPath $ManifestPath
 
+if (-not $SelfTest -and $ExecuteShard -cne 'none') {
+  $ResolvedPython = if ([string]::IsNullOrWhiteSpace($PythonExecutable)) { Join-Path $RepositoryRoot 'agent-service\.venv\Scripts\python.exe' } else { [IO.Path]::GetFullPath($PythonExecutable) }
+  if (-not (Test-Path -LiteralPath $ResolvedPython -PathType Leaf)) { throw 'certification_locked_python_missing' }
+  $Harness = Join-Path $RepositoryRoot 'agent-service\tests\certification\run_certification.py'
+  if (-not (Test-Path -LiteralPath $Harness -PathType Leaf)) { throw 'certification_executable_harness_missing' }
+  $Actions = if ($ExecuteShard -ceq 'all-ready') { @('regression','c1','c2','c3','c4-fast','c4','c5-observe','c5') } else { @($ExecuteShard) }
+  $Executions=@()
+  foreach($Action in $Actions) {
+    $Arguments=@($Harness,$Action,'--evidence-root',$ResolvedEvidenceRoot,'--candidate-head-oid',$Candidate,'--database-url',$DatabaseUrl)
+    if ($Action -ceq 'regression') {
+      $ResolvedFlutter = if (-not [string]::IsNullOrWhiteSpace($FlutterExecutable)) { [IO.Path]::GetFullPath($FlutterExecutable) } elseif (-not [string]::IsNullOrWhiteSpace($env:GONOW_FLUTTER_EXECUTABLE)) { [IO.Path]::GetFullPath($env:GONOW_FLUTTER_EXECUTABLE) } else { '' }
+      if ([string]::IsNullOrWhiteSpace($ResolvedFlutter) -or -not(Test-Path -LiteralPath $ResolvedFlutter -PathType Leaf)) { throw 'certification_locked_flutter_missing' }
+      $Arguments+=@('--flutter-executable',$ResolvedFlutter)
+    }
+    if ($Action -ceq 'c4-soak') { $Arguments+=@('--soak-seconds',[string]$ProfileConfig.MinimumRealSoakSeconds) }
+    $ActionStarted=[DateTimeOffset]::Now
+    $Output=@(& $ResolvedPython @Arguments)
+    $ActionExit=$LASTEXITCODE
+    $Executions+=[ordered]@{action=$Action;exit_code=$ActionExit;started_at=$ActionStarted.ToString('o');completed_at=[DateTimeOffset]::Now.ToString('o');summary=if($Output.Count-gt0){[string]$Output[-1]}else{''}}
+  }
+  Write-AtomicJson -LiteralPath (Join-Path $ResolvedEvidenceRoot 'certification-execution.json') -Value ([ordered]@{schema_version='1.0';candidate_head_oid=$Candidate;executions=$Executions;production_write_count=0})
+}
+
 $GateResults = @()
 $MandatorySkipCount = 0
 $XfailCount = 0
@@ -213,6 +298,9 @@ foreach ($GateId in @($ProfileConfig.OrderedGates)) {
     $Report = Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
   }
   $Failures = @(Test-GateReport -Report $Report -GateId $GateId -ExpectedCandidate $Candidate -Thresholds $ProfileConfig.Thresholds[$GateId])
+  if (-not $SelfTest) {
+    $Failures += @(Test-ExecutableSourceEvidence -Report $Report -GateId $GateId -Root $ResolvedEvidenceRoot)
+  }
   $BoundSources = if ($null -ne $Report) { @($Report.source_artifacts) } else { @() }
   foreach ($SupportingReportName in @($ProfileConfig.SupportingReports[$GateId])) {
     $SupportingReportPath = Join-Path $ResolvedEvidenceRoot ([string]$SupportingReportName)
@@ -233,7 +321,7 @@ foreach ($GateId in @($ProfileConfig.OrderedGates)) {
     $RedlineFailureCount += [int]$Report.redline_failure_count
   }
   $GateResults += [ordered]@{
-    gate_id=$GateId;status=if($Failures.Count-eq0){'passed'}elseif($Failures -contains 'report_missing'){'blocked'}else{'failed'}
+    gate_id=$GateId;status=if($Failures.Count-eq0){'passed'}elseif(($null-ne$Report -and [string]$Report.status-ceq'blocked') -or $Failures -contains 'report_missing'){'blocked'}else{'failed'}
     report_path=$ReportName;report_sha256=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Sha256 -LiteralPath $ReportPath}else{$null}
     failure_codes=@($Failures|Sort-Object -Unique)
   }
