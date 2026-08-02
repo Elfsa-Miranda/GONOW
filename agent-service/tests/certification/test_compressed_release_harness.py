@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import sys
 
+import httpx
 import pytest
 
 
@@ -20,6 +22,12 @@ from harness_common import (  # noqa: E402
     CertificationFailure,
     require_candidate_oid,
     wilson_lower_bound,
+)
+from live_provider_gemini import (  # noqa: E402
+    CONFIG_PATH,
+    load_live_config,
+    projected_maximum_cost,
+    run_gemini_live,
 )
 
 
@@ -71,3 +79,61 @@ def test_c5_fault_catalog_and_short_observation_are_executable(tmp_path: Path) -
     assert report["fault_failure_count"] == 0
     assert report["new_run_after_kill_count"] == 0
     assert report["old_path_success_rate"] == 1.0
+
+
+def test_c2_live_gemini_executor_emits_only_content_free_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "synthetic-provider-credential-value"
+    monkeypatch.setenv("GEMINI_API_KEY", secret)
+    post_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal post_count
+        if request.method == "GET":
+            return httpx.Response(200, content=b"official-pricing-snapshot")
+        assert request.headers["x-goog-api-key"] == secret
+        assert request.url.host == "generativelanguage.googleapis.com"
+        post_count += 1
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "finishReason": "STOP",
+                        "content": {"parts": [{"text": '{"ok":true}'}]},
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 20,
+                    "candidatesTokenCount": 5,
+                    "totalTokenCount": 25,
+                },
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        report = run_gemini_live(
+            tmp_path,
+            candidate_oid="a" * 40,
+            client=client,
+            sleeper=lambda _: None,
+        )
+    assert post_count == 400
+    assert report["status"] == "passed"
+    assert report["successful_call_count"] == 400
+    assert report["credential_value_recorded"] is False
+    evidence = (tmp_path / "live-provider-receipts.json").read_text("utf-8")
+    assert secret not in evidence
+    assert "Return one JSON" not in evidence
+    assert '{"ok":true}' not in evidence
+
+
+def test_c2_live_config_prevents_projected_budget_overrun(tmp_path: Path) -> None:
+    config = json.loads(CONFIG_PATH.read_text("utf-8"))
+    config["budget_cap_usd"] = 0.000001
+    path = tmp_path / "over-budget.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(CertificationFailure, match="c2.live_projected_cost_exceeds_budget"):
+        load_live_config(path)
+    assert projected_maximum_cost(load_live_config()) <= 0.1

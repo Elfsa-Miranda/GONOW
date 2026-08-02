@@ -21,7 +21,7 @@
       }
       SupportingReports = @{
         C1 = @('regression-report.json','state-space-report.json','c1-e0-expanded.json')
-        C2 = @('security-matrix.json','performance-cost-report.json','c2-postgresql-load.json')
+        C2 = @('security-matrix.json','performance-cost-report.json','c2-postgresql-load.json','live-provider-receipts.json','pricing-snapshot.json')
         C3 = @('quality-slice-report.json')
         C4 = @('fault-injection-report.json','virtual-time-report.json','soak-report.json','soak-samples.json','c4-judge-calibration.json')
         C5 = @('rollback-operations-report.json')

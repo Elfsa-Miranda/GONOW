@@ -64,6 +64,7 @@ from harness_common import (
     canonical_sha256,
     gate_report,
     require_candidate_oid,
+    sha256_file,
     source_artifact,
     write_atomic_json,
 )
@@ -718,7 +719,11 @@ def run_postgresql_load(
     return report
 
 
-def _load_live_provider_receipt(evidence_root: Path) -> tuple[dict[str, Any] | None, list[str]]:
+def _load_live_provider_receipt(
+    evidence_root: Path,
+    *,
+    expected_candidate_oid: str,
+) -> tuple[dict[str, Any] | None, list[str]]:
     path = evidence_root / "live-provider-receipts.json"
     if not path.is_file():
         return None, ["c2.live_provider_receipts_missing"]
@@ -727,14 +732,36 @@ def _load_live_provider_receipt(evidence_root: Path) -> tuple[dict[str, Any] | N
     except (OSError, ValueError):
         return None, ["c2.live_provider_receipts_invalid"]
     required = {
+        "candidate_head_oid",
+        "executor",
+        "status",
         "provider_id",
         "pricing_snapshot_sha256",
         "budget_cap_usd",
         "route_receipts",
         "cost_to_budget_ratio_upper",
         "p95_cost_increase_upper",
+        "credential_value_recorded",
+        "request_body_record_count",
+        "response_body_record_count",
+        "secret_or_pii_leak_count",
+        "production_write_count",
     }
     if set(report) < required:
+        return None, ["c2.live_provider_receipts_invalid"]
+    pricing_path = evidence_root / "pricing-snapshot.json"
+    if (
+        report["candidate_head_oid"] != expected_candidate_oid
+        or report["executor"] != "repository_owned_gemini_live_v1"
+        or report["status"] != "passed"
+        or report["credential_value_recorded"] is not False
+        or int(report["request_body_record_count"]) != 0
+        or int(report["response_body_record_count"]) != 0
+        or int(report["secret_or_pii_leak_count"]) != 0
+        or int(report["production_write_count"]) != 0
+        or not pricing_path.is_file()
+        or str(report["pricing_snapshot_sha256"]) != sha256_file(pricing_path)
+    ):
         return None, ["c2.live_provider_receipts_invalid"]
     route_receipts = report["route_receipts"]
     if (
@@ -747,25 +774,23 @@ def _load_live_provider_receipt(evidence_root: Path) -> tuple[dict[str, Any] | N
     return report, []
 
 
-def run_c2_local(
+def aggregate_c2(
     evidence_root: Path,
     *,
     candidate_oid: str,
-    generated_attempt_count: int = 100_000,
-    run_count: int = 10_000,
-    database_url: str = DEFAULT_DATABASE_URL,
+    minimum_generated_attempt_count: int = 100_000,
+    minimum_run_count: int = 10_000,
 ) -> dict[str, Any]:
-    evidence_root.mkdir(parents=True, exist_ok=True)
-    security = run_security_matrix(
+    candidate = require_candidate_oid(candidate_oid)
+    try:
+        security = json.loads((evidence_root / "security-matrix.json").read_text("utf-8"))
+        load = json.loads((evidence_root / "c2-postgresql-load.json").read_text("utf-8"))
+    except (OSError, ValueError) as error:
+        raise CertificationFailure("c2.local_source_missing") from error
+    live, blockers = _load_live_provider_receipt(
         evidence_root,
-        generated_attempt_count=generated_attempt_count,
+        expected_candidate_oid=candidate,
     )
-    load = run_postgresql_load(
-        evidence_root,
-        run_count=run_count,
-        database_url=database_url,
-    )
-    live, blockers = _load_live_provider_receipt(evidence_root)
     if live is None:
         live_metrics = {
             "live_provider": False,
@@ -803,7 +828,8 @@ def run_c2_local(
         and security["secret_or_pii_leak_count"] == 0
         and security["forbidden_tool_execution_count"] == 0
         and security["critical_mutation_kill_rate"] == 1.0
-        and load["local_complete_run_count"] >= run_count
+        and security["generated_security_attempt_count"] >= minimum_generated_attempt_count
+        and load["local_complete_run_count"] >= minimum_run_count
         and load["terminal_failure_count"] == 0
         and load["rls_cross_tenant_leak_count"] == 0
         and load["api_p95_upper_ms"] <= 800
@@ -848,10 +874,11 @@ def run_c2_local(
     ]
     if live is not None:
         sources.append(source_artifact(evidence_root, "live-provider-receipts.json"))
+        sources.append(source_artifact(evidence_root, "pricing-snapshot.json"))
     status = "passed" if local_passed and live_passed else "blocked" if local_passed else "failed"
     report = gate_report(
         gate_id="C2",
-        candidate_oid=require_candidate_oid(candidate_oid),
+        candidate_oid=candidate,
         status=status,
         metrics=metrics,
         sources=sources,
@@ -859,3 +886,29 @@ def run_c2_local(
     )
     write_atomic_json(evidence_root / "c2-security-performance-cost.json", report)
     return report
+
+
+def run_c2_local(
+    evidence_root: Path,
+    *,
+    candidate_oid: str,
+    generated_attempt_count: int = 100_000,
+    run_count: int = 10_000,
+    database_url: str = DEFAULT_DATABASE_URL,
+) -> dict[str, Any]:
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    run_security_matrix(
+        evidence_root,
+        generated_attempt_count=generated_attempt_count,
+    )
+    run_postgresql_load(
+        evidence_root,
+        run_count=run_count,
+        database_url=database_url,
+    )
+    return aggregate_c2(
+        evidence_root,
+        candidate_oid=candidate_oid,
+        minimum_generated_attempt_count=generated_attempt_count,
+        minimum_run_count=run_count,
+    )

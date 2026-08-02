@@ -25,6 +25,7 @@ sys.path.insert(0, str(SERVICE_ROOT))
 from c1_correctness import run_c1  # noqa: E402
 from c2_security_performance_cost import (  # noqa: E402
     DEFAULT_DATABASE_URL,
+    aggregate_c2,
     run_c2_local,
 )
 from c3_quality import run_c3  # noqa: E402
@@ -38,6 +39,7 @@ from harness_common import (  # noqa: E402
     write_atomic_json,
     write_atomic_text,
 )
+from live_provider_gemini import run_gemini_live  # noqa: E402
 
 
 def _run(
@@ -244,6 +246,7 @@ def build_parser() -> argparse.ArgumentParser:
             "regression",
             "c1",
             "c2",
+            "c2-live",
             "c3",
             "c4-fast",
             "c4-soak",
@@ -287,6 +290,9 @@ def main(argv: list[str] | None = None) -> int:
             run_count=arguments.local_runs,
             database_url=arguments.database_url,
         )
+    elif arguments.action == "c2-live":
+        run_gemini_live(evidence_root, candidate_oid=candidate)
+        result = aggregate_c2(evidence_root, candidate_oid=candidate)
     elif arguments.action == "c3":
         result = run_c3(evidence_root, candidate)
     elif arguments.action == "c4-fast":

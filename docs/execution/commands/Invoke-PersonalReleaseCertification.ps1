@@ -3,7 +3,7 @@ param(
   [ValidateSet('ReleaseBDeep')][string]$Profile = 'ReleaseBDeep',
   [string]$EvidenceRoot = '.\docs\execution\evidence\phase-10\P10-009',
   [string]$CandidateHeadOid = '',
-  [ValidateSet('none','regression','c1','c2','c3','c4-fast','c4-soak','c4','c5-observe','c5','all-ready')]
+  [ValidateSet('none','regression','c1','c2','c2-live','c3','c4-fast','c4-soak','c4','c5-observe','c5','all-ready')]
   [string]$ExecuteShard = 'none',
   [string]$PythonExecutable = '',
   [string]$FlutterExecutable = '',
@@ -155,9 +155,13 @@ function Test-ExecutableSourceEvidence {
       $Security = Read-Source 'security-matrix.json'
       $Performance = Read-Source 'performance-cost-report.json'
       $Load = Read-Source 'c2-postgresql-load.json'
+      $Live = Read-Source 'live-provider-receipts.json'
+      $Pricing = Read-Source 'pricing-snapshot.json'
       Add-Failure $Failures 'c2_security_source_mismatch' ($null-ne$Security -and [long]$Security.generated_security_attempt_count-eq[long]$M.generated_security_attempt_count -and [int]$Security.failure_count-eq0 -and [double]$Security.critical_mutation_kill_rate-eq[double]$M.critical_mutation_kill_rate)
       Add-Failure $Failures 'c2_postgresql_source_mismatch' ($null-ne$Load -and [int]$Load.local_complete_run_count-eq[int]$M.local_complete_run_count -and [int]$Load.terminal_failure_count-eq0 -and [int]$Load.rls_cross_tenant_leak_count-eq0)
-      Add-Failure $Failures 'c2_performance_source_mismatch' ($null-ne$Performance -and [double]$Performance.api_p95_upper_ms-eq[double]$M.api_p95_upper_ms -and [bool]$Performance.real_postgresql)
+      Add-Failure $Failures 'c2_performance_source_mismatch' ($null-ne$Performance -and [double]$Performance.api_p95_upper_ms-eq[double]$M.api_p95_upper_ms -and [bool]$Performance.real_postgresql -and [bool]$Performance.live_provider)
+      Add-Failure $Failures 'c2_live_source_mismatch' ($null-ne$Live -and [string]$Live.status-ceq'passed' -and [string]$Live.executor-ceq'repository_owned_gemini_live_v1' -and [string]$Live.candidate_head_oid-ceq[string]$Report.candidate_head_oid -and [int]$Live.successful_call_count-ge400 -and [int]$Live.secret_or_pii_leak_count-eq0 -and [int]$Live.request_body_record_count-eq0 -and [int]$Live.response_body_record_count-eq0 -and [int]$Live.production_write_count-eq0)
+      Add-Failure $Failures 'c2_pricing_source_mismatch' ($null-ne$Pricing -and [string]$Live.pricing_snapshot_sha256-ceq(Get-Sha256 -LiteralPath (Join-Path $Root 'pricing-snapshot.json')) -and [string]$Pricing.provider_id-ceq[string]$Live.provider_id)
     }
     'C3' {
       $Quality = Read-Source 'quality-slice-report.json'
@@ -259,7 +263,7 @@ if (-not $SelfTest -and $ExecuteShard -cne 'none') {
   if (-not (Test-Path -LiteralPath $ResolvedPython -PathType Leaf)) { throw 'certification_locked_python_missing' }
   $Harness = Join-Path $RepositoryRoot 'agent-service\tests\certification\run_certification.py'
   if (-not (Test-Path -LiteralPath $Harness -PathType Leaf)) { throw 'certification_executable_harness_missing' }
-  $Actions = if ($ExecuteShard -ceq 'all-ready') { @('regression','c1','c2','c3','c4-fast','c4','c5-observe','c5') } else { @($ExecuteShard) }
+  $Actions = if ($ExecuteShard -ceq 'all-ready') { @('regression','c1','c2','c2-live','c3','c4-fast','c4','c5-observe','c5') } else { @($ExecuteShard) }
   $Executions=@()
   foreach($Action in $Actions) {
     $Arguments=@($Harness,$Action,'--evidence-root',$ResolvedEvidenceRoot,'--candidate-head-oid',$Candidate,'--database-url',$DatabaseUrl)
