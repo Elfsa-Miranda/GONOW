@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 from app.models.ledger import ModelUsageLedger, TokenUsage
 from app.models.routes import CertifiedModelRoute, CertifiedModelRoutes
@@ -28,6 +28,7 @@ class AdapterFailure(ModelGatewayError):
 class ProviderCredential:
     provider_id: str
     credential_ref: str
+    secret_value: str | None = field(default=None, repr=False, compare=False)
 
     def __repr__(self) -> str:
         return "ProviderCredential(provider_id=<bound>, credential=<redacted>)"
@@ -57,6 +58,7 @@ class ModelResult:
     output_ref: str
     output_sha256: str
     usage: TokenUsage
+    payload: dict[str, Any] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if (

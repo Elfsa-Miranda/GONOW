@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import signal
 from collections.abc import Sequence
+from collections.abc import Callable
 from typing import Protocol
 from uuid import uuid4
 
@@ -30,6 +31,7 @@ class WorkerRuntime:
         tenant_source: TenantWorkSource | None = None,
         worker_id: str = "worker-unconfigured",
         poll_interval_seconds: float = 0.25,
+        resource_closer: Callable[[], None] | None = None,
     ) -> None:
         if poll_interval_seconds <= 0 or poll_interval_seconds > 30:
             raise ValueError("worker poll interval is invalid")
@@ -38,6 +40,8 @@ class WorkerRuntime:
         self._tenant_source = tenant_source
         self._worker_id = worker_id
         self._poll_interval_seconds = poll_interval_seconds
+        self._resource_closer = resource_closer
+        self._resources_closed = False
         self.started = False
 
     async def startup(self) -> None:
@@ -48,6 +52,9 @@ class WorkerRuntime:
     async def shutdown(self) -> None:
         self._stop_requested.set()
         self.started = False
+        if self._resource_closer is not None and not self._resources_closed:
+            await asyncio.to_thread(self._resource_closer)
+            self._resources_closed = True
 
     async def run(self) -> None:
         await self.startup()
@@ -97,7 +104,12 @@ async def check_lifecycle(runtime: WorkerRuntime | None = None) -> None:
 
 
 async def run_worker(runtime: WorkerRuntime | None = None) -> None:
-    selected = runtime or WorkerRuntime()
+    if runtime is None:
+        from app.worker.composition import build_worker_runtime_from_environment
+
+        selected = build_worker_runtime_from_environment()
+    else:
+        selected = runtime
     loop = asyncio.get_running_loop()
     installed_signals: list[signal.Signals] = []
 

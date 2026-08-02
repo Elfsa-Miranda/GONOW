@@ -11,7 +11,14 @@ from uuid import UUID, uuid4
 from alembic import command
 from alembic.config import Config
 from fastapi import Request
-from httpx import ASGITransport, AsyncClient
+from httpx import (
+    ASGITransport,
+    AsyncClient,
+    Client,
+    MockTransport,
+    Request as HttpxRequest,
+    Response,
+)
 import pytest
 from sqlalchemy import create_engine, event, func, select, text, update
 from sqlalchemy.engine import Engine, make_url
@@ -66,6 +73,7 @@ from app.worker.execution import (  # noqa: E402
     WorkerExecutionState,
 )
 from app.worker.lease import DurableLeaseCoordinator  # noqa: E402
+from app.worker.itinerary_processor import GeminiItineraryProcessor  # noqa: E402
 
 
 ALEMBIC_INI = SERVICE_ROOT / "alembic.ini"
@@ -565,6 +573,82 @@ async def test_worker_claim_persists_candidate_and_converges_terminal(runtime_da
     assert owner.json()["candidate_id"] == candidate.candidate_id
     assert other_tenant.status_code == 403
     assert other_tenant.json()["error"]["code"] == "auth.forbidden"
+
+
+def test_real_gemini_adapter_composes_through_postgresql_worker_boundary(
+    runtime_database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, api_factory, worker_factory = runtime_database
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-gemini-runtime-credential")
+    started = RunStartService(
+        api_factory,
+        behavior_pin=_PinProvider(_pin("9")),
+    ).start(
+        context=_context(TENANT_A),
+        thread_id=uuid4(),
+        idempotency_key="worker-gemini-source-0001",
+        structured_input=_body(uuid4())["itinerary"],  # type: ignore[arg-type]
+    )
+
+    def provider(request: HttpxRequest) -> Response:
+        assert request.url.host == "generativelanguage.googleapis.com"
+        assert request.headers["x-goog-api-key"] == "synthetic-gemini-runtime-credential"
+        output = {
+            "title": "Two-day Hangzhou plan",
+            "days": [
+                {
+                    "day_number": day,
+                    "items": [
+                        {
+                            "item_id": f"item_day_{day}",
+                            "title": f"Day {day} activity",
+                            "start_minute": 600,
+                            "duration_minutes": 120,
+                        }
+                    ],
+                }
+                for day in (1, 2)
+            ],
+        }
+        return Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "finishReason": "STOP",
+                        "content": {"parts": [{"text": json.dumps(output)}]},
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 120,
+                    "candidatesTokenCount": 80,
+                    "thoughtsTokenCount": 20,
+                    "totalTokenCount": 220,
+                },
+            },
+        )
+
+    with Client(transport=MockTransport(provider)) as client:
+        processor = GeminiItineraryProcessor(client=client)
+        result = DurableWorkerExecutor(
+            worker_factory,
+            processor=processor,
+        ).execute_once(
+            tenant_id=TENANT_A,
+            holder_id="worker-p10-gemini",
+            audit_receipt_id="audit-worker-p10-gemini",
+        )
+    with worker_factory.begin() as session:
+        session.execute(select(func.set_config("app.tenant_id", TENANT_A, True)))
+        run = session.scalar(select(RunRecord).where(RunRecord.run_id == started.run_id))
+        candidate = session.scalar(
+            select(CandidateRecord).where(CandidateRecord.run_id == started.run_id)
+        )
+    assert result.state is WorkerExecutionState.SUCCEEDED
+    assert run is not None and run.state == RunState.SUCCEEDED.value
+    assert candidate is not None and candidate.payload["title"] == "Two-day Hangzhou plan"
+    assert len(processor.ledger.records) == 1
+    assert processor.ledger.records[0].output_tokens == 100
 
 
 def test_cancel_at_worker_boundary_discards_candidate(runtime_database) -> None:

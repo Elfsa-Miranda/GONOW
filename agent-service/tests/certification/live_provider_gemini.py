@@ -21,6 +21,13 @@ from typing import Any
 
 import httpx
 
+from app.models.gateway import AdapterFailure, ModelInvocation, ProviderCredential
+from app.models.gemini import (
+    PROVIDER_ID,
+    GeminiModelAdapter,
+    canonical_digest,
+    certified_gemini_routes,
+)
 from harness_common import (
     CertificationFailure,
     canonical_sha256,
@@ -36,7 +43,6 @@ ALLOWED_ORIGIN = "https://generativelanguage.googleapis.com"
 ALLOWED_API_VERSION = "v1beta"
 ALLOWED_PRICING_SOURCE = "https://ai.google.dev/gemini-api/docs/pricing"
 ALLOWED_MODELS = {"gemini-3.1-flash-lite", "gemini-3.6-flash"}
-RETRYABLE_STATUS_CODES = {429, 500, 503, 504}
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,46 +184,6 @@ def _percentile(values: list[float], quantile: float) -> float:
     return ordered[index]
 
 
-def _request_payload(maximum_output_tokens: int) -> dict[str, Any]:
-    return {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "text": (
-                            "Return one JSON object with the boolean field ok set to true. "
-                            "Do not add any other fields."
-                        )
-                    }
-                ],
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0,
-            "maxOutputTokens": maximum_output_tokens,
-            "responseMimeType": "application/json",
-            "responseJsonSchema": {
-                "type": "object",
-                "properties": {"ok": {"type": "boolean", "const": True}},
-                "required": ["ok"],
-                "additionalProperties": False,
-            },
-            "thinkingConfig": {"thinkingLevel": "low"},
-        },
-    }
-
-
-def _safe_failure_code(response: httpx.Response | None, error: Exception | None) -> str:
-    if response is not None and response.status_code >= 400:
-        return f"provider.http_{response.status_code}"
-    if isinstance(error, httpx.TimeoutException):
-        return "provider.timeout"
-    if isinstance(error, httpx.HTTPError):
-        return "provider.transport"
-    return "provider.invalid_response"
-
-
 def _call_once(
     client: httpx.Client,
     *,
@@ -225,66 +191,75 @@ def _call_once(
     route: LiveRoute,
     api_key: str,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    url = f"{config.api_origin}/{config.api_version}/models/{route.model_id}:generateContent"
-    payload = _request_payload(config.maximum_output_tokens_per_call)
+    prompt = (
+        "Return one JSON object with the boolean field ok set to true. "
+        "Do not add any other fields."
+    )
+    input_sha256 = canonical_digest(prompt)
+    input_ref = f"context://sha256/{input_sha256}"
+    product_route = next(
+        selected
+        for selected in certified_gemini_routes().routes
+        if selected.model_id == route.model_id
+    )
+    adapter = GeminiModelAdapter(
+        input_resolver=lambda reference: prompt
+        if reference == input_ref
+        else (_ for _ in ()).throw(KeyError(reference)),
+        response_schema={
+            "type": "object",
+            "properties": {"ok": {"type": "boolean"}},
+            "required": ["ok"],
+            "additionalProperties": False,
+        },
+        client=client,
+    )
     started = time.perf_counter()
-    response: httpx.Response | None = None
-    error: Exception | None = None
     try:
-        response = client.post(
-            url,
-            headers={"x-goog-api-key": api_key, "content-type": "application/json"},
-            json=payload,
+        result = adapter.invoke(
+            product_route,
+            ModelInvocation(
+                request_id=f"certification-{route.route_id}-{time.perf_counter_ns()}",
+                input_ref=input_ref,
+                input_sha256=input_sha256,
+                required_capabilities=frozenset({"json"}),
+                max_output_tokens=config.maximum_output_tokens_per_call,
+            ),
+            ProviderCredential(
+                PROVIDER_ID,
+                "secret://environment/GEMINI_API_KEY",
+                api_key,
+            ),
+            timeout_seconds=product_route.timeout_seconds,
         )
-        response.raise_for_status()
-        body = response.json()
-        usage = body.get("usageMetadata", {})
-        input_tokens = int(usage["promptTokenCount"])
-        candidate_tokens = int(usage["candidatesTokenCount"])
-        thought_tokens = int(usage.get("thoughtsTokenCount", 0))
-        output_tokens = candidate_tokens + thought_tokens
-        total_tokens = int(usage["totalTokenCount"])
-        candidates = body.get("candidates", [])
-        text_value = (
-            candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-            if isinstance(candidates, list) and candidates
-            else ""
-        )
-        parsed_output = json.loads(text_value)
+        input_tokens = result.usage.input_tokens
+        output_tokens = result.usage.output_tokens
         if (
-            not isinstance(candidates, list)
-            or not candidates
-            or input_tokens < 1
+            input_tokens < 1
             or output_tokens < 1
-            or total_tokens < input_tokens + output_tokens
             or input_tokens > config.maximum_input_tokens_per_call
             or output_tokens > config.maximum_output_tokens_per_call
-            or parsed_output != {"ok": True}
+            or result.payload != {"ok": True}
         ):
-            raise ValueError("provider response contract")
-        finish_reason = str(candidates[0].get("finishReason", ""))
-        body_bytes = response.content
+            raise AdapterFailure("llm.schema_invalid", retryable=False)
         cost = (
             input_tokens * route.input_price + output_tokens * route.output_price
         ) / 1_000_000
         return (
             {
-                "http_status": response.status_code,
+                "http_status": 200,
                 "latency_ms": round((time.perf_counter() - started) * 1_000, 6),
                 "input_tokens": input_tokens,
-                "candidate_tokens": candidate_tokens,
-                "thought_tokens": thought_tokens,
                 "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
+                "total_tokens": input_tokens + output_tokens,
                 "cost_usd": cost,
-                "finish_reason": finish_reason,
-                "response_sha256": sha256_bytes(body_bytes),
+                "finish_reason": "STOP",
+                "response_sha256": result.output_sha256,
             },
             None,
         )
-    except (httpx.HTTPError, AttributeError, IndexError, KeyError, TypeError, ValueError) as caught:
-        error = caught
-    return None, _safe_failure_code(response, error)
+    except AdapterFailure as error:
+        return None, error.code
 
 
 def run_gemini_live(
@@ -351,7 +326,7 @@ def run_gemini_live(
                     api_key=api_key,
                 )
                 if receipt is None:
-                    if failure == "provider.http_429":
+                    if failure == "llm.rate_limited":
                         quota_failures[route.route_id] += 1
                         if quota_failures[route.route_id] >= 3:
                             quota_circuit_open[route.route_id] = True
