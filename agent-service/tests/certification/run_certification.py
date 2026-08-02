@@ -247,6 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
             "c1",
             "c2",
             "c2-live",
+            "c2-aggregate",
             "c3",
             "c4-fast",
             "c4-soak",
@@ -291,7 +292,8 @@ def main(argv: list[str] | None = None) -> int:
             database_url=arguments.database_url,
         )
     elif arguments.action == "c2-live":
-        run_gemini_live(evidence_root, candidate_oid=candidate)
+        result = run_gemini_live(evidence_root, candidate_oid=candidate)
+    elif arguments.action == "c2-aggregate":
         result = aggregate_c2(evidence_root, candidate_oid=candidate)
     elif arguments.action == "c3":
         result = run_c3(evidence_root, candidate)

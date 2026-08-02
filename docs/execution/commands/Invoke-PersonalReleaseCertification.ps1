@@ -3,7 +3,7 @@ param(
   [ValidateSet('ReleaseBDeep')][string]$Profile = 'ReleaseBDeep',
   [string]$EvidenceRoot = '.\docs\execution\evidence\phase-10\P10-009',
   [string]$CandidateHeadOid = '',
-  [ValidateSet('none','regression','c1','c2','c2-live','c3','c4-fast','c4-soak','c4','c5-observe','c5','all-ready')]
+  [ValidateSet('none','regression','c1','c2','c2-live','c2-aggregate','c3','c4-fast','c4-soak','c4','c5-observe','c5','all-ready')]
   [string]$ExecuteShard = 'none',
   [string]$PythonExecutable = '',
   [string]$FlutterExecutable = '',
@@ -263,7 +263,7 @@ if (-not $SelfTest -and $ExecuteShard -cne 'none') {
   if (-not (Test-Path -LiteralPath $ResolvedPython -PathType Leaf)) { throw 'certification_locked_python_missing' }
   $Harness = Join-Path $RepositoryRoot 'agent-service\tests\certification\run_certification.py'
   if (-not (Test-Path -LiteralPath $Harness -PathType Leaf)) { throw 'certification_executable_harness_missing' }
-  $Actions = if ($ExecuteShard -ceq 'all-ready') { @('regression','c1','c2','c2-live','c3','c4-fast','c4','c5-observe','c5') } else { @($ExecuteShard) }
+  $Actions = if ($ExecuteShard -ceq 'all-ready') { @('regression','c1','c2','c2-live','c2-aggregate','c3','c4-fast','c4','c5-observe','c5') } else { @($ExecuteShard) }
   $Executions=@()
   foreach($Action in $Actions) {
     $Arguments=@($Harness,$Action,'--evidence-root',$ResolvedEvidenceRoot,'--candidate-head-oid',$Candidate,'--database-url',$DatabaseUrl)
