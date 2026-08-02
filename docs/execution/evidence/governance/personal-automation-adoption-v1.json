@@ -7,7 +7,8 @@
     "type": "current_codex_thread_user_directive",
     "actor": "repository_owner_current_user",
     "identity_assurance": "authenticated_session_context_not_an_independent_organization_signature",
-    "permanent_reference_status": "pending_governance_commit_binding"
+    "permanent_reference_status": "bound_to_governance_content_commit",
+    "governance_content_commit_oid": "dd6fe1f5a1f6266e41387e652a160a6037ee8c66"
   },
   "repository": {
     "remote": "https://github.com/Elfsa-Miranda/GO_NOW.git",
@@ -87,7 +88,7 @@
     "this_receipt_proves_profile_adoption_only": true,
     "this_receipt_does_not_prove_tests_passed": true,
     "this_receipt_does_not_claim_31_day_production_observation": true,
-    "candidate_commit_oid": null,
-    "candidate_commit_binding_status": "to_be_recorded_after_governance_commit"
+    "candidate_commit_oid": "dd6fe1f5a1f6266e41387e652a160a6037ee8c66",
+    "candidate_commit_binding_status": "bound_to_governance_content_commit"
   }
 }
