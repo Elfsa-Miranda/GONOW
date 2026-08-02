@@ -11,6 +11,32 @@
 
 This is a scheduling/frontier receipt. It is not a task acceptance, Phase acceptance, Release decision, architecture selection, or authorization to mutate an external system.
 
+## Post-seal guidance source drift audit
+
+On `2026-08-02`, a read-only continuation audit found that the mutable source
+files under `D:\gonow` had advanced to version `1.7.0`. They are not substituted
+for this execution's immutable bootstrap inputs:
+
+| Input | Mutable source SHA-256 | Sealed/execution SHA-256 | Resolution |
+|---|---|---|---|
+| `AGENTS.md` | `90d56c34ce1632d6f0d36f98b9c3161963e52b1c515e4044de2d93fcfca5d50a` | `6d2a3577f564cdb5161511260b125d8041df0aa32ef3fdb9629371f6800d7e85` | keep sealed `1.4.0` |
+| `execplan.md` | `9c133101370f88f858b57cc034b14cd8fc75a4dcebedade12970f9b650838ae0` | `e243070be5faed585a4190ed5f430fb2fc43c66d35f33552a513081004ed2c69` | keep sealed `1.4.0` |
+
+- **Reproduction:** version-line, byte-length, and SHA-256 checks distinguish the
+  mutable `1.7.0` sources from the sealed files in
+  `.git/gonow-bootstrap/inputs/manifest.native.json`.
+- **Root cause and impact:** the source guidance changed after BOOT-001 sealing;
+  silently rereading it would change the execution contract without resealing.
+  The Phase 10 worktree and runtime manifest still bind the sealed `1.4.0`
+  hashes, so no tracked implementation or task status is affected.
+- **Reversible resolution:** retain both source files untouched, continue from
+  the content-addressed sealed copies, and require a separate jointly authorized
+  reseal/bootstrap for any later execution that elects `1.7.0`.
+- **Affected regression:** the sealed files, tracked Phase 10 files, and runtime
+  manifest hashes match exactly; the Phase 10 worktree remains clean before this
+  documentation update. No task runner was rerun because no executable input or
+  candidate hash changed.
+
 ## Mechanical state
 
 | Scope | State | Evidence boundary |
