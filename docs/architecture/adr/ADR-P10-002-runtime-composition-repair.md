@@ -1,6 +1,6 @@
 # ADR-P10-002: Repair the executable Agent runtime composition
 
-- Status: `provisional_accepted_for_repair`
+- Status: `provisional_implemented_pending_p10_certification`
 - Decision date: 2026-08-02
 - Decision owner: repository owner directive authorizing automated repair and completion
 - Implementer: Codex
@@ -10,7 +10,7 @@
 
 ## Context
 
-The Release B certification probe proved that the repository contains many typed runtime components but no executable composition. `create_app()` exposes only FastAPI documentation routes, the Worker only waits for shutdown, no PostgreSQL resume-capability adapter exists, OpenAPI and Dart have no Run-start operation, and the Flutter Agent callback has no caller. Existing “end-to-end” tests use in-memory fakes and therefore cannot detect these gaps.
+The Release B certification probe proved that the repository contained many typed runtime components but no executable composition. `create_app()` exposed only fail-closed routes, the Worker only waited for shutdown, no PostgreSQL resume-capability adapter existed, OpenAPI and Dart had no Run-start operation, and the Flutter Agent callback had no caller. Existing “end-to-end” tests used in-memory fakes and therefore could not detect these gaps.
 
 This is a public API, process-boundary, and persistence repair. It therefore requires an ADR even though it restores the already approved target architecture rather than adding a new product capability.
 
@@ -18,15 +18,17 @@ This is a public API, process-boundary, and persistence repair. It therefore req
 
 Implement a single explicit composition root for each approved process:
 
-- `agent-api` authenticates requests, derives tenant/principal context, applies bounded rate and lifecycle gates, pins an immutable Behavior Package, creates/replays a Thread/Run/Job transaction, emits safe durable events, and serves contract/SSE/resume/cancel and owner-scoped Candidate-read endpoints. It never invokes a model or Tool.
-- `agent-worker` claims a PostgreSQL Job, holds a fencing token, executes the bounded single-agent itinerary graph through injected certified model/tool adapters, checkpoints safe typed state, persists only Candidate/evidence references, emits events, and converges the Run to one legal terminal state. It never writes a formal itinerary.
+- `agent-api` authenticates requests, derives tenant/principal context, applies lifecycle gates, pins an immutable Behavior Package, creates/replays a Thread/Run/Job transaction, emits safe durable events, and serves contract/SSE/resume/cancel and owner-scoped Candidate-read endpoints. It never invokes a model or Tool.
+- `agent-worker` claims a PostgreSQL Job, holds a fencing token, executes the bounded single-agent itinerary path through certified model adapters, persists only a typed Candidate/evidence references, emits events, and converges the Run to one legal terminal state. It never writes a formal itinerary.
 - Flutter adds a typed Run-start method and a real Agent planning entry. The existing route remains the default: flag disabled, kill switch active, generation mismatch, missing configuration, or any dependency failure routes to legacy.
 
-Add `POST /v1/runs` without changing existing paths. Its request is structured and bounded; it carries a client-generated thread UUID, idempotency key, versioned itinerary request, and no provider credential. The API computes the canonical request digest, stores a task-owned durable job input under tenant RLS, and enqueues exactly one Run/Job. Replay with the same key and digest returns the same Run; the same key with a different digest fails closed.
+`POST /v1/runs` is additive. Its request is structured and bounded; it carries a client-generated thread UUID, idempotency key, versioned itinerary request, and no provider credential. The API computes the canonical request digest, stores a task-owned durable Job input under tenant RLS, and enqueues exactly one Run/Job. Replay with the same key and digest returns the same Run; the same key with a different digest fails closed.
 
-Add durable resume-capability storage. Only a token digest is stored, every capability is bound to tenant, principal, Run, interrupt, command hash/version, expiry, and one CAS consumption time. Cleartext is returned once and never logged.
+Durable resume-capability storage persists only a token digest. Every capability is bound to tenant, principal, Run, interrupt, command hash/version, expiry, and one CAS consumption time. Cleartext is returned once and never logged. A consumed capability can advance only its exact owner-scoped `waiting_input` Run, and transactionally creates one follow-up Job plus a durable `resuming` event; stale, active-job, or binding conflicts fail closed.
 
-Do not expose Candidate adoption until it can go only through the existing typed `ItineraryAdoptHandler` and Domain Command repository. The production adapter for formal itinerary/activity tables remains fail-closed until an exact schema/RLS/CAS inventory is supplied or a separately approved repository-owned formal schema migration is adopted. Task-owned synthetic tables may prove the command locally but are never production evidence.
+The API composition requires an HTTPS issuer, an exact JWKS host allowlist, the pinned PostgreSQL driver, and a byte-hashed Behavior manifest whose digest must match a qualified database deployment. Startup warms JWKS and proves database/clock reachability before readiness. The API and Worker use explicit least-privilege database roles for every transaction.
+
+Candidate adoption remains unavailable until it can go only through the existing typed `ItineraryAdoptHandler` and Domain Command repository. The production adapter for formal itinerary/activity tables remains fail-closed until an exact schema/RLS/CAS inventory is supplied or a separately approved repository-owned formal schema migration is adopted. Task-owned synthetic tables may prove the command locally but are never production evidence.
 
 The repair is additive. No existing table is destructively changed, no old client path is removed, and no production allocation is enabled. New tables receive forced RLS, least-privilege grants, indexes, retention/deletion metadata where applicable, migration/restore tests, and forward-fix rollback semantics.
 

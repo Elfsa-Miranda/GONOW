@@ -75,7 +75,10 @@ def create_resume_router(
             )
         except ResumeCapabilityRejected as error:
             raise HTTPException(status_code=409, detail=error.code) from error
-        resume_handler(context, capability)
+        try:
+            resume_handler(context, capability)
+        except ResumeCapabilityRejected as error:
+            raise HTTPException(status_code=409, detail=error.code) from error
         return ResumeResponse(
             run_id=run_id,
             interrupt_id=body.interrupt_id,

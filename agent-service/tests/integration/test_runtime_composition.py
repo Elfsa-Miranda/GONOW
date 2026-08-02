@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ from uuid import UUID, uuid4
 
 from alembic import command
 from alembic.config import Config
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Request
 from httpx import (
     ASGITransport,
@@ -20,6 +22,7 @@ from httpx import (
     Response,
 )
 import pytest
+import jwt
 from sqlalchemy import create_engine, event, func, select, text, update
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
@@ -32,6 +35,7 @@ site.addsitedir(str(SERVICE_ROOT / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(SERVICE_ROOT))
 
 from app.api.health import DependencySnapshot, HealthService  # noqa: E402
+from app.api.composition import build_api_dependencies_from_environment  # noqa: E402
 from app.api.main import ApiDependencies, create_app  # noqa: E402
 from app.api.routes.candidates import CandidateReadService  # noqa: E402
 from app.api.routes.contracts import SchemaRegistry  # noqa: E402
@@ -56,7 +60,12 @@ from app.persistence.models.runtime import (  # noqa: E402
 from app.persistence.repositories.resume_capabilities import (  # noqa: E402
     PostgresResumeCapabilityStore,
 )
+from app.persistence.repositories.behavior import (  # noqa: E402
+    BehaviorRepository,
+    BehaviorWriteContext,
+)
 from app.persistence.repositories.jobs import StaleFence  # noqa: E402
+from app.persistence.repositories.runs import RunsRepository  # noqa: E402
 from app.runtime.candidate import (  # noqa: E402
     CandidateProjector,
     ItineraryDay,
@@ -67,6 +76,7 @@ from app.runtime.cancellation import CancellationService  # noqa: E402
 from app.runtime.behavior_manifest import COMPONENTS, digest_behavior_manifest  # noqa: E402
 from app.runtime.behavior_package import RunBehaviorPin  # noqa: E402
 from app.runtime.run_start import RunStartService  # noqa: E402
+from app.runtime.resume import ResumeTransitionService  # noqa: E402
 from app.worker.execution import (  # noqa: E402
     ClaimedItineraryJob,
     DurableWorkerExecutor,
@@ -97,6 +107,8 @@ ROLES = (
 TENANT_A = "tenant-p10-runtime-a"
 TENANT_B = "tenant-p10-runtime-b"
 PRINCIPAL = "principal-p10-runtime"
+ISSUER = "https://identity.test.invalid"
+AUDIENCE = "gonow-agent"
 
 
 class ApiSession(Session):
@@ -269,6 +281,57 @@ def _context(tenant_id: str) -> RequestContext:
     )
 
 
+def _seed_behavior_release(
+    admin_engine: Engine,
+    manifest: dict[str, object],
+) -> str:
+    digest = digest_behavior_manifest(manifest)
+    context = BehaviorWriteContext(
+        principal_id="personal-release-operator",
+        permissions=frozenset(
+            {"behavior.revise", "behavior.certify", "behavior.release", "behavior.deploy"}
+        ),
+        allowed_behavior_keys=frozenset({str(manifest["behavior_key"])}),
+        audit_receipt_id="audit-personal-release",
+    )
+    with Session(admin_engine) as session, session.begin():
+        repository = BehaviorRepository(session)
+        revision = repository.create_revision(
+            context=context,
+            behavior_key=str(manifest["behavior_key"]),
+            revision_number=1,
+            content_digest=digest.sha256,
+            graph_ref=str(manifest["components"]["graph"]["artifact_ref"]),  # type: ignore[index]
+            prompt_ref=str(manifest["components"]["prompt"]["artifact_ref"]),  # type: ignore[index]
+            state_schema_ref=(
+                "schema://sha256/"
+                + str(manifest["components"]["state"]["sha256"])  # type: ignore[index]
+            ),
+        )
+        certification = repository.certify_revision(
+            context=context,
+            behavior_key=str(manifest["behavior_key"]),
+            revision_id=revision.revision_id,
+            dataset_digest="d" * 64,
+            qualified=True,
+        )
+        release = repository.create_release(
+            context=context,
+            behavior_key=str(manifest["behavior_key"]),
+            revision_id=revision.revision_id,
+            certification_id=certification.certification_id,
+            release_version=str(manifest["release_version"]),
+            package_digest=digest.sha256,
+        )
+        repository.create_deployment(
+            context=context,
+            behavior_key=str(manifest["behavior_key"]),
+            environment="offline",
+            release_id=release.release_id,
+        )
+    return digest.sha256
+
+
 async def _context_resolver(request: Request) -> RequestContext:
     token = request.headers.get("authorization", "")
     if token == "Bearer tenant-a-token":
@@ -404,6 +467,180 @@ async def test_http_run_start_is_atomic_idempotent_and_tenant_isolated(
         "candidates": 0,
     }
     assert all(value == 0 for value in _counts(api_factory, TENANT_B).values())
+
+
+@pytest.mark.asyncio
+async def test_production_api_composition_authenticates_and_starts_a_real_run(
+    runtime_database,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, admin_engine, _, _ = runtime_database
+    manifest = _pin("f").manifest_copy()
+    expected_digest = _seed_behavior_release(admin_engine, manifest)
+    raw_manifest = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    manifest_path = (tmp_path / "itinerary-behavior.json").resolve()
+    manifest_path.write_bytes(raw_manifest)
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+    public_jwk.update({"kid": "personal-key-1", "alg": "RS256", "use": "sig"})
+
+    async def jwks_handler(request: HttpxRequest) -> Response:
+        assert request.url == "https://identity.test.invalid/.well-known/jwks.json"
+        return Response(200, json={"keys": [public_jwk]})
+
+    environment = {
+        "GONOW_DATABASE_URL": ADMIN_DATABASE_URL,
+        "GONOW_JWKS_URL": "https://identity.test.invalid/.well-known/jwks.json",
+        "GONOW_JWKS_ALLOWED_HOSTS": "identity.test.invalid",
+        "GONOW_JWT_ISSUER": ISSUER,
+        "GONOW_JWT_AUDIENCE": AUDIENCE,
+        "GONOW_BEHAVIOR_MANIFEST_PATH": str(manifest_path),
+        "GONOW_BEHAVIOR_MANIFEST_SHA256": hashlib.sha256(raw_manifest).hexdigest(),
+        "GONOW_BEHAVIOR_KEY": "itinerary.planning",
+        "GONOW_BEHAVIOR_ENVIRONMENT": "offline",
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    dependencies = build_api_dependencies_from_environment(
+        jwks_transport=MockTransport(jwks_handler)
+    )
+    app = create_app(dependencies)
+    now = int(datetime.now(UTC).timestamp())
+    token = jwt.encode(
+        {
+            "iss": ISSUER,
+            "aud": AUDIENCE,
+            "sub": PRINCIPAL,
+            "tenant_id": TENANT_A,
+            "permissions": ["run.create"],
+            "iat": now,
+            "exp": now + 600,
+        },
+        private_key,
+        algorithm="RS256",
+        headers={"kid": "personal-key-1"},
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": "production-composition-0001",
+        "X-Trace-ID": "trace-production-composition",
+    }
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            ready = await client.get("/health/ready")
+            started = await client.post(
+                "/v1/runs",
+                headers=headers,
+                json=_body(uuid4()),
+            )
+
+    assert ready.status_code == 200
+    assert started.status_code == 202
+    assert started.json()["behavior_digest"] == expected_digest
+    assert _counts(
+        sessionmaker(admin_engine, class_=ApiSession, expire_on_commit=False),
+        TENANT_A,
+    )["jobs"] == 1
+
+
+def test_consumed_resume_capability_atomically_queues_follow_up_work(
+    runtime_database,
+) -> None:
+    _, _, api_factory, worker_factory = runtime_database
+    started = RunStartService(
+        api_factory,
+        behavior_pin=_PinProvider(_pin("1")),
+    ).start(
+        context=_context(TENANT_A),
+        thread_id=uuid4(),
+        idempotency_key="resume-transition-source-0001",
+        structured_input=_body(uuid4())["itinerary"],  # type: ignore[arg-type]
+    )
+    with worker_factory.begin() as session:
+        session.execute(select(func.set_config("app.tenant_id", TENANT_A, True)))
+        run = session.scalar(
+            select(RunRecord).where(RunRecord.run_id == started.run_id)
+        )
+        assert run is not None
+        running = RunsRepository(session).transition_state(
+            tenant_id=TENANT_A,
+            run_id=started.run_id,
+            expected_state=RunState.QUEUED,
+            expected_version=run.version,
+            target_state=RunState.RUNNING,
+        )
+        waiting = RunsRepository(session).transition_state(
+            tenant_id=TENANT_A,
+            run_id=started.run_id,
+            expected_state=RunState.RUNNING,
+            expected_version=running.version,
+            target_state=RunState.WAITING_INPUT,
+        )
+        source_job = session.scalar(
+            select(JobRecord).where(JobRecord.run_id == started.run_id)
+        )
+        assert waiting.version == 3
+        assert source_job is not None
+        source_job.status = "completed"
+
+    now = datetime(2026, 8, 2, 13, 0, tzinfo=UTC)
+    interrupt_id = uuid4()
+    command_hash = "c" * 64
+    issued = ResumeCapabilityService(
+        PostgresResumeCapabilityStore(worker_factory),
+        clock=lambda: now,
+        token_factory=lambda: "grc_resume_transition_fixture",
+    ).issue(
+        tenant_id=TENANT_A,
+        principal_id=PRINCIPAL,
+        run_id=started.run_id,
+        interrupt_id=interrupt_id,
+        command_hash=command_hash,
+        command_version="1.0",
+        ttl=timedelta(minutes=5),
+    )
+    consumed = ResumeCapabilityService(
+        PostgresResumeCapabilityStore(api_factory),
+        clock=lambda: now,
+    ).consume(
+        token=issued.token,
+        tenant_id=TENANT_A,
+        principal_id=PRINCIPAL,
+        run_id=started.run_id,
+        interrupt_id=interrupt_id,
+        command_hash=command_hash,
+        command_version="1.0",
+    )
+    ResumeTransitionService(api_factory)(
+        RequestContext(
+            principal_id=PRINCIPAL,
+            tenant_id=TENANT_A,
+            permissions=("run.resume",),
+            locale="zh-CN",
+            timezone="Asia/Shanghai",
+            trace_id="trace-resume-transition",
+        ),
+        consumed,
+    )
+
+    with api_factory.begin() as session:
+        session.execute(select(func.set_config("app.tenant_id", TENANT_A, True)))
+        run = session.scalar(select(RunRecord).where(RunRecord.run_id == started.run_id))
+        jobs = session.scalars(
+            select(JobRecord).where(JobRecord.run_id == started.run_id)
+        ).all()
+        assert run is not None
+        assert RunState(run.state) is RunState.RESUMING
+        assert sorted(job.status for job in jobs) == ["completed", "queued"]
 
 
 def test_resume_capability_survives_restart_and_consumes_once(runtime_database) -> None:

@@ -138,6 +138,12 @@ class JwksCache:
                 raise JwksUnavailable("unknown key id")
             return key
 
+    async def warm(self) -> None:
+        """Require at least one approved key before declaring the API ready."""
+
+        async with self._lock:
+            await self._refresh()
+
 
 class VerifiedIdentity(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)

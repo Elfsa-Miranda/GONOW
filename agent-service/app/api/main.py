@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,6 +54,10 @@ class _UnavailableService:
         return reject
 
 
+async def _no_op_lifecycle() -> None:
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class ApiDependencies:
     """All stateful adapters are explicit; the API process owns no hidden singleton."""
@@ -68,6 +72,8 @@ class ApiDependencies:
     context_resolver: Any
     resume_handler: Any
     audit_receipt_resolver: Any
+    startup: Callable[[], Awaitable[None]] = _no_op_lifecycle
+    shutdown: Callable[[], Awaitable[None]] = _no_op_lifecycle
 
     @classmethod
     def unavailable(cls) -> "ApiDependencies":
@@ -96,11 +102,14 @@ class ApiDependencies:
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own API startup and shutdown without relying on module side effects."""
 
-    application.state.runtime_started = True
+    dependencies: ApiDependencies = application.state.dependencies
     try:
+        await dependencies.startup()
+        application.state.runtime_started = True
         yield
     finally:
         application.state.runtime_started = False
+        await dependencies.shutdown()
 
 
 def create_app(dependencies: ApiDependencies | None = None) -> FastAPI:
@@ -200,7 +209,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         asyncio.run(check_lifecycle())
         return 0
 
-    uvicorn.run(app, host=args.host, port=args.port, log_config=None)
+    from app.api.composition import build_api_dependencies_from_environment
+
+    production_app = create_app(build_api_dependencies_from_environment())
+    uvicorn.run(production_app, host=args.host, port=args.port, log_config=None)
     return 0
 
 
