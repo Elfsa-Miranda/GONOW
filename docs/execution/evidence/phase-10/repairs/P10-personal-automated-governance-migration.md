@@ -68,6 +68,12 @@ The first compatibility run after the document change produced one expected fail
 
 This is not treated as a green document gate or hidden with a threshold change. The affected repair is to introduce profile-aware TaskGate/Catalog/schema handlers for C1–C5 and automatic attestation, retain the 744-hour validator only under `enterprise`, and add negative fixtures proving that neither profile can satisfy the other profile's acceptance path. Only that runner family needs repair; the three passing runner families are not rerun without a relevant code change.
 
+## Remote readiness observation
+
+Two bounded, read-only local `git ls-remote` attempts timed out without returning an authentication rejection. The second attempt disabled terminal prompts and credential interaction, so repeating it would add no new signal. Local `gh` and Git Credential Manager executables are absent. No push, ref update, PR write, or other remote mutation was attempted.
+
+The installed GitHub connector then provided a minimal reversible alternative: read-only repository/profile calls succeeded for canonical repository `Elfsa-Miranda/GO_NOW`, confirmed default branch `main`, exact clone URL `https://github.com/Elfsa-Miranda/GO_NOW.git`, and authenticated `push/admin` permission. Therefore the project owner does not need to paste a GitHub token into chat. Future push may use the connector after automatic acceptance, or local Git may be repaired with a credential helper; either route must preserve expected-OID, non-force, and receipt requirements.
+
 ## STAR boundary
 
 Claim type: `governance_conformance`.
