@@ -1,15 +1,15 @@
 # GoNow 可执行交付计划
 
-> 计划版本：`1.4.0`
-> 规范：`AGENTS.md 1.4.0`
+> 计划版本：`2.0.0-personal`
+> 规范：`AGENTS.md 2.0.0-personal`
 > 目标架构：`GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx`
 > 目标架构 SHA-256：`644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6`
 > 指定远程：`https://github.com/Elfsa-Miranda/GO_NOW.git`
 > 基础分支：`main`
 > 计划基线：`142abfc339f003ede8d85d9534336923b5610252`
-> 生成时间：`2026-07-31T16:02:42+08:00`
+> 生成时间：`2026-08-02T14:42:24+08:00`
 > 时区：`Asia/Shanghai`
-> 采纳状态：`active_for_local_provisional_execution`；可立即进行可逆、非生产的本地实现，正式合并、推送、生产写和 Release accepted 仍需适用 owner 批准
+> 采纳状态：`active_personal_automated_governance`；适用 mandatory gate 和自动 acceptance attestation 全过后，授权阶段 push/merge、Release PR、owner-only canary 与机械 accepted；不可逆/越界动作仍不在授权内
 
 ## 0. 计划控制与当前快照
 
@@ -21,7 +21,7 @@
 - 本计划所在 sandbox 的本地 fetch/ls-remote 尝试因网络或权限未成功，因此此处 SHA 只是已记录的计划基线，不声称之后远程未变化；BOOT 必须在新控制仓重新 fetch、精确比较 URL/HEAD/SHA 并记录退出码，漂移则先进入基线审查。
 - 当前 `D:\gonow` 的本地 `main` 落后 `origin/main` 9 个提交，且含用户拥有的 untracked 内容；它不是干净实施 worktree。
 - `D:\gonow\AGENTS.md` 与 `D:\gonow\execplan.md` 是本地执行输入，指定远程基线不假定含这两份文件；BOOT-003 按 sealed manifest 原样物化到新 worktree 根目录。当前允许本地 bootstrap、实现、测试、修复和候选证据，不授权生产写或远程发布。
-- `AGENTS.md 1.4.0` 与本计划采用 `local_provisional` 默认启动模式。缺少 Architecture+Product+Security+Data 正式采纳 receipt 时，BOOT-001 仍创建干净控制仓/worktree并继续本地工程；receipt 在正式合并、推送、生产写或 Phase/Release `accepted` 前补齐并由 BOOT-004 复核。
+- `AGENTS.md 2.0.0-personal` 与本计划采用 `personal_automated` 模式；既有 1.4.0 bootstrap sealed bytes/hash 和 1.7.0 草案保留为历史输入，不覆盖。新 guidance 必须按 content hash reseal，并记录 supersedes 链；个人模式不要求虚构 Architecture+Product+Security+Data 四个不同自然人 receipt，而以本轮 owner 授权、ADR 和候选绑定自动 attestation 解锁 push/merge/canary/accepted。
 - 基线树无 `agent-service/`、`.github/workflows/`、`docs/execution/` 或 Agent contracts；现有测试仅 `test/amap_service_test.dart` 与陈旧 widget test。
 - 已发现 Git 2.52、Flutter 3.41.7/Dart 3.11.5、PostgreSQL 17.10 binaries、`uv 0.10.9`；无 PG service/隔离库。项目 Python、Supabase CLI、Docker/Podman、`gh`、secret/SCA scanner 均 unavailable/unknown，须由供应任务锁定，不能视为通过。
 - 所有实施 TASK 与 Phase 初始均为 `not_started`。本地实施在 BOOT-003 机械 bootstrap 通过后即可开始；BOOT-004/005 中暂缺的外部批准、只读权限或工具只限制实际依赖它们的动作，并与其他可执行工作并行补齐。
@@ -35,7 +35,7 @@
 铁律：
 
 1. 依赖或进入门禁不满足时，先自动诊断、修复或采用明确标记的安全替代；仍未满足只冻结受影响动作，并继续其他 ready/repair 工作。
-2. 执行者不得自批正式 `accepted`；但机械门禁通过的 `ready_for_review` 候选可在 `local_provisional` 下满足后续本地实现依赖并形成不推送的 provisional checkpoint。
+2. 执行者不得手写或伪造 `accepted`；current personal profile 只允许版本控制的 runner 在所有候选绑定 predicate 成立时自动写 acceptance attestation、更新状态并执行已授权 push/merge。
 3. 每个原子任务结束立即更新状态、evidence 与 blocker，不得事后批量补写。
 
 ### 0.2.1 持续推进与自动恢复
@@ -64,13 +64,52 @@
 | 远程基线漂移 | 保持已固定可读 OID施工；记录新旧 SHA/diff，建立同步 repair task并跑影响回归 | 固定 OID不可获取时才暂停该基线动作 |
 | 文档歧义或任务卡与代码事实不同 | 按目标、现有 API、最小写集作可逆解释；记录 assumption 并用补丁修计划 | 会扩大生产/数据边界时请求决定 |
 
-在 `local_provisional` 下，`ready_for_review + mechanical_gates_passed=true + no_open_P0_P1=true` 可替代任务依赖文本中的 `accepted`，仅用于本地后继实现和不推送的 provisional integration。089/990 可生成 provisional 汇总；999、远程 push/PR、生产写、正式 Phase/Release acceptance 仍要求正式采纳 receipt 与卡片列出的 owner 批准。任何 pending/模拟结果都必须在正式门禁前用目标环境证据替换。
+在 enterprise `local_provisional` 下，`ready_for_review + mechanical_gates_passed=true + no_open_P0_P1=true` 仍只授权本地后继实现。current `personal_automated` 下，全部适用 gate、回滚、证据与 `AGENTS.md §0.4.3` predicate 通过后，runner MAY 自动写 `accepted`、执行 999、push/merge 和卡片明确列出的受限外部动作。任何 pending/mock 结果在对应 acceptance 前仍必须由所需真实环境证据替换。
 
 为避免正式治理节点冻结本地关键路径，依赖解析还有两个固定投影：`TASK-BOOT-005` 对本地 P00 入口投影为 `TASK-BOOT-003 ready_for_review + native checks passed`，缺失工具再按具体任务补齐；`TASK-PXX-999` 或对应 Release acceptance 对下一 Phase 的本地入口投影为 `TASK-PXX-990 ready_for_review + mechanical gates passed + local provisional checkpoint OID`。这些投影只授权本地后继实现，不授权 999、Release、push、PR、生产或正式 accepted。
 
+### 0.2.2 根因优先、worktree 隔离与合并投影
+
+本计划执行 `AGENTS.md` §0.4.2 与 §2.3：每个 Phase 都从新的干净 worktree 和新的 Phase 分支开始；完成前一阶段的 local provisional checkpoint 后，下一阶段从该 OID 建立新的 worktree/branch，不在旧阶段分支继续施工。
+
+对同一根因，执行者必须完成“最小复现 → 影响面分析 → 最小可逆根因修复 → 受影响回归”的闭环；第二次失败或无新诊断信息时立即按 `AGENTS.md` §12 建 blocker，禁止把同一问题拆成反复的小规模审查或重复重跑。卡点只阻断受影响动作，其他 ready/repair 工作继续推进。
+
+Phase 的完成投影固定为：全部实施 TASK `ready_for_review`、机械 mandatory gate 通过、无开放 P0/P1、回滚证据和 checkpoint OID 齐全。enterprise 模式按独立 owner 批准；current personal 模式由自动 attestation 接受后立即 push Phase 分支并合入/push landing，再从 phase-close OID 建立下一 Phase 的干净 worktree/branch。
+
+### 0.2.3 STAR 行为量化记录合同
+
+本节仅同步 `AGENTS.md §15.3` 的 STAR 记录规范，不新增或重排 TASK，不改变任何功能、门禁阈值、Phase 依赖、治理权限或发布边界。它适用于所有 `TASK-PXX-089`、retrospective 和 phase-close：
+
+1. 先把 claim 分类为 `capability_presence | behavior_improvement | governance_conformance`。能力存在用文件/能力测试/gate 证明，治理合规用 pass/fail receipt 和红线证明；只有同口径可比较的行为、可靠性、成本或工程效率改善进入 STAR，不能以代码行数、框架数量、模块数量或单纯测试条数冒充改善。
+2. 每条行为改善 claim 在候选测量前冻结 baseline/candidate 对照口径、任务集/dataset hash、指标公式与方向、模型/Prompt/Behavior/Tool/数据库版本、适用参数、样本/重复、成功判定和非退化护栏。每个 Phase 只记录与本次改造直接相关且确有改善的指标，不要求覆盖全部维度；未改善或不可测项按 `not_applicable | not_measured | guardrail_only + reason` 登记。
+3. 独立 `improvements/STAR-<stable-id>.md` 必须按 Situation、Task、Action、Result 四节记录。默认使用一个 `primary_result`、一个 `diagnostic` 和一个 `guardrail`，STAR 摘要通常保留 `2–4` 个数字；Action 只保留 `2–4` 个“根因 → 机制 → 选择理由”的关键决策。Result 使用 `AGENTS.md §15.3.2` 固定表，给出角色、分子/分母、单位、baseline、candidate、绝对/相对变化、样本/重复/置信、复现命令和报告 hash。
+4. 质量、效率与成本必须联动；涉及模型或 Tool 成本时优先报告 `全部评测任务总成本 / 成功任务数` 或 `总 Token / 成功任务数`，并把失败重试计入分子。百分率绝对变化使用百分点 `pp`。RAG、Memory、Multi-Agent、生产运行等专项 profile 只有在对应能力已进入当前 Phase 范围时才适用，不构成新增能力要求。
+5. 成果表至少有一个真实改善指标，并逐项报告预注册护栏和适用 redline 的 `passed|failed|unknown`。跨租户、未审批正式写、重复正式副作用、secret 泄漏或取消后继续写等红线不得与普通高分平均抵消；任一失败即不得宣称整体成功。条件不可比、单次非确定性结果、没有分母或缺 baseline 时同样不得声称提升。
+6. `star-records.md` 沿用现有 `recorded|not_applicable` 索引枚举，避免扩大 runner/schema 写集。候选样本不足时写 `not_applicable + reason=measurement_pending:<exact_missing_evidence>`；`1.7.0` 以前的 STAR 只能由已有原始报告重算并以 revision/supersedes 方式补充，禁止凭空回填数字或覆盖旧 hash。
+
+### 0.2.4 Personal 自动治理执行合同
+
+本计划当前使用 `personal_automated` profile，并执行 `AGENTS.md §0.4.3/§9.2.2` 与 `docs/architecture/adr/ADR-P10-001-personal-automated-release-governance.md`。所有既有 task card 的 `owner/reviewer/approval_policy` 在该 profile 下解释为测试责任域和证据覆盖要求，不再要求多个自然人签名；它们仍决定必须运行哪些 Security/Product/Data/SRE/Eval gate。只有 runner 生成、Schema 验证并绑定完整 candidate OID 的 `automated-acceptance-attestation.json` 才能把状态转为 `accepted`。
+
+自动外部动作授权限定为：push 当前 `codex/phase-*` 分支；以保留历史的 merge 将已认证树合入/push `codex/gonow-agent-landing`；创建 Release PR；在 required checks、Release gate、树等价和回滚门禁全绿后完成非强制 PR merge；以及 TASK-P10-010 的 owner-only canary。每个动作必须有 exact repo/ref/environment/flag/identity、expected OID/CAS、成本上限、receipt 和回滚。禁止 direct dirty-tree→main、force-push、任意 SQL、migration、权限扩大、跨租户、未知数据删除、未列用户分配和无上限外部消费。
+
+personal profile 的状态闭环为 `ready_for_review → automated_acceptance_preflight → accepted`。preflight 必须证明 mandatory failures/skips/xfails/flaky reruns/P0/P1/security redlines/unexpected paths 均为零，evidence manifest 与 candidate tree 未漂移，rollback passed；失败保持 `blocked|ready_for_review` 并按根因闭环修复，禁止直接修改状态 JSON 获得通过。
+
+为避免逐卡复制同一 profile 分支，所有 P00–P12 和 Release task card 在 `personal_automated` 下执行下列规范化翻译；卡片中的旧词句继续作为 enterprise profile 合同保存，但不得覆盖本表：
+
+| 卡片中的 enterprise 表达 | personal profile 的唯一执行语义 |
+|---|---|
+| `ApprovalValidation`、owner 签署、批准有效期、quorum | `AutomatedAcceptancePreflight`；校验 exact candidate、evidence/runner digest、零强制拒绝和 CAS attestation |
+| `reviewer_is_implementer=false`、未实施者 handoff | `independent_execution_context=true;clean_environment=true`；使用全新 worktree/进程/锁定依赖且不复用实施进程状态 |
+| owner/reviewer role 清单 | 必须覆盖的 Security/Product/Data/SRE/Eval 证据域，不伪造多个自然人 |
+| `auto_merge=false`、等待人工决定 | attestation、required checks 与 tree equality 全过后 non-force merge；任一漂移即失效 |
+| 正式批准后才能 push/merge | 自动 attestation 后按 expected-OID/CAS push Phase、merge/push landing；production/irreversible 边界仍按 §0.2.4 禁止 |
+
+Runner/Catalog 物化时 MUST 依据 active profile 选择 handler 和 success predicates，且在结果中同时记录原始卡片表达、profile 翻译和实际 handler；禁止同时要求 human approval 与 automated acceptance，禁止仅把旧字段改名而不验证 clean-environment、OID、hash 和 redline 条件。
+
 ### 0.3 状态、变更与命令合同
 
-状态仅允许 `not_started | in_progress | ready_for_review | accepted | rejected | blocked | cancelled`。执行 Agent 只能转到 `ready_for_review` 或 `blocked`；`accepted/rejected` 只由授权独立 reviewer 写入。`rejected` 重提必须形成新的 candidate head、重跑受影响 mandatory gate 并重新批准，不能原地改绿。已编号 TASK 不重编号；废弃项保留为 `cancelled` 并指向替代项。
+状态仅允许 `not_started | in_progress | ready_for_review | accepted | rejected | blocked | cancelled`。enterprise profile 的 `accepted/rejected` 只由授权独立 reviewer 写入；current personal profile 的 `accepted` 只由 §0.2.4 自动 attestation runner 以 CAS 写入，实施 Agent不能手改。`rejected` 重提必须形成新的 candidate head、重跑受影响 mandatory gate 并重新接受，不能原地改绿。已编号 TASK 不重编号；废弃项保留为 `cancelled` 并指向替代项。
 
 任务卡的 `owner/reviewer` 可显示实施专长，但机器批准记录的 `owner_role` 只允许 `Engineering|Architecture|Security|Data|Product|Privacy|SRE|Eval|Domain|Compliance`。映射如下；一个自然人兼任多个标签仍只计一个独立席位：
 
@@ -101,14 +140,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\In
 
 #### 0.3.0 正式治理采纳升级合同
 
-`governance-adoption-v1.json` 只在 `formal_adopted` 模式必需。提供时，owner 把其绝对路径与预期 SHA-256 作为 BOOT-001/BOOT-004 的显式输入；不得从同名文件猜测。未提供两项时自动选择 `local_provisional`，继续 clone、worktree、本地实现、测试和修复；只把远程推送、正式合并、生产写和 `accepted` 保持 pending。实际 receipt 必须是 UTF-8、无 BOM、由下列属性顺序形成的单行 compact JSON；下方为便于审阅的展开表示：
+`governance-adoption-v1.json` 只在 enterprise `formal_adopted` 模式必需。提供时，owner 把其绝对路径与预期 SHA-256 作为 BOOT-001/BOOT-004 的显式输入；不得从同名文件猜测。current personal profile 改由 `docs/execution/evidence/governance/personal-automation-adoption-v1.json` 记录一次性 user directive、AGENTS/execplan/ADR/candidate hashes、授权动作和禁止动作，并随新 guidance reseal；该 receipt 只证明 profile 选择，不证明任何测试已经通过。enterprise receipt 的展开表示如下：
 
 ```json
 {
   "schema_version": "1.0",
   "documents": {
-    "agents": {"version": "1.4.0", "sha256": "<64-lower-hex>"},
-    "execplan": {"version": "1.4.0", "sha256": "<64-lower-hex>"},
+    "agents": {"version": "<enterprise-agents-version>", "sha256": "<64-lower-hex>"},
+    "execplan": {"version": "<enterprise-execplan-version>", "sha256": "<64-lower-hex>"},
     "architecture": {"version": "1.6.1", "sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6"}
   },
   "approved_at": "<ISO-8601-with-timezone>",
@@ -143,7 +182,7 @@ blocked -> in_progress | cancelled
 accepted | cancelled -> (terminal)
 ```
 
-执行者可写 `in_progress|ready_for_review|blocked`；`accepted|rejected` 只能由授权且独立 reviewer 写。`rejected→in_progress` 必须使用新 candidate head 并重跑受影响 mandatory gate；`blocked→in_progress` 必须链接已关闭 BLK。`ready_for_review|accepted|rejected|blocked` 的 `evidence_sha256` 不得为全零；`blocked` 必须有规范化 `blocker_path`，其他状态写 `null`。状态更新采用同目录临时文件、Schema 验证、当前 hash 二次比较和原子 rename；任何一步失败保留旧文件。
+执行者可写 `in_progress|ready_for_review|blocked`；enterprise 的 `accepted|rejected` 由独立 reviewer 写，personal 的 `accepted` 由自动 attestation runner 写。`rejected→in_progress` 必须使用新 candidate head 并重跑受影响 mandatory gate；`blocked→in_progress` 必须链接已关闭 BLK。`ready_for_review|accepted|rejected|blocked` 的 `evidence_sha256` 不得为全零；`blocked` 必须有规范化 `blocker_path`，其他状态写 `null`。状态更新采用同目录临时文件、Schema 验证、当前 hash 二次比较和原子 rename；任何一步失败保留旧文件。
 
 BOOT-001/002 是唯一 bootstrap 物化例外：二者在 runner/schema 尚不存在时只写控制仓 `.git/gonow-bootstrap/` 下各自的 native receipt/status，卡片不取得 canonical evidence/status 的直接写权；BOOT-003 验证原始 bytes、SHA-256 与命令/exit 后一次性写对应 canonical evidence/status。`formal_adopted` 还验证独立 reviewer receipt；`local_provisional` 保持 `ready_for_review` 并以机械 evidence 继续，不伪造 reviewer。Catalog 必须证明 `invented_command_count=0;native_receipt_hash_mismatch=0;bootstrap_writer_count=1`。
 
@@ -1248,7 +1287,7 @@ BOOT -> P00 -> Release A
                                                                                                                                                  +-> REL-C-001 -> Release C
 ```
 
-`TASK-REL-C-000` 是 Release C 的独立治理闸门，以 owner 签署、唯一 cycle record 和 expected-SHA CAS 只选 `phase11|phase12|none`。选 Phase 11 后由 `TASK-P11-000` 独立核验 RAG 量化触发；选 Phase 12 后由 P12-000..002 只在四个 P12x 候选中选一个或不扩展。P11 与 P12 同级、互不依赖，CAS 失败即 fail closed。最大实施并行数为 1 个 Phase，且每个 Phase 同一时刻最多 1 个 TASK：当前只建立一个阶段 worktree/index，所有 patch、test、commit 与状态 CAS 均串行；未来若要提高并行度，必须先以 ADR 定义 task-specific worktree/branch、write-set 证明、串行集成器和漂移重验，本计划不默认授权。
+`TASK-REL-C-000` 是 Release C 的独立治理闸门，以 profile-specific attestation、唯一 cycle record 和 expected-SHA CAS 只选 `phase11|phase12|none`。`personal_automated` 由量化触发条件和互斥检查机械签发，enterprise profile 使用 owner 签署。选 Phase 11 后由 `TASK-P11-000` 独立核验 RAG 量化触发；选 Phase 12 后由 P12-000..002 只在四个 P12x 候选中选一个或不扩展。P11 与 P12 同级、互不依赖，CAS 失败即 fail closed。最大实施并行数为 1 个 Phase，且每个 Phase 同一时刻最多 1 个 TASK：当前只建立一个阶段 worktree/index，所有 patch、test、commit 与状态 CAS 均串行；未来若要提高并行度，必须先以 ADR 定义 task-specific worktree/branch、write-set 证明、串行集成器和漂移重验，本计划不默认授权。
 
 | Phase | owner | 依赖 | 估算区间 | 最大并行 | blocker 传播 | 关键里程碑 |
 |---|---|---|---:|---:|---|---|
@@ -1262,7 +1301,7 @@ BOOT -> P00 -> Release A
 | P07 | Domain+Eval | P06 | 10–18 | 1 | 停 P07/P08+ | 验证/repair |
 | P08 | Eval+Product | P07 | 6–12 | 1 | 停 P08/P09+ | flag-off A/B |
 | P09 | Mobile+Backend | P08 | 12–20 | 1 | 停 P09/P10+ | 双路径 cohort |
-| P10 | SRE+Security+Eval | P09 | 15–30+观察窗 | 1 | 停 B/C | Release B |
+| P10 | SRE+Security+Eval | P09 | 15–30 人天测试工程；每次认证6–12h，上限18h | 1 | 停 B/C | Release B |
 | C-GOV | Product+Architecture | B稳定 | 1–2 | 1 | 停 P11/P12/C | P11/P12/none |
 | P11 | Search+Data | B+REL-C-000=`phase11` | 另行校准 | 1 | 仅停 C | RAG-only C |
 | P12x | 专项 owners | B+REL-C-000=`phase12` | 另行校准 | 1 | 仅停所选/C | 单能力 Release C |
@@ -1276,7 +1315,7 @@ BOOT -> P00 -> Release A
 **执行顺序：** REL-C.000
 **owner：** Product+Architecture
 **独立 reviewer：** ReleaseBoard+Security+Data
-**依赖：** TASK-P10-011；Release B 已由 owner 接受并完成稳定观察
+**依赖：** TASK-P10-011；personal profile 下 Release B 已由 P10-009 C1–C5、P10-010 owner canary 与自动 attestation 接受；enterprise profile 下仍要求原稳定观察
 **指向规范：** AGENTS.md §10–§11；v1.6.1 §29.2–§29.4,§30.1–§30.2
 **估算：** 1–2 人天，仅用于排序与容量规划，不是交付承诺
 **允许修改：** `D:\GO_NOW-release-c-governance\`（仅新空目录）；`docs/execution/evidence/releases/REL-C-000/path-selection.json`；Git ref `refs/heads/codex/release-c-governance`；`docs/execution/evidence/releases/REL-C-000/`；`docs/execution/status/TASK-REL-C-000.json`
@@ -1292,7 +1331,7 @@ BOOT -> P00 -> Release A
 
 **输入与前置证据：**
 
-- Release B 接受、稳定观察、风险切片及 owner 签署证据的引用与哈希。
+- Release B acceptance、personal certification/owner canary/残余风险/失败 ledger，或 enterprise 稳定观察与 owner 签署证据的引用与哈希；实际 profile 必须唯一。
 
 **实施步骤：**
 
@@ -2433,12 +2472,12 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **阶段分支：** `codex/gonow-agent-landing`
 **执行顺序：** REL-A.001
 **owner：** Release Engineering
-**独立 reviewer：** Security+Engineering+Data
+**独立 reviewer：** `personal_automated` Release A attestation；enterprise profile 下为 Security+Engineering+Data
 **依赖：** TASK-P00-999
 **指向规范：** AGENTS.md §2.4、§10 Phase 0；v1.6.1 §26.8,§29.2–§29.4
 **估算：** 0.5–1 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/execution/evidence/releases/A.json`；GitHub PR metadata object（只允许创建/更新 PR 标题、正文、labels、review request 与 `auto_merge=false`；head=`codex/gonow-agent-landing`、base=`main` 两个 Git refs 仅列入 `read_only_inputs[]`，不得写 ref）；`docs/execution/evidence/releases/REL-A-001/`；`docs/execution/status/TASK-REL-A-001.json`
-**禁止触碰：** 代码、生产、自动合并 `main`
+**允许修改：** `docs/execution/evidence/releases/A.json`；GitHub PR metadata object（允许创建/更新 PR 标题、正文、labels、review request，并在 `personal_automated` attestation、required checks 与 tree equality 均有效时启用 non-force auto merge；head=`codex/gonow-agent-landing`、base=`main`）；`main` ref（仅由 GitHub 保护规则执行同一 PR 的 non-force merge）；`docs/execution/evidence/releases/REL-A-001/`；`docs/execution/status/TASK-REL-A-001.json`
+**禁止触碰：** 代码、生产、force push、绕过 required checks 或保护规则
 
 **目标：**
 
@@ -2446,23 +2485,23 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **非目标：**
 
-- 不部署、不自动合并。
+- 不部署；不在 attestation、required checks 或 tree equality 未通过时合并。
 
 **输入与前置证据：**
 
-- P00 acceptance/merge SHA、有效批准与 clean landing。
+- P00 acceptance/merge SHA、profile-specific 有效 attestation 与 clean landing。
 
 **实施步骤：**
 
 1. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Preflight -EvidenceRoot .\docs\execution\evidence`；期望 `task_id=TASK-REL-A-001;unexpected_paths=0;prior_phase_regression_failures=0`。
-2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“核验 source SHA 与批准 → 创建 landing→main PR → 附门禁、风险和回滚 → 记录 URL/SHA 后等待人工决定”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“PR base=main、head=codex/gonow-agent-landing，Release A check_url 非空，auto_merge=false”。
+2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“核验 source SHA 与 profile-specific attestation → 创建 landing→main PR → 附门禁、风险和回滚 → 核验 required checks/tree equality → personal profile 自动 non-force merge，enterprise profile 等待 owner 决定 → 记录 URL/SHA”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
+3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“PR base=main、head=codex/gonow-agent-landing，Release A check_url 非空；personal profile 在 checks/tree/attestation 全过时 non_force_merge=true”。
 4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_verification_failures=0`。
 5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望 `schema_errors=0;unhashed_artifacts=0;redaction_failures=0`。
 
 **实现要求：**
 
-- 功能与接口：完成“以 P00 merge SHA 创建单独 Release A PR。”；字面目标为 GitHub PR metadata（head=codex/gonow-agent-landing，base=main，refs 只读）；业务通过值为“PR base=main、head=codex/gonow-agent-landing，Release A check_url 非空，auto_merge=false”。
+- 功能与接口：完成“以 P00 merge SHA 创建单独 Release A PR。”；字面目标为 GitHub PR metadata（head=codex/gonow-agent-landing，base=main）；业务通过值为“PR base/main 与 head/landing 精确，check_url 非空；personal profile 在 checks/tree/attestation 全过时 non_force_merge=true”。
 - 安全与隐私：SEC-SECRET、SEC-PII、SEC-AUDIT、SEC-SQL、SEC-RESTORE → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Security -EvidenceRoot .\docs\execution\evidence → 期望 valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_…
 - 数据与迁移：涉及；只按本卡列明的 Schema/迁移/RLS/CAS/恢复合同执行，生产写必须由明确 owner/身份授权，相关 CT 与查询结果见 DoD；未列出的数据变更数为 0。
 - 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“关闭尚未合并的 PR。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
@@ -2472,7 +2511,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **验证命令与查询：**
 
 ```powershell
-# TASK-REL-A-001；除 exit=0 外还必须满足：PR base=main、head=codex/gonow-agent-landing，Release A check_url 非空，auto_merge=false
+# TASK-REL-A-001；除 exit=0 外还必须满足：PR base=main、head=codex/gonow-agent-landing，Release A check_url 非空；personal profile checks/tree/attestation 全过并 non-force merge
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Verify -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Security -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-A-001' -Mode Evidence -EvidenceRoot .\docs\execution\evidence
@@ -2483,7 +2522,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **完成定义（Definition of Done）：**
 
 - [ ] 字面交付物：`codex/gonow-agent-landing`、`main`、`docs/execution/evidence/releases/A.json`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
-- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“PR base=main、head=codex/gonow-agent-landing，Release A check_url 非空，auto_merge=false”，不能只记录 exit 0。
+- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“PR base=main、head=codex/gonow-agent-landing，Release A check_url 非空；personal profile checks/tree/attestation 全过并 non-force merge”，不能只记录 exit 0。
 - [ ] 合同与安全：`applicable_ct=[]（本卡不修改已编号合同边界；Catalog 必须机械证明 contract_change=false）` 中适用项全部 `passed`、`skipped=0;xfailed=0`；`SEC-SECRET,SEC-PII,SEC-AUDIT,SEC-SQL,SEC-RESTORE` 的精确结果为 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_verification_failures=0`。
 - [ ] 证据与回滚：commands/gate-results/artifact-hashes 均通过 v1 Schema，交付物 hash 缺失=`0`；`RollbackVerify` 的 `old_path_failures=0;unexpected_writes=0`。
 
@@ -12225,49 +12264,50 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **发布归属：** Release B
 **阶段分支：** `codex/phase-10-release-b-gates`
 **从何处分支：** `codex/gonow-agent-landing@[TASK-P09-999 merge SHA]`
-**目标：** 建运营底座、Shadow/Canary与总门禁
-**用户影响：** 灰度用户可进入新规划
-**明确不做：** 不让未校准Judge决策、不以小样本宣称充分
+**目标：** 建运营底座、C1–C5 高密度压缩认证、owner-only canary 与自动 Release B 总门禁
+**用户影响：** 所有离线/隔离认证通过后，仅 owner canary identity 可短时进入新规划；其他用户保持旧路径，直至 Release PR 合并
+**明确不做：** 不让未校准 Judge 决策；不把 synthetic/staging 冒充 31 天生产观察；不在认证前扩大生产 cohort
 
 ### 白话说明
 
 功能虽可运行，但缺少跨服务观测、停止开关和可信灰度判定。
 
-本阶段建立指标、告警、评测治理和 1% 到 100% 的分段门禁。
+本阶段建立指标、告警、评测治理以及 C1–C5 高密度压缩认证，把原 enterprise 1% 到 100% 的 31 天观察合同保留为未启用 profile。
 
-验收后 Release Board 能依据同一数字决定 Release B，而非凭感觉。
+验收后自动 acceptance runner 依据同一冻结 manifest、候选 OID、统计结果和安全红线决定 Release B，而非凭感觉或伪造多个 reviewer。
 
-用户逐档获得新体验；运维每档都有观察窗、停止线和回退目标。
+认证阶段不分配真实用户；C1–C5 全绿后只执行 30–60 分钟 owner-only canary，每个步骤都有停止线、allocation=`0` 和旧路径回退目标。
 
 
 ### §10 验收锚点（逐字引用，机器比较）
 
-> §10 observable_state_exact: 值班人员可由 trace/run/digest 定位失败并按 runbook 关闭新路径；各灰度档有不可变决定；100% 稳定窗结束前不会宣称 Release B
+> §10 observable_state_exact: 值班人员可由 trace/run/digest 定位失败并按 runbook 关闭新路径；C1–C5 与 owner canary 有不可变决定；完整自动 attestation 前不会宣称 Release B
 >
-> §10 baseline_source_exact: §9 schema/canary、E1 holdout、价格快照、rollout manifest、每档样本/观察窗、§7.6 回滚与 kill-switch timing；基准必须在 1% 前批准
+> §10 baseline_source_exact: §9 schema/canary、E0/E1、价格快照、certification manifest、互斥 corpus/seed/fault plan、真实 PG/live provider、4h soak、owner canary、§7.6 回滚与 kill-switch timing；全部阈值在候选结果前冻结
 ### 进入门禁
 
-- [ ] 上一阶段或前置节点已 `accepted` 并合入 `codex/gonow-agent-landing`；专项条件：P09 accepted；E0/E1、SLO/预算/隐私/cohort/rollback owners批准
+- [ ] 上一阶段或前置节点已按 current profile `accepted` 并合入 `codex/gonow-agent-landing`；专项条件：P09 accepted；E0/E1、SLO、personal budget cap、canary identity、rollback 与认证 manifest 可机械验证
 - [ ] 阶段 worktree 的 `git status --porcelain=v1` 为空，没有 credential-like untracked 文件、gitlink 或意外 nested `.git`。
 - [ ] 已记录 `phase_base_sha`，且与集成分支 HEAD 完整 SHA 一致；远端漂移已走基线变更审查。
-- [ ] 本阶段 owner、独立 reviewer、文件 allowlist、rollback owner 和批准有效期已确认。
+- [ ] current profile=`personal_automated`、测试责任域、文件 allowlist、rollback owner、自动 action scope 和 attestation schema 已确认。
 - [ ] 外部授权、合成/脱敏数据、工具链、真实测试环境与 mandatory checks 均已具备；未知项不得按通过处理。
 
 ### 困难记录义务
 
 同一步骤第二次失败、原计划需要改变、依赖外部系统、等待 owner 决定或发现未知生产事实时，24 小时内在 `docs/execution/blockers/phase-10/` 建 BLK；P0/P1 采用 AGENTS.md §5.3 的更短时限。开头必须用三句白话写“看到什么、卡住哪一步、最安全下一步”，每次尝试记录为什么先试、完整命令、exit、新事实、回滚和升级触发；没有新假设不得重复同一命令。`990` 必须列全本阶段 BLK 及最终状态，开放 P0/P1 或缺最终状态即拒绝。
 
-### 灰度分段决策矩阵
+### Personal 压缩认证矩阵
 
-| 档位 | 最低连续观察 | 全部通过才可前进 | 决策人 | 失败动作 |
-|---:|---:|---|---|---|
-| 1% | 72 小时 | P0/P1=0；cancel/replay/idempotency 全过；Run 成功率≥90% | Engineering | 立即回 0%，建 BLK |
-| 5% | 7 天 | 上述+tenant leak=0；p95 API≤800ms；采用任务成本≤预算×1.2 | Engineering+Security | 回 1%，72 小时内结论 |
-| 20% | 7 天 | 上述+关键质量 slice 退化≤1pp | +Product | 回 5%，重新完整观察 |
-| 50% | 7 天 | 上述+Judge 与 E1 holdout 差≤5%；p95 成本无上升趋势 | +Release Board | 回 20%，继续须 ADR |
-| 100% | 7 天 | 上述+SLO 持续满足；kill switch 演练；runbook 非实施者已读 | Release Board | 停 50%，不得宣称 Release B |
+| 门禁 | 最低工程量 | 自动通过摘要 | 失败动作 |
+|---|---|---|---|
+| C1 correctness | 全历史回归；E0≥200；状态序列≥50,000 | mandatory/hard=100%；成功率单侧95%下界≥90%；skip/xfail/rerun=0 | 根因闭环并保留失败 seed |
+| C2 security/performance/cost | 真实PG权限请求≥100,000；完整Run≥10,000；每 route live calls≥200 | 安全红线=0；关键 mutation=100%；API p95置信上界≤800ms；成本≤预算×1.2 | allocation保持0；缺真实输入只阻断本门 |
+| C3 quality | E1≥1,000；每关键slice≥200 | paired退化单侧95%上界≤1pp并做Holm校正；硬约束100% | 冻结失败slice，禁止改分母 |
+| C4 recovery/time/soak | 全kill point×结果×20调度；虚拟90日；fake生命周期≥100,000；真实soak≥4h；Judge≥400 | fence/幂等/终态/资源斜率全绿；Judge差≤5pp或仅advisory | kill switch ready，修复受影响族 |
+| C5 operations | 故障类≥20；静止/在途回滚；trace/alert/runbook/旧路径 | kill switch≤30s；旧路径100%；数据丢失/重复写=0；回滚后5min全绿 | 自动allocation=0并保留durable evidence |
+| owner canary | C1–C5全绿后，同一OID，owner身份10–20旅程，30–60min | 真实配置/供应商/usage/trace/kill/旧路径全绿，其他用户分配=0 | 自动allocation=0；Release B失败 |
 
-P0、泄漏、越权或未批准正式写直接回 0%，不逐级降档；每次升降档重新计时并写 rollout manifest。
+完整阈值、统计口径、平台条件、证据和残余风险以 `AGENTS.md §9.2.2` 为准；enterprise 五档矩阵继续保留于 `AGENTS.md §9.2.1`，当前不参与 DAG 或 acceptance。
 
 ### 任务顺序
 
@@ -12988,53 +13028,55 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 - commit subject：`phase-10(TASK-P10-008): account adopted task cost`
 - 提交前：gate、`git diff --check`、allowlist。
-### TASK-P10-009：执行灰度观察与停止规则
+### TASK-P10-009：执行 C1–C5 高密度压缩发布认证
 
 **状态：** `not_started`
 **所属阶段：** Phase 10
 **阶段分支：** `codex/phase-10-release-b-gates`
 **执行顺序：** 10.009
-**owner：** ReleaseEng
-**独立 reviewer：** Security+Product+SRE
+**owner：** ReleaseEng（personal profile 下为自动 gate 协调责任域）
+**独立 reviewer：** Security+Product+SRE+Eval（personal profile 下为 mandatory evidence 域，不要求多个自然人）
 **依赖：** TASK-P10-007,TASK-P10-008
-**指向规范：** AGENTS.md §10 P10,§11；v1.6.1 §24.5,§26.8,§29.2
-**估算：** 3–5 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/execution/evidence/phase-10/P10-009/rollout-observation.json`；feature flag `gonow.agent.itinerary_planning.release_b`（仅批准 cohort IDs）；`docs/execution/evidence/phase-10/P10-009/`；`docs/execution/status/TASK-P10-009.json`
-**禁止触碰：** Agent自行生产切流/低流量宣称充分
+**指向规范：** AGENTS.md §0.4.3,§9.2.2,§10 P10,§11；v1.6.1 §24.5,§26.8,§29.2
+**估算：** 首次测试工程 1–3 人天；每次认证目标 6–12h、上限18h，仅用于排序与容量规划
+**允许修改：** `docs/execution/commands/Invoke-PersonalReleaseCertification.ps1`；`docs/execution/commands/PersonalReleaseCertification.psd1`；`docs/execution/commands/tests/Invoke-PersonalReleaseCertification.Tests.ps1`；`docs/execution/schemas/personal-release-certification-v1.schema.json`；`agent-service/tests/certification/`；`test/release_certification/`；`docs/execution/evidence/phase-10/P10-009/`；`docs/execution/status/TASK-P10-009.json`
+**禁止触碰：** 生产 feature allocation、非 owner 用户、生产 schema/data；不得把 mock/staging 写成 live provider 或 31 天生产观察
 
 **目标：**
 
-风险slice/min sample/window均达
+C1 correctness、C2 security/performance/cost、C3 quality、C4 recovery/time/soak、C5 rollback/operations 全部按冻结 manifest 通过
 
 **非目标：**
 
-- 不绕过灰度档位，不在拒绝条件下宣告发布。
+- 本卡不执行任何生产 cohort/feature flag 变更，不负责 owner canary，不用测试数量替代风险覆盖或统计置信。
 
 **输入与前置证据：**
 
-- `TASK-P10-007,TASK-P10-008` 的 accepted head SHA、artifact hash 与本卡 Preflight 报告。
+- `TASK-P10-001..TASK-P10-008` 的 current-profile accepted/ready_for_review 状态、artifact hash、E0/E1、SLO、kill-switch、pricing/cost 输入和本卡 Preflight；缺 live credential/budget/platform 时只阻断对应 C2/platform shard。
 
 **实施步骤：**
 
 1. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Preflight -EvidenceRoot .\docs\execution\evidence`；期望 `task_id=TASK-P10-009;unexpected_paths=0;prior_phase_regression_failures=0`。
-2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“owner逐级enable → monitor → stop/rollback → extend → report”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“1/5/20/50/100 各档观察窗和最低样本均满足；stop_rule_bypass_count=0；每次升降档重新计时”。
-4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `missing_audit_receipt_count=0;pii_canary_leak_count=0`。
-5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望 `schema_errors=0;unhashed_artifacts=0;redaction_failures=0`。
+2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；冻结 `candidate_head_oid`、C1–C5 阈值、互斥 corpus/seed/fault-plan、统计法、价格、budget cap、live route、平台、工具和写 allowlist。Catalog 的 `work_contract.required_changes[]` 逐字登记：“freeze manifest → C1 correctness → C2 security/performance/cost → C3 quality → C4 recovery/virtual-time/4h-soak → C5 rollback/operations → aggregate hashes/residual risk”。完成后执行 WorksetVerify，期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。
+3. 运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PersonalReleaseCertification.ps1 -Profile ReleaseBDeep -EvidenceRoot .\docs\execution\evidence\phase-10\P10-009`；任何 shard 失败立即保存 seed/fault 输入并按根因闭环修复，不允许自动 rerun。
+4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `certification_gate_pass_count=5;certification_gate_failure_count=0;mandatory_skip_count=0;xfail_count=0;flaky_rerun_count=0;candidate_drift_count=0;production_write_count=0`。
+5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `cross_tenant_leak_count=0;unauthorized_write_count=0;secret_or_pii_leak_count=0;forbidden_tool_execution_count=0;missing_audit_receipt_count=0`。
+6. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望 `schema_errors=0;unhashed_artifacts=0;redaction_failures=0`。
 
 **实现要求：**
 
-- 功能与接口：完成“风险slice/min sample/window均达”；字面目标为 本卡 allowlist 中的精确治理/外部对象；业务通过值为“1/5/20/50/100 各档观察窗和最低样本均满足；stop_rule_bypass_count=0；每次升降档重新计时”。
-- 安全与隐私：SEC-AUDIT、SEC-PII → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Security -EvidenceRoot .\docs\execution\evidence → 期望 missing_audit_receipt_count=0;pii_canary_leak_count=0 → 失败处理：生产暴露或跨租户按 P0，测试绕过按 P1；立即停止、建 BLK 并通知 Security owner。
-- 数据与迁移：涉及；只按本卡列明的 Schema/迁移/RLS/CAS/恢复合同执行，生产写必须由明确 owner/身份授权，相关 CT 与查询结果见 DoD；未列出的数据变更数为 0。
-- 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“kill/old route。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
+- 功能与接口：逐字实现 `AGENTS.md §9.2.2`，不降低现有回归数量；E0/E1、状态序列、PG权限、Run负载、live calls、kill matrix、虚拟时间、soak、Judge 和运营故障必须达到各自分母。
+- 安全与隐私：真实 PG RLS/JWT/Tool/SSRF/PII/secret 与 mutation gate 全部执行；任何红线非零按 P0/P1，不能被性能或质量平均抵消。
+- 数据与迁移：只使用任务专属隔离 PostgreSQL；生产写入数固定 `0`。真实 provider 只允许受限测试请求和 usage receipt，不允许正式业务写。
+- 可靠性：所有副作用边界 kill、旧 Worker fencing、幂等、reconciler、SSE、cancel、回滚和资源斜率必须机械判定；失败后保留原 seed，不得删测试获得通过。
 - 可观测性：命令、exit、duration、base/head OID、artifact hash 与脱敏结果写入 docs/execution/evidence/phase-10/P10-009/commands.json 及同卡三份 v1 evidence；禁止 Prompt/响应/reasoning/secret/PII 正文。
-- 性能与成本：本卡 primary/DoD 中出现的预算、时延、样本、测试数或观察窗均为机械阈值；报告必须给分子/分母、样本和环境，任一未知不得写成通过。
+- 性能与成本：C2 必须给负载、分子/分母、p95 置信上界、每成功采用任务成本、价格快照和每 route live receipt；C4 的 4h soak 不能以虚拟时间或循环次数替代。
 
 **验证命令与查询：**
 
 ```powershell
-# TASK-P10-009；除 exit=0 外还必须满足：1/5/20/50/100 各档观察窗和最低样本均满足；stop_rule_bypass_count=0；每次升降档重新计时
+# TASK-P10-009；除 exit=0 外还必须满足：C1..C5 全过，skip/xfail/rerun/安全红线/candidate drift/production write 全为0
+powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PersonalReleaseCertification.ps1 -Profile ReleaseBDeep -EvidenceRoot .\docs\execution\evidence\phase-10\P10-009
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Verify -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Security -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Evidence -EvidenceRoot .\docs\execution\evidence
@@ -13044,15 +13086,15 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **完成定义（Definition of Done）：**
 
-- [ ] 字面交付物：`docs/execution/evidence/phase-10/P10-009/rollout-observation.json`、`gonow.agent.itinerary_planning.release_b`、`docs/execution/evidence/phase-10/P10-009/`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
-- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“1/5/20/50/100 各档观察窗和最低样本均满足；stop_rule_bypass_count=0；每次升降档重新计时”，不能只记录 exit 0。
-- [ ] 合同与安全：`applicable_ct=[]（本卡不修改已编号合同边界；Catalog 必须机械证明 contract_change=false）` 中适用项全部 `passed`、`skipped=0;xfailed=0`；`SEC-AUDIT,SEC-PII` 的精确结果为 `missing_audit_receipt_count=0;pii_canary_leak_count=0`。
+- [ ] 字面交付物：`certification-manifest.json`、`regression-report.json`、`state-space-report.json`、`security-matrix.json`、`fault-injection-report.json`、`quality-slice-report.json`、`performance-cost-report.json`、`virtual-time-report.json`、`soak-report.json`、`rollback-operations-report.json`、`residual-risk.json`、`personal-release-certification.json` 及本卡标准 evidence/status；unexpected paths=`0`。
+- [ ] 主断言：C1–C5 顺序聚合全部 passed；报告明确 `production_observation_required=false;automated_gate_acceptance=true;evidence_type=personal_compressed_release_certification`，不能声称完成 31 天生产观察。
+- [ ] 合同与安全：全部适用 CT/SEC passed，`skipped=0;xfailed=0;flaky_rerun_count=0`；安全红线、重复副作用、永久 Run、candidate drift、production write 全为 `0`。
 - [ ] 证据与回滚：commands/gate-results/artifact-hashes 均通过 v1 Schema，交付物 hash 缺失=`0`；`RollbackVerify` 的 `old_path_failures=0;unexpected_writes=0`。
 
 
 **安全合规检查项：**
 
-- 检查：SEC-AUDIT、SEC-PII → `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode Security -EvidenceRoot .\docs\execution\evidence` → 期望 `missing_audit_receipt_count=0;pii_canary_leak_count=0` → 失败处理：生产暴露或跨租户按 P0，测试绕过按 P1；立即停止、建 BLK 并通知 Security owner。
+- 检查：SEC-AUDIT、SEC-PII、SEC-SQL、SEC-SECRET 与全部已落地边界 → 期望 `cross_tenant_leak_count=0;unauthorized_write_count=0;secret_or_pii_leak_count=0;forbidden_tool_execution_count=0;missing_audit_receipt_count=0`。
 
 **证据输出：**
 
@@ -13063,64 +13105,65 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - `docs/execution/status/TASK-P10-009.json`
 **回滚步骤：**
 
-1. kill/old route。
+1. 停止认证 shard，终止任务专属进程并回收临时 PG/代理；不得删除失败 seed、报告或 durable evidence；本卡没有生产 route 变更。
 2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-009' -Mode RollbackVerify -EvidenceRoot .\docs\execution\evidence`；期望 `old_path_failures=0;unexpected_writes=0`；不确定时保持 `blocked`。
 
 **阻塞条件：**
 
-- 任何stop condition立即blocked；写 `BLK-P10-009-<slug>.md`，ReleaseEng→Security+Product+SRE，后继停止。
+- 任一 C1–C5 mandatory、真实依赖或统计 predicate 失败只阻断本卡/受影响 shard；写 `BLK-P10-009-<slug>.md` 并继续其他可独立 repair。所有 shard 全过前 P10-010 不开始。
 
 **提交要求：**
 
-- commit subject：`phase-10(TASK-P10-009): record release-b observation`
+- commit subject：`phase-10(TASK-P10-009): certify release-b candidate`
 - 提交前：gate、`git diff --check`、allowlist。
-### TASK-P10-010：裁决 Release B 总门禁
+### TASK-P10-010：执行 owner-only canary 并自动裁决 Release B
 
 **状态：** `not_started`
 **所属阶段：** Phase 10
 **阶段分支：** `codex/phase-10-release-b-gates`
 **执行顺序：** 10.010
-**owner：** ReleaseBoard
-**独立 reviewer：** Engineering+Security+Product+Data
+**owner：** PersonalOwner+ReleaseEng（自动 gate）
+**独立 reviewer：** Engineering+Security+Product+Data+SRE（mandatory evidence 域）
 **依赖：** TASK-P10-009
-**指向规范：** AGENTS.md §11；v1.6.1 §24.7–§24.8,§30.12
-**估算：** 2–3 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md`；`docs/execution/evidence/phase-10/P10-010/`；`docs/execution/status/TASK-P10-010.json`
-**禁止触碰：** Agent自批/豁免P0P1
+**指向规范：** AGENTS.md §0.4.3,§9.2.2,§11；v1.6.1 §24.7–§24.8,§30.12
+**估算：** 30–60min canary 加 1–2h 自动汇总/回滚验证，仅用于排序
+**允许修改：** `docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md`；`docs/execution/evidence/phase-10/P10-010/owner-canary-report.json`；`docs/execution/evidence/phase-10/P10-010/personal-release-certification.json`；`docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json`；feature flag `gonow.agent.itinerary_planning.release_b`（仅预注册 owner canary identity，结束/失败后 allocation=0）；`docs/execution/evidence/phase-10/P10-010/`；`docs/execution/status/TASK-P10-010.json`
+**禁止触碰：** 非 owner cohort、任意 SQL/migration、权限/secret、未知用户数据、跳过 C1–C5、豁免 P0/P1、改变已认证构建
 
 **目标：**
 
-安全/可靠/质量/成本/运营/样本逐项决定
+在 C1–C5 全绿且 candidate 不漂移后执行最终 owner canary，并由自动 attestation 对安全/可靠/质量/成本/运营逐项裁决
 
 **非目标：**
 
-- 不绕过灰度档位，不在拒绝条件下宣告发布。
+- 不重复承担 C1–C5 的统计评测；不扩大 cohort；不以本人烟测替代安全、质量、容量或成本认证。
 
 **输入与前置证据：**
 
-- `TASK-P10-009` 的 accepted head SHA、artifact hash 与本卡 Preflight 报告。
+- `TASK-P10-009` accepted attestation、C1–C5 全部报告/hash、完整 candidate/build/Behavior OID、owner canary identity reference、生产 endpoint/flag adapter、budget cap、kill switch、旧路径与本卡 Preflight。secret 只经 provider 注入，不进入证据。
 
 **实施步骤：**
 
 1. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Preflight -EvidenceRoot .\docs\execution\evidence`；期望 `task_id=TASK-P10-010;unexpected_paths=0;prior_phase_regression_failures=0`。
-2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“collect → validate hashes → risk slices → rollback drill → sign”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“全部关键 slice 退化<=预批阈值；open_p0_p1=0；required_owner_approval_missing=0；rollback_drill=passed”。
-4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `arbitrary_sql_executor_count=0;restore_verification_failures=0;pii_canary_leak_count=0;missing_audit_receipt_count=0`。
-5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望 `schema_errors=0;unhashed_artifacts=0;redaction_failures=0`。
+2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；冻结并验证 P10-009 attestation、candidate/build/Behavior identity、owner cohort、生产 adapter、budget、kill/old path；Catalog 的 `work_contract.required_changes[]` 逐字登记：“verify C1–C5 hashes → prove same candidate/build → allocation 0 baseline → enable owner identity only → execute 10–20 scripted journeys for 30–60min → monitor receipts/redlines → allocation 0 → aggregate → auto accept or rollback”。
+3. 通过受限 adapter 执行 canary；每个 external action 记录 exact target、identity ref、expected generation、cost、exit 和 receipt。任何 redline 立即执行 allocation=`0`，不得继续凑满样本。
+4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `c1_c5_passed=true;candidate_drift_count=0;owner_canary_journeys_gte=10;owner_canary_minutes_gte=30;non_owner_allocation_count=0;old_path_failures=0;traceability_failures=0;cost_receipt_missing_count=0;rollback_drill=passed;automated_acceptance_predicates_passed=true`。
+5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `arbitrary_sql_executor_count=0;cross_tenant_leak_count=0;unauthorized_write_count=0;secret_or_pii_leak_count=0;duplicate_side_effect_count=0;permanent_run_count=0;missing_audit_receipt_count=0`。
+6. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望 `schema_errors=0;unhashed_artifacts=0;redaction_failures=0`。全部通过后 runner 以状态 CAS 写自动 acceptance；否则保持 blocked/ready_for_review。
 
 **实现要求：**
 
-- 功能与接口：完成“安全/可靠/质量/成本/运营/样本逐项决定”；字面目标为 本卡 allowlist 中的精确治理/外部对象；业务通过值为“全部关键 slice 退化<=预批阈值；open_p0_p1=0；required_owner_approval_missing=0；rollback_drill=passed”。
-- 安全与隐私：SEC-SQL、SEC-RESTORE、SEC-PII、SEC-AUDIT → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Security -EvidenceRoot .\docs\execution\evidence → 期望 arbitrary_sql_executor_count=0;restore_verification_failures=0;pii_canary_leak_count=0;missing_audit_receipt_count=0 → 失败处理：生产暴露或跨租户按 …
-- 数据与迁移：涉及；只按本卡列明的 Schema/迁移/RLS/CAS/恢复合同执行，生产写必须由明确 owner/身份授权，相关 CT 与查询结果见 DoD；未列出的数据变更数为 0。
+- 功能与接口：只对 P10-009 已认证的同一构建执行 `10–20` 个 owner 旅程；成功、cancel、断网恢复、reject、adopt、CAS conflict 必须覆盖，最终 allocation=`0`。
+- 安全与隐私：SEC-SQL、SEC-RESTORE、SEC-PII、SEC-AUDIT、tenant/secret/Tool 红线全部为零；owner identity 不得扩展为通配或其他用户。
+- 数据与迁移：禁止 schema/migration/任意 SQL；正式写只允许 owner 自有 canary 数据经现有 typed Domain Command/CAS/outbox，所有 receipt 可追溯且可由产品路径回滚。
 - 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“kill switch。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
 - 可观测性：命令、exit、duration、base/head OID、artifact hash 与脱敏结果写入 docs/execution/evidence/phase-10/P10-010/commands.json 及同卡三份 v1 evidence；禁止 Prompt/响应/reasoning/secret/PII 正文。
-- 性能与成本：本卡 primary/DoD 中出现的预算、时延、样本、测试数或观察窗均为机械阈值；报告必须给分子/分母、样本和环境，任一未知不得写成通过。
+- 性能与成本：canary 总成本必须不超过冻结 cap，每次调用都有 provider usage receipt；缺失或超限立即 allocation=`0`。30–60min 是生产接线烟测，不替代 P10-009 的统计门禁。
 
 **验证命令与查询：**
 
 ```powershell
-# TASK-P10-010；除 exit=0 外还必须满足：全部关键 slice 退化<=预批阈值；open_p0_p1=0；required_owner_approval_missing=0；rollback_drill=passed
+# TASK-P10-010；除 exit=0 外还必须满足：C1–C5绑定同一候选，owner canary 10–20旅程/30–60min，非owner分配和全部红线为0，自动attestation通过
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Verify -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Security -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Evidence -EvidenceRoot .\docs\execution\evidence
@@ -13130,15 +13173,15 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **完成定义（Definition of Done）：**
 
-- [ ] 字面交付物：`docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md`、`docs/execution/evidence/phase-10/P10-010/`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
-- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“全部关键 slice 退化<=预批阈值；open_p0_p1=0；required_owner_approval_missing=0；rollback_drill=passed”，不能只记录 exit 0。
-- [ ] 合同与安全：`applicable_ct=[]（本卡不修改已编号合同边界；Catalog 必须机械证明 contract_change=false）` 中适用项全部 `passed`、`skipped=0;xfailed=0`；`SEC-SQL,SEC-RESTORE,SEC-PII,SEC-AUDIT` 的精确结果为 `arbitrary_sql_executor_count=0;restore_verification_failures=0;pii_canary_leak_count=0;missing_audit_receipt_count=0`。
+- [ ] 字面交付物：`release-b-gate-dossier.md`、`owner-canary-report.json`、最终 `personal-release-certification.json`、`automated-acceptance-attestation.json` 及本卡标准 evidence/status；全部绑定同一 candidate/build/Behavior。
+- [ ] 主断言：P10-009 C1–C5 全绿；owner canary `10–20` 旅程和 `30–60min`；non-owner allocation/redline/candidate drift=`0`；rollback passed；自动 acceptance predicate 全过。
+- [ ] 合同与安全：所有适用 CT/SEC passed、`skipped=0;xfailed=0`；arbitrary SQL、tenant leak、unauthorized write、secret/PII、duplicate effect、permanent Run、missing audit 均为 `0`。
 - [ ] 证据与回滚：commands/gate-results/artifact-hashes 均通过 v1 Schema，交付物 hash 缺失=`0`；`RollbackVerify` 的 `old_path_failures=0;unexpected_writes=0`。
 
 
 **安全合规检查项：**
 
-- 检查：SEC-SQL、SEC-RESTORE、SEC-PII、SEC-AUDIT → `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode Security -EvidenceRoot .\docs\execution\evidence` → 期望 `arbitrary_sql_executor_count=0;restore_verification_failures=0;pii_canary_leak_count=0;missing_audit_receipt_count=0` → 失败处理：生产暴露或跨租户按 P0，测试绕过按 P1；立即停止、建 BLK 并通知 Security owner。
+- 检查：SEC-SQL、SEC-RESTORE、SEC-PII、SEC-AUDIT、tenant/secret/Tool → 期望 `arbitrary_sql_executor_count=0;cross_tenant_leak_count=0;unauthorized_write_count=0;secret_or_pii_leak_count=0;duplicate_side_effect_count=0;permanent_run_count=0;missing_audit_receipt_count=0`；任一非零立即 allocation=`0`。
 
 **证据输出：**
 
@@ -13149,16 +13192,16 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - `docs/execution/status/TASK-P10-010.json`
 **回滚步骤：**
 
-1. kill switch。
+1. feature allocation=`0` 并触发 Behavior/route kill switch；确认 owner 与其他用户全部回旧路径，保留 Run/Candidate/audit/usage 证据。
 2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-010' -Mode RollbackVerify -EvidenceRoot .\docs\execution\evidence`；期望 `old_path_failures=0;unexpected_writes=0`；不确定时保持 `blocked`。
 
 **阻塞条件：**
 
-- 任一mandatory失败blocked；写 `BLK-P10-010-<slug>.md`，ReleaseBoard→Engineering+Security+Product+Data，后继停止。
+- 缺 scoped production credential/endpoint/owner identity/budget cap/kill switch/audit adapter，或任一 canary/attestation predicate 失败时 blocked；只阻断 canary/Release acceptance，其他本地 repair 继续。
 
 **提交要求：**
 
-- commit subject：`phase-10(TASK-P10-010): submit release-b gate`
+- commit subject：`phase-10(TASK-P10-010): accept owner canary release-b gate`
 - 提交前：gate、`git diff --check`、allowlist。
 ### TASK-P10-011：创建独立 Release B PR
 
@@ -13167,12 +13210,12 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **阶段分支：** `codex/gonow-agent-landing`（PR source）
 **执行顺序：** 10.011
 **owner：** ReleaseEng
-**独立 reviewer：** ReleaseBoard
+**独立 reviewer：** automated required checks + Release B attestation
 **依赖：** TASK-P10-999（accepted integration SHA）
 **指向规范：** AGENTS.md §2.4,§11；v1.6.1 §26.8,§29.2
 **估算：** 0.5–1 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/execution/evidence/releases/B.json`；GitHub PR metadata object（只允许创建/更新 PR 标题、正文、labels、review request 与 `auto_merge=false`；head=`codex/gonow-agent-landing`、base=`main` 两个 Git refs 仅列入 `read_only_inputs[]`，不得写 ref）；`docs/execution/evidence/releases/P10-011/`；`docs/execution/status/TASK-P10-011.json`
-**禁止触碰：** 自动merge main/改代码/删branch
+**允许修改：** `docs/execution/evidence/releases/B.json`；GitHub PR metadata object（head=`codex/gonow-agent-landing`、base=`main`）；在 head/base OID、P10-010 attestation、tree equality、required checks 与 rollback gate 精确匹配后允许非强制 merge/auto-merge；`docs/execution/evidence/releases/P10-011/`；`docs/execution/status/TASK-P10-011.json`
+**禁止触碰：** force/squash/rebase、绕过 required checks、改代码、直接 dirty-tree 写 main、删 branch/证据
 
 **目标：**
 
@@ -13180,23 +13223,23 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **非目标：**
 
-- 不自动合并 main，不扩大或并行化 Release 范围。
+- 不扩大或并行化 Release 范围；不在 required checks/attestation 未通过时合并 main。
 
 **输入与前置证据：**
 
-- P10 merge SHA、§9.2 五档非重叠最低 31 天观察证据与 Release Board 批准。
+- P10 merge SHA、P10-009 C1–C5 认证、P10-010 owner canary 与自动 acceptance attestation、required checks 和 rollback 证据。
 
 **实施步骤：**
 
 1. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Preflight -EvidenceRoot .\docs\execution\evidence`；期望 `task_id=TASK-P10-011;unexpected_paths=0;prior_phase_regression_failures=0`。
-2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“verify clean → head SHA → open PR → attach gates → await user”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“Release B PR 的 base/head、批准 SHA、必跑 checks 与 auto_merge=false 精确匹配”。
+2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；冻结 landing/main OID、P10-010 attestation 与 GitHub required checks；Catalog `required_changes[]` 逐字登记：“verify clean/tree/attestation → push exact landing → open PR → attach gates → wait required checks → non-force merge → record merge OID/tree → rollback verify”。
+3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“Release B PR base/head 与 attested OID 精确匹配；required_checks_failed=0；merge_method=merge；force_update_count=0；merged_tree_matches_attested_tree=true”。
 4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_verification_failures=0`。
 5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望 `schema_errors=0;unhashed_artifacts=0;redaction_failures=0`。
 
 **实现要求：**
 
-- 功能与接口：完成“以P10-999后的landing SHA创建Release B PR”；字面目标为 GitHub PR metadata（head=codex/gonow-agent-landing，base=main，refs 只读）；业务通过值为“Release B PR 的 base/head、批准 SHA、必跑 checks 与 auto_merge=false 精确匹配”。
+- 功能与接口：以 P10-999 后 attested landing SHA 创建 Release B PR；required checks 全绿后允许非强制 merge，合并树必须等于 attested tree，不在合并界面解冲突或混入新变化。
 - 安全与隐私：SEC-SECRET、SEC-PII、SEC-AUDIT、SEC-SQL、SEC-RESTORE → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Security -EvidenceRoot .\docs\execution\evidence → 期望 valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_ve…
 - 数据与迁移：涉及；只按本卡列明的 Schema/迁移/RLS/CAS/恢复合同执行，生产写必须由明确 owner/身份授权，相关 CT 与查询结果见 DoD；未列出的数据变更数为 0。
 - 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“关闭PR可恢复。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
@@ -13206,7 +13249,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **验证命令与查询：**
 
 ```powershell
-# TASK-P10-011；除 exit=0 外还必须满足：Release B PR 的 base/head、批准 SHA、必跑 checks 与 auto_merge=false 精确匹配
+# TASK-P10-011；除 exit=0 外还必须满足：PR base/head/attestation精确，required checks全绿，非强制merge，merged tree等于attested tree
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Verify -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Security -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode Evidence -EvidenceRoot .\docs\execution\evidence
@@ -13217,7 +13260,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **完成定义（Definition of Done）：**
 
 - [ ] 字面交付物：`codex/gonow-agent-landing`、`main`、`docs/execution/evidence/releases/B.json`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
-- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“Release B PR 的 base/head、批准 SHA、必跑 checks 与 auto_merge=false 精确匹配”，不能只记录 exit 0。
+- [ ] 主断言：`Verify` 证明 PR base/head、P10-010 attestation、required checks、merge method、merge OID/tree 精确匹配，force update=`0`。
 - [ ] 合同与安全：`applicable_ct=[]（本卡不修改已编号合同边界；Catalog 必须机械证明 contract_change=false）` 中适用项全部 `passed`、`skipped=0;xfailed=0`；`SEC-SECRET,SEC-PII,SEC-AUDIT,SEC-SQL,SEC-RESTORE` 的精确结果为 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_verification_failures=0`。
 - [ ] 证据与回滚：commands/gate-results/artifact-hashes 均通过 v1 Schema，交付物 hash 缺失=`0`；`RollbackVerify` 的 `old_path_failures=0;unexpected_writes=0`。
 
@@ -13236,12 +13279,12 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - `docs/execution/status/TASK-P10-011.json`
 **回滚步骤：**
 
-1. 关闭PR可恢复。
+1. 合并前失败则关闭未合并 PR；合并后发现树/门禁错误只允许创建可审计 revert PR，不 reset/force-push，并保持 feature allocation=`0`。
 2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-011' -Mode RollbackVerify -EvidenceRoot .\docs\execution\evidence`；期望 `old_path_failures=0;unexpected_writes=0`；不确定时保持 `blocked`。
 
 **阻塞条件：**
 
-- 无权限/用户批准blocked；无阶段提交；写 `BLK-P10-011-<slug>.md`，ReleaseEng→ReleaseBoard，后继停止。
+- 缺 GitHub scoped identity、required checks 失败、base/head 漂移、tree 不等或平台不支持安全 merge 时 blocked；只阻断 PR/merge并记录 BLK，禁止绕过。
 
 **提交要求：**
 
@@ -13254,7 +13297,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **阶段分支：** `codex/phase-10-release-b-gates`
 **执行顺序：** 10.089
 **owner：** ReleaseEng
-**独立 reviewer：** Security+Product+Data+SRE
+**独立 reviewer：** `personal_automated` profile 下为 Security+Product+Data+SRE 证据域，由独立干净执行上下文机械复验；enterprise profile 下仍为对应人员
 **依赖：** TASK-P10-010
 **指向规范：** AGENTS.md §10,§13,§15；v1.6.1 §15,§29
 **估算：** 1–2 人天，仅用于排序与容量规划，不是交付承诺
@@ -13279,8 +13322,8 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“按实际 diff 更新 `README.md`、`docs/architecture/release-b-operations.md`、`docs/runbooks/release-b-rollout.md`、`docs/runbooks/agent-kill-switch.md`、`docs/api/release-b-gates.md`、threat-model review receipt（含 model hash、candidate head、Security owner；无变化写 model_changed=false）、change-summary、knowledge-transfer、STAR/N/A 和 premerge manifest”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
 3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode HarnessCatalogAggregate -EvidenceRoot .\docs\execution\evidence`；仅在本阶段全部实施卡已 `accepted` 后，以 `previous_catalog_sha256` 做 CAS，依据任务证据、exact test path 与 S/I/D marker 原子更新本阶段拥有/回归扩展的控制项；期望 `control_ids=01..34;minimum_cases_total=149;status_downgrade_count=0;implemented_missing_test_path=0;skipped=0;xfailed=0`。
 4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode StatusBoardAggregate -EvidenceRoot .\docs\execution\evidence`；从 153 条 Catalog 和逐任务 CAS 状态文件生成 `task-board.json`/`task-board.md`；期望 `task_count=153;duplicate_task_id=0;status_split_brain=0;invalid_transition=0;source_hash_missing=0;execplan_changed=false`。
-5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode Documentation -EvidenceRoot .\docs\execution\evidence`；期望 `broken_links=0;undocumented_contract_diff=0;observable_changes>=1;reviewer_is_implementer=false;threat_model_review_missing=0;threat_model_hash_missing=0`。
-6. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode HandoffVerification -EvidenceRoot .\docs\execution\evidence`；由未实施者在隔离环境完成适用的服务启动/健康/降级或回滚、schema/fixture/生成、或数据库 dry-run/恢复旅程，写 `docs/execution/evidence/phase-10/P10-089/handoff-verification.json`；期望 `handoff_journey_passed=true;reviewer_is_implementer=false;nonzero_exit_count=0`。
+5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode Documentation -EvidenceRoot .\docs\execution\evidence`；期望 `broken_links=0;undocumented_contract_diff=0;observable_changes>=1;independent_execution_context=true;threat_model_review_missing=0;threat_model_hash_missing=0`。
+6. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode HandoffVerification -EvidenceRoot .\docs\execution\evidence`；在与实施进程不同的全新 worktree/进程和锁定依赖环境完成适用的服务启动/健康/降级或回滚、schema/fixture/生成、或数据库 dry-run/恢复旅程，写 `docs/execution/evidence/phase-10/P10-089/handoff-verification.json`；期望 `handoff_journey_passed=true;independent_execution_context=true;clean_environment=true;nonzero_exit_count=0`。不得复用实施进程内存、临时数据库或未登记缓存。
 7. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `valid_secret_finding_count=0;pii_canary_leak_count=0;unsafe_command_example_count=0`。
 8. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-089' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望三份证据 `schema_errors=0;unhashed_artifacts=0`。
 
@@ -13310,7 +13353,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - [ ] `README.md`、`docs/architecture/release-b-operations.md`、`docs/runbooks/release-b-rollout.md`、`docs/runbooks/agent-kill-switch.md`、`docs/api/release-b-gates.md` 与本阶段实际代码、配置和契约 diff 一致；每项新增能力均写启用、关闭、降级和首查步骤。
 - [ ] change-summary 用白话列出阶段前后可观察差异；knowledge-transfer 含职责/依赖取舍、最难事项 `0–3` 件（零件时写原因）、运维必知、估算对比与交接验证五节。
 - [ ] 可复验优化写 `improvements/STAR-<stable-id>.md` 的 Situation/Task/Action/Result 及 before/after/命令/hash；Catalog 的目录规则固定为 `^STAR-[a-z0-9-]+\.md$`，`star-records.md` 的路径/hash 与实际文件一一对应。没有优化写 `not_applicable + reason`，不得虚构。
-- [ ] Security+Product+Data+SRE 中至少一名非实施者确认 `readable=true;accurate=true;contract_synced=true;handoff_journey_passed=true;reviewer_is_implementer=false;threat_model_review_missing=0;threat_model_hash_missing=0`；broken links、未解释 contract diff、secret/PII 命中均为 `0`。
+- [ ] `personal_automated` profile 下，Security+Product+Data+SRE 各证据域由独立干净执行上下文机械确认 `readable=true;accurate=true;contract_synced=true;handoff_journey_passed=true;independent_execution_context=true;clean_environment=true;threat_model_review_missing=0;threat_model_hash_missing=0`；enterprise profile 下仍要求至少一名非实施者确认。broken links、未解释 contract diff、secret/PII 命中均为 `0`。
 - [ ] `HarnessCatalogAggregate` 是 BOOT-003 后本阶段唯一 Catalog 写入口：只消费已接受任务的结构化证据，不运行源代码生成；旧/新 Catalog hash、更新 control ID、owner TASK 与变更理由齐全，禁止 `implemented→contract_only/not_applicable` 降级，禁止本阶段以外的状态变化。
 - [ ] `StatusBoardAggregate` 以逐任务状态文件为事实源并保存 153 个 source hash；文件尚未物化时，仅当该 TASK 无 evidence、无 blocker、无历史 transition 才可解释为初始 `not_started`，否则 `status_split_brain>0` 并阻断；`execplan.md` 字节必须不变。
 - [ ] Catalog 聚合 receipt 保存 before/after SHA-256、writer task/head、逐 control 状态迁移、fragment/JUnit source hash、`status_downgrade_count=0;unexpected_normative_field_change_count=0`；`docs/execution/evidence/phase-10/P10-089/harness-catalog-aggregate.json` 的 path/hash 同时纳入本卡 `artifact-hashes.json` 与本阶段 premerge/final artifact manifest。
@@ -13356,24 +13399,24 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **阶段分支：** `codex/phase-10-release-b-gates`
 **执行顺序：** 10.990
 **owner：** ReleaseEng
-**独立 reviewer：** Engineering+Security+Product+Data
+**独立 reviewer：** `personal_automated` 自动接受签发器（Engineering+Security+Product+Data 证据域）；enterprise profile 下为对应独立 owner
 **依赖：** TASK-P10-089
 **指向规范：** AGENTS.md §13；v1.6.1 §23–§27,§29.2–§29.4
 **估算：** 1–2 人天，仅用于排序与容量规划，不是交付承诺
 **允许修改：** `docs/execution/evidence/phase-10/acceptance.md`；`docs/execution/evidence/index.json`；`docs/execution/evidence/phase-10/P10-990/`；`docs/execution/status/TASK-P10-990.json`
-**禁止触碰：** 代签
+**禁止触碰：** 手改、回填或伪造自动 attestation；不得以汇总报告覆盖原始失败
 
 **目标：**
 
-汇总Release B全部证据
+汇总 Release B 全部证据并对 exact candidate 生成机器可验证接受决定
 
 **非目标：**
 
-- 不绕过灰度档位，不在拒绝条件下宣告发布。
+- 不绕过 C1–C5、owner canary 或任何安全红线，不在拒绝条件下宣告发布；enterprise profile 仍不得绕过灰度档位。
 
 **输入与前置证据：**
 
-- `TASK-P10-010` 的 accepted head SHA、artifact hash 与本卡 Preflight 报告。
+- `TASK-P10-010` 的 accepted head SHA、C1–C5 聚合、owner canary、artifact hash、runner/config digest 与本卡 Preflight 报告。
 
 **实施步骤：**
 
@@ -13383,12 +13426,12 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode RollbackDrill -EvidenceRoot .\docs\execution\evidence`；在生产同配置隔离环境执行 idle、至少 3 个 in-flight Run、旧版本读新数据三场景；期望 `illegal_terminal=0;old_path_failures=0;new_errors_5m=0`。
 5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode Documentation -EvidenceRoot .\docs\execution\evidence`；期望 `document_review_passed=true;kt_sections=5;handoff_journey_passed=true;threat_model_review_missing=0;unresolved_blocker_final_state=0`。
 6. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode BuildAcceptance -EvidenceRoot .\docs\execution\evidence`；生成 acceptance.md，记录变更摘要、全部 BLK、回滚耗时、gate 数字、base/head OID。
-7. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode ApprovalValidation -EvidenceRoot .\docs\execution\evidence`；期望独立 owner 完整 40 位 OID 签署、`approval_age_days<=14`、条件关闭数=`0`。
-8. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `overall_status=passed;forced_rejection_count=0`，且 gate-results 逐项给出上述八类计数；否则保持 `ready_for_review` 或 `blocked`。
+7. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode AutomatedAcceptancePreflight -EvidenceRoot .\docs\execution\evidence`；期望 `personal_profile=true;candidate_drift=0;mandatory_gate_failures=0;skipped=0;xfailed=0;flaky_rerun_passes=0;redline_failures=0;open_p0_p1=0;automated_attestation_valid=true`，attestation 必须绑定完整 40 位 candidate OID、guidance/lock/Behavior Package/manifest/config/seed/fault-plan/pricing/report/rollback/runner digest。
+8. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `overall_status=passed;forced_rejection_count=0;automated_acceptance_status=accepted`，且 gate-results 逐项给出上述八类计数；否则 mandatory 失败为 `blocked`，证据尚未齐但无失败为 `ready_for_review`。
 
 **实现要求：**
 
-- 功能与接口：完成“汇总Release B全部证据”；字面目标为 本卡 allowlist 中的精确治理/外部对象；业务通过值为“首次 Phase≤P10 的 Harness 未实现数=0，E0/E1/CT/rollout/approvals 完整。”。
+- 功能与接口：完成“汇总 Release B 全部证据并自动判定”；字面目标为本卡 allowlist 中的精确治理/外部对象；业务通过值为“首次 Phase≤P10 的 Harness 未实现数=0，E0/E1/CT、C1–C5、owner canary、rollback 与自动 attestation 完整，redline=0。”。
 - 安全与隐私：SEC-SECRET、SEC-PII、SEC-AUDIT → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode Security -EvidenceRoot .\docs\execution\evidence → 期望 valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0 → 失败处理：生产暴露或跨租户按 P0，测试绕过按 P1；立即停止、建 BLK 并通知 Security owner。
 - 数据与迁移：涉及；只按本卡列明的 Schema/迁移/RLS/CAS/恢复合同执行，生产写必须由明确 owner/身份授权，相关 CT 与查询结果见 DoD；未列出的数据变更数为 0。
 - 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“修报告。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
@@ -13398,7 +13441,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **验证命令与查询：**
 
 ```powershell
-# TASK-P10-990；除 exit=0 外还必须满足：首次 Phase≤P10 的 Harness 未实现数=0，E0/E1/CT/rollout/approvals 完整。
+# TASK-P10-990；除 exit=0 外还必须满足：首次 Phase≤P10 的 Harness 未实现数=0，E0/E1/CT、C1–C5、owner canary、rollback 与自动 attestation 完整，redline=0。
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode Verify -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode Security -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P10-990' -Mode Evidence -EvidenceRoot .\docs\execution\evidence
@@ -13409,10 +13452,10 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **完成定义（Definition of Done）：**
 
 - [ ] 字面交付物：`docs/execution/evidence/phase-10/acceptance.md`、`docs/execution/evidence/index.json`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
-- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“首次 Phase≤P10 的 Harness 未实现数=0，E0/E1/CT/rollout/approvals 完整。”，不能只记录 exit 0。
+- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“首次 Phase≤P10 的 Harness 未实现数=0，E0/E1/CT、C1–C5、owner canary、rollback 与自动 attestation 完整，redline=0”，不能只记录 exit 0。
 - [ ] 合同与安全：`applicable_ct=[CT-001..CT-008,CT-010..CT-014]` 中适用项全部 `passed`、`skipped=0;xfailed=0`；`SEC-SECRET,SEC-PII,SEC-AUDIT` 的精确结果为 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0`。
 - [ ] 证据与回滚：commands/gate-results/artifact-hashes 均通过 v1 Schema，交付物 hash 缺失=`0`；`RollbackVerify` 的 `old_path_failures=0;unexpected_writes=0`。
-- [ ] 八类强制拒绝计数必须全部为 `0`：`mandatory_gate_invalid`、`scope_or_worktree_invalid`、`open_security_or_privacy_violation`、`rollback_not_executed_or_incomplete`、`approval_invalid_or_expired_or_evidence_changed`、`blocker_without_final_state`、`required_delivery_missing`、`nonreproducible_summary_or_raw_evidence_missing`；任一出现不得协商接受。
+- [ ] 八类强制拒绝计数必须全部为 `0`：`mandatory_gate_invalid`、`scope_or_worktree_invalid`、`open_security_or_privacy_violation`、`rollback_not_executed_or_incomplete`、`attestation_invalid_or_candidate_drifted`、`blocker_without_final_state`、`required_delivery_missing`、`nonreproducible_summary_or_raw_evidence_missing`；任一出现不得协商接受。
 - [ ] `knowledge-transfer.md` 必含交付职责、依赖取舍、三项最难问题、运维首查/关闭方法和估算对比；可量化优化必须链接 STAR before/after，确无优化写 `not_applicable + reason`。
 
 **安全合规检查项：**
@@ -13434,25 +13477,25 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **阻塞条件：**
 
-- 缺证据blocked；写 `BLK-P10-990-<slug>.md`，ReleaseEng→Engineering+Security+Product+Data，后继停止。
+- 缺证据或任一强制拒绝计数非零时写 `BLK-P10-990-<slug>.md`；只阻断自动接受、P10 merge/push 与依赖它的 Release B 动作，继续其他 ready 或 repair/enabler 工作。
 
 **提交要求：**
 
 - commit subject：`phase-10(TASK-P10-990): submit acceptance evidence`
 - 提交前：gate、`git diff --check`、allowlist。
-### TASK-P10-999：批准后合入集成分支
+### TASK-P10-999：自动接受后合入并推送集成分支
 
 **状态：** `not_started`
 **所属阶段：** Phase 10
 **阶段分支：** `codex/phase-10-release-b-gates`→`codex/gonow-agent-landing`
 **执行顺序：** 10.999
 **owner：** ReleaseEng
-**独立 reviewer：** ReleaseBoard
+**独立 reviewer：** `personal_automated` 自动接受 attestation；enterprise profile 下为 Release Board
 **依赖：** TASK-P10-990 accepted
 **指向规范：** AGENTS.md §2.4、§15；v1.6.1 §23–§27,§29.2–§29.4
 **估算：** 0.5–1 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/execution/evidence/phase-10/merge.json`；`docs/execution/evidence/index.json`；Git ref `refs/heads/codex/gonow-agent-landing`；`docs/execution/evidence/phase-10/P10-999/`；`docs/execution/evidence/phase-10/retrospective.md`；`docs/execution/evidence/phase-10/cleanup-result.json`；`docs/execution/evidence/phase-10/artifact-manifest-v01.json`；`docs/execution/evidence/phase-10/phase-close-v01.json`；`docs/execution/evidence/integration/<merge-oid>/`；`docs/execution/status/TASK-P10-999.json`
-**禁止触碰：** main/自动release
+**允许修改：** `docs/execution/evidence/phase-10/merge.json`；`docs/execution/evidence/index.json`；Git ref `refs/heads/codex/gonow-agent-landing`；远程 refs `origin/codex/phase-10-release-b-gates` 与 `origin/codex/gonow-agent-landing`（仅 non-force fast-forward/新 ref push）；`docs/execution/evidence/phase-10/P10-999/`；`docs/execution/evidence/phase-10/retrospective.md`；`docs/execution/evidence/phase-10/cleanup-result.json`；`docs/execution/evidence/phase-10/artifact-manifest-v01.json`；`docs/execution/evidence/phase-10/phase-close-v01.json`；`docs/execution/evidence/phase-10/push.json`；`docs/execution/evidence/integration/<merge-oid>/`；`docs/execution/status/TASK-P10-999.json`
+**禁止触碰：** `main`、force push、未列明 remote ref、生产 deployment/data
 
 **目标：**
 
@@ -13464,26 +13507,27 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **输入与前置证据：**
 
-- 有效且未过期的 owner 批准、`candidate_head_oid`、`approval_tip_oid`、`phase_base_oid` 与 approval-only diff 证明。
+- 绑定 exact candidate 的有效自动接受 attestation、`candidate_head_oid`、`approval_tip_oid=candidate_head_oid`、`phase_base_oid`、guidance/runner digest 与 `candidate_drift=0` 证明；enterprise profile 使用其有效 owner 批准。
 
 **实施步骤：**
 
-1. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergePreflight`；脚本把临时状态写入 control repo 的 `.git/gonow-phase-merge/TASK-P10-999/state.json`，期望 `acceptance_valid=true;open_p0_p1=0;approval_expired=0;source_worktree_clean=true`，并冻结 candidate/approval/base/landing OID。
-2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Cleanup`；每次调用从 state JSON 重读 OID，期望 `debug_hits=0;hardcoded_non_test_hits=0;temp_files=0;coverage_drop=0`；不得依赖上一 shell 的变量。
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Merge`；脚本内部先 `Set-Location -LiteralPath 'D:\GO_NOW-control'`，再次校验 landing/base 与 source/approval tip 后执行 `git merge --no-ff --no-edit <approval_tip_oid>`；任一漂移/非零 exit 停止。
-4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergeTreeVerification`；只在 landing cwd 写 `integration/<merge-oid>/merge-tree-verification.json`，期望 `parent_count=2;parent1=phase_base_oid;parent2=approval_tip_oid;merge_tree=approval_tip_tree;overall_status=passed`。
-5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode IntegrationSmoke -MaxDurationSeconds 300`；内部调用锁定的 `Invoke-IntegrationSmoke.ps1` 并绑定 exact merge OID，期望累计 Harness/CT/旧路/Flutter ratchet `failed=0;not_run=0;skipped=0;xfailed=0;duration_seconds<=300`。
-6. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode PostMergeEvidence`；在 landing 上提交 merge/addendum/smoke 证据并形成 `smoke_attestation_oid`，不得写 source worktree。
-7. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Retrospective`；生成 retrospective，期望 `retrospective_completed_at-merge_completed_at<=48h`。
-8. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Archive`；在 landing 生成 cleanup、versioned manifest 与 phase-close record，期望 `manifest_revision=1;manifest_self_reference_count=0;old_revision_overwrite_count=0`。
-9. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode CloseVerify`；从 state JSON 重读 merge/smoke/close OID，期望 control repo clean、`phase_close_chain_valid=true`；下一 Phase 只能从输出的 `phase_close_oid` 分支。
+1. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergePreflight`；脚本把临时状态写入 control repo 的 `.git/gonow-phase-merge/TASK-P10-999/state.json`，期望 `acceptance_valid=true;automated_attestation_valid=true;candidate_drift=0;open_p0_p1=0;source_worktree_clean=true`，并冻结 candidate/attestation/base/landing OID。
+2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Cleanup`；每次调用从 state JSON 重读 OID，期望 `debug_hits=0;hardcoded_non_test_hits=0;temp_files=0;coverage_drop=0`；不得依赖上一 shell 的变量。
+3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Merge`；脚本内部先 `Set-Location -LiteralPath 'D:\GO_NOW-control'`，再次校验 landing/base 与 source/approval tip 后执行 `git merge --no-ff --no-edit <approval_tip_oid>`；任一漂移/非零 exit 停止。
+4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergeTreeVerification`；只在 landing cwd 写 `integration/<merge-oid>/merge-tree-verification.json`，期望 `parent_count=2;parent1=phase_base_oid;parent2=approval_tip_oid;merge_tree=approval_tip_tree;overall_status=passed`。
+5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode IntegrationSmoke -MaxDurationSeconds 300`；内部调用锁定的 `Invoke-IntegrationSmoke.ps1` 并绑定 exact merge OID，期望累计 Harness/CT/旧路/Flutter ratchet `failed=0;not_run=0;skipped=0;xfailed=0;duration_seconds<=300`。
+6. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode PostMergeEvidence`；在 landing 上提交 merge/addendum/smoke 证据并形成 `smoke_attestation_oid`，不得写 source worktree。
+7. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Retrospective`；生成 retrospective，期望 `retrospective_completed_at-merge_completed_at<=48h`。
+8. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Archive`；在 landing 生成 cleanup、versioned manifest 与 phase-close record，期望 `manifest_revision=1;manifest_self_reference_count=0;old_revision_overwrite_count=0`。
+9. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode CloseVerify`；从 state JSON 重读 merge/smoke/close OID，期望 control repo clean、`phase_close_chain_valid=true`；下一 Phase 只能从输出的 `phase_close_oid` 分支。
+10. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Push`；仅执行 non-force push，并在 push 前再次比较本地/远程 expected OID；期望 `phase_remote_oid=candidate_head_oid;landing_remote_oid=phase_close_oid;force=false;unexpected_remote_ref_writes=0`，写 `docs/execution/evidence/phase-10/push.json`。
 
 **实现要求：**
 
 - 功能与接口：完成“合入P10”；字面目标为 本卡 allowlist 中的精确治理/外部对象；业务通过值为“merge_oid 为完整 Git OID；parent_count=2、parent1=phase_base_oid、parent2=approval_tip_oid、merge_tree=approval_tip_tree；累计 smoke 的 failed/not_run/skipped/xfailed=0 且 duration_seconds<=300；landing clean；phase_close_oid 已记录”。
-- 安全与隐私：SEC-SECRET、SEC-PII、SEC-AUDIT、SEC-ID、SEC-AUTHZ → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Security → 期望 valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;identity_denied_mismatch=0;authorization_byp…
+- 安全与隐私：SEC-SECRET、SEC-PII、SEC-AUDIT、SEC-ID、SEC-AUTHZ → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Security → 期望 valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;identity_denied_mismatch=0;authorization_bypass_count=0 → 失败处理：生产暴露或跨租户按 P0，测试绕过按 P1；只阻断受影响动作，建 BLK 后继续 ready 或 repair/enabler 工作。
 - 数据与迁移：涉及；只按本卡列明的 Schema/迁移/RLS/CAS/恢复合同执行，生产写必须由明确 owner/身份授权，相关 CT 与查询结果见 DoD；未列出的数据变更数为 0。
-- 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“合并或 tree 等价校验失败立即停止；若已形成 merge_oid，只可由 owner 批准后执行 git revert -m 1 <merge_oid> 留下可审计回滚，禁止 reset/force push。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
+- 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“合并或 tree 等价校验失败立即停止；若已形成 merge_oid，`personal_automated` profile 可在回滚预检与旧路 smoke 通过后执行 `git revert -m 1 <merge_oid>` 留下可审计回滚，enterprise profile 仍需 owner 批准；禁止 reset/force push。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
 - 可观测性：命令、exit、duration、base/head OID、artifact hash 与脱敏结果写入 docs/execution/evidence/phase-10/merge.json 及同卡三份 v1 evidence；禁止 Prompt/响应/reasoning/secret/PII 正文。
 - 性能与成本：本卡 primary/DoD 中出现的预算、时延、样本、测试数或观察窗均为机械阈值；报告必须给分子/分母、样本和环境，任一未知不得写成通过。
 
@@ -13491,26 +13535,27 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 ```powershell
 # TASK-P10-999；除 exit=0 外还必须满足：merge_oid 为完整 Git OID；parent_count=2、parent1=phase_base_oid、parent2=approval_tip_oid、merge_tree=approval_tip_tree；累计 smoke 的 failed/not_run/skipped/xfailed=0 且 duration_seconds<=300；landing clean；phase_close_oid 已记录
-powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergePreflight
-powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Cleanup
-powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Merge
-powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergeTreeVerification
-powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Security
+powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergePreflight
+powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Cleanup
+powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Merge
+powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode MergeTreeVerification
+powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Security
 git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 ```
 
 **完成定义（Definition of Done）：**
 
-- [ ] 字面交付物：`refs/heads/codex/gonow-agent-landing`、`docs/execution/evidence/phase-10/merge.json`、`docs/execution/evidence/index.json`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
+- [ ] 字面交付物：`refs/heads/codex/gonow-agent-landing`、远程 phase/landing refs、`docs/execution/evidence/phase-10/merge.json`、`docs/execution/evidence/phase-10/push.json`、`docs/execution/evidence/index.json`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
 - [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“merge_oid 为完整 Git OID；parent_count=2、parent1=phase_base_oid、parent2=approval_tip_oid、merge_tree=approval_tip_tree；累计 smoke 的 failed/not_run/skipped/xfailed=0 且 duration_seconds<=300；landing clean；phase_close_oid 已记录”，不能只记录 exit 0。
 - [ ] 合同与安全：`applicable_ct=[CT-001..CT-008,CT-010..CT-014]` 中适用项全部 `passed`、`skipped=0;xfailed=0`；`SEC-SECRET,SEC-PII,SEC-AUDIT,SEC-ID,SEC-AUTHZ` 的精确结果为 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;identity_denied_mismatch=0;authorization_bypass_count=0`。
 - [ ] 证据与回滚：commands/gate-results/artifact-hashes 均通过 v1 Schema，交付物 hash 缺失=`0`；`RollbackVerify` 的 `old_path_failures=0;unexpected_writes=0`。
 - [ ] cleanup 报告精确为 `debug_hits=0;hardcoded_non_test_hits=0;temp_files=0;coverage_drop=0`；例外必须有字面路径和 reviewer。
 - [ ] 合并只使用冻结的 `approval_tip_oid`；`merge-tree-verification.json` 精确证明 parent1=`phase_base_oid`、parent2=`approval_tip_oid`、merge tree=`approval_tip tree` 后才启动 smoke。smoke 绑定 exact `merge_oid`，累计已实现 Harness/CT 与 Flutter ratchet `failed=0` 且耗时不超过 300 秒；retrospective、最终 versioned manifest 与 close record 绑定 `phase_close_oid`。 `retrospective_completed_at-merge_completed_at<=48h`；首版 manifest `revision=1;supersedes_manifest_sha256=null`，排除自身/phase-close 自引用且不得覆盖旧 revision。
+- [ ] push receipt 证明 phase remote ref 精确等于 `candidate_head_oid`、landing remote ref 精确等于 `phase_close_oid`，`force=false;unexpected_remote_ref_writes=0`；远程漂移只阻断 push，保留本地可恢复状态并重新 fetch/诊断。
 
 **安全合规检查项：**
 
-- 检查：SEC-SECRET、SEC-PII、SEC-AUDIT、SEC-ID、SEC-AUTHZ → `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Security` → 期望 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;identity_denied_mismatch=0;authorization_bypass_count=0` → 失败处理：生产暴露或跨租户按 P0，测试绕过按 P1；立即停止、建 BLK 并通知 Security owner。
+- 检查：SEC-SECRET、SEC-PII、SEC-AUDIT、SEC-ID、SEC-AUTHZ → `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode Security` → 期望 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;identity_denied_mismatch=0;authorization_bypass_count=0` → 失败处理：生产暴露或跨租户按 P0，测试绕过按 P1；立即隔离受影响动作、建 BLK 并继续其他 ready 或 repair/enabler 工作。
 
 **证据输出：**
 
@@ -13524,12 +13569,12 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - `docs/execution/status/TASK-P10-999.json`
 **回滚步骤：**
 
-1. 合并或 tree 等价校验失败立即停止；若已形成 `merge_oid`，只可由 owner 批准后执行 `git revert -m 1 <merge_oid>` 留下可审计回滚，禁止 reset/force push。
-2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-agent-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode RollbackVerify`；期望 `old_path_failures=0;unexpected_writes=0`；不确定时保持 `blocked`。
+1. 合并或 tree 等价校验失败立即停止；若已形成 `merge_oid`，`personal_automated` profile 在回滚预检和旧路 smoke 通过后可执行 `git revert -m 1 <merge_oid>` 留下可审计回滚，禁止 reset/force push；enterprise profile 仍由 owner 批准。
+2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-PhaseMerge.ps1 -TaskId 'TASK-P10-999' -ControlRepo 'D:\GO_NOW-control' -SourceWorktree 'D:\GO_NOW-phase-10-worktree' -SourceBranch 'codex/phase-10-release-b-gates' -LandingBranch 'codex/gonow-agent-landing' -LandingEvidenceRoot 'D:\GO_NOW-control\docs\execution\evidence' -Mode RollbackVerify`；期望 `old_path_failures=0;unexpected_writes=0`；不确定时保持 `blocked`。
 
 **阻塞条件：**
 
-- 任一 mandatory gate 失败、依赖证据无效或授权不足时停止。；写 `BLK-P10-999-<slug>.md`，ReleaseEng→ReleaseBoard，后继停止。
+- 任一 mandatory gate 失败、依赖证据无效或 attestation 漂移时写 `BLK-P10-999-<slug>.md`；只阻断 P10 merge/push 及依赖它的 Release B 动作，继续其他 ready 或 repair/enabler 工作。
 
 **提交要求：**
 
@@ -13539,7 +13584,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 ### 阶段退出门禁
 
 - [ ] 范围：diff 全在 TASK allowlist，无搭车重构。
-- [ ] 功能：专项判据成立；跨租户/越权Tool/未批准正式写/有效secret泄漏均0；kill/replay/cancel/duplicate/Candidate幂等/旧Worker通过；关键slice不退化；route有reason且成本合格；digest/flag/runbook/owner齐全；观察证据充分。P10-999合landing后P10-011仅创建Release PR，进入main由用户与保护规则决定。回滚kill switch/flag到旧规划，保留Run/Candidate/新数据与旧Behavior。
+- [ ] 功能：专项判据成立；跨租户/越权 Tool/未授权正式写/有效 secret 泄漏均 0；kill/replay/cancel/duplicate/Candidate 幂等/旧 Worker 通过；关键 slice 不退化；route 有 reason 且成本合格；digest/flag/runbook/owner 齐全；C1–C5、4h soak、owner canary 与自动 attestation 完整。P10-999 合并并推送 landing 后，P10-011 创建 Release B PR；仅在 required checks、OID/tree 等价和同一 attestation 仍有效时自动 non-force 合入 main。回滚 kill switch/flag 到旧规划，保留 Run/Candidate/新数据与旧 Behavior。
 - [ ] 安全：适用安全套件通过，泄漏/高危为零。
 - [ ] 数据：迁移、RLS/CAS、删除/恢复适用项通过。
 - [ ] 可靠性：幂等、竞态、kill/replay 适用项收敛。
@@ -15700,12 +15745,12 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **阶段分支：** `codex/gonow-agent-landing`
 **执行顺序：** REL-C.001
 **owner：** Release Engineering
-**独立 reviewer：** ReleaseBoard+Security+Product+Data
+**独立 reviewer：** `personal_automated` Release C attestation；enterprise profile 下为 ReleaseBoard+Security+Product+Data
 **依赖：** （TASK-REL-C-000 path=`phase11` 且 TASK-P11-999）XOR（path=`phase12` 且 TASK-P12-089 accepted 且获批计划登记的唯一实施 merge task accepted）
 **指向规范：** AGENTS.md §2.4、§10–§11；v1.6.1 §26.8,§29.2–§29.4
 **估算：** 0.5–1 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/execution/evidence/releases/C.json`；GitHub PR metadata object（只允许创建/更新 PR 标题、正文、labels、review request 与 `auto_merge=false`；head=`codex/gonow-agent-landing`、base=`main` 两个 Git refs 仅列入 `read_only_inputs[]`，不得写 ref）；`docs/execution/evidence/releases/REL-C-001/`；`docs/execution/status/TASK-REL-C-001.json`
-**禁止触碰：** 第二项 C 能力、代码、自动合并 `main`
+**允许修改：** `docs/execution/evidence/releases/C.json`；GitHub PR metadata object（允许创建/更新 PR 标题、正文、labels、review request，并在 `personal_automated` attestation、required checks 与 tree equality 均有效时启用 non-force auto merge；head=`codex/gonow-agent-landing`、base=`main`）；`main` ref（仅由 GitHub 保护规则执行同一 PR 的 non-force merge）；`docs/execution/evidence/releases/REL-C-001/`；`docs/execution/status/TASK-REL-C-001.json`
+**禁止触碰：** 第二项 C 能力、代码、force push、绕过 required checks 或保护规则
 
 **目标：**
 
@@ -15717,19 +15762,19 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **输入与前置证据：**
 
-- Release B 稳定证据、outer path receipt、唯一 merge SHA 和有效批准；走 P12 时还需 inner selection receipt。
+- Release B profile-specific 稳定证据、outer path receipt、唯一 merge SHA 和有效 attestation；走 P12 时还需 inner selection receipt。
 
 **实施步骤：**
 
 1. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Preflight -EvidenceRoot .\docs\execution\evidence`；期望 `task_id=TASK-REL-C-001;unexpected_paths=0;prior_phase_regression_failures=0`。
-2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“重读 outer path receipt；若 path=`none` 则保持 `not_started` → 若走 P12，重读 inner selection receipt 并证明不是 `none` → 证明 active C capability=1，核验专项 gate/rollback → 创建 landing→main PR → 记录 URL/SHA 后等待人工决定”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“PR 只含外层已选路径的一项能力；未选路径 commit_count=0，auto_merge=false”。
+2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode WorkPreflight -EvidenceRoot .\docs\execution\evidence`；此 mode 只解析并冻结本卡 `work_contract`、`read_only_inputs[]`、写 allowlist 与 `expected_assertions[]`，生成脱敏 preflight 记录，禁止修改业务代码、配置、数据库或外部对象。Catalog 的 `work_contract.required_changes[]` 逐字登记：“重读 outer path receipt；若 path=`none` 则保持 `not_started` → 若走 P12，重读 inner selection receipt 并证明不是 `none` → 证明 active C capability=1，核验专项 gate/rollback → 创建 landing→main PR → 核验 required checks/tree equality → personal profile 自动 non-force merge，enterprise profile 等待 owner 决定 → 记录 URL/SHA”。实施 Agent 随后按该合同执行：仓库文件只用 Codex `apply_patch` 或等价可审计补丁 API 编辑字面目标；只读查询/外部变更只调用本卡列明且已批准的命令或 adapter；每个 tool action/命令、exit、输入 hash 和脱敏结果立即写 `commands.json`。完成后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode WorksetVerify -EvidenceRoot .\docs\execution\evidence`；期望 `unexpected_paths=0;read_only_input_writes=0;unrecorded_action_count=0;work_contract_assertion_gaps=0;nonzero_exit_count=0`。若 literal path、required change、外部 adapter 或 postcondition 不能从本卡唯一解析，必须在任何编辑前 `blocked` 并修订计划，禁止口头补充或由 runner 猜测实现。
+3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Verify -EvidenceRoot .\docs\execution\evidence`；期望 `primary_assertion_passed=true`，detail 精确证明“PR 只含外层已选路径的一项能力；未选路径 commit_count=0；personal profile checks/tree/attestation 全过并 non_force_merge=true”。
 4. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Security -EvidenceRoot .\docs\execution\evidence`；期望 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_verification_failures=0`。
 5. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Evidence -EvidenceRoot .\docs\execution\evidence`；期望 `schema_errors=0;unhashed_artifacts=0;redaction_failures=0`。
 
 **实现要求：**
 
-- 功能与接口：完成“只为一个已验收 C 能力创建独立 PR。”；字面目标为 GitHub PR metadata（head=codex/gonow-agent-landing，base=main，refs 只读）；业务通过值为“PR 只含外层已选路径的一项能力；未选路径 commit_count=0，auto_merge=false”。
+- 功能与接口：完成“只为一个已验收 C 能力创建独立 PR。”；字面目标为 GitHub PR metadata（head=codex/gonow-agent-landing，base=main）；业务通过值为“PR 只含外层已选路径的一项能力；未选路径 commit_count=0；personal profile checks/tree/attestation 全过并 non_force_merge=true”。
 - 安全与隐私：SEC-SECRET、SEC-PII、SEC-AUDIT、SEC-SQL、SEC-RESTORE → powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Security -EvidenceRoot .\docs\execution\evidence → 期望 valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_…
 - 数据与迁移：涉及；只按本卡列明的 Schema/迁移/RLS/CAS/恢复合同执行，生产写必须由明确 owner/身份授权，相关 CT 与查询结果见 DoD；未列出的数据变更数为 0。
 - 可靠性：失败不得吞 exit 或部分成功；专项回滚首动作为“关闭尚未合并的 PR。”；所有重试、幂等、超时、取消、恢复仅按本卡/CT 明示合同。
@@ -15739,7 +15784,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **验证命令与查询：**
 
 ```powershell
-# TASK-REL-C-001；除 exit=0 外还必须满足：PR 只含外层已选路径的一项能力；未选路径 commit_count=0，auto_merge=false
+# TASK-REL-C-001；除 exit=0 外还必须满足：PR 只含外层已选路径的一项能力；未选路径 commit_count=0；personal profile checks/tree/attestation 全过并 non-force merge
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Verify -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Security -EvidenceRoot .\docs\execution\evidence
 powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-REL-C-001' -Mode Evidence -EvidenceRoot .\docs\execution\evidence
@@ -15750,7 +15795,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 **完成定义（Definition of Done）：**
 
 - [ ] 字面交付物：`codex/gonow-agent-landing`、`main`、`docs/execution/evidence/releases/C.json`；`git diff --name-only <phase_base_sha> HEAD` 在 Catalog allowlist 外的文件数=`0`。
-- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“PR 只含外层已选路径的一项能力；未选路径 commit_count=0，auto_merge=false”，不能只记录 exit 0。
+- [ ] 主断言：`Verify` 的 `check_id=primary` 为 `passed`，detail 精确证明“PR 只含外层已选路径的一项能力；未选路径 commit_count=0；personal profile checks/tree/attestation 全过并 non-force merge”，不能只记录 exit 0。
 - [ ] 合同与安全：`applicable_ct=[]（本卡不修改已编号合同边界；Catalog 必须机械证明 contract_change=false）` 中适用项全部 `passed`、`skipped=0;xfailed=0`；`SEC-SECRET,SEC-PII,SEC-AUDIT,SEC-SQL,SEC-RESTORE` 的精确结果为 `valid_secret_finding_count=0;pii_canary_leak_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0;restore_verification_failures=0`。
 - [ ] 证据与回滚：commands/gate-results/artifact-hashes 均通过 v1 Schema，交付物 hash 缺失=`0`；`RollbackVerify` 的 `old_path_failures=0;unexpected_writes=0`。
 
@@ -16349,12 +16394,12 @@ mandatory连续失败、外部权限缺失、生产风险、架构冲突、不�
 | Release | source integration SHA/PR/deploy | 进入/退出 gate | cohort/window | 已知风险/owner | rollback | 实际结果 |
 |---|---|---|---|---|---|---|
 | A | unknown | P00 accepted；旧key/scan/schema/legacy gates | 不适用 | 当前fetch/worktree blocker；Engineering/Security/Data | 关新网关，不恢复泄露key | unknown |
-| B | unknown | P01–P10 accepted；§13总门禁 | risk slices/min sample/§9.2 五档非重叠最低31天 | unknown；Release Board | kill/flag回旧规划，保留数据 | unknown |
+| B | unknown | P01–P10 accepted；§13总门禁 | personal：C1–C5+4h soak+30–60min owner canary；enterprise：§9.2.1 五档31天 | residual-risk.json；personal自动attestation或enterprise Release Board | kill/allocation=0/flag回旧规划，保留数据 | unknown |
 | C | unknown | outer选P11/P12/none；P12内选四项/none；仅一个专项 accepted+merged 才开PR | 专项shadow/cohort | unknown；专项owners | 独立flag/manifest/alias/route | unknown |
 
 ### 18.5 阶段合并与最终自检
 
-每个 `TASK-PXX-999` 均必须：切换前 status clean；cleanup 四项计数为 0；全部阶段提交存在；`acceptance.md` 完整且 mandatory 无跳过；无 open P0/P1；批准有效；以 `--no-ff` 合 landing；对 exact merge OID 在 5 分钟内跑累计 smoke；写 retrospective 与最终 manifest；不自动删除远程分支；worktree 再次 clean。任何一步失败均返回阶段分支，Phase保持`ready_for_review`或`blocked`，不得部分合并。
+每个 `TASK-PXX-999` 均必须：切换前 status clean；cleanup 四项计数为 0；全部阶段提交存在；`acceptance.md` 完整且 mandatory 无跳过；无 open P0/P1；profile-specific acceptance 有效；以 `--no-ff` 合 landing；对 exact merge OID 在 5 分钟内跑累计 smoke；写 retrospective 与最终 manifest；不自动删除远程分支；worktree 再次 clean。任何一步失败均返回阶段分支，Phase保持`ready_for_review`或`blocked`，不得部分合并。
 
 执行前与每次更新后检查：
 
@@ -16366,4 +16411,4 @@ mandatory连续失败、外部权限缺失、生产风险、架构冲突、不�
 - [ ] Release B无RAG/隐式Memory/生产Multi-Agent/Redis/自动正式写。
 - [ ] REL-C-000只选P11/P12/none；P11/P12同级互不依赖；P12只选四项/none；未选分支不存在。
 - [ ] 报告不含secret、JWT、PII、完整Prompt/response/reasoning。
-- [ ] 阶段只合landing，Release PR独立进入main且不自动合并。
+- [ ] 阶段只合 landing；Release PR 独立进入 main，personal profile 仅在 exact attestation/required checks/tree equality 全过时自动非强制合并。

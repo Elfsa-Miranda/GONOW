@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "profile": "personal_automated",
+  "status": "adopted_by_repository_owner_directive",
+  "directive_observed_at": "2026-08-02T14:42:24+08:00",
+  "decision_source": {
+    "type": "current_codex_thread_user_directive",
+    "actor": "repository_owner_current_user",
+    "identity_assurance": "authenticated_session_context_not_an_independent_organization_signature",
+    "permanent_reference_status": "pending_governance_commit_binding"
+  },
+  "repository": {
+    "remote": "https://github.com/Elfsa-Miranda/GO_NOW.git",
+    "base_branch": "main",
+    "decision_base_oid": "70109f8081f74551367a3dac4902646bfdfda73b",
+    "git_object_format": "sha1"
+  },
+  "documents": {
+    "agents": {
+      "path": "AGENTS.md",
+      "version": "2.0.0-personal",
+      "sha256": "e21ca2dabcf5f46ddd96d8763f2212a5da8332abc33419c2e31645693e50f42d"
+    },
+    "execplan": {
+      "path": "execplan.md",
+      "version": "2.0.0-personal",
+      "sha256": "94217c013ae1b84be05ae69c72cd235f1b63c908092377e287281a7a464da859"
+    },
+    "architecture": {
+      "version": "1.6.1",
+      "canonical_locator": "D:\\gonow\\deliverables\\GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx",
+      "sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6"
+    },
+    "decision_adr": {
+      "path": "docs/architecture/adr/ADR-P10-001-personal-automated-release-governance.md",
+      "sha256": "b655d73a80128163876a95a600505a5678d302bdb55c3ad333477dcd8f620f99"
+    }
+  },
+  "authorized_when_exact_attestation_is_valid": [
+    "set_task_phase_or_release_status_to_accepted_by_cas",
+    "push_current_codex_phase_branch_non_force",
+    "merge_certified_tree_to_codex_gonow_agent_landing_with_history",
+    "push_codex_gonow_agent_landing_non_force",
+    "create_or_update_release_pull_request",
+    "merge_release_pull_request_non_force_after_required_checks_and_tree_equality",
+    "run_task_p10_010_owner_only_canary_with_fixed_budget_and_kill_switch"
+  ],
+  "always_prohibited_without_new_explicit_user_authorization": [
+    "force_push_or_history_rewrite",
+    "arbitrary_sql_or_unlisted_migration",
+    "permission_expansion_or_secret_rotation",
+    "cross_tenant_access",
+    "unknown_or_irreversible_data_deletion",
+    "production_allocation_to_non_owner_users",
+    "unbounded_external_spend",
+    "unlisted_external_or_production_action"
+  ],
+  "acceptance_predicates": {
+    "mandatory_failures": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "flaky_rerun_passes": 0,
+    "open_p0_p1": 0,
+    "security_redline_failures": 0,
+    "candidate_drift": 0,
+    "rollback_passed": true,
+    "exact_candidate_and_evidence_hash_binding_required": true
+  },
+  "release_b_profile": {
+    "ordered_gates": [
+      "C1_correctness",
+      "C2_security_performance_cost",
+      "C3_quality_slices",
+      "C4_recovery_virtual_time_and_soak",
+      "C5_rollback_operations",
+      "owner_canary"
+    ],
+    "minimum_real_soak_hours": 4,
+    "owner_canary_journeys_min": 10,
+    "owner_canary_journeys_max": 20,
+    "owner_canary_minutes_min": 30,
+    "owner_canary_minutes_max": 60,
+    "production_observation_required": false,
+    "enterprise_31_day_profile_preserved_but_inactive": true
+  },
+  "evidence_boundary": {
+    "this_receipt_proves_profile_adoption_only": true,
+    "this_receipt_does_not_prove_tests_passed": true,
+    "this_receipt_does_not_claim_31_day_production_observation": true,
+    "candidate_commit_oid": null,
+    "candidate_commit_binding_status": "to_be_recorded_after_governance_commit"
+  }
+}
