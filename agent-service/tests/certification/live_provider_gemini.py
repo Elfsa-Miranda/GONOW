@@ -240,7 +240,9 @@ def _call_once(
         body = response.json()
         usage = body.get("usageMetadata", {})
         input_tokens = int(usage["promptTokenCount"])
-        output_tokens = int(usage["candidatesTokenCount"])
+        candidate_tokens = int(usage["candidatesTokenCount"])
+        thought_tokens = int(usage.get("thoughtsTokenCount", 0))
+        output_tokens = candidate_tokens + thought_tokens
         total_tokens = int(usage["totalTokenCount"])
         candidates = body.get("candidates", [])
         text_value = (
@@ -270,6 +272,8 @@ def _call_once(
                 "http_status": response.status_code,
                 "latency_ms": round((time.perf_counter() - started) * 1_000, 6),
                 "input_tokens": input_tokens,
+                "candidate_tokens": candidate_tokens,
+                "thought_tokens": thought_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": total_tokens,
                 "cost_usd": cost,
@@ -315,25 +319,44 @@ def run_gemini_live(
 
     receipts: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
+    provider_request_count = 0
+    quota_failures = {route.route_id: 0 for route in config.routes}
+    quota_circuit_open = {route.route_id: False for route in config.routes}
     minimum_interval = 60.0 / config.requests_per_minute
     last_started: float | None = None
     try:
-        for route in config.routes:
-            for index in range(config.calls_per_route):
+        for index in range(config.calls_per_route):
+            for route in config.routes:
+                call_id = f"{route.route_id}-{index + 1:04d}"
+                cohort = "baseline" if index < config.calls_per_route // 2 else "candidate"
+                if quota_circuit_open[route.route_id]:
+                    failures.append(
+                        {
+                            "call_id": call_id,
+                            "route_id": route.route_id,
+                            "failure_code": "provider.quota_circuit_open",
+                        }
+                    )
+                    continue
                 if last_started is not None:
                     remaining = minimum_interval - (time.perf_counter() - last_started)
                     if remaining > 0:
                         sleeper(remaining)
                 last_started = time.perf_counter()
+                provider_request_count += 1
                 receipt, failure = _call_once(
                     selected,
                     config=config,
                     route=route,
                     api_key=api_key,
                 )
-                cohort = "baseline" if index < config.calls_per_route // 2 else "candidate"
-                call_id = f"{route.route_id}-{index + 1:04d}"
                 if receipt is None:
+                    if failure == "provider.http_429":
+                        quota_failures[route.route_id] += 1
+                        if quota_failures[route.route_id] >= 3:
+                            quota_circuit_open[route.route_id] = True
+                    else:
+                        quota_failures[route.route_id] = 0
                     failures.append(
                         {
                             "call_id": call_id,
@@ -342,6 +365,7 @@ def run_gemini_live(
                         }
                     )
                     continue
+                quota_failures[route.route_id] = 0
                 receipts.append(
                     {
                         "call_id": call_id,
@@ -434,7 +458,10 @@ def run_gemini_live(
         "route_receipts": route_receipts,
         "failure_receipts": failures,
         "successful_call_count": len(receipts),
-        "provider_request_count": len(receipts) + len(failures),
+        "provider_request_count": provider_request_count,
+        "quota_circuit_open_routes": sorted(
+            route_id for route_id, opened in quota_circuit_open.items() if opened
+        ),
         "projected_maximum_cost_usd": projected_maximum_cost(config),
         "actual_total_cost_usd": total_cost,
         "budget_cap_usd": config.budget_cap_usd,

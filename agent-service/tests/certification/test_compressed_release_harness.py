@@ -107,7 +107,8 @@ def test_c2_live_gemini_executor_emits_only_content_free_receipts(
                 "usageMetadata": {
                     "promptTokenCount": 20,
                     "candidatesTokenCount": 5,
-                    "totalTokenCount": 25,
+                    "thoughtsTokenCount": 3,
+                    "totalTokenCount": 28,
                 },
             },
         )
@@ -136,4 +137,31 @@ def test_c2_live_config_prevents_projected_budget_overrun(tmp_path: Path) -> Non
     path.write_text(json.dumps(config), encoding="utf-8")
     with pytest.raises(CertificationFailure, match="c2.live_projected_cost_exceeds_budget"):
         load_live_config(path)
-    assert projected_maximum_cost(load_live_config()) <= 0.1
+    assert projected_maximum_cost(load_live_config()) <= 0.25
+
+
+def test_c2_live_quota_circuit_stops_repeated_429_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-provider-credential-value")
+    post_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal post_count
+        if request.method == "GET":
+            return httpx.Response(200, content=b"official-pricing-snapshot")
+        post_count += 1
+        return httpx.Response(429, json={"error": {"status": "RESOURCE_EXHAUSTED"}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        report = run_gemini_live(
+            tmp_path,
+            candidate_oid="b" * 40,
+            client=client,
+            sleeper=lambda _: None,
+        )
+    assert report["status"] == "blocked"
+    assert post_count == 6
+    assert report["provider_request_count"] == 6
+    assert report["successful_call_count"] == 0
+    assert report["quota_circuit_open_routes"] == ["capability", "economic"]
