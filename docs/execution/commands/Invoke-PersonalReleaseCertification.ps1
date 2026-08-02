@@ -218,7 +218,13 @@ if ($null -eq $ProfileConfig) { throw 'certification_profile_missing' }
 $Candidate = if ([string]::IsNullOrWhiteSpace($CandidateHeadOid)) { (& git -C $RepositoryRoot rev-parse HEAD).Trim() } else { $CandidateHeadOid }
 if ($Candidate -cnotmatch '^([a-f0-9]{40}|[a-f0-9]{64})$') { throw 'certification_candidate_oid_invalid' }
 $ObjectFormat = (& git -C $RepositoryRoot rev-parse --show-object-format).Trim()
-$ResolvedEvidenceRoot = if ([IO.Path]::IsPathRooted($EvidenceRoot)) { [IO.Path]::GetFullPath($EvidenceRoot) } else { [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $EvidenceRoot)) }
+$ResolvedEvidenceRoot = if ($SelfTest) {
+  [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('gonow-personal-certification-selftest-' + [Guid]::NewGuid().ToString('N'))))
+} elseif ([IO.Path]::IsPathRooted($EvidenceRoot)) {
+  [IO.Path]::GetFullPath($EvidenceRoot)
+} else {
+  [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $EvidenceRoot))
+}
 if (-not $SelfTest) {
   if (-not (Test-Path -LiteralPath $AdoptionPath -PathType Leaf)) { throw 'personal_governance_adoption_missing' }
   $Adoption = Get-Content -LiteralPath $AdoptionPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
@@ -346,6 +352,9 @@ Write-AtomicJson -LiteralPath (Join-Path $ResolvedEvidenceRoot 'residual-risk.js
   residual_risk=[string]$ProfileConfig.ResidualRisk;known_gaps=@('rare_calendar_provider_and_regional_events','correlated_real_user_behavior','post_certification_environment_and_vendor_drift','subjective_usability_beyond_owner','resource_degradation_beyond_real_soak_window')
   mitigation=@('seeded_corpus','real_postgresql_boundary','live_provider_receipts','virtual_time','four_hour_soak','kill_switch','owner_canary_after_c1_c5');recorded_at=[DateTimeOffset]::Now.ToString('o')
 })
+if ($SelfTest -and (Test-Path -LiteralPath $ResolvedEvidenceRoot -PathType Container)) {
+  Remove-Item -LiteralPath $ResolvedEvidenceRoot -Recurse -Force
+}
 $Result | ConvertTo-Json -Depth 30 -Compress
 if ($OverallStatus -cne 'passed') { exit 3 }
 exit 0
