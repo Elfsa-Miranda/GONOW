@@ -13,9 +13,18 @@
 /docs/architecture/adr/ADR-P10-001-personal-automated-release-governance.md text eol=lf
 /docs/execution/blockers/phase-03/**/*.md text eol=lf
 /docs/execution/commands/Invoke-TaskGate.ps1 text eol=lf
+/docs/execution/commands/Invoke-PersonalReleaseCertification.ps1 text eol=lf
+/docs/execution/commands/PersonalReleaseCertification.psd1 text eol=lf
+/docs/execution/commands/TaskGateCatalog.psd1 -text
+/docs/execution/commands/Update-PersonalGovernanceTaskGateCatalog.ps1 text eol=lf
+/docs/execution/commands/tests/Invoke-PersonalReleaseCertification.Tests.ps1 text eol=lf
+/docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1 text eol=lf
+/docs/execution/schemas/personal-release-certification-v1.schema.json text eol=lf
+/docs/execution/schemas/task-status-v1.schema.json text eol=lf
 /docs/execution/evidence/governance/*.json text eol=lf
 /docs/execution/evidence/phase-04/P04-000/** text eol=lf
 /docs/execution/evidence/phase-10/repairs/P10-personal-automated-governance-migration.md text eol=lf
+/docs/execution/evidence/phase-10/improvements/*.md text eol=lf
 /docs/execution/evidence/phase-03/**/*.json text eol=lf
 /docs/execution/evidence/phase-03/**/*.md text eol=lf
 /docs/execution/evidence/phase-03/**/*.xml text eol=lf

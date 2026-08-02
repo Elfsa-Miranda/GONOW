@@ -2,12 +2,9 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $CatalogPath = Join-Path $Root 'TaskGateCatalog.psd1'
 try {
-  $Catalog = Import-PowerShellDataFile -LiteralPath $CatalogPath
+  $Catalog = Import-PowerShellDataFile -LiteralPath $CatalogPath -ErrorAction Stop
 } catch {
-  if ($PSVersionTable.PSVersion.Major -ne 5 -or
-      $_.Exception.Message -cnotmatch 'dynamic expressions|SafeGetValue') {
-    throw
-  }
+  if ($PSVersionTable.PSVersion.Major -ne 5) { throw }
   $Tokens = $null
   $ParseErrors = $null
   $Ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -39,7 +36,13 @@ try {
 }
 if (@($Catalog.Tasks.Keys).Count -ne 153) { throw 'positive: expected 153 tasks' }
 if ($Catalog.Tasks.ContainsKey('TASK-DOES-NOT-EXIST')) { throw 'negative: unknown task accepted' }
-if (@($Catalog.TaskGateModeContracts.Keys).Count -ne 23) { throw 'positive: expected 23 task modes' }
+if (@($Catalog.TaskGateModeContracts.Keys).Count -ne 24 -or -not $Catalog.TaskGateModeContracts.ContainsKey('AutomatedAcceptancePreflight')) { throw 'positive: expected 24 task modes including automated acceptance' }
+$P10009Task=$Catalog.Tasks['TASK-P10-009']
+$P10009RequiredChange='freeze manifest → C1 correctness → C2 security/performance/cost → C3 quality → C4 recovery/virtual-time/4h-soak → C5 rollback/operations → aggregate hashes/residual risk'
+if($null-eq$P10009Task-or@($P10009Task.allowed_taskgate_modes)-notcontains'AutomatedAcceptancePreflight'-or@($P10009Task.work_contract.required_changes).Count-ne1-or[string]$P10009Task.work_contract.required_changes[0]-cne$P10009RequiredChange-or@($P10009Task.file_allowlist).Count-ne4-or@($P10009Task.evidence_outputs|Where-Object{$_-cmatch'(?:personal-release-certification|rollback-operations-report)\.json$'}).Count-ne2){throw 'negative: P10-009 Catalog does not bind the personal C1-C5 task contract'}
+$StatusSchemaPath=Join-Path (Split-Path -Parent $Root) 'schemas\task-status-v1.schema.json'
+$StatusSchema=Get-Content -LiteralPath $StatusSchemaPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
+if([string]$StatusSchema.properties.plan_version.pattern-cnotmatch'A-Za-z'-or$null-eq$StatusSchema.properties.governance_profile-or$null-eq$StatusSchema.properties.acceptance_method-or$null-eq$StatusSchema.properties.attestation_sha256){throw 'negative: task status schema does not distinguish personal automated attestation from human review'}
 $RunnerText = [IO.File]::ReadAllText((Join-Path $Root 'Invoke-TaskGate.ps1'), [Text.UTF8Encoding]::new($false))
 if ($RunnerText -notmatch 'foreach \(\$Key in \$Checks\.Keys\)') {
   throw 'negative: BOOT-005 dependency audit must enumerate OrderedDictionary keys'
@@ -53,8 +56,10 @@ if ($RunnerText -notmatch "function Get-P00LocalProjection") {
 if ($RunnerText -notmatch "formal_acceptance_status = 'pending_external'") {
   throw 'negative: P00-990 local projection must preserve the formal acceptance boundary'
 }
-if ($RunnerText -match "Set-TaskStatus -Status 'accepted'") {
-  throw 'negative: the task runner must never self-approve accepted status'
+if ($RunnerText -notmatch 'function Set-AutomatedAcceptedStatus' -or
+    $RunnerText -notmatch "AcceptanceMethod 'automated_attestation'" -or
+    $RunnerText -notmatch 'reviewer_independent = \$false') {
+  throw 'negative: personal automation must record attested acceptance without fabricating an independent reviewer'
 }
 if ($RunnerText -notmatch "Get-P00GateModeState -IncludeVerify") {
   throw 'negative: P00-990 must not become ready_for_review before all registered local modes pass'
@@ -189,17 +194,19 @@ if ($RunnerText -notmatch 'Get-P10008GateModeState' -or
   throw 'negative: P10-008 must own cost join, honest null denominator, budget-or-blocked, security, evidence, workset, and economic-route rollback gates'
 }
 if ($RunnerText -notmatch 'Get-P10009GateModeState' -or
-    $RunnerText -notmatch 'pending_p10_009_approved_production_rollout_observation' -or
-    $RunnerText -notmatch 'stop_rule_bypass_count' -or
-    $RunnerText -notmatch 'timer_restarted_on_transition' -or
+    $RunnerText -notmatch 'Get-PersonalReleaseCertificationState' -or
+    $RunnerText -notmatch 'p10_009_personal_certification_failed' -or
+    $RunnerText -notmatch 'p10_009_automated_acceptance_preflight_failed' -or
+    $RunnerText -notmatch 'personal_compressed_release_certification' -or
+    $RunnerText -notmatch 'production_observation_required = \$false' -or
     $RunnerText -notmatch 'p10_009_security_failed' -or
     $RunnerText -notmatch 'p10_009_workset_failed' -or
     $RunnerText -notmatch 'p10_009_evidence_failed' -or
     $RunnerText -notmatch 'p10_009_rollback_verification_failed') {
-  throw 'negative: P10-009 must fail closed on unavailable production rollout observations while retaining security, evidence, workset, and old-route rollback gates'
+  throw 'negative: P10-009 must bind personal C1-C5 certification, exact attestation, security, evidence, workset, and old-route rollback gates'
 }
 $RolloutContractPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path 'docs/execution/evidence/phase-10/P10-007/rollout-cohorts.yaml'
-$RolloutContractText = Get-Content -LiteralPath $RolloutContractPath -Raw -Encoding UTF8
+$RolloutContractText = (Get-Content -LiteralPath $RolloutContractPath -Raw -Encoding UTF8).Replace("`r`n","`n")
 if ($RunnerText -notmatch 'Get-P10ObservationWindowState' -or
     $RunnerText -notmatch 'minimum_nonoverlap_observation_hours=744' -or
     $RunnerText -notmatch 'window_started_at' -or
@@ -214,7 +221,7 @@ if ($RunnerText -notmatch 'Get-P10ObservationWindowState' -or
     $RolloutContractText -notmatch '(?m)^  window_ended_at_field: window_ended_at$' -or
     $RolloutContractText -notmatch '(?m)^  stop_rules_remain_active_during_extension: true$' -or
     $RunnerText -notmatch 'total_nonoverlap_hours_below_744') {
-  throw 'negative: Release B gates must bind explicit non-overlapping timestamps and at least 744 total observed hours from P10-007 through P10-009, P10-010, P10-990, and P10-011'
+  throw 'negative: inactive enterprise Release B profile must retain explicit non-overlapping timestamps and at least 744 total observed hours'
 }
 $RunnerPath=Join-Path $Root 'Invoke-TaskGate.ps1';$ParserTokens=$null;$ParserErrors=$null;$RunnerAst=[Management.Automation.Language.Parser]::ParseFile($RunnerPath,[ref]$ParserTokens,[ref]$ParserErrors)
 $ObservationFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-P10ObservationWindowState'},$true)

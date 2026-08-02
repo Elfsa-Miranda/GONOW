@@ -1,6 +1,6 @@
 # Phase 10 repair: personal automated governance migration
 
-Status: `documentation_candidate`
+Status: `runner_enabler_validated`
 
 Scope: `AGENTS.md`, `execplan.md`, `ADR-P10-001`, Phase 10 closeout, and Release A/B/C PR governance
 
@@ -85,3 +85,36 @@ Task: make the personal profile mechanically coherent without weakening runtime 
 Action: separated governance profiles, mapped observation purposes to C1–C5, bound automatic decisions to exact artifacts, and aligned downstream merge/PR cards.
 
 Result: the candidate has one executable personal acceptance path and one preserved inactive enterprise path. This is a governance-contract correction, not a measured product behavior improvement. Behavioral STAR is `not_applicable` until C1–C5 produce comparable baseline/candidate reports; security redlines remain mandatory zero.
+
+## Runner implementation closure (2026-08-02)
+
+### Reproduction
+
+The first runner implementation exposed three bounded compatibility failures before any formal certification evidence was written:
+
+1. a zero-length PowerShell failure list was pipeline-unrolled to `$null`, so the next failure insertion raised `InvokeMethodOnNull`;
+2. Windows PowerShell 5.1 returned the localized/general `CouldNotParseAsPowerShellDataFile` error instead of the previously matched `SafeGetValue` wording;
+3. rewriting the one-line Unicode Catalog without its UTF-8 BOM made `Parser.ParseFile` interpret it with the active ANSI code page, while `Parser.ParseInput` over the already-decoded string still passed.
+
+### Root cause and impact surface
+
+The shared root cause was runtime representation drift at three boundaries: empty collection output, PowerShell-version error wording, and file encoding. The affected surface was the C1–C5 aggregator, Catalog loader, Catalog CAS updater, TaskGate contract test, and automatic task-status acceptance path. No application runtime, database, production ref, feature allocation, credential, or external object was affected.
+
+### Reversible repair
+
+- materialize a typed failure list before appending gate failures;
+- use the PS5 compatibility loader only after independently checking a single root-hashtable AST, rather than trusting exception text;
+- keep the Catalog's canonical UTF-8 BOM and make the updater idempotent with pre-write AST, 153-task/24-mode semantic checks, and an expected-hash CAS;
+- add explicit `governance_profile`, `acceptance_method`, and `attestation_sha256` status fields while preserving `reviewer_independent=false` for machine acceptance;
+- preserve the 744-hour enterprise validator and route only the active personal profile through C1–C5.
+
+### Affected regression
+
+| Check | Result | Boundary proven |
+|---|---:|---|
+| `Invoke-PersonalReleaseCertification.Tests.ps1` | pass | one positive and eight negative fixtures; C1–C5 order; 4-hour minimum; redline and cross-profile rejection |
+| `Invoke-TaskGate.Tests.ps1` | pass in 72.1s | 153 tasks, 24 modes, personal automatic acceptance contract, preserved enterprise 744-hour validator, existing P11/P12 fixtures |
+| Catalog updater second invocation | idempotent pass | zero changed task IDs and stable Catalog SHA |
+| `git diff --check` | pass | no whitespace error |
+
+These results prove the runner contract and failure discrimination only. They do not prove that real C1–C5 reports exist, that the 4-hour soak ran, that live provider/PostgreSQL boundaries passed, or that Release B is accepted.
