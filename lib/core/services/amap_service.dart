@@ -4,26 +4,27 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:gonow/core/constants/amap_config.dart';
 
+typedef AmapHttpGet = Future<http.Response> Function(Uri uri);
+
 class AmapService {
   // ─── 地理编码 ───────────────────────────────────────────────────
   /// 将地点名称转换为经纬度，city 可为空字符串
   static Future<Map<String, double>?> geocode(
     String keyword, {
     String city = '',
+    AmapHttpGet? get,
   }) async {
     final k = keyword.trim();
     if (k.isEmpty) return null;
     try {
-      final uri = Uri.https(
-        'restapi.amap.com',
-        '/v3/geocode/geo',
-        {
-          'key': AMapConfig.webApiKey,
-          'address': k,
-          if (city.trim().isNotEmpty) 'city': city.trim(),
-        },
-      );
-      final res = await http.get(uri).timeout(const Duration(seconds: 15));
+      final uri = Uri.https('restapi.amap.com', '/v3/geocode/geo', {
+        'key': AMapConfig.webApiKey,
+        'address': k,
+        if (city.trim().isNotEmpty) 'city': city.trim(),
+      });
+      final res = await (get ?? http.get)(
+        uri,
+      ).timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) return null;
       final data = jsonDecode(utf8.decode(res.bodyBytes));
       if (data['status']?.toString() != '1') return null;
@@ -44,15 +45,18 @@ class AmapService {
 
   // ─── 天气查询 ───────────────────────────────────────────────────
   /// 先用城市名查 adcode，再查实时天气，返回给 AI 用的文字描述
-  static Future<String?> getWeatherDescription(String cityName) async {
+  static Future<String?> getWeatherDescription(
+    String cityName, {
+    AmapHttpGet? get,
+  }) async {
     try {
       // Step1: 城市名 → adcode
-      final geoUri = Uri.https(
-        'restapi.amap.com',
-        '/v3/geocode/geo',
-        {'key': AMapConfig.webApiKey, 'address': cityName.trim()},
-      );
-      final geoRes = await http.get(geoUri).timeout(const Duration(seconds: 10));
+      final geoUri = Uri.https('restapi.amap.com', '/v3/geocode/geo', {
+        'key': AMapConfig.webApiKey,
+        'address': cityName.trim(),
+      });
+      final request = get ?? http.get;
+      final geoRes = await request(geoUri).timeout(const Duration(seconds: 10));
       if (geoRes.statusCode != 200) return null;
       final geoData = jsonDecode(utf8.decode(geoRes.bodyBytes));
       if (geoData['status']?.toString() != '1') return null;
@@ -62,16 +66,12 @@ class AmapService {
       if (adcode.isEmpty) return null;
 
       // Step2: adcode → 实时天气
-      final wxUri = Uri.https(
-        'restapi.amap.com',
-        '/v3/weather/weatherInfo',
-        {
-          'key': AMapConfig.webApiKey,
-          'city': adcode,
-          'extensions': 'base',
-        },
-      );
-      final wxRes = await http.get(wxUri).timeout(const Duration(seconds: 10));
+      final wxUri = Uri.https('restapi.amap.com', '/v3/weather/weatherInfo', {
+        'key': AMapConfig.webApiKey,
+        'city': adcode,
+        'extensions': 'base',
+      });
+      final wxRes = await request(wxUri).timeout(const Duration(seconds: 10));
       if (wxRes.statusCode != 200) return null;
       final wxData = jsonDecode(utf8.decode(wxRes.bodyBytes));
       if (wxData['status']?.toString() != '1') return null;
@@ -96,7 +96,20 @@ class AmapService {
   /// 不再维护城市白名单，高德能识别全国所有城市/区县/景区名。
   static String? extractLocationFromText(String text) {
     // 非地名黑名单，过滤掉时间词等误匹配
-    const blacklist = ['今天', '明天', '后天', '最近', '现在', '这里', '那里', '当地', '附近', '天气', '气温', '下雨'];
+    const blacklist = [
+      '今天',
+      '明天',
+      '后天',
+      '最近',
+      '现在',
+      '这里',
+      '那里',
+      '当地',
+      '附近',
+      '天气',
+      '气温',
+      '下雨',
+    ];
 
     // 模式1：「XX天气」「XX的天气」「XX气温」「XX下雨」
     // 匹配关键词前面的2-8个汉字

@@ -1,5 +1,5 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND.
 
 const String agentApiSpecSha256 = '@@SPEC_SHA256@@';
-const String agentApiContractVersion = '1.1.0';
+const String agentApiContractVersion = '@@CONTRACT_VERSION@@';
 const String agentApiGeneratorVersion = '@@GENERATOR_VERSION@@';

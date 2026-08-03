@@ -81,7 +81,7 @@ final class ContractDescriptor {
     );
     if (descriptor.name != 'agent-api' ||
         descriptor.major != 1 ||
-        descriptor.version != '1.1.0' ||
+        descriptor.version != '1.1.1' ||
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(descriptor.specSha256)) {
       throw const AgentApiProtocolException('contract_descriptor.invalid');
     }

@@ -13,7 +13,7 @@ void main() {
       agentApiSpecSha256,
       '1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8',
     );
-    expect(agentApiContractVersion, '1.1.0');
+    expect(agentApiContractVersion, '1.1.1');
     expect(agentApiGeneratorVersion, '1.1.0');
   });
 
@@ -57,7 +57,7 @@ void main() {
             jsonEncode(<String, Object>{
               'name': 'agent-api',
               'major': 1,
-              'version': '1.1.0',
+              'version': '1.1.1',
               'spec_sha256': agentApiSpecSha256,
             }),
             200,

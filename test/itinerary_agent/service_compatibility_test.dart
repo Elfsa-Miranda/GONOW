@@ -106,7 +106,7 @@ void main() {
         ContractDescriptor(
           name: 'agent-api',
           major: 1,
-          version: '1.1.0',
+          version: '1.1.1',
           specSha256:
               '0000000000000000000000000000000000000000000000000000000000000000',
         ),
