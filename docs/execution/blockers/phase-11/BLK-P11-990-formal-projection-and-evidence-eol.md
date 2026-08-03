@@ -27,7 +27,7 @@ The TaskGate suite contains positive local/personal cases and negative enterpris
 
 ## Formal materialization dry run
 
-The refreshed read-only three-way simulation used Phase 10 convergence candidate `9ba585a360f81a7b1daa05c37ccc121a4e60b60a`, Phase 11 provisional source `3ae846722e289166f5ff1079e92a83183962336d`, and their merge base `7b5913d53a65316b2c22a17cd52b8ee45562fae1`. The Phase 11 source changes 205 paths: 199 paths have no Phase 10 convergence overlap, two CI contract paths merge automatically, and exactly four governance paths produce content conflicts:
+The refreshed read-only three-way simulation used Phase 10 convergence candidate `03c14d2ae9f7f17a801940228035af53687cee3c`, Phase 11 provisional source `3ae846722e289166f5ff1079e92a83183962336d`, and their merge base `7b5913d53a65316b2c22a17cd52b8ee45562fae1`. The Phase 11 source changes 205 paths: 199 paths have no Phase 10 convergence overlap, two CI contract paths merge automatically, and exactly four governance paths produce content conflicts:
 
 - `docs/execution/commands/Invoke-PhaseMerge.ps1`
 - `docs/execution/commands/Invoke-TaskGate.ps1`
