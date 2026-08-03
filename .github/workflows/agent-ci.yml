@@ -44,6 +44,21 @@ jobs:
         shell: pwsh
         run: uv python install 3.13.9
 
+      - name: Install locked Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.41.7"
+          channel: stable
+          cache: false
+
+      - name: Resolve locked Dart packages
+        shell: powershell
+        run: |
+          dart pub get --enforce-lockfile
+          if (@(git status --porcelain=v1 --untracked-files=no).Count -ne 0) {
+            throw 'Package resolution changed tracked files'
+          }
+
       - name: Provision isolated PostgreSQL contract database
         shell: powershell
         run: >-
@@ -59,6 +74,7 @@ jobs:
           .\agent-service\scripts\ci.ps1
           -UvPath (Get-Command uv).Source
           -PythonVersion 3.13.9
+          -DartPath (Get-Command dart).Source
           -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
 
       - name: Stop isolated PostgreSQL contract database

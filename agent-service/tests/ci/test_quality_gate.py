@@ -207,9 +207,15 @@ def check_workflow(root: Path) -> tuple[list[str], dict[str, Any]]:
     required = [
         "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
         "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b",
+        "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2",
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         'version: "0.10.9"',
         "uv python install 3.13.9",
+        'flutter-version: "3.41.7"',
+        "cache: false",
+        "dart pub get --enforce-lockfile",
+        "Package resolution changed tracked files",
+        "-DartPath (Get-Command dart).Source",
         "contents: read",
         "Provision isolated PostgreSQL contract database",
         "initdb.exe",
@@ -231,7 +237,7 @@ def check_workflow(root: Path) -> tuple[list[str], dict[str, Any]]:
     failures = [f"missing:{value}" for value in required if value not in contract]
     failures += [f"forbidden:{value}" for value in forbidden if value in contract.lower()]
     return failures, {
-        "immutable_action_count": 3,
+        "immutable_action_count": 4,
         "floating_install_count": 0,
         "automatic_deploy_count": 0,
         "isolated_postgres_contract": 1,
