@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 import gc
 import json
 import math
+import multiprocessing
 import os
 from pathlib import Path
 import platform
+import struct
+import tempfile
 import threading
 import time
 import tracemalloc
@@ -79,6 +83,20 @@ KILL_POINTS = (
     "before_physical_call",
     "before_result_persist",
     "before_terminal_transition",
+)
+
+_SOAK_SAMPLE_STRUCT = struct.Struct("<d9Q")
+_SOAK_SAMPLE_FIELDS = (
+    "elapsed_seconds",
+    "rss_bytes",
+    "python_heap_bytes",
+    "python_heap_peak_bytes",
+    "handle_count",
+    "thread_count",
+    "database_checked_out",
+    "backlog_count",
+    "iteration_count",
+    "failure_count",
 )
 PROVIDER_OUTCOMES = ("success", "timeout", "reject")
 
@@ -479,36 +497,51 @@ def run_judge_calibration(evidence_root: Path) -> dict[str, Any]:
     return report
 
 
+@lru_cache(maxsize=1)
+def _windows_process_api() -> tuple[Any, Any, type[Any], Any, Any]:
+    """Initialize ctypes metadata once so the resource probe cannot leak it."""
+
+    if os.name != "nt":
+        raise OSError("Windows process API requested on a non-Windows platform")
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.GetProcessHandleCount.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    kernel32.GetProcessHandleCount.restype = wintypes.BOOL
+    psapi.GetProcessMemoryInfo.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(ProcessMemoryCounters),
+        wintypes.DWORD,
+    )
+    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+    return ctypes, wintypes, ProcessMemoryCounters, kernel32, psapi
+
+
 def _rss_bytes() -> int:
     if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
-        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-            _fields_ = [
-                ("cb", wintypes.DWORD),
-                ("PageFaultCount", wintypes.DWORD),
-                ("PeakWorkingSetSize", ctypes.c_size_t),
-                ("WorkingSetSize", ctypes.c_size_t),
-                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                ("PagefileUsage", ctypes.c_size_t),
-                ("PeakPagefileUsage", ctypes.c_size_t),
-            ]
-
-        counters = PROCESS_MEMORY_COUNTERS()
+        ctypes, _, counters_type, kernel32, psapi = _windows_process_api()
+        counters = counters_type()
         counters.cb = ctypes.sizeof(counters)
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        psapi = ctypes.WinDLL("psapi", use_last_error=True)
-        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-        psapi.GetProcessMemoryInfo.argtypes = (
-            wintypes.HANDLE,
-            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
-            wintypes.DWORD,
-        )
-        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
         process = kernel32.GetCurrentProcess()
         if not psapi.GetProcessMemoryInfo(
             process, ctypes.byref(counters), counters.cb
@@ -523,23 +556,48 @@ def _rss_bytes() -> int:
 
 def _handle_count() -> int:
     if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
+        ctypes, wintypes, _, kernel32, _ = _windows_process_api()
         count = wintypes.DWORD()
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-        kernel32.GetProcessHandleCount.argtypes = (
-            wintypes.HANDLE,
-            ctypes.POINTER(wintypes.DWORD),
-        )
-        kernel32.GetProcessHandleCount.restype = wintypes.BOOL
         process = kernel32.GetCurrentProcess()
         if not kernel32.GetProcessHandleCount(process, ctypes.byref(count)):
             raise OSError("GetProcessHandleCount failed")
         return int(count.value)
     fd_root = Path("/proc/self/fd")
     return len(tuple(fd_root.iterdir())) if fd_root.is_dir() else 0
+
+
+def _write_soak_progress(path: Path, value: dict[str, Any]) -> None:
+    """Atomically write progress without retaining TextIO wrappers in the probe."""
+
+    payload = (
+        json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("C4 progress write made no forward progress")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        temporary.replace(path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
 
 
 def _linear_slope(samples: list[dict[str, Any]], field: str) -> float:
@@ -590,16 +648,190 @@ def _soak_workload(iteration: int) -> None:
         raise AssertionError("soak route unexpectedly disabled")
 
 
+def _write_all(descriptor: int, payload: bytes) -> None:
+    view = memoryview(payload)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise OSError("C4 sample write made no forward progress")
+        view = view[written:]
+
+
+def _decode_soak_samples(path: Path) -> list[dict[str, Any]]:
+    payload = path.read_bytes()
+    if len(payload) % _SOAK_SAMPLE_STRUCT.size != 0:
+        raise CertificationFailure("c4.soak_sample_stream_invalid")
+    samples: list[dict[str, Any]] = []
+    for offset in range(0, len(payload), _SOAK_SAMPLE_STRUCT.size):
+        values = _SOAK_SAMPLE_STRUCT.unpack_from(payload, offset)
+        samples.append(dict(zip(_SOAK_SAMPLE_FIELDS, values)))
+    return samples
+
+
+def _soak_child_main(
+    sample_path: str,
+    result_path: str,
+    duration_seconds: int,
+    sample_interval_seconds: float,
+    database_url: str | None,
+    failure_mode: str | None,
+) -> None:
+    """Run only the measured workload; the parent owns all JSON evidence I/O."""
+
+    sample_target = Path(sample_path)
+    result_target = Path(result_path)
+    engine = None
+    descriptor = -1
+    tracing = False
+    failures: list[dict[str, Any]] = []
+    failure_count = 0
+    try:
+        if failure_mode == "before_samples":
+            raise RuntimeError("injected child failure")
+        if failure_mode is not None:
+            raise ValueError("unsupported child failure mode")
+        if database_url:
+            engine = create_engine(
+                database_url,
+                pool_pre_ping=True,
+                pool_size=2,
+                max_overflow=0,
+            )
+        if os.name == "nt":
+            _windows_process_api()
+        _soak_workload(0)
+        if engine is not None:
+            with engine.connect() as connection:
+                if connection.scalar(text("SELECT 1")) != 1:
+                    raise AssertionError("database prewarm probe failed")
+        gc.collect()
+        binary_flag = getattr(os, "O_BINARY", 0)
+        descriptor = os.open(
+            sample_target,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY | binary_flag,
+            0o600,
+        )
+        tracemalloc.start()
+        tracing = True
+        started_monotonic = time.monotonic()
+        started_wall = datetime.now(UTC)
+        deadline = started_monotonic + duration_seconds
+        next_sample = started_monotonic
+        iteration = 0
+        initial_baseline = {
+            "rss_bytes": _rss_bytes(),
+            "handle_count": _handle_count(),
+            "thread_count": threading.active_count(),
+        }
+        while time.monotonic() < deadline:
+            try:
+                _soak_workload(iteration)
+                if engine is not None and iteration % 20 == 0:
+                    with engine.connect() as connection:
+                        if connection.scalar(text("SELECT 1")) != 1:
+                            raise AssertionError("database probe failed")
+            except Exception as error:  # noqa: BLE001 - bounded child diagnostic
+                failure_count += 1
+                if len(failures) < 50:
+                    failures.append(
+                        {
+                            "iteration": iteration,
+                            "failure_type": type(error).__name__,
+                            "failure_code": str(error)[:160],
+                        }
+                    )
+            iteration += 1
+            now = time.monotonic()
+            if now >= next_sample:
+                gc.collect()
+                heap_current, heap_peak = tracemalloc.get_traced_memory()
+                record = _SOAK_SAMPLE_STRUCT.pack(
+                    now - started_monotonic,
+                    _rss_bytes(),
+                    heap_current,
+                    heap_peak,
+                    _handle_count(),
+                    threading.active_count(),
+                    0 if engine is None else engine.pool.checkedout(),
+                    0,
+                    iteration,
+                    failure_count,
+                )
+                _write_all(descriptor, record)
+                os.fsync(descriptor)
+                next_sample += sample_interval_seconds
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(0.05, remaining))
+        ended_monotonic = time.monotonic()
+        ended_wall = datetime.now(UTC)
+        if engine is not None:
+            engine.dispose()
+            engine = None
+        gc.collect()
+        heap_current, heap_peak = tracemalloc.get_traced_memory()
+        final = {
+            "rss_bytes": _rss_bytes(),
+            "python_heap_bytes": heap_current,
+            "python_heap_peak_bytes": heap_peak,
+            "handle_count": _handle_count(),
+            "thread_count": threading.active_count(),
+            "database_checked_out": 0,
+            "backlog_count": 0,
+        }
+        tracemalloc.stop()
+        tracing = False
+        os.close(descriptor)
+        descriptor = -1
+        write_atomic_json(
+            result_target,
+            {
+                "schema_version": "1.0",
+                "status": "completed",
+                "started_at": started_wall.isoformat(),
+                "completed_at": ended_wall.isoformat(),
+                "real_soak_seconds": ended_monotonic - started_monotonic,
+                "iteration_count": iteration,
+                "failure_count": failure_count,
+                "failure_samples": failures,
+                "initial_baseline": initial_baseline,
+                "final": final,
+            },
+        )
+    except BaseException as error:  # noqa: BLE001 - child must emit fail-closed result
+        if tracing:
+            tracemalloc.stop()
+        if descriptor >= 0:
+            os.close(descriptor)
+        if engine is not None:
+            engine.dispose()
+        write_atomic_json(
+            result_target,
+            {
+                "schema_version": "1.0",
+                "status": "failed",
+                "failure_count": 1,
+                "failure_samples": [
+                    {
+                        "failure_type": type(error).__name__,
+                        "failure_code": "c4.soak_child_failed",
+                    }
+                ],
+            },
+        )
+        raise SystemExit(4) from None
+
+
 def run_real_soak(
     evidence_root: Path,
     *,
     duration_seconds: int,
     sample_interval_seconds: float = 30.0,
     database_url: str | None = None,
+    _child_failure_mode: str | None = None,
 ) -> dict[str, Any]:
     if duration_seconds < 1 or sample_interval_seconds <= 0:
         raise CertificationFailure("c4.soak_configuration_invalid")
-    engine = None
     database_kind = "not_configured"
     if database_url:
         parsed = make_url(database_url)
@@ -610,99 +842,92 @@ def run_real_soak(
             or parsed.database != "gonow_p03_test"
         ):
             raise CertificationFailure("c4.soak_database_not_task_owned")
-        engine = create_engine(database_url, pool_pre_ping=True, pool_size=2, max_overflow=0)
         database_kind = "isolated_postgresql"
-    samples: list[dict[str, Any]] = []
-    failures: list[dict[str, Any]] = []
-    iteration = 0
-    tracemalloc.start()
-    started_monotonic = time.monotonic()
-    started_wall = datetime.now(UTC)
-    deadline = started_monotonic + duration_seconds
-    next_sample = started_monotonic
-    initial_baseline = {
-        "rss_bytes": _rss_bytes(),
-        "handle_count": _handle_count(),
-        "thread_count": threading.active_count(),
-    }
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    sample_scratch = evidence_root / ".soak-child-samples.bin.tmp"
+    result_scratch = evidence_root / ".soak-child-result.json.tmp"
+    if sample_scratch.exists() or result_scratch.exists():
+        raise CertificationFailure("c4.soak_child_scratch_conflict")
+    context = multiprocessing.get_context("spawn")
+    process = context.Process(
+        target=_soak_child_main,
+        args=(
+            str(sample_scratch),
+            str(result_scratch),
+            duration_seconds,
+            sample_interval_seconds,
+            database_url,
+            _child_failure_mode,
+        ),
+        name="gonow-c4-soak-workload",
+        daemon=True,
+    )
+    observer_started = time.monotonic()
+    observer_wall = datetime.now(UTC)
+    process.start()
     try:
-        while time.monotonic() < deadline:
-            try:
-                _soak_workload(iteration)
-                if engine is not None and iteration % 20 == 0:
-                    with engine.connect() as connection:
-                        if connection.scalar(text("SELECT 1")) != 1:
-                            raise AssertionError("database probe failed")
-            except Exception as error:  # noqa: BLE001 - record bounded diagnostic
-                failures.append(
-                    {
-                        "iteration": iteration,
-                        "failure_type": type(error).__name__,
-                        "failure_code": str(error)[:160],
-                    }
-                )
-            iteration += 1
-            now = time.monotonic()
-            if now >= next_sample:
-                heap_current, heap_peak = tracemalloc.get_traced_memory()
-                sample = {
-                    "elapsed_seconds": round(now - started_monotonic, 6),
-                    "rss_bytes": _rss_bytes(),
-                    "python_heap_bytes": heap_current,
-                    "python_heap_peak_bytes": heap_peak,
-                    "handle_count": _handle_count(),
-                    "thread_count": threading.active_count(),
-                    "database_checked_out": 0 if engine is None else engine.pool.checkedout(),
-                    "backlog_count": 0,
-                    "iteration_count": iteration,
-                    "failure_count": len(failures),
-                }
-                samples.append(sample)
-                write_atomic_json(
+        next_progress = 0.0
+        while process.is_alive():
+            elapsed = time.monotonic() - observer_started
+            if elapsed >= next_progress:
+                _write_soak_progress(
                     evidence_root / "soak-progress.json",
                     {
                         "schema_version": "1.0",
                         "status": "running",
-                        "started_at": started_wall.isoformat(),
+                        "started_at": observer_wall.isoformat(),
                         "target_seconds": duration_seconds,
-                        "latest": sample,
+                        "observer_process_id": os.getpid(),
+                        "workload_process_id": process.pid,
+                        "observer_elapsed_seconds": round(elapsed, 6),
                     },
                 )
-                next_sample += sample_interval_seconds
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                time.sleep(min(0.05, remaining))
+                next_progress += sample_interval_seconds
+            process.join(timeout=0.5)
     finally:
-        gc.collect()
-        ended_monotonic = time.monotonic()
-        ended_wall = datetime.now(UTC)
-        heap_current, heap_peak = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
-        if engine is not None:
-            engine.dispose()
-    actual_seconds = ended_monotonic - started_monotonic
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=10)
+    child_result = (
+        json.loads(result_scratch.read_text("utf-8"))
+        if result_scratch.is_file()
+        else {
+            "schema_version": "1.0",
+            "status": "failed",
+            "failure_count": 1,
+            "failure_samples": [
+                {
+                    "failure_type": "MissingChildResult",
+                    "failure_code": "c4.soak_child_result_missing",
+                }
+            ],
+        }
+    )
+    stream_failure = False
+    try:
+        samples = _decode_soak_samples(sample_scratch) if sample_scratch.is_file() else []
+    except CertificationFailure:
+        samples = []
+        stream_failure = True
+    actual_seconds = float(child_result.get("real_soak_seconds", 0.0))
     analysis_start = max(1, len(samples) // 4)
     steady = samples[analysis_start:] if len(samples) > 1 else samples
-    slopes = {
-        field: _linear_slope(steady, field)
-        for field in (
-            "rss_bytes",
-            "python_heap_bytes",
-            "handle_count",
-            "thread_count",
-            "database_checked_out",
-            "backlog_count",
-        )
-    }
-    final = {
-        "rss_bytes": _rss_bytes(),
-        "python_heap_bytes": heap_current,
-        "python_heap_peak_bytes": heap_peak,
-        "handle_count": _handle_count(),
-        "thread_count": threading.active_count(),
-        "database_checked_out": 0,
-        "backlog_count": 0,
-    }
+    slope_fields = (
+        "rss_bytes",
+        "python_heap_bytes",
+        "handle_count",
+        "thread_count",
+        "database_checked_out",
+        "backlog_count",
+    )
+    slopes_valid = len(steady) >= 2
+    slopes = (
+        {field: _linear_slope(steady, field) for field in slope_fields}
+        if slopes_valid
+        else {field: 0.0 for field in slope_fields}
+    )
+    initial_baseline = dict(child_result.get("initial_baseline", {}))
+    final = dict(child_result.get("final", {}))
     steady_baseline = (
         {
             "rss_bytes": int(steady[0]["rss_bytes"]),
@@ -713,50 +938,111 @@ def run_real_soak(
             "backlog_count": int(steady[0]["backlog_count"]),
         }
         if steady
-        else {**initial_baseline, "python_heap_bytes": 0, "database_checked_out": 0, "backlog_count": 0}
+        else {
+            "rss_bytes": int(initial_baseline.get("rss_bytes", 0)),
+            "python_heap_bytes": 0,
+            "handle_count": int(initial_baseline.get("handle_count", 0)),
+            "thread_count": int(initial_baseline.get("thread_count", 0)),
+            "database_checked_out": 0,
+            "backlog_count": 0,
+        }
     )
+    return_baseline = {
+        "rss_bytes": max(
+            int(initial_baseline.get("rss_bytes", 0)),
+            steady_baseline["rss_bytes"],
+        ),
+        "handle_count": max(
+            int(initial_baseline.get("handle_count", 0)),
+            steady_baseline["handle_count"],
+        ),
+        "thread_count": max(
+            int(initial_baseline.get("thread_count", 0)),
+            steady_baseline["thread_count"],
+        ),
+        "database_checked_out": 0,
+        "backlog_count": 0,
+    }
     rss_tolerance = max(
         16 * 1024 * 1024,
-        int(steady_baseline["rss_bytes"] * 0.10),
+        int(return_baseline["rss_bytes"] * 0.10),
     )
     returned = (
-        final["rss_bytes"] <= steady_baseline["rss_bytes"] + rss_tolerance
-        and final["handle_count"] <= steady_baseline["handle_count"] + 2
-        and final["thread_count"] <= steady_baseline["thread_count"] + 1
-        and final["database_checked_out"] == 0
-        and final["backlog_count"] == 0
+        float(final.get("rss_bytes", math.inf))
+        <= return_baseline["rss_bytes"] + rss_tolerance
+        and float(final.get("handle_count", math.inf))
+        <= return_baseline["handle_count"] + 2
+        and float(final.get("thread_count", math.inf))
+        <= return_baseline["thread_count"] + 1
+        and int(final.get("database_checked_out", -1)) == 0
+        and int(final.get("backlog_count", -1)) == 0
     )
     # More than 2% of warm baseline growth per hour is a persistent positive trend.
-    positive = []
-    for field in ("rss_bytes", "python_heap_bytes"):
-        baseline_value = max(1, float(steady[0][field])) if steady else 1.0
-        normalized_per_hour = slopes[field] * 3600 / baseline_value
-        if normalized_per_hour > 0.02:
-            positive.append(field)
-    for field in ("handle_count", "thread_count", "database_checked_out", "backlog_count"):
-        if slopes[field] > 0.001:
-            positive.append(field)
-    completed = actual_seconds >= duration_seconds - 0.1
+    positive = [] if slopes_valid else ["insufficient_samples"]
+    if slopes_valid:
+        for field in ("rss_bytes", "python_heap_bytes"):
+            baseline_value = max(1, float(steady[0][field]))
+            normalized_per_hour = slopes[field] * 3600 / baseline_value
+            if normalized_per_hour > 0.02:
+                positive.append(field)
+        for field in (
+            "handle_count",
+            "thread_count",
+            "database_checked_out",
+            "backlog_count",
+        ):
+            if slopes[field] > 0.001:
+                positive.append(field)
+    failure_count = int(child_result.get("failure_count", 1)) + int(stream_failure)
+    failure_samples = list(child_result.get("failure_samples", []))
+    if stream_failure:
+        failure_samples.append(
+            {
+                "failure_type": "InvalidSampleStream",
+                "failure_code": "c4.soak_sample_stream_invalid",
+            }
+        )
+    child_ok = process.exitcode == 0 and child_result.get("status") == "completed"
+    completed = actual_seconds >= duration_seconds - 0.1 and child_ok
+    sample_scratch.unlink(missing_ok=True)
+    result_scratch.unlink(missing_ok=True)
+    child_scratch_artifact_count = sum(
+        int(path.exists()) for path in (sample_scratch, result_scratch)
+    )
     report = {
         "schema_version": "1.0",
         "gate_id": "C4",
         "soak_id": "c4-real-resource-soak-v1",
-        "status": "passed" if completed and not failures and not positive and returned else "failed",
-        "started_at": started_wall.isoformat(),
-        "completed_at": ended_wall.isoformat(),
+        "status": "passed"
+        if completed and failure_count == 0 and not positive and returned
+        else "failed",
+        "started_at": str(child_result.get("started_at", observer_wall.isoformat())),
+        "completed_at": str(
+            child_result.get("completed_at", datetime.now(UTC).isoformat())
+        ),
         "target_seconds": duration_seconds,
         "real_soak_seconds": round(actual_seconds, 6),
         "monotonic_clock": True,
+        "gc_before_sample": True,
+        "measurement_mode": "spawned_workload_process",
+        "observer_process_id": os.getpid(),
+        "workload_process_id": process.pid,
+        "child_exit_code": process.exitcode,
+        "child_result_sha256": canonical_sha256(child_result),
+        "child_scratch_artifact_count": child_scratch_artifact_count,
         "sample_interval_seconds": sample_interval_seconds,
         "sample_count": len(samples),
-        "iteration_count": iteration,
+        "iteration_count": int(child_result.get("iteration_count", 0)),
         "database_kind": database_kind,
-        "failure_count": len(failures),
-        "failure_samples": failures[:50],
+        "failure_count": failure_count,
+        "failure_samples": failure_samples[:50],
         "initial_baseline": initial_baseline,
         "steady_state_baseline": steady_baseline,
+        "return_baseline": return_baseline,
         "final": final,
         "steady_state_slopes_per_second": slopes,
+        "slope_sample_count": len(steady),
+        "slopes_valid": slopes_valid,
         "positive_resource_slope_fields": positive,
         "positive_resource_slope_count": len(positive),
         "resource_returned_to_baseline": returned,
@@ -799,6 +1085,70 @@ def run_c4_fast(evidence_root: Path) -> dict[str, Any]:
     return {"fault": fault, "virtual": virtual, "judge": judge}
 
 
+def _formal_soak_contract_failures(soak: dict[str, Any]) -> list[str]:
+    """Return every reason a report cannot prove the formal four-hour soak."""
+
+    try:
+        observer_pid = int(soak.get("observer_process_id", 0))
+        workload_pid = int(soak.get("workload_process_id", 0))
+        positive_fields = soak.get("positive_resource_slope_fields")
+        checks = {
+            "status": soak.get("status") == "passed",
+            "soak_id": soak.get("soak_id") == "c4-real-resource-soak-v1",
+            "target_seconds": float(soak.get("target_seconds", 0)) >= 14_400,
+            "real_soak_seconds": float(soak.get("real_soak_seconds", 0))
+            >= 14_400,
+            "sample_interval_seconds": 0
+            < float(soak.get("sample_interval_seconds", 0))
+            <= 30,
+            "sample_count": int(soak.get("sample_count", 0)) >= 480,
+            "slope_sample_count": int(soak.get("slope_sample_count", 0)) >= 360,
+            "iteration_count": int(soak.get("iteration_count", 0)) > 0,
+            "measurement_mode": soak.get("measurement_mode")
+            == "spawned_workload_process",
+            "process_isolation": observer_pid > 0
+            and workload_pid > 0
+            and observer_pid != workload_pid,
+            "child_exit_code": int(soak.get("child_exit_code", -1)) == 0,
+            "child_scratch_artifact_count": int(
+                soak.get("child_scratch_artifact_count", -1)
+            )
+            == 0,
+            "failure_count": int(soak.get("failure_count", -1)) == 0,
+            "monotonic_clock": soak.get("monotonic_clock") is True,
+            "gc_before_sample": soak.get("gc_before_sample") is True,
+            "slopes_valid": soak.get("slopes_valid") is True,
+            "positive_resource_slope_count": int(
+                soak.get("positive_resource_slope_count", -1)
+            )
+            == 0,
+            "positive_resource_slope_fields": isinstance(positive_fields, list)
+            and not positive_fields,
+            "resource_returned_to_baseline": soak.get(
+                "resource_returned_to_baseline"
+            )
+            is True,
+            "database_kind": soak.get("database_kind") == "isolated_postgresql",
+            "production": soak.get("production") is False,
+            "samples_path": soak.get("samples_path") == "soak-samples.json",
+            "samples_artifact_sha256": _valid_sha256(
+                soak.get("samples_artifact_sha256")
+            ),
+            "child_result_sha256": _valid_sha256(soak.get("child_result_sha256")),
+        }
+    except (TypeError, ValueError):
+        return ["invalid_shape"]
+    return [name for name, passed in checks.items() if not passed]
+
+
+def _valid_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
 def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
     candidate = require_candidate_oid(candidate_oid)
     fast = run_c4_fast(evidence_root)
@@ -817,6 +1167,7 @@ def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
     fault = fast["fault"]
     virtual = fast["virtual"]
     judge = fast["judge"]
+    soak_contract_failures = _formal_soak_contract_failures(soak)
     passed = (
         fault["minimum_schedules_per_killpoint_outcome"] >= 20
         and fault["stale_worker_denial_failure_count"] == 0
@@ -825,14 +1176,18 @@ def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
         and virtual["virtual_days"] >= 90
         and virtual["fake_provider_lifecycle_count"] >= 100_000
         and virtual["fake_provider_unknown_outcome_count"] == 0
-        and float(soak["real_soak_seconds"]) >= 14_400
-        and soak["status"] == "passed"
+        and not soak_contract_failures
         and judge["annotation_count"] >= 400
         and judge["minimum_primary_slice_annotations"] >= 50
         and judge["judge_mechanical_gap_pp"] <= 5
     )
     if not passed and not blocker_codes:
-        blocker_codes.append("c4.local_predicate_failed")
+        blocker_codes.extend(
+            f"c4.formal_soak_contract.{failure}"
+            for failure in soak_contract_failures
+        )
+        if not blocker_codes:
+            blocker_codes.append("c4.local_predicate_failed")
     metrics = {
         "minimum_schedules_per_killpoint_outcome": fault[
             "minimum_schedules_per_killpoint_outcome"
@@ -851,6 +1206,20 @@ def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
         "permanent_run_count": fault["permanent_run_count"],
         "positive_resource_slope_count": soak["positive_resource_slope_count"],
         "resource_returned_to_baseline": soak["resource_returned_to_baseline"],
+        "measurement_mode": soak.get("measurement_mode", "missing"),
+        "observer_workload_process_isolated": (
+            soak.get("observer_process_id") != soak.get("workload_process_id")
+            and soak.get("observer_process_id") is not None
+            and soak.get("workload_process_id") is not None
+        ),
+        "child_exit_code": soak.get("child_exit_code", -1),
+        "child_scratch_artifact_count": soak.get(
+            "child_scratch_artifact_count", -1
+        ),
+        "soak_sample_count": soak.get("sample_count", 0),
+        "soak_slope_sample_count": soak.get("slope_sample_count", 0),
+        "soak_slopes_valid": soak.get("slopes_valid", False),
+        "soak_database_kind": soak.get("database_kind", "missing"),
     }
     sources = [
         source_artifact(evidence_root, "fault-injection-report.json"),

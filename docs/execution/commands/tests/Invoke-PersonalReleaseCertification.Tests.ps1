@@ -38,10 +38,12 @@ Invoke-Fixture -Failure c2_live_boundary -ExpectedExit 3 -ExpectedFailureCode li
 Invoke-Fixture -Failure c2_redline -ExpectedExit 3 -ExpectedFailureCode cross_tenant_leak_count_nonzero
 Invoke-Fixture -Failure c3_slice_size -ExpectedExit 3 -ExpectedFailureCode critical_slice_count_below_minimum
 Invoke-Fixture -Failure c4_soak -ExpectedExit 3 -ExpectedFailureCode real_soak_seconds_below_minimum
+Invoke-Fixture -Failure c4_isolation -ExpectedExit 3 -ExpectedFailureCode resource_observer_isolation_missing
+Invoke-Fixture -Failure c4_source_isolation -ExpectedExit 3 -ExpectedFailureCode c4_soak_execution_contract_invalid
 Invoke-Fixture -Failure c5_rollback -ExpectedExit 3 -ExpectedFailureCode rollback_not_passed
 Invoke-Fixture -Failure candidate_drift -ExpectedExit 3 -ExpectedFailureCode candidate_oid_mismatch
 Invoke-Fixture -Failure enterprise_substitution -ExpectedExit 3 -ExpectedFailureCode governance_profile_invalid
 $Text = Get-Content -LiteralPath $Runner -Raw -Encoding UTF8
 foreach ($Forbidden in @('Invoke-Expression','--force','reset --hard','clean -fdx','production_observation_required=$true')) { if ($Text.Contains($Forbidden)) { throw "forbidden runner marker present: $Forbidden" } }
-Write-Output '{"schema_version":"1.0","positive_fixture":true,"negative_fixture_count":8,"gate_order":"C1,C2,C3,C4,C5","minimum_real_soak_seconds":14400,"production_write_count":0}'
+Write-Output '{"schema_version":"1.0","positive_fixture":true,"negative_fixture_count":10,"gate_order":"C1,C2,C3,C4,C5","minimum_real_soak_seconds":14400,"production_write_count":0}'
 exit 0

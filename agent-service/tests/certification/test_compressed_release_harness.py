@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
 import sys
 
 import httpx
@@ -16,7 +17,15 @@ sys.path.insert(0, str(SERVICE_ROOT))
 from c1_correctness import _run_sequence, run_expanded_e0  # noqa: E402
 from c2_security_performance_cost import run_security_matrix  # noqa: E402
 from c3_quality import run_quality_slices  # noqa: E402
-from c4_recovery_soak import run_c4_fast  # noqa: E402
+from c4_recovery_soak import (  # noqa: E402
+    _decode_soak_samples,
+    _formal_soak_contract_failures,
+    _handle_count,
+    _rss_bytes,
+    _windows_process_api,
+    run_c4_fast,
+    run_real_soak,
+)
 from c5_operations import run_rollback_operations  # noqa: E402
 from harness_common import (  # noqa: E402
     CertificationFailure,
@@ -71,6 +80,105 @@ def test_c4_fast_volume_is_not_relabelled_as_soak(tmp_path: Path) -> None:
     assert report["virtual"]["fake_provider_lifecycle_count"] == 100_000
     assert report["judge"]["annotation_count"] == 400
     assert not (tmp_path / "soak-report.json").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows ctypes resource probe")
+def test_c4_windows_resource_probe_reuses_ctypes_metadata() -> None:
+    api = _windows_process_api()
+    rss_values = [_rss_bytes() for _ in range(100)]
+    handle_values = [_handle_count() for _ in range(100)]
+
+    assert _windows_process_api() is api
+    assert _windows_process_api.cache_info().misses == 1
+    assert all(value > 0 for value in rss_values)
+    assert all(value > 0 for value in handle_values)
+
+
+def test_c4_real_soak_isolates_workload_from_evidence_observer(
+    tmp_path: Path,
+) -> None:
+    report = run_real_soak(
+        tmp_path,
+        duration_seconds=1,
+        sample_interval_seconds=0.1,
+    )
+    samples = json.loads((tmp_path / "soak-samples.json").read_text("utf-8"))
+
+    assert report["sample_count"] == len(samples["samples"])
+    assert report["samples_artifact_sha256"]
+    assert report["gc_before_sample"] is True
+    assert report["measurement_mode"] == "spawned_workload_process"
+    assert report["observer_process_id"] != report["workload_process_id"]
+    assert report["child_exit_code"] == 0
+    assert not list(tmp_path.glob(".soak-child-*.tmp"))
+
+
+def test_c4_real_soak_child_failure_is_fail_closed(tmp_path: Path) -> None:
+    report = run_real_soak(
+        tmp_path,
+        duration_seconds=1,
+        sample_interval_seconds=0.1,
+        _child_failure_mode="before_samples",
+    )
+
+    assert report["status"] == "failed"
+    assert report["child_exit_code"] == 4
+    assert report["failure_count"] >= 1
+    assert report["failure_samples"][0]["failure_code"] == "c4.soak_child_failed"
+
+
+def test_c4_binary_sample_stream_rejects_partial_record(tmp_path: Path) -> None:
+    sample_path = tmp_path / "partial.bin"
+    sample_path.write_bytes(b"partial")
+
+    with pytest.raises(CertificationFailure, match="c4.soak_sample_stream_invalid"):
+        _decode_soak_samples(sample_path)
+
+
+def test_c4_formal_soak_contract_rejects_same_process_and_weak_evidence() -> None:
+    valid = {
+        "status": "passed",
+        "soak_id": "c4-real-resource-soak-v1",
+        "target_seconds": 14_400,
+        "real_soak_seconds": 14_400.1,
+        "sample_interval_seconds": 30,
+        "sample_count": 480,
+        "slope_sample_count": 360,
+        "iteration_count": 1,
+        "measurement_mode": "spawned_workload_process",
+        "observer_process_id": 100,
+        "workload_process_id": 101,
+        "child_exit_code": 0,
+        "child_scratch_artifact_count": 0,
+        "failure_count": 0,
+        "monotonic_clock": True,
+        "gc_before_sample": True,
+        "slopes_valid": True,
+        "positive_resource_slope_count": 0,
+        "positive_resource_slope_fields": [],
+        "resource_returned_to_baseline": True,
+        "database_kind": "isolated_postgresql",
+        "production": False,
+        "samples_path": "soak-samples.json",
+        "samples_artifact_sha256": "a" * 64,
+        "child_result_sha256": "b" * 64,
+    }
+    assert _formal_soak_contract_failures(valid) == []
+
+    mutations = {
+        "measurement_mode": "same_process",
+        "workload_process_id": 100,
+        "child_exit_code": 4,
+        "child_scratch_artifact_count": 1,
+        "sample_count": 479,
+        "slope_sample_count": 359,
+        "slopes_valid": False,
+        "database_kind": "not_configured",
+    }
+    for field, invalid_value in mutations.items():
+        tampered = dict(valid)
+        tampered[field] = invalid_value
+        assert _formal_soak_contract_failures(tampered), field
 
 
 def test_c5_fault_catalog_and_short_observation_are_executable(tmp_path: Path) -> None:

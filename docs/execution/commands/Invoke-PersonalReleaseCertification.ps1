@@ -9,7 +9,7 @@ param(
   [string]$FlutterExecutable = '',
   [string]$DatabaseUrl = 'postgresql+pg8000://gonow_migrator_test@127.0.0.1:55432/gonow_p03_test',
   [switch]$SelfTest,
-  [ValidateSet('none','c1_state_count','c2_live_boundary','c2_redline','c3_slice_size','c4_soak','c5_rollback','candidate_drift','enterprise_substitution')]
+  [ValidateSet('none','c1_state_count','c2_live_boundary','c2_redline','c3_slice_size','c4_soak','c4_isolation','c4_source_isolation','c5_rollback','candidate_drift','enterprise_substitution')]
   [string]$SelfTestFailure = 'none'
 )
 
@@ -110,6 +110,8 @@ function Test-GateReport {
       Add-Failure $Failures 'virtual_days_below_minimum' ([int]$M.virtual_days -ge [int]$Thresholds.minimum_virtual_days)
       Add-Failure $Failures 'fake_provider_lifecycle_count_below_minimum' ([long]$M.fake_provider_lifecycle_count -ge [long]$Thresholds.minimum_fake_provider_lifecycles)
       Add-Failure $Failures 'real_soak_seconds_below_minimum' ([long]$M.real_soak_seconds -ge [long]$Thresholds.minimum_real_soak_seconds)
+      Add-Failure $Failures 'real_soak_sample_count_below_minimum' ([int]$M.soak_sample_count -ge [int]$Thresholds.minimum_real_soak_samples)
+      Add-Failure $Failures 'soak_slope_sample_count_below_minimum' ([int]$M.soak_slope_sample_count -ge [int]$Thresholds.minimum_soak_slope_samples)
       Add-Failure $Failures 'judge_annotation_count_below_minimum' ([int]$M.judge_annotation_count -ge [int]$Thresholds.minimum_judge_annotations)
       Add-Failure $Failures 'judge_slice_count_below_minimum' ([int]$M.minimum_judge_primary_slice_annotations -ge [int]$Thresholds.minimum_judge_primary_slice_annotations)
       Add-Failure $Failures 'judge_gap_above_maximum' ([double]$M.judge_mechanical_gap_pp -le [double]$Thresholds.maximum_judge_mechanical_gap_pp)
@@ -117,6 +119,11 @@ function Test-GateReport {
       Add-Failure $Failures 'permanent_run_nonzero' ([int]$M.permanent_run_count -eq 0)
       Add-Failure $Failures 'positive_resource_slope_nonzero' ([int]$M.positive_resource_slope_count -eq 0)
       Add-Failure $Failures 'resource_return_to_baseline_failed' ([bool]$M.resource_returned_to_baseline)
+      Add-Failure $Failures 'resource_observer_isolation_missing' ([string]$M.measurement_mode -ceq 'spawned_workload_process' -and [bool]$M.observer_workload_process_isolated)
+      Add-Failure $Failures 'soak_child_exit_nonzero' ([int]$M.child_exit_code -eq 0)
+      Add-Failure $Failures 'soak_child_scratch_artifact_nonzero' ([int]$M.child_scratch_artifact_count -eq 0)
+      Add-Failure $Failures 'soak_slopes_invalid' ([bool]$M.soak_slopes_valid)
+      Add-Failure $Failures 'soak_database_not_isolated_postgresql' ([string]$M.soak_database_kind -ceq 'isolated_postgresql')
     }
     'C5' {
       Add-Failure $Failures 'fault_class_count_below_minimum' ([int]$M.fault_class_count -ge [int]$Thresholds.minimum_fault_classes)
@@ -182,7 +189,29 @@ function Test-ExecutableSourceEvidence {
         $Previous=-1.0;$Monotonic=$true
         foreach($Sample in @($Samples.samples)){if([double]$Sample.elapsed_seconds-lt$Previous){$Monotonic=$false};$Previous=[double]$Sample.elapsed_seconds}
         Add-Failure $Failures 'c4_soak_samples_not_monotonic' $Monotonic
-        Add-Failure $Failures 'c4_soak_source_mismatch' ([double]$Soak.real_soak_seconds-eq[double]$M.real_soak_seconds -and [string]$Soak.status-ceq'passed' -and [int]$Soak.failure_count-eq0)
+        Add-Failure $Failures 'c4_soak_execution_contract_invalid' (
+          [string]$Soak.soak_id-ceq'c4-real-resource-soak-v1' -and
+          [double]$Soak.target_seconds-ge14400 -and
+          [double]$Soak.real_soak_seconds-ge14400 -and
+          [double]$Soak.sample_interval_seconds-gt0 -and [double]$Soak.sample_interval_seconds-le30 -and
+          [int]$Soak.sample_count-ge480 -and [int]$Soak.slope_sample_count-ge360 -and [int]$Soak.iteration_count-gt0 -and
+          [string]$Soak.measurement_mode-ceq'spawned_workload_process' -and
+          [int]$Soak.observer_process_id-gt0 -and [int]$Soak.workload_process_id-gt0 -and [int]$Soak.observer_process_id-ne[int]$Soak.workload_process_id -and
+          $Soak.PSObject.Properties.Name-contains'child_exit_code' -and [int]$Soak.child_exit_code-eq0 -and
+          $Soak.PSObject.Properties.Name-contains'child_scratch_artifact_count' -and [int]$Soak.child_scratch_artifact_count-eq0 -and
+          [bool]$Soak.monotonic_clock -and [bool]$Soak.gc_before_sample -and [bool]$Soak.slopes_valid -and
+          [int]$Soak.positive_resource_slope_count-eq0 -and @($Soak.positive_resource_slope_fields).Count-eq0 -and
+          [bool]$Soak.resource_returned_to_baseline -and [string]$Soak.database_kind-ceq'isolated_postgresql' -and
+          $Soak.PSObject.Properties.Name-contains'production' -and -not[bool]$Soak.production
+        )
+        Add-Failure $Failures 'c4_soak_source_mismatch' (
+          [double]$Soak.real_soak_seconds-eq[double]$M.real_soak_seconds -and [string]$Soak.status-ceq'passed' -and [int]$Soak.failure_count-eq0 -and
+          [string]$Soak.measurement_mode-ceq[string]$M.measurement_mode -and
+          ([int]$Soak.observer_process_id-ne[int]$Soak.workload_process_id)-eq[bool]$M.observer_workload_process_isolated -and
+          [int]$Soak.child_exit_code-eq[int]$M.child_exit_code -and [int]$Soak.child_scratch_artifact_count-eq[int]$M.child_scratch_artifact_count -and
+          [int]$Soak.sample_count-eq[int]$M.soak_sample_count -and [int]$Soak.slope_sample_count-eq[int]$M.soak_slope_sample_count -and
+          [bool]$Soak.slopes_valid-eq[bool]$M.soak_slopes_valid -and [string]$Soak.database_kind-ceq[string]$M.soak_database_kind
+        )
       }
     }
     'C5' {
@@ -199,7 +228,7 @@ function New-SelfTestReport {
     'C1' { [ordered]@{e0_case_count=200;state_sequence_count=50000;mandatory_pass_rate=1.0;hard_invariant_pass_rate=1.0;success_rate_lower_95=0.90} }
     'C2' { [ordered]@{real_postgresql=$true;live_provider=$true;generated_security_attempt_count=100000;local_complete_run_count=10000;minimum_live_calls_per_route=200;critical_mutation_kill_rate=1.0;changed_mutation_kill_rate=0.90;api_p95_upper_ms=800;cost_to_budget_ratio_upper=1.20;p95_cost_increase_upper=0.15;cross_tenant_leak_count=0;unauthorized_write_count=0;secret_or_pii_leak_count=0;forbidden_tool_execution_count=0;missing_audit_receipt_count=0;arbitrary_sql_executor_count=0} }
     'C3' { [ordered]@{e1_case_count=1000;minimum_cases_per_critical_slice=200;maximum_noninferiority_regression_upper=0.01;holm_correction_applied=$true;hard_constraint_pass_rate=1.0;metamorphic_failure_count=0} }
-    'C4' { [ordered]@{minimum_schedules_per_killpoint_outcome=20;virtual_days=90;fake_provider_lifecycle_count=100000;real_soak_seconds=14400;judge_annotation_count=400;minimum_judge_primary_slice_annotations=50;judge_mechanical_gap_pp=5;duplicate_formal_side_effect_count=0;permanent_run_count=0;positive_resource_slope_count=0;resource_returned_to_baseline=$true} }
+    'C4' { [ordered]@{minimum_schedules_per_killpoint_outcome=20;virtual_days=90;fake_provider_lifecycle_count=100000;real_soak_seconds=14400;soak_sample_count=480;soak_slope_sample_count=360;judge_annotation_count=400;minimum_judge_primary_slice_annotations=50;judge_mechanical_gap_pp=5;duplicate_formal_side_effect_count=0;permanent_run_count=0;positive_resource_slope_count=0;resource_returned_to_baseline=$true;measurement_mode='spawned_workload_process';observer_workload_process_isolated=$true;child_exit_code=0;child_scratch_artifact_count=0;soak_slopes_valid=$true;soak_database_kind='isolated_postgresql'} }
     'C5' { [ordered]@{fault_class_count=20;kill_switch_seconds=30;new_run_after_kill_count=0;old_path_success_rate=1.0;data_loss_count=0;duplicate_write_count=0;rollback_passed=$true;runbook_failure_count=0} }
   }
   if ($Failure -ceq 'c1_state_count' -and $GateId -ceq 'C1') { $Metrics.state_sequence_count = 49999 }
@@ -207,12 +236,37 @@ function New-SelfTestReport {
   if ($Failure -ceq 'c2_redline' -and $GateId -ceq 'C2') { $Metrics.cross_tenant_leak_count = 1 }
   if ($Failure -ceq 'c3_slice_size' -and $GateId -ceq 'C3') { $Metrics.minimum_cases_per_critical_slice = 199 }
   if ($Failure -ceq 'c4_soak' -and $GateId -ceq 'C4') { $Metrics.real_soak_seconds = 14399 }
+  if ($Failure -ceq 'c4_isolation' -and $GateId -ceq 'C4') { $Metrics.measurement_mode = 'same_process' }
   if ($Failure -ceq 'c5_rollback' -and $GateId -ceq 'C5') { $Metrics.rollback_passed = $false }
   return [ordered]@{
     schema_version='1.0';gate_id=$GateId;governance_profile=if($Failure-ceq'enterprise_substitution'){'enterprise_governed'}else{'personal_automated'}
     candidate_head_oid=if($Failure-ceq'candidate_drift'-and$GateId-ceq'C3'){'f' * 40}else{$Candidate}
     status='passed';mandatory_skip_count=0;xfail_count=0;flaky_rerun_count=0;production_write_count=0;redline_failure_count=0;source_artifacts=$SourceArtifacts;metrics=$Metrics
   }
+}
+
+function Write-C4SelfTestSources {
+  param([string]$Root,[string]$Failure)
+  Write-AtomicJson -LiteralPath (Join-Path $Root 'fault-injection-report.json') -Value ([ordered]@{
+    schema_version='1.0';gate_id='C4';minimum_schedules_per_killpoint_outcome=20;schedule_count=420;stale_worker_denial_failure_count=0;duplicate_formal_side_effect_count=0;permanent_run_count=0
+  })
+  Write-AtomicJson -LiteralPath (Join-Path $Root 'virtual-time-report.json') -Value ([ordered]@{
+    schema_version='1.0';gate_id='C4';virtual_days=90;fake_provider_lifecycle_count=100000;boundary_failure_count=0
+  })
+  Write-AtomicJson -LiteralPath (Join-Path $Root 'c4-judge-calibration.json') -Value ([ordered]@{
+    schema_version='1.0';gate_id='C4';annotation_count=400;minimum_primary_slice_annotations=50;judge_mechanical_gap_pp=5
+  })
+  $Samples=@()
+  for($Index=0;$Index-lt480;$Index++){$Samples+=[ordered]@{elapsed_seconds=[double]($Index*30)}}
+  $SamplesPath=Join-Path $Root 'soak-samples.json'
+  Write-AtomicJson -LiteralPath $SamplesPath -Value ([ordered]@{schema_version='1.0';soak_id='c4-real-resource-soak-v1';samples=$Samples})
+  Write-AtomicJson -LiteralPath (Join-Path $Root 'soak-report.json') -Value ([ordered]@{
+    schema_version='1.0';gate_id='C4';soak_id='c4-real-resource-soak-v1';status='passed';target_seconds=14400;real_soak_seconds=14400
+    sample_interval_seconds=30;sample_count=480;slope_sample_count=360;iteration_count=1;measurement_mode=if($Failure-ceq'c4_source_isolation'){'same_process'}else{'spawned_workload_process'}
+    observer_process_id=100;workload_process_id=101;child_exit_code=0;child_scratch_artifact_count=0;failure_count=0;monotonic_clock=$true;gc_before_sample=$true
+    slopes_valid=$true;positive_resource_slope_count=0;positive_resource_slope_fields=@();resource_returned_to_baseline=$true;database_kind='isolated_postgresql';production=$false
+    samples_path='soak-samples.json';samples_artifact_sha256=Get-Sha256 -LiteralPath $SamplesPath
+  })
 }
 
 $RepositoryRoot = Resolve-RepositoryRoot
@@ -222,7 +276,10 @@ if ($null -eq $ProfileConfig) { throw 'certification_profile_missing' }
 $Candidate = if ([string]::IsNullOrWhiteSpace($CandidateHeadOid)) { (& git -C $RepositoryRoot rev-parse HEAD).Trim() } else { $CandidateHeadOid }
 if ($Candidate -cnotmatch '^([a-f0-9]{40}|[a-f0-9]{64})$') { throw 'certification_candidate_oid_invalid' }
 $ObjectFormat = (& git -C $RepositoryRoot rev-parse --show-object-format).Trim()
-$ResolvedEvidenceRoot = if ($SelfTest) {
+$SelfTestEvidenceIsCallerOwned = $SelfTest -and [IO.Path]::IsPathRooted($EvidenceRoot)
+$ResolvedEvidenceRoot = if ($SelfTestEvidenceIsCallerOwned) {
+  [IO.Path]::GetFullPath($EvidenceRoot)
+} elseif ($SelfTest) {
   [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('gonow-personal-certification-selftest-' + [Guid]::NewGuid().ToString('N'))))
 } elseif ([IO.Path]::IsPathRooted($EvidenceRoot)) {
   [IO.Path]::GetFullPath($EvidenceRoot)
@@ -292,9 +349,12 @@ foreach ($GateId in @($ProfileConfig.OrderedGates)) {
   $ReportPath = Join-Path $ResolvedEvidenceRoot $ReportName
   $Report = $null
   $SourceArtifacts = @()
+  if ($SelfTest -and $GateId -ceq 'C4') {
+    Write-C4SelfTestSources -Root $ResolvedEvidenceRoot -Failure $SelfTestFailure
+  }
   foreach ($SupportingReportName in @($ProfileConfig.SupportingReports[$GateId])) {
     $SupportingReportPath = Join-Path $ResolvedEvidenceRoot ([string]$SupportingReportName)
-    if ($SelfTest) {
+    if ($SelfTest -and $GateId -cne 'C4') {
       Write-AtomicJson -LiteralPath $SupportingReportPath -Value ([ordered]@{schema_version='1.0';gate_id=$GateId;candidate_head_oid=$Candidate;status='passed';production_write_count=0})
     }
     if (Test-Path -LiteralPath $SupportingReportPath -PathType Leaf) {
@@ -308,7 +368,7 @@ foreach ($GateId in @($ProfileConfig.OrderedGates)) {
     $Report = Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
   }
   $Failures = @(Test-GateReport -Report $Report -GateId $GateId -ExpectedCandidate $Candidate -Thresholds $ProfileConfig.Thresholds[$GateId])
-  if (-not $SelfTest) {
+  if (-not $SelfTest -or $GateId -ceq 'C4') {
     $Failures += @(Test-ExecutableSourceEvidence -Report $Report -GateId $GateId -Root $ResolvedEvidenceRoot)
   }
   $BoundSources = if ($null -ne $Report) { @($Report.source_artifacts) } else { @() }
@@ -356,7 +416,7 @@ Write-AtomicJson -LiteralPath (Join-Path $ResolvedEvidenceRoot 'residual-risk.js
   residual_risk=[string]$ProfileConfig.ResidualRisk;known_gaps=@('rare_calendar_provider_and_regional_events','correlated_real_user_behavior','post_certification_environment_and_vendor_drift','subjective_usability_beyond_owner','resource_degradation_beyond_real_soak_window')
   mitigation=@('seeded_corpus','real_postgresql_boundary','live_provider_receipts','virtual_time','four_hour_soak','kill_switch','owner_canary_after_c1_c5');recorded_at=[DateTimeOffset]::Now.ToString('o')
 })
-if ($SelfTest -and (Test-Path -LiteralPath $ResolvedEvidenceRoot -PathType Container)) {
+if ($SelfTest -and -not $SelfTestEvidenceIsCallerOwned -and (Test-Path -LiteralPath $ResolvedEvidenceRoot -PathType Container)) {
   Remove-Item -LiteralPath $ResolvedEvidenceRoot -Recurse -Force
 }
 $Result | ConvertTo-Json -Depth 30 -Compress

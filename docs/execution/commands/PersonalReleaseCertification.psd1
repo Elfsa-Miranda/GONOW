@@ -52,6 +52,8 @@
           minimum_virtual_days = 90
           minimum_fake_provider_lifecycles = 100000
           minimum_real_soak_seconds = 14400
+          minimum_real_soak_samples = 480
+          minimum_soak_slope_samples = 360
           minimum_judge_annotations = 400
           minimum_judge_primary_slice_annotations = 50
           maximum_judge_mechanical_gap_pp = 5
