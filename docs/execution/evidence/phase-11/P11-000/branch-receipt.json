@@ -16,6 +16,11 @@
   "production_write_count": 0,
   "remote_push_count": 0,
   "formal_merge_count": 0,
+  "contract_basis": [
+    "AGENTS.md sections 0.4.1 and 0.4.2 repair/enabler authority",
+    "user-message:2026-08-03:phase11-local-start"
+  ],
+  "formal_gate_effect": "none; P11-000 remains blocked and P11-990/P11-999 remain formal-only",
   "rollback": "delete only this unpushed Phase 11 worktree and ref after preserving evidence, or revert the entry-enabler commit",
   "recorded_at": "2026-08-03T22:42:05.8700624+08:00"
 }
