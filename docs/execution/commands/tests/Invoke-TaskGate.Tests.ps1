@@ -18,6 +18,32 @@ if ($MissingLfPatterns.Count -ne 0 -or
     $AttributesText -cnotmatch '(?m)^/docs/execution/commands/TaskGateCatalog\.psd1\s+-text\s*$') {
   throw 'negative: repository text artifacts are not LF-stable across worktrees or immutable inputs lost their -text override'
 }
+$BuildScriptPath = Join-Path $RepositoryRoot 'agent-service\scripts\build.ps1'
+$HistoricalSbomPath = Join-Path $RepositoryRoot 'docs\execution\supply-chain\phase-02\P02-001\agent-service.cdx.json'
+$HistoricalSbomRelativePath = 'docs/execution/supply-chain/phase-02/P02-001/agent-service.cdx.json'
+$HistoricalSbomBlobOid = '4ace79e826a8cad4232f7c41c3c17afca7e9402c'
+$HistoricalSbomBefore = (Get-FileHash -LiteralPath $HistoricalSbomPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$HistoricalCanonicalBefore = (& git -C $RepositoryRoot hash-object --path $HistoricalSbomRelativePath -- $HistoricalSbomPath).Trim()
+$BuildScriptText = [IO.File]::ReadAllText($BuildScriptPath, [Text.UTF8Encoding]::new($false))
+if ($HistoricalCanonicalBefore -cne $HistoricalSbomBlobOid -or
+    $BuildScriptText -cnotmatch [regex]::Escape(".venv\artifacts\agent-service.current.cdx.json") -or
+    $BuildScriptText -cnotmatch 'historical_sbom_immutable') {
+  throw 'negative: current build does not preserve the accepted Phase 2 SBOM'
+}
+$PreviousErrorActionPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = 'Continue'
+  $GuardOutput = @(& 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $BuildScriptPath -SkipDependencySync -SbomOutputPath $HistoricalSbomPath 2>&1)
+  $GuardExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $PreviousErrorActionPreference
+}
+$HistoricalSbomAfter = (Get-FileHash -LiteralPath $HistoricalSbomPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$HistoricalCanonicalAfter = (& git -C $RepositoryRoot hash-object --path $HistoricalSbomRelativePath -- $HistoricalSbomPath).Trim()
+if ($GuardExit -eq 0 -or $HistoricalSbomAfter -cne $HistoricalSbomBefore -or
+    $HistoricalCanonicalAfter -cne $HistoricalCanonicalBefore -or ($GuardOutput -join "`n") -cnotmatch 'historical_sbom_immutable') {
+  throw 'negative: build accepted or changed the immutable Phase 2 SBOM target'
+}
 $CatalogPath = Join-Path $Root 'TaskGateCatalog.psd1'
 try {
   $Catalog = Import-PowerShellDataFile -LiteralPath $CatalogPath -ErrorAction Stop
