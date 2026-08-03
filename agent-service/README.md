@@ -36,9 +36,11 @@ root, run:
 ```
 
 The build creates `agent-service/.venv` from `uv.lock`, compiles both process
-modules, runs the entrypoint tests, and writes the CycloneDX SBOM required by
-`TASK-P02-001`. Any startup exception crosses the process boundary as a nonzero
-exit instead of being converted into a successful health signal.
+modules, runs the entrypoint tests, and writes a current CycloneDX SBOM to the
+ignored `.venv/artifacts/` directory. The accepted `TASK-P02-001` SBOM remains
+immutable; later dependency tasks publish their own phase-scoped supply-chain
+evidence. Any startup exception crosses the process boundary as a nonzero exit
+instead of being converted into a successful health signal.
 
 Run every mandatory local CI gate with:
 
