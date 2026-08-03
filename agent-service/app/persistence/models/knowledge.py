@@ -415,3 +415,148 @@ class KnowledgeOutboxRecord(RuntimeBase):
         DateTime(timezone=True), nullable=False, server_default=func.statement_timestamp()
     )
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class KnowledgeDeletionRequestRecord(RuntimeBase):
+    __tablename__ = "deletion_requests"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_id", "tenant_id"],
+            [
+                f"{KNOWLEDGE_SCHEMA}.sources.source_id",
+                f"{KNOWLEDGE_SCHEMA}.sources.tenant_id",
+            ],
+            name="fk_knowledge_deletion_source_tenant",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "deletion_id",
+            "tenant_id",
+            "source_id",
+            name="uq_knowledge_deletion_identity",
+        ),
+        UniqueConstraint(
+            "tenant_id", "source_id", name="uq_knowledge_deletion_source"
+        ),
+        CheckConstraint(
+            "request_digest ~ '^[0-9a-f]{64}$'",
+            name="ck_knowledge_deletion_request_digest",
+        ),
+        CheckConstraint(
+            "status IN ('requested','fanout_pending','verifying','completed','failed')",
+            name="ck_knowledge_deletion_request_status",
+        ),
+        Index(
+            "ix_knowledge_deletion_status",
+            "tenant_id",
+            "status",
+            "requested_at",
+        ),
+        {"schema": KNOWLEDGE_SCHEMA},
+    )
+
+    deletion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    requested_by_principal_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    audit_receipt_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.statement_timestamp()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class KnowledgeDeletionTombstoneRecord(RuntimeBase):
+    __tablename__ = "deletion_tombstones"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["deletion_id", "tenant_id", "source_id"],
+            [
+                f"{KNOWLEDGE_SCHEMA}.deletion_requests.deletion_id",
+                f"{KNOWLEDGE_SCHEMA}.deletion_requests.tenant_id",
+                f"{KNOWLEDGE_SCHEMA}.deletion_requests.source_id",
+            ],
+            name="fk_knowledge_tombstone_deletion_identity",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "tenant_id", "source_id", name="uq_knowledge_tombstone_source"
+        ),
+        CheckConstraint(
+            "tombstone_digest ~ '^[0-9a-f]{64}$' AND deletion_generation >= 1",
+            name="ck_knowledge_tombstone_identity",
+        ),
+        {"schema": KNOWLEDGE_SCHEMA},
+    )
+
+    tombstone_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    deletion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    tombstone_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    deletion_generation: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    audit_receipt_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.statement_timestamp()
+    )
+
+
+class KnowledgeDeletionSurfaceRecord(RuntimeBase):
+    __tablename__ = "deletion_surface_receipts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["deletion_id", "tenant_id", "source_id"],
+            [
+                f"{KNOWLEDGE_SCHEMA}.deletion_requests.deletion_id",
+                f"{KNOWLEDGE_SCHEMA}.deletion_requests.tenant_id",
+                f"{KNOWLEDGE_SCHEMA}.deletion_requests.source_id",
+            ],
+            name="fk_knowledge_deletion_surface_identity",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "deletion_id",
+            "surface_name",
+            name="uq_knowledge_deletion_surface",
+        ),
+        CheckConstraint(
+            "surface_name IN ('source','chunk','vector','cache','eval','backup')",
+            name="ck_knowledge_deletion_surface_name",
+        ),
+        CheckConstraint(
+            "status IN ('pending','purged','verified','failed')",
+            name="ck_knowledge_deletion_surface_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND (evidence_digest IS NULL OR "
+            "evidence_digest ~ '^[0-9a-f]{64}$')",
+            name="ck_knowledge_deletion_surface_evidence",
+        ),
+        Index(
+            "ix_knowledge_deletion_surface_pending",
+            "tenant_id",
+            "status",
+            "updated_at",
+        ),
+        {"schema": KNOWLEDGE_SCHEMA},
+    )
+
+    surface_receipt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True
+    )
+    deletion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    surface_name: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    evidence_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    audit_receipt_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.statement_timestamp()
+    )
