@@ -1,0 +1,11 @@
+# BLK-P11-990 local acceptance projection
+
+- Status: repaired locally; formal acceptance remains pending.
+- Reproduction: `Invoke-TaskGate.ps1 -TaskId TASK-P11-990 -Mode AcceptancePreflight -ExecutionMode local_provisional` returned exit 2 with `p11_formal_predecessor_required` before creating evidence.
+- Root cause: a runner-level guard treated P11-990 acceptance-candidate construction as a formal-only external action, despite AGENTS §0.4.1 allowing a mechanically complete `ready_for_review` phase to create a local provisional checkpoint. The ten P11-990 handlers also conflated local mechanical evidence with independent owner approvals and a production-same-configuration rollback receipt.
+- Impact: all eleven P11 implementation/convergence tasks were mechanically complete, but phase-local acceptance documentation, full regression, local rollback rehearsal, and provisional checkpoint work could not start. Formal acceptance, merge, push, production writes, and Release C authority remained unaffected.
+- Excluded causes: missing implementation dependency, failed P11-089 gate, Harness incompleteness, Phase 12 activity, production mutation, or missing test runtime.
+- Reversible repair: allow P11-990 in `local_provisional`; use accepted-plus-projected predecessor accounting; run the real locked Python/pytest rollback suite; record five owner roles as `pending_external` without actor identities; preserve the original formal handlers and keep P11-999 formal-only.
+- Regression scope: PowerShell parser, TaskGate contract, all ten P11-990 modes, full Python/Flutter CI, persisted Phase 11 gates, evidence hashing/redaction, and status CAS.
+- Formal boundary: local output MUST remain `accepted=false`, `formal_acceptance_status=pending_external`, `production_write_count=0`, `remote_push_count=0`, and `merge_count=0`.
+- Rollback: revert this repair commit; no runtime schema, business data, remote ref, production flag, approval receipt, or formal acceptance record is changed.
