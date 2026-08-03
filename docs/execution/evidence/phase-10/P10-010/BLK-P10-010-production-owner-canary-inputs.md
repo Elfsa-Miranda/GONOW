@@ -1,7 +1,7 @@
 # BLK-P10-010 — Production owner-canary inputs
 
 - Status: `external_inputs_pending_local_enablers_continue`
-- Candidate: `13bb7c6d2929ae610f5243cf47afaa8797a6f2a3`
+- Candidate: `2afcaac54b36dd1ccb3e85882025fdb17b878185`
 - Scope: final owner-only production canary and dependent Release B acceptance
 - Production actions performed: `0`
 
@@ -39,17 +39,17 @@ invalidate P10-009 C1–C5 evidence or authorize traffic to another user.
 ## Reversible enabler
 
 1. Complete and automatically accept P10-009 at the frozen candidate.
-2. Merge the isolated P10-010 TaskGate repair, which verifies a tracked measured adapter,
+2. The isolated P10-010 TaskGate repair now verifies a tracked measured adapter,
    exact action lifecycle, continuous generation fencing, structured receipt ledger, and
    automated attestation without changing the certified candidate.
-3. Under an explicit repair/enabler allowlist, add a fail-closed coordinator that accepts
+3. The repair/enabler branch now supplies a fail-closed coordinator that accepts
    only opaque references, refuses wildcard/non-owner cohorts, starts and ends at
    allocation zero, records every external action, and returns allocation to zero in a
    `finally` path.
-4. Before implementing that coordinator, freeze a minimal typed production adapter
-   protocol for owner allocation and journey execution (including reject/adopt/CAS
-   conflict) or add an equally bounded authorized operator API through an ADR. Do not
-   guess the protocol or repurpose the audit adapter as a command executor.
+4. The minimal typed production adapter protocol is frozen below. If a deployment cannot
+   implement it without adding a persistent service or public operator route, add an ADR
+   before changing the boundary. Do not guess the protocol or repurpose the audit adapter
+   as a command executor.
 5. Test that coordinator against local fake adapters as orchestration evidence only. It
    must remain blocked for production until all real references exist.
 
@@ -93,7 +93,8 @@ boundary is added.
   candidate/build/Behavior identities, one journey class from `success`, `cancel`,
   `disconnect_resume`, `reject`, `adopt`, or `cas_conflict`, a unique
   attempt/idempotency key, expected generation, deadline,
-  remaining budget, and a private `runtime_references` object containing only the
+  remaining budget, the SHA-256 of the tracked coordinator used to bind independently
+  fetched receipts, and a private `runtime_references` object containing only the
   endpoint, owner-identity, and credential-provider references. Those three values travel
   only in the stdin payload and are represented in evidence by their SHA-256 bindings.
 - The adapter must exit nonzero on unknown fields, wildcard/non-owner scope, identity or
@@ -102,14 +103,20 @@ boundary is added.
   failure and immediately triggers the coordinator's allocation-zero `finally` path.
 - A successful stdout response is one strict JSON object containing status, action ID,
   observed generation, journey/run hashes, exact journey outcome, start/end timestamps,
-  formal/unexpected/duplicate write counts, and provider-call count. It must contain no
+  production/PostgreSQL/live-provider attestations, zero non-owner allocation/request
+  counts, formal/unexpected/duplicate write counts, and provider-call count. It must contain no
   Prompt, response, reasoning, token, credential, endpoint, owner PII, or raw domain row.
 - The journey adapter is a command executor, not its own evidence authority. The
   coordinator must independently obtain and cross-bind trace, audit, and provider-usage
-  receipts through the three dedicated adapters, recompute every receipt hash, and reject
+  receipts through the three dedicated adapters, bind each of the seven sub-adapters by
+  allowlisted environment name and SHA-256, recompute every receipt hash, and reject
   missing, duplicate, extra, or mismatched rows. Reject, adopt, and CAS-conflict outcomes
   must respectively prove zero formal writes, exactly one typed Domain Command write,
-  and no duplicate formal side effect.
+  and no duplicate formal side effect. Journey-audit receipts also carry the granular SQL,
+  tenant, authorization, secret/PII, permanent-run, audit and Tool redlines; trace receipts
+  carry traceability and alert-wiring results; provider receipts carry live-provider and
+  exact usage/cost evidence. The coordinator derives its report from those values rather
+  than writing unmeasured zeros.
 - Local fake adapters may verify orchestration, fail-closed parsing, timeout, fencing,
   allocation-zero cleanup, and redaction. Their receipts remain explicitly non-production
   and cannot satisfy the P10-010 production-boundary predicates.
