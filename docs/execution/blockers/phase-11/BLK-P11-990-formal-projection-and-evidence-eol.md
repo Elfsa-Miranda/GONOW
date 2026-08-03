@@ -27,11 +27,11 @@ The TaskGate suite contains positive local/personal cases and negative enterpris
 
 ## Formal materialization dry run
 
-The read-only three-way simulation used Phase 10 convergence candidate `b3a162cfeffc069cfc220b2a1861d9c05a2b5c95`, Phase 11 provisional source `3ae846722e289166f5ff1079e92a83183962336d`, and their merge base `7b5913d53a65316b2c22a17cd52b8ee45562fae1`. The Phase 11 source changes 205 paths: 201 paths have no Phase 10 convergence overlap, and exactly four governance paths produce content conflicts:
+The read-only three-way simulation used Phase 10 convergence candidate `479681a0c602d8f94756ca421d6e89493e4fb19b`, Phase 11 provisional source `3ae846722e289166f5ff1079e92a83183962336d`, and their merge base `7b5913d53a65316b2c22a17cd52b8ee45562fae1`. The Phase 11 source changes 205 paths: 201 paths have no Phase 10 convergence overlap, and exactly four governance paths produce content conflicts:
 
 - `docs/execution/commands/Invoke-PhaseMerge.ps1`
 - `docs/execution/commands/Invoke-TaskGate.ps1`
 - `docs/execution/commands/tests/Invoke-PhaseMerge.Tests.ps1`
 - `docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1`
 
-The deterministic formal resolution is frozen as follows: retain the Phase 10 convergence versions of `Invoke-PhaseMerge.ps1` and its test; use the fully regressed combined versions of `Invoke-TaskGate.ps1` and its test from provisional integration `6004fea0ebb23f665f6584383e289ac3ecd7cd79`; retain the LF checkout contract, historical-SBOM immutability repair `6a0980f2fcaf060a66aeea85c44ebde41afc8f51`, and this repair record. Formal P11-000/P11-990 status, runtime manifests, candidate OIDs, and attestations must be regenerated from the accepted Release B/REL-C-000 chain rather than copied as accepted facts. No `codex/phase-11-rag` ref or formal worktree may be created before REL-C-000 selects `phase11`.
+The deterministic formal resolution is frozen as follows: retain the Phase 10 convergence versions of `Invoke-PhaseMerge.ps1` and its test; use the fully regressed combined versions of `Invoke-TaskGate.ps1` and its test from provisional integration `3166f873a5115b1113270da894968a310f2f5ef1`; retain the LF checkout contract, Phase10 historical-SBOM immutability repair `8b2380b57a3cfb82802641303e34da403b3b63b4`, and this repair record. Formal P11-000/P11-990 status, runtime manifests, candidate OIDs, and attestations must be regenerated from the accepted Release B/REL-C-000 chain rather than copied as accepted facts. No `codex/phase-11-rag` ref or formal worktree may be created before REL-C-000 selects `phase11`.
