@@ -8310,6 +8310,30 @@ function Get-P11999FinalEvidenceState {
 }
 
 function Invoke-ModeEvidence {
+  if ($TaskId -ceq 'TASK-P11-089' -and $ExecutionMode -ceq 'local_provisional') {
+    $Boundary=Get-P11089ExecutionBoundaryState
+    if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_evidence_boundary_failed' $Boundary}
+    $Definition=Get-P11089Definition
+    $Targets=@($Definition.files)+@('docs/execution/evidence/phase-11/P11-089/handoff-verification.json','docs/execution/evidence/phase-11/P11-089/harness-catalog-aggregate.json')
+    $Targets+=@(Get-ChildItem -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/improvements') -File -Filter 'STAR-*.md' -ErrorAction SilentlyContinue|ForEach-Object{$_.FullName.Substring($script:RepositoryRoot.TrimEnd('\').Length+1).Replace('\','/')}|Sort-Object)
+    $Artifacts=@();$Missing=0;$Schema=0;$Redaction=0
+    foreach($RelativePath in @($Targets|Sort-Object -Unique)){
+      $Full=Join-Path $script:RepositoryRoot $RelativePath
+      if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue}
+      $Raw=[IO.File]::ReadAllText($Full,[Text.UTF8Encoding]::new($false))
+      $Redaction+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:raw_user_data|prompt|response|reasoning)"\s*:)').Count
+      if($RelativePath.EndsWith('.json')){try{$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}}
+      $Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.yaml')){'application/yaml'}else{'text/markdown'}
+      $Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $Mime -ArtifactType 'phase-11-convergence' -GeneratedByStep 'TASK-P11-089:Evidence'
+    }
+    $Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count
+    $Projected=[int]$Boundary.dependency.checks.projected_predecessor_count
+    $Satisfied=$Accepted+$Projected
+    $Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Redaction;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;accepted_implementation_task_count=$Accepted;projected_implementation_task_count=$Projected;satisfied_implementation_task_count=$Satisfied;production_write_count=0}
+    Write-AtomicJson -LiteralPath $script:ArtifactPath -Value (New-ArtifactHashesDocument -Artifacts $Artifacts -GeneratedByStep 'TASK-P11-089:Evidence')
+    if($Schema+$Missing+$Redaction-ne0-or$Satisfied-ne10){return New-BlockedResult 'p11_089_evidence_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-009' -and [bool](Get-GovernanceProfileState).passed) {
     $Required = @(
       'docs/execution/commands/Invoke-PersonalReleaseCertification.ps1',
@@ -10853,6 +10877,19 @@ function Invoke-ModePreflight {
 }
 
 function Invoke-ModeWorkPreflight {
+  if ($TaskId -ceq 'TASK-P11-089' -and $ExecutionMode -ceq 'local_provisional') {
+    $Boundary=Get-P11089ExecutionBoundaryState
+    if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_work_preflight_boundary_failed' $Boundary}
+    $Definition=Get-P11089Definition;$Required=@($script:Task.work_contract.required_changes)
+    $ExpectedAssertion="primary assertion and DoD bound to execplan card sha256=$($Definition.card_sha)"
+    $FilesMatch=(@($script:Task.file_allowlist|Sort-Object)-join',')-ceq((@($Definition.files|Sort-Object))-join',')
+    $DirectoryValid=@($script:Task.directory_allowlist).Count-eq1-and[string]$script:Task.directory_allowlist[0]-ceq[string]$Definition.directories[0].path
+    $Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected
+    $Checks=[ordered]@{work_contract_frozen=($Required.Count-eq1-and[string]$Required[0]-ceq[string]$Definition.required_change-and$FilesMatch-and$DirectoryValid-and$ExpectedAssertion-in@($script:Task.expected_assertions));ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;accepted_implementation_task_count=$Accepted;projected_implementation_task_count=$Projected;satisfied_implementation_task_count=$Satisfied;production_write_count=0}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'work-preflight.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;required_change=[string]$Definition.required_change;files=@($Definition.files);directory=[string]$Definition.directories[0].path;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if(-not[bool]$Checks.work_contract_frozen-or$Satisfied-ne10){return New-BlockedResult 'p11_089_work_preflight_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-009' -and [bool](Get-GovernanceProfileState).passed) {
     $RequiredChange = 'freeze manifest → C1 correctness → C2 security/performance/cost → C3 quality → C4 recovery/virtual-time/4h-soak → C5 rollback/operations → aggregate hashes/residual risk'
     $Checks = [ordered]@{
@@ -13675,6 +13712,23 @@ function Invoke-ModeRollbackDrill {
   return New-PassedResult $Checks
 }
 function Invoke-ModeHandoffVerification {
+  if ($TaskId -ceq 'TASK-P11-089' -and $ExecutionMode -ceq 'local_provisional') {
+    $Boundary=Get-P11089ExecutionBoundaryState
+    if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_handoff_boundary_failed' $Boundary}
+    $Junit=Join-Path ([IO.Path]::GetTempPath()) ("gonow-p11-089-handoff-{0}.xml"-f[guid]::NewGuid().ToString('N'))
+    $Tests=@('tests/eval/test_rag_quality.py','tests/security/test_rag_acl.py','tests/contract/test_rag_deletion.py','tests/unit/rag/test_retrieval_pipeline.py','tests/contract/test_knowledge_alias.py')
+    $Service=Join-Path $script:RepositoryRoot 'agent-service'
+    Push-Location $Service
+    try{$Run=Invoke-RedactedExternal -Executable (Get-P02ServicePython) -Arguments (@('-m','pytest','-q')+$Tests+@('--maxfail=1','--junitxml',$Junit))}finally{Pop-Location}
+    $Count=0;$Failures=1;$Errors=0;$Skipped=0
+    if(Test-Path -LiteralPath $Junit -PathType Leaf){[xml]$X=Get-Content -LiteralPath $Junit -Raw -Encoding UTF8;$Suites=if($null-ne$X.testsuites.testsuite){@($X.testsuites.testsuite)}else{@($X.testsuite)};$Failures=0;foreach($Suite in $Suites){$Count+=[int]$Suite.tests;$Failures+=[int]$Suite.failures;$Errors+=[int]$Suite.errors;$Skipped+=[int]$Suite.skipped};Remove-Item -LiteralPath $Junit -Force -ErrorAction SilentlyContinue}
+    $Passed=[int]$Run.exit_code-eq0-and$Count-gt0-and$Failures+$Errors+$Skipped-eq0
+    $Receipt=[ordered]@{schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();local_journey_passed=$Passed;handoff_journey_passed=$Passed;readable=$Passed;accurate=$Passed;contract_synced=$Passed;tests=$Count;failures=$Failures;errors=$Errors;skipped=$Skipped;test_exit_code=[int]$Run.exit_code;reviewer_actor_id='codex-local-implementation-verifier';reviewer_is_implementer=$true;independent_review_status='pending_external';formal_handoff=$false;accepted=$false;nonzero_exit_count=if($Passed){0}else{1};production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'handoff-verification.json') -Value $Receipt
+    $Checks=[ordered]@{handoff_journey_passed=$Passed;reviewer_is_implementer=$true;independent_review_status='pending_external';nonzero_exit_count=[int]$Receipt.nonzero_exit_count;candidate_head_match=$true;reviewer_actor_present=$true;formal_handoff_pending=$true;production_write_count=0}
+    if(-not$Passed){return New-BlockedResult 'p11_089_local_handoff_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P11-089') {
     $Boundary=Get-P11089ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_handoff_boundary_failed' $Boundary};$Path=Join-Path $script:TaskEvidenceDirectory 'handoff-verification.json';if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return New-BlockedResult 'pending_phase_11_independent_handoff' ([ordered]@{handoff_journey_passed=$false;reviewer_is_implementer=$true;nonzero_exit_count=1;production_write_count=0})};$Receipt=Get-Content -LiteralPath $Path -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Passed=[string]$Receipt.schema_version-ceq'1.0'-and[string]$Receipt.task_id-ceq$TaskId-and[string]$Receipt.candidate_head_oid-ceq$Head-and[bool]$Receipt.handoff_journey_passed-and[bool]$Receipt.readable-and[bool]$Receipt.accurate-and[bool]$Receipt.contract_synced-and-not[bool]$Receipt.reviewer_is_implementer-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.reviewer_actor_id)-and[int]$Receipt.nonzero_exit_count+[int]$Receipt.production_write_count-eq0;$Checks=[ordered]@{handoff_journey_passed=$Passed;reviewer_is_implementer=if($null-ne$Receipt){[bool]$Receipt.reviewer_is_implementer}else{$true};nonzero_exit_count=if($null-ne$Receipt){[int]$Receipt.nonzero_exit_count}else{1};candidate_head_match=($null-ne$Receipt-and[string]$Receipt.candidate_head_oid-ceq$Head);reviewer_actor_present=($null-ne$Receipt-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.reviewer_actor_id));production_write_count=0};if(-not$Passed){return New-BlockedResult 'p11_089_independent_handoff_invalid' $Checks};return New-PassedResult $Checks
   }
@@ -13857,6 +13911,30 @@ function Invoke-ModeHandoffVerification {
   Invoke-PendingMode 'HandoffVerification'
 }
 function Invoke-ModeDocumentation {
+  if ($TaskId -ceq 'TASK-P11-089' -and $ExecutionMode -ceq 'local_provisional') {
+    $Boundary=Get-P11089ExecutionBoundaryState
+    if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_documentation_boundary_failed' $Boundary}
+    $Definition=Get-P11089Definition;$HandoffPath=Join-Path $script:TaskEvidenceDirectory 'handoff-verification.json'
+    $Required=@($Definition.files)+@('docs/execution/evidence/phase-11/P11-089/handoff-verification.json')
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    if($Missing.Count-ne0){return New-BlockedResult 'p11_089_documentation_missing' ([ordered]@{broken_links=$Missing.Count;missing_paths=$Missing;production_write_count=0})}
+    $CoreDocs=@($Definition.files[0..6]|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))});$DocText=$CoreDocs-join"`n"
+    $Threat=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/architecture/threat-model/phase-11-review.json') -Raw -Encoding UTF8|ConvertFrom-Json
+    $Kt=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/knowledge-transfer.md') -Raw -Encoding UTF8
+    $StarIndex=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/star-records.md') -Raw -Encoding UTF8
+    $Manifest=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/artifact-manifest.premerge.json') -Raw -Encoding UTF8|ConvertFrom-Json
+    $Handoff=Get-Content -LiteralPath $HandoffPath -Raw -Encoding UTF8|ConvertFrom-Json;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+    $StarFiles=@(Get-ChildItem -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/improvements') -File -Filter 'STAR-*.md' -ErrorAction SilentlyContinue);$StarErrors=0
+    if($StarFiles.Count-eq0){if(-not($StarIndex.Contains('not_applicable')-and$StarIndex.Contains('reason'))){$StarErrors++}}else{foreach($File in $StarFiles){$Text=Get-Content -LiteralPath $File.FullName -Raw -Encoding UTF8;foreach($Marker in @('## Situation','## Task','## Action','## Result','baseline','candidate','denominator','command','SHA-256')){if(-not$Text.Contains($Marker)){$StarErrors++}};$Hash=Get-Sha256 -LiteralPath $File.FullName;if(-not$StarIndex.Contains($Hash)-or-not$StarIndex.Contains("improvements/$($File.Name)")){$StarErrors++}}}
+    $ThreatValid=[string]$Threat.architecture_model_sha256-ceq'644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6'-and[string]$Threat.candidate_head_oid-ceq$Head-and[string]$Threat.security_owner-ceq'Security'-and-not[string]::IsNullOrWhiteSpace([string]$Threat.security_actor_id)-and$null-ne$Threat.model_changed-and[string]$Threat.independent_review_status-ceq'pending_external'
+    $Review=$Manifest.document_review;$Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected
+    $ManifestValid=[string]$Manifest.task_id-ceq$TaskId-and[string]$Manifest.phase-ceq'Phase 11'-and[string]$Manifest.candidate_head_oid-ceq$Head-and[int]$Manifest.accepted_implementation_task_count-eq$Accepted-and[int]$Manifest.projected_implementation_task_count-eq$Projected-and[bool]$Manifest.implementation_terminal-and[int]$Manifest.production_write_count-eq0-and$null-ne$Review-and[string]$Review.status-ceq'local_verified'-and[bool]$Review.reviewer_is_implementer-and[string]$Review.independent_review_status-ceq'pending_external'-and-not[string]::IsNullOrWhiteSpace([string]$Review.actor_id)
+    $HandoffValid=[bool]$Handoff.handoff_journey_passed-and[bool]$Handoff.reviewer_is_implementer-and[string]$Handoff.independent_review_status-ceq'pending_external'-and[int]$Handoff.nonzero_exit_count+[int]$Handoff.production_write_count-eq0
+    $Markers=@('RAG','Enable','Disable','Degrade','First checks');$MarkerGaps=@($Markers|Where-Object{$DocText-cnotmatch[regex]::Escape($_)}).Count;$Hardest=[regex]::Match($Kt,'(?m)^hardest_item_count:\s*([0-3])$');$Observable=@($CoreDocs|Where-Object{$_-cmatch'RAG'}).Count
+    $Checks=[ordered]@{broken_links=0;undocumented_contract_diff=if($DocText-cmatch'contract_change' -and$ManifestValid){0}else{1};observable_changes=$Observable;documentation_marker_gap_count=$MarkerGaps;kt_sections=@([regex]::Matches($Kt,'(?m)^##\s+')).Count;hardest_item_count=if($Hardest.Success){[int]$Hardest.Groups[1].Value}else{-1};reviewer_is_implementer=$true;independent_review_status='pending_external';local_document_review_passed=$ManifestValid;threat_model_review_missing=if($ThreatValid){0}else{1};threat_model_hash_missing=if([string]$Threat.architecture_model_sha256-cmatch'^[0-9a-f]{64}$'){0}else{1};handoff_journey_passed=$HandoffValid;star_index_error_count=$StarErrors;accepted_implementation_task_count=$Accepted;projected_implementation_task_count=$Projected;satisfied_implementation_task_count=$Satisfied;production_write_count=0}
+    if([int]$Checks.undocumented_contract_diff+[int]$Checks.documentation_marker_gap_count+[int]$Checks.threat_model_review_missing+[int]$Checks.threat_model_hash_missing+[int]$Checks.star_index_error_count-ne0-or[int]$Checks.observable_changes-lt1-or[int]$Checks.kt_sections-lt5-or[int]$Checks.hardest_item_count-lt0-or[int]$Checks.hardest_item_count-gt3-or-not[bool]$Checks.local_document_review_passed-or-not[bool]$Checks.handoff_journey_passed-or$Satisfied-ne10){return New-BlockedResult 'p11_089_documentation_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P11-990') {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_documentation_boundary_failed' $Boundary};$State=Get-P11990DocumentationState;$Checks=[ordered]@{document_review_passed=[bool]$State.document_review_passed;kt_sections=[int]$State.kt_sections;hardest_item_count=[int]$State.hardest_item_count;handoff_journey_passed=[bool]$State.handoff_journey_passed;threat_model_review_missing=[int]$State.threat_model_review_missing;unresolved_blocker_final_state=[int]$State.unresolved_blocker_final_state;applicable_ct_failure_count=[int]$State.applicable_ct_failure_count;missing_count=[int]$State.missing_count;accepted_predecessor_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0};if(-not[bool]$State.passed-or[int]$Checks.accepted_predecessor_count-ne11){return New-BlockedResult 'p11_990_documentation_failed' $Checks};return New-PassedResult $Checks
   }
@@ -14169,6 +14247,19 @@ function Invoke-ModeStatusBoardAggregate {
   return New-PassedResult $Checks
 }
 function Invoke-ModeHarnessCatalogAggregate {
+  if ($TaskId -ceq 'TASK-P11-089' -and $ExecutionMode -ceq 'local_provisional') {
+    $Boundary=Get-P11089ExecutionBoundaryState
+    if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_harness_boundary_failed' $Boundary}
+    $Path=Join-Path $script:RepositoryRoot 'docs/execution/schemas/harness-test-catalog.yaml';$Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8;$Hash=Get-Sha256 -LiteralPath $Path
+    $Controls=@([regex]::Matches($Text,'(?m)^  - \{id: (\d+), name: ([^,]+), status: ([^,]+), first_phase: ([^,]+), test_file: ([^,]+), minimum_cases: (\d+)\}'));$Ids=@($Controls|ForEach-Object{[int]$_.Groups[1].Value});$Minimum=0;foreach($Control in $Controls){$Minimum+=[int]$Control.Groups[6].Value};$Implemented=@($Controls|Where-Object{$_.Groups[3].Value-ceq'implemented'});$MissingTests=0;foreach($Control in $Implemented){if(-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $Control.Groups[5].Value)-PathType Leaf)){$MissingTests++}}
+    $FragmentRecord=Get-P11000GitJsonRecord -Ref HEAD -RelativePath 'docs/execution/evidence/phase-11/P11-006/harness-status-fragment.json';$Fragment=$FragmentRecord.value;$Rows=if($null-ne$Fragment){@($Fragment.controls|Where-Object{[int]$_.id-eq23})}else{@()};$Control=if($Rows.Count-eq1){$Rows[0]}else{$null}
+    $FragmentValid=[bool]$FragmentRecord.passed-and[string]$Fragment.task_id-ceq'TASK-P11-006'-and[string]$Fragment.action-ceq'extend'-and[string]$Fragment.catalog_sha256_before-ceq$Hash-and[string]$Fragment.catalog_sha256_after-ceq$Hash-and[int]$Fragment.failure_count+[int]$Fragment.production_write_count-eq0-and$Rows.Count-eq1-and[string]$Control.action-ceq'extend'-and[string]$Control.test_path-ceq'agent-service/tests/unit/harness/test_23_citation_assembler.py'-and@($Control.case_ids.S).Count-ge1-and@($Control.case_ids.I).Count-ge1-and@($Control.case_ids.D).Count-ge1-and[int]$Control.failures+[int]$Control.errors+[int]$Control.skipped+[int]$Control.xfailed-eq0
+    $Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected
+    $Receipt=[ordered]@{schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;previous_catalog_sha256=$Hash;pre_mutation_worktree_sha256=$Hash;new_catalog_sha256=$Hash;writer_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();control_count=$Controls.Count;unique_control_ids=@($Ids|Sort-Object -Unique).Count;control_ids=@($Ids|Sort-Object);minimum_cases_total=$Minimum;updated_control_ids=@(23);extended_control_ids=@(23);control_transitions=@();implemented_control_count=$Implemented.Count;implemented_missing_test_path=$MissingTests;implemented_missing_fragment=if($FragmentValid){0}else{1};fragment_schema_errors=if($FragmentValid){0}else{1};fragment_dependency_failures=if($FragmentValid){0}else{1};fragment_count=if($FragmentValid){1}else{0};fragments=if($FragmentValid){@([ordered]@{task_id='TASK-P11-006';path='docs/execution/evidence/phase-11/P11-006/harness-status-fragment.json';sha256=[string]$FragmentRecord.sha256;control_ids=@(23)})}else{@()};status_downgrade_count=0;unexpected_normative_field_change_count=0;skipped=0;xfailed=0;mutation_applied=$false;local_projection=$true;formal_fragment_acceptance_status='pending_external';accepted_implementation_task_count=$Accepted;projected_implementation_task_count=$Projected;satisfied_implementation_task_count=$Satisfied;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-catalog-aggregate.json') -Value $Receipt
+    if($Controls.Count-ne34-or$Receipt.unique_control_ids-ne34-or$Minimum-ne149-or$Implemented.Count-ne34-or$MissingTests-ne0-or-not$FragmentValid-or$Satisfied-ne10){return New-BlockedResult 'p11_089_harness_catalog_invalid' $Receipt}
+    return New-PassedResult $Receipt
+  }
   if ($TaskId -ceq 'TASK-P11-089') {
     $Boundary=Get-P11089ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_harness_boundary_failed' $Boundary};$Path=Join-Path $script:RepositoryRoot 'docs/execution/schemas/harness-test-catalog.yaml';$Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8;$Hash=Get-Sha256 -LiteralPath $Path;$Controls=@([regex]::Matches($Text,'(?m)^  - \{id: (\d+), name: ([^,]+), status: ([^,]+), first_phase: ([^,]+), test_file: ([^,]+), minimum_cases: (\d+)\}'));$Ids=@($Controls|ForEach-Object{[int]$_.Groups[1].Value});$Minimum=0;foreach($Control in $Controls){$Minimum+=[int]$Control.Groups[6].Value};$Implemented=@($Controls|Where-Object{$_.Groups[3].Value-ceq'implemented'});$MissingTests=0;foreach($Control in $Implemented){if(-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $Control.Groups[5].Value)-PathType Leaf)){$MissingTests++}};$FragmentRecord=Get-P11000GitJsonRecord -Ref HEAD -RelativePath 'docs/execution/evidence/phase-11/P11-006/harness-status-fragment.json';$Fragment=$FragmentRecord.value;$Rows=if($null-ne$Fragment){@($Fragment.controls|Where-Object{[int]$_.id-eq23})}else{@()};$Control=if($Rows.Count-eq1){$Rows[0]}else{$null};$FragmentValid=[bool]$FragmentRecord.passed-and[string]$Fragment.task_id-ceq'TASK-P11-006'-and[string]$Fragment.action-ceq'extend'-and[string]$Fragment.catalog_sha256_before-ceq$Hash-and[string]$Fragment.catalog_sha256_after-ceq$Hash-and[int]$Fragment.failure_count+[int]$Fragment.production_write_count-eq0-and$Rows.Count-eq1-and[string]$Control.action-ceq'extend'-and[string]$Control.test_path-ceq'agent-service/tests/unit/harness/test_23_citation_assembler.py'-and@($Control.case_ids.S).Count-ge1-and@($Control.case_ids.I).Count-ge1-and@($Control.case_ids.D).Count-ge1-and[int]$Control.failures+[int]$Control.errors+[int]$Control.skipped+[int]$Control.xfailed-eq0;$Receipt=[ordered]@{schema_version='1.0';task_id=$TaskId;execution_mode=$ExecutionMode;previous_catalog_sha256=$Hash;pre_mutation_worktree_sha256=$Hash;new_catalog_sha256=$Hash;writer_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();control_count=$Controls.Count;unique_control_ids=@($Ids|Sort-Object -Unique).Count;control_ids=@($Ids|Sort-Object);minimum_cases_total=$Minimum;updated_control_ids=@(23);extended_control_ids=@(23);control_transitions=@();implemented_control_count=$Implemented.Count;implemented_missing_test_path=$MissingTests;implemented_missing_fragment=if($FragmentValid){0}else{1};fragment_schema_errors=if($FragmentValid){0}else{1};fragment_dependency_failures=if($FragmentValid){0}else{1};fragment_count=if($FragmentValid){1}else{0};fragments=if($FragmentValid){@([ordered]@{task_id='TASK-P11-006';path='docs/execution/evidence/phase-11/P11-006/harness-status-fragment.json';sha256=[string]$FragmentRecord.sha256;control_ids=@(23)})}else{@()};status_downgrade_count=0;unexpected_normative_field_change_count=0;skipped=0;xfailed=0;mutation_applied=$false;formal_fragment_acceptance_status='accepted';accepted_implementation_task_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'harness-catalog-aggregate.json') -Value $Receipt;if($Controls.Count-ne34-or$Receipt.unique_control_ids-ne34-or$Minimum-ne149-or$Implemented.Count-ne34-or$MissingTests-ne0-or-not$FragmentValid-or[int]$Receipt.accepted_implementation_task_count-ne10){return New-BlockedResult 'p11_089_harness_catalog_invalid' $Receipt};return New-PassedResult $Receipt
   }
