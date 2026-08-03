@@ -24,3 +24,14 @@ The repository did not define a global LF checkout contract for hashed text arti
 ## Regression and rollback
 
 The TaskGate suite contains positive local/personal cases and negative enterprise, hash-drift, artifact, and gate predicates. A fresh worktree must reproduce every recorded Phase 11 text hash at its bound Git snapshot. Rollback is a non-force revert of this repair commit; doing so restores the prior fail-closed behavior and must leave Release C allocation at zero.
+
+## Formal materialization dry run
+
+The read-only three-way simulation used Phase 10 convergence candidate `b3a162cfeffc069cfc220b2a1861d9c05a2b5c95`, Phase 11 provisional source `3ae846722e289166f5ff1079e92a83183962336d`, and their merge base `7b5913d53a65316b2c22a17cd52b8ee45562fae1`. The Phase 11 source changes 205 paths: 201 paths have no Phase 10 convergence overlap, and exactly four governance paths produce content conflicts:
+
+- `docs/execution/commands/Invoke-PhaseMerge.ps1`
+- `docs/execution/commands/Invoke-TaskGate.ps1`
+- `docs/execution/commands/tests/Invoke-PhaseMerge.Tests.ps1`
+- `docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1`
+
+The deterministic formal resolution is frozen as follows: retain the Phase 10 convergence versions of `Invoke-PhaseMerge.ps1` and its test; use the fully regressed combined versions of `Invoke-TaskGate.ps1` and its test from provisional integration `f2821415829b1a1af294c37136cbe6f06c751f48`; retain the LF checkout contract and this repair record. Formal P11-000/P11-990 status, runtime manifests, candidate OIDs, and attestations must be regenerated from the accepted Release B/REL-C-000 chain rather than copied as accepted facts. No `codex/phase-11-rag` ref or formal worktree may be created before REL-C-000 selects `phase11`.
