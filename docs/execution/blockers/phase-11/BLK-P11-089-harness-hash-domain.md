@@ -7,4 +7,5 @@
 - Excluded causes: missing test path, control-count drift, minimum-case drift, status downgrade, skipped/xfailed cases, or source fragment absence.
 - Reversible repair: compare fragment catalog bindings with the TaskGate Catalog hash, while continuing to record the Harness Catalog hash separately as previous/pre-mutation/new catalog identity. The same correction applies in local and formal execution modes.
 - Regression scope: PowerShell parser, TaskGate contract tests, P11-089 Harness aggregation, Evidence, and Workset verification.
+- Recurrence diagnostic: the second affected run still returned a monolithic invalid result even though an independent expansion showed every predicate true. The repair therefore replaces the opaque boolean chain with named predicate results and records the exact failing predicate names plus both catalog-domain hashes. This removes ambiguous operator binding and makes any future failure discriminating rather than repeat-only.
 - Rollback: revert this repair commit; no catalog content, runtime code, database, external object, or production state is changed.
