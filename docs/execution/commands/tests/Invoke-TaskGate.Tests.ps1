@@ -1,3 +1,6 @@
+[CmdletBinding()]
+param([ValidateSet('Full','P10-010')][string]$Scope='Full')
+
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $CatalogPath = Join-Path $Root 'TaskGateCatalog.psd1'
@@ -40,6 +43,10 @@ if (@($Catalog.TaskGateModeContracts.Keys).Count -ne 24 -or -not $Catalog.TaskGa
 $P10009Task=$Catalog.Tasks['TASK-P10-009']
 $P10009RequiredChange='freeze manifest → C1 correctness → C2 security/performance/cost → C3 quality → C4 recovery/virtual-time/4h-soak → C5 rollback/operations → aggregate hashes/residual risk'
 if($null-eq$P10009Task-or@($P10009Task.allowed_taskgate_modes)-notcontains'AutomatedAcceptancePreflight'-or@($P10009Task.work_contract.required_changes).Count-ne1-or[string]$P10009Task.work_contract.required_changes[0]-cne$P10009RequiredChange-or@($P10009Task.file_allowlist).Count-ne4-or@($P10009Task.evidence_outputs|Where-Object{$_-cmatch'(?:personal-release-certification|rollback-operations-report)\.json$'}).Count-ne2){throw 'negative: P10-009 Catalog does not bind the personal C1-C5 task contract'}
+$P10010Task=$Catalog.Tasks['TASK-P10-010']
+$P10010RequiredChange='verify C1–C5 hashes → prove same candidate/build → allocation 0 baseline → enable owner identity only → execute 10–20 scripted journeys for 30–60min → monitor receipts/redlines → allocation 0 → aggregate → auto accept or rollback'
+$P10010ActionArguments=@('candidate=bound_from_p10_009','endpoint_ref=GONOW_AGENT_API_URL','owner_identity_ref=GONOW_OWNER_CANARY_IDENTITY_REF','credential_provider=GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER','budget_cap_ref=GONOW_RELEASE_B_BUDGET_CAP_REF','adapter_path=docs/execution/commands/Invoke-PersonalOwnerCanary.ps1','adapter_digest=sha256','journey_adapter=GONOW_RELEASE_B_JOURNEY_ADAPTER','flag_adapter=GONOW_RELEASE_B_FLAG_ADAPTER','audit_adapter=GONOW_RELEASE_B_AUDIT_ADAPTER','kill_switch_adapter=GONOW_RELEASE_B_KILL_SWITCH_ADAPTER','old_path_adapter=GONOW_RELEASE_B_OLD_PATH_ADAPTER','trace_adapter=GONOW_RELEASE_B_TRACE_ADAPTER','provider_usage_adapter=GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER','owner_identity_only=true','allocation_baseline=0','journeys=10..20','minutes=30..60','action_lifecycle=baseline_zero>owner_enable>journeys>kill>old_path>final_zero','generation_fencing=continuous','receipt_ledger=owner-canary-receipts.jsonl','final_allocation=0')
+if([string]$Catalog.CatalogVersion-cne'2.2.0'-or$null-eq$P10010Task-or@($P10010Task.allowed_taskgate_modes)-notcontains'AutomatedAcceptancePreflight'-or@($P10010Task.work_contract.required_changes).Count-ne1-or[string]$P10010Task.work_contract.required_changes[0]-cne$P10010RequiredChange-or@($P10010Task.file_allowlist).Count-ne6-or'docs/execution/evidence/phase-10/P10-010/owner-canary-input-inventory.json'-notin@($P10010Task.evidence_outputs)-or'docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl'-notin@($P10010Task.evidence_outputs)-or'docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'-notin@($P10010Task.read_only_inputs)-or@($P10010Task.work_contract.external_actions).Count-ne1-or[string]$P10010Task.work_contract.external_actions[0].adapter_capability-cne'p10_owner_canary_adapter'-or(@($P10010Task.work_contract.external_actions[0].arguments)-join"`n")-cne($P10010ActionArguments-join"`n")-or[string]$P10010Task.work_contract.external_actions[0].receipt-cne'docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl'){throw 'negative: P10-010 Catalog does not bind the personal owner-only production canary, sanitized readiness inventory, measured adapter, exact lifecycle, receipt ledger, and automated attestation contract'}
 $StatusSchemaPath=Join-Path (Split-Path -Parent $Root) 'schemas\task-status-v1.schema.json'
 $StatusSchema=Get-Content -LiteralPath $StatusSchemaPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
 if([string]$StatusSchema.properties.plan_version.pattern-cnotmatch'A-Za-z'-or$null-eq$StatusSchema.properties.governance_profile-or$null-eq$StatusSchema.properties.acceptance_method-or$null-eq$StatusSchema.properties.attestation_sha256){throw 'negative: task status schema does not distinguish personal automated attestation from human review'}
@@ -237,15 +244,225 @@ if([bool]$OverlapState.passed-or[int]$OverlapState.checks.nonoverlap_failure_cou
 $ShortGates=@($ObservationGates|ForEach-Object{$_.PSObject.Copy()});$ShortGates[4].observed_hours=479;$ShortGates[4].window_ended_at=([DateTimeOffset]::Parse([string]$ShortGates[4].window_started_at)).AddHours(479).ToString('o');$ShortState=Get-P10ObservationWindowState -Observation ([pscustomobject]@{gates=$ShortGates}) -Plan $ObservationPlan
 if([bool]$ShortState.passed-or[int]$ShortState.checks.minimum_total_observation_failure_count-ne1){throw 'negative: 743-hour Release B observation was accepted'}
 if ($RunnerText -notmatch 'Get-P10010GateModeState' -or
-    $RunnerText -notmatch 'critical_slices' -or
-    $RunnerText -notmatch 'sample_sufficiency' -or
-    $RunnerText -notmatch 'required_owner_approval_missing' -or
-    $RunnerText -notmatch 'p10_009\.artifact_sha256' -or
+    $RunnerText -notmatch 'Get-PersonalOwnerCanaryArtifactState' -or
+    $RunnerText -notmatch 'Get-PersonalOwnerCanaryState' -or
+    $RunnerText -notmatch 'Get-PersonalOwnerCanaryReceiptState' -or
+    $RunnerText -notmatch 'Get-PersonalOwnerCanaryAdapterState' -or
+    $RunnerText -notmatch 'Get-PersonalOwnerCanaryInputState' -or
+    $RunnerText -notmatch 'environment_name_presence_only' -or
+    $RunnerText -notmatch 'owner-canary-receipts\.jsonl' -or
+    $RunnerText -notmatch 'Get-P10010PreAttestationGateState' -or
+    $RunnerText -notmatch 'Get-PersonalOwnerCanaryRepositoryBindingState' -or
+    $RunnerText -notmatch 'New-PersonalOwnerCanaryCertificationMaterial' -or
+    $RunnerText -notmatch 'New-PersonalOwnerCanaryCertificationArtifacts' -or
+    $RunnerText -notmatch 'release_certification_config_sha256' -or
+    $RunnerText -notmatch 'release_certification_runner_sha256' -or
+    $RunnerText -notmatch 'generated_by_runner' -or
+    $RunnerText -notmatch 'existing_automated_attestation_conflict' -or
+    ([regex]::Matches($RunnerText,'Get-PersonalOwnerCanaryState -SourceOnly')).Count -lt 5 -or
+    $RunnerText -notmatch 'owner_only_production_canary' -or
+    $RunnerText -notmatch 'p10_010_personal_preflight_failed' -or
+    $RunnerText -notmatch 'p10_010_personal_owner_canary_failed' -or
+    $RunnerText -notmatch 'p10_010_automated_acceptance_preflight_failed' -or
+    $RunnerText -notmatch 'reviewer_independent_required = \$false' -or
+    $RunnerText -notmatch 'automated_attestation_required = \$true' -or
     $RunnerText -notmatch 'p10_010_security_failed' -or
     $RunnerText -notmatch 'p10_010_workset_failed' -or
+    $RunnerText -notmatch 'argument_contract_exact' -or
+    $RunnerText -notmatch 'adapter_input_frozen' -or
     $RunnerText -notmatch 'p10_010_evidence_failed' -or
     $RunnerText -notmatch 'p10_010_rollback_verification_failed') {
-  throw 'negative: P10-010 must own six-slice threshold, accepted P10-009 binding, approvals, P0/P1, rollback, security, evidence, and workset gates'
+  throw 'negative: personal P10-010 must bind accepted P10-009, owner-only production canary, automated attestation, security, evidence, workset, and rollback gates'
+}
+$PersonalPropertyFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-PersonalCertificationPropertyValue'},$true)
+$Utf8HashFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-Utf8Sha256'},$true)
+$BindingHashFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-PersonalCertificationBindingHash'},$true)
+$PreAttestationFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-P10010PreAttestationGateState'},$true)
+$CertificationMaterialFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'New-PersonalOwnerCanaryCertificationMaterial'},$true)
+$OwnerCanaryFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-PersonalOwnerCanaryArtifactState'},$true)
+$OwnerCanaryCommandFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-PersonalOwnerCanaryCommandState'},$true)
+$OwnerCanaryReceiptFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-PersonalOwnerCanaryReceiptState'},$true)
+$OwnerCanaryAdapterFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-PersonalOwnerCanaryAdapterState'},$true)
+$OwnerCanaryInputFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-PersonalOwnerCanaryInputState'},$true)
+if($null-eq$PersonalPropertyFunction-or$null-eq$Utf8HashFunction-or$null-eq$BindingHashFunction-or$null-eq$PreAttestationFunction-or$null-eq$CertificationMaterialFunction-or$null-eq$OwnerCanaryFunction-or$null-eq$OwnerCanaryCommandFunction-or$null-eq$OwnerCanaryReceiptFunction-or$null-eq$OwnerCanaryAdapterFunction-or$null-eq$OwnerCanaryInputFunction){throw 'negative: P10-010 pure owner-canary certification, sanitized readiness, measured-adapter, and receipt-ledger AST is unavailable'}
+Invoke-Expression $Utf8HashFunction.Extent.Text
+Invoke-Expression $PersonalPropertyFunction.Extent.Text
+Invoke-Expression $BindingHashFunction.Extent.Text
+Invoke-Expression $PreAttestationFunction.Extent.Text
+Invoke-Expression $CertificationMaterialFunction.Extent.Text
+Invoke-Expression $OwnerCanaryFunction.Extent.Text
+Invoke-Expression $OwnerCanaryCommandFunction.Extent.Text
+Invoke-Expression $OwnerCanaryReceiptFunction.Extent.Text
+Invoke-Expression $OwnerCanaryAdapterFunction.Extent.Text
+Invoke-Expression $OwnerCanaryInputFunction.Extent.Text
+function Get-Sha256([string]$LiteralPath){return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()}
+$P10010Candidate='a'*40;$P10009CertificationSha='b'*64;$OwnerCanarySha='c'*64;$FinalCertificationSha='d'*64;$BuildSha='e'*64;$BehaviorSha='f'*64;$OwnerIdentitySha='1'*64;$AdapterDigest='2'*64;$AdapterPath='docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'
+$ZeroHash='0'*64
+$PreGatePath=Join-Path ([IO.Path]::GetTempPath()) ("gonow-p10-010-pre-gate-$([Guid]::NewGuid().ToString('N')).json")
+try{
+  $PreGateRows=@();foreach($ModeId in @('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')){$Detail=[ordered]@{reason_code='';checks=[ordered]@{production_write_count=0};provisional=$true}|ConvertTo-Json -Depth 5 -Compress;$PreGateRows+=[ordered]@{check_id=$ModeId;status='passed';detail=$Detail;evidence_path='docs/execution/commands/TaskGateCatalog.psd1';evidence_sha256='9'*64}}
+  [IO.File]::WriteAllText($PreGatePath,([ordered]@{results=$PreGateRows}|ConvertTo-Json -Depth 8 -Compress),[Text.UTF8Encoding]::new($false));$script:GatePath=$PreGatePath
+  $PositivePreGate=Get-P10010PreAttestationGateState
+  if(-not[bool]$PositivePreGate.passed-or@($PositivePreGate.results).Count-ne7-or[string]$PositivePreGate.result_set_sha256-cnotmatch'^[0-9a-f]{64}$'){throw 'positive: seven passed source modes did not unlock runner attestation generation'}
+  $PreGateRows=@($PreGateRows|Select-Object -Skip 1);[IO.File]::WriteAllText($PreGatePath,([ordered]@{results=$PreGateRows}|ConvertTo-Json -Depth 8 -Compress),[Text.UTF8Encoding]::new($false));$MissingPreGate=Get-P10010PreAttestationGateState
+  if([bool]$MissingPreGate.passed-or[int]$MissingPreGate.missing_mode_count-ne1){throw 'negative: runner generation accepted a missing pre-attestation mode'}
+}finally{if(Test-Path -LiteralPath $PreGatePath){Remove-Item -LiteralPath $PreGatePath -Force}}
+$ReleaseGateResults=@();foreach($GateId in @('C1','C2','C3','C4','C5')){$ReleaseGateResults+=[ordered]@{gate_id=$GateId;status='passed';report_path="$($GateId.ToLowerInvariant())-report.json";report_sha256=('{0:x64}'-f(700+$ReleaseGateResults.Count));failure_count=0}}
+$TaskGateResults=@();foreach($ModeId in @('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify')){$TaskGateResults+=[ordered]@{check_id=$ModeId;status='passed';detail_sha256=('{0:x64}'-f(800+$TaskGateResults.Count));evidence_path='docs/execution/commands/TaskGateCatalog.psd1';evidence_sha256='9'*64}}
+$CertificationBindings=[ordered]@{profile='personal_automated';candidate_head_oid=$P10010Candidate;git_object_format='sha1';phase_base_oid='2'*40;landing_oid='2'*40;approval_tip_oid='3'*40;agents_sha256='4'*64;execplan_sha256='5'*64;architecture_sha256='6'*64;lock_files=@([ordered]@{path='pubspec.lock';sha256='7'*64},[ordered]@{path='agent-service/uv.lock';sha256='8'*64},[ordered]@{path='tool/bootstrap/requirements.lock';sha256='9'*64});lock_set_sha256='9'*64;test_manifest_sha256='a'*64;dataset_sha256='b'*64;seed_inputs=@([ordered]@{path='state-space-report.json';sha256='c'*64},[ordered]@{path='quality-slice-report.json';sha256='d'*64});seed_sha256='e'*64;fault_plan_sha256='f'*64;pricing_sha256='1'*64;evidence_manifest_sha256='2'*64;rollback_report_sha256='3'*64;runner_digest_sha256='4'*64;catalog_sha256='5'*64;release_certification_config_sha256='6'*64;release_certification_runner_sha256='7'*64;p10_009_certification_sha256=$P10009CertificationSha;release_gate_results=$ReleaseGateResults;release_gate_result_set_sha256=Get-PersonalCertificationBindingHash -Value $ReleaseGateResults;pre_attestation_mode_results=$TaskGateResults;pre_attestation_mode_result_set_sha256=Get-PersonalCertificationBindingHash -Value $TaskGateResults;source_tracked_dirty_count=0;untracked_credential_like_count=0}
+$P10009Certification=[ordered]@{passed=$true;candidate_head_oid=$P10010Candidate;certification_sha256=$P10009CertificationSha;result=[ordered]@{config_sha256='6'*64;runner_sha256='7'*64;mandatory_skip_count=0;xfail_count=0;flaky_rerun_count=0}}
+$JourneyClassSequence=@('success','success','cancel','cancel','disconnect_resume','disconnect_resume','reject','reject','adopt','adopt','cas_conflict','cas_conflict')
+$JourneyOutcome=@{success='succeeded';cancel='cancelled';disconnect_resume='succeeded_after_resume';reject='rejected_no_formal_write';adopt='adopted_once';cas_conflict='conflict_no_duplicate'}
+$Journeys=@()
+for($JourneyIndex=0;$JourneyIndex-lt$JourneyClassSequence.Count;$JourneyIndex++){
+  $JourneyClass=$JourneyClassSequence[$JourneyIndex]
+  $Journeys+=[pscustomobject]@{journey_id_sha256=('{0:x64}'-f($JourneyIndex+200));journey_class=$JourneyClass;outcome=$JourneyOutcome[$JourneyClass];run_id_sha256=('{0:x64}'-f($JourneyIndex+300));started_at='2026-01-01T00:05:00Z';ended_at='2026-01-01T00:06:00Z';trace_receipt_sha256='';audit_receipt_sha256='';provider_call_count=1;usage_receipt_count=1;usage_receipt_set_sha256='';formal_write_count=if($JourneyClass-ceq'adopt'){1}else{0};unexpected_write_count=0;duplicate_side_effect_count=0;candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha}
+}
+function New-P10010Action {
+  param([int]$Index,[string]$Kind,[string]$JourneyId,[int]$ExpectedGeneration,[int]$ObservedGeneration,[string]$ExecutedAt,[double]$CostUsd,[int]$AllocationPercentAfter=-1,[string]$AllocationScope='not_applicable',[double]$KillSwitchSeconds=-1,[bool]$OldPathAvailable=$false)
+  return [pscustomobject]@{action_id=('{0:x64}'-f$Index);action_kind=$Kind;journey_id_sha256=$JourneyId;target='gonow.agent.itinerary_planning.release_b';identity_ref_sha256=$OwnerIdentitySha;expected_generation=$ExpectedGeneration;observed_generation=$ObservedGeneration;executed_at=$ExecutedAt;cost_usd=$CostUsd;allocation_percent_after=$AllocationPercentAfter;allocation_scope=$AllocationScope;non_owner_allocation_count=0;kill_switch_seconds=$KillSwitchSeconds;old_path_available=$OldPathAvailable;exit_code=0;receipt_sha256='';candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha}
+}
+$ExternalActions=@(
+  (New-P10010Action -Index 1 -Kind 'allocation_zero_baseline' -JourneyId $ZeroHash -ExpectedGeneration 7 -ObservedGeneration 7 -ExecutedAt '2026-01-01T00:01:00Z' -CostUsd 0 -AllocationPercentAfter 0 -OldPathAvailable $true),
+  (New-P10010Action -Index 2 -Kind 'owner_allocation_enable' -JourneyId $ZeroHash -ExpectedGeneration 7 -ObservedGeneration 8 -ExecutedAt '2026-01-01T00:02:00Z' -CostUsd 0 -AllocationScope 'owner_only')
+)
+for($JourneyIndex=0;$JourneyIndex-lt$Journeys.Count;$JourneyIndex++){
+  $ExternalActions+=New-P10010Action -Index ($JourneyIndex+3) -Kind 'journey_execute' -JourneyId ([string]$Journeys[$JourneyIndex].journey_id_sha256) -ExpectedGeneration 8 -ObservedGeneration 8 -ExecutedAt '2026-01-01T00:05:30Z' -CostUsd (0.10/12) -AllocationScope 'owner_only'
+}
+$ExternalActions+=@(
+  (New-P10010Action -Index 15 -Kind 'kill_switch_drill' -JourneyId $ZeroHash -ExpectedGeneration 8 -ObservedGeneration 9 -ExecutedAt '2026-01-01T00:40:00Z' -CostUsd 0 -AllocationPercentAfter 0 -KillSwitchSeconds 5),
+  (New-P10010Action -Index 16 -Kind 'old_path_probe' -JourneyId $ZeroHash -ExpectedGeneration 9 -ObservedGeneration 9 -ExecutedAt '2026-01-01T00:41:00Z' -CostUsd 0 -OldPathAvailable $true),
+  (New-P10010Action -Index 17 -Kind 'allocation_zero_final' -JourneyId $ZeroHash -ExpectedGeneration 9 -ObservedGeneration 10 -ExecutedAt '2026-01-01T00:42:00Z' -CostUsd 0 -AllocationPercentAfter 0)
+)
+$ReceiptRows=@()
+foreach($Action in $ExternalActions){
+  $ActionReceipt=[ordered]@{schema_version='1.0';receipt_kind='external_action';subject_id_sha256=$Action.action_id;candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha;owner_identity_ref_sha256=$OwnerIdentitySha;adapter_digest_sha256=$AdapterDigest;status='passed';redline_failure_count=0;executed_at=$Action.executed_at;target=$Action.target;action_kind=$Action.action_kind;journey_id_sha256=$Action.journey_id_sha256;expected_generation=$Action.expected_generation;observed_generation=$Action.observed_generation;allocation_percent_after=$Action.allocation_percent_after;allocation_scope=$Action.allocation_scope;non_owner_allocation_count=$Action.non_owner_allocation_count;kill_switch_seconds=$Action.kill_switch_seconds;old_path_available=$Action.old_path_available;cost_usd=$Action.cost_usd;exit_code=$Action.exit_code}
+  $Action.receipt_sha256=Get-PersonalCertificationBindingHash -Value $ActionReceipt
+  $ReceiptRows+=$ActionReceipt
+}
+foreach($Journey in $Journeys){
+  $TraceReceipt=[ordered]@{schema_version='1.0';receipt_kind='journey_trace';subject_id_sha256=$Journey.journey_id_sha256;candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha;owner_identity_ref_sha256=$OwnerIdentitySha;adapter_digest_sha256=$AdapterDigest;status='passed';redline_failure_count=0;executed_at=$Journey.ended_at;run_id_sha256=$Journey.run_id_sha256;journey_class=$Journey.journey_class;outcome=$Journey.outcome;started_at=$Journey.started_at;ended_at=$Journey.ended_at}
+  $AuditReceipt=[ordered]@{schema_version='1.0';receipt_kind='journey_audit';subject_id_sha256=$Journey.journey_id_sha256;candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha;owner_identity_ref_sha256=$OwnerIdentitySha;adapter_digest_sha256=$AdapterDigest;status='passed';redline_failure_count=0;executed_at=$Journey.ended_at;run_id_sha256=$Journey.run_id_sha256;formal_write_count=$Journey.formal_write_count;unexpected_write_count=0;duplicate_side_effect_count=0}
+  $UsageReceipt=[ordered]@{schema_version='1.0';receipt_kind='provider_usage';subject_id_sha256=$Journey.journey_id_sha256;candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha;owner_identity_ref_sha256=$OwnerIdentitySha;adapter_digest_sha256=$AdapterDigest;status='passed';redline_failure_count=0;executed_at=$Journey.ended_at;run_id_sha256=$Journey.run_id_sha256;provider_call_count=$Journey.provider_call_count;usage_receipt_count=$Journey.usage_receipt_count;cost_usd=(0.10/12)}
+  $Journey.trace_receipt_sha256=Get-PersonalCertificationBindingHash -Value $TraceReceipt
+  $Journey.audit_receipt_sha256=Get-PersonalCertificationBindingHash -Value $AuditReceipt
+  $Journey.usage_receipt_set_sha256=Get-PersonalCertificationBindingHash -Value $UsageReceipt
+  $ReceiptRows+=@($TraceReceipt,$AuditReceipt,$UsageReceipt)
+}
+$ReceiptSetSha=Get-PersonalCertificationBindingHash -Value ([object[]]@($ReceiptRows))
+$OwnerCanary=[pscustomobject]@{schema_version='1.0';task_id='TASK-P10-010';governance_profile='personal_automated';status='passed';evidence_type='owner_only_production_canary';candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha;adapter_path=$AdapterPath;adapter_digest_sha256=$AdapterDigest;receipt_set_sha256=$ReceiptSetSha;distinct_build_digest_count=1;distinct_behavior_digest_count=1;started_at='2026-01-01T00:00:00Z';ended_at='2026-01-01T00:45:00Z';elapsed_minutes=45;journey_count=12;skipped_journey_count=0;xfailed_journey_count=0;flaky_rerun_count=0;open_p0_p1_count=0;data_loss_count=0;unrecoverable_defect_count=0;journey_class_counts=[pscustomobject]@{success=2;cancel=2;disconnect_resume=2;reject=2;adopt=2;cas_conflict=2};journeys=$Journeys;environment=[pscustomobject]@{production_configuration=$true;production_endpoint=$true;real_postgresql=$true;live_provider=$true;provider_usage_receipts=$true;trace_alert_wiring=$true;kill_switch_wiring=$true;old_path_wiring=$true};allocation=[pscustomobject]@{baseline_percent=0;final_percent=0;owner_identity_count=1;owner_identity_ref_sha256=$OwnerIdentitySha;non_owner_allocation_count=0;non_owner_request_count=0};cost=[pscustomobject]@{budget_cap_usd=0.25;observed_cost_usd=0.10;provider_call_count=12;usage_receipt_count=12;cost_receipt_missing_count=0};reliability=[pscustomobject]@{candidate_drift_count=0;duplicate_side_effect_count=0;duplicate_formal_side_effect_count=0;permanent_run_count=0;old_path_failures=0;traceability_failures=0;rollback_drill='passed';kill_switch_seconds=5};security=[pscustomobject]@{arbitrary_sql_executor_count=0;cross_tenant_leak_count=0;unauthorized_write_count=0;secret_or_pii_leak_count=0;missing_audit_receipt_count=0;forbidden_tool_execution_count=0};external_action_count=17;audit_receipt_count=17;journey_audit_receipt_count=12;external_actions=$ExternalActions;unexpected_production_write_count=0}
+$AdapterFixtureRoot=Join-Path ([IO.Path]::GetTempPath()) ("gonow-p10-010-adapter-$([Guid]::NewGuid().ToString('N'))")
+try{
+  $AdapterFixturePath=Join-Path $AdapterFixtureRoot $AdapterPath
+  $null=New-Item -ItemType Directory -Path (Split-Path -Parent $AdapterFixturePath) -Force
+  [IO.File]::WriteAllText($AdapterFixturePath,"param()`nexit 0`n",[Text.UTF8Encoding]::new($false))
+  $null=& git -C $AdapterFixtureRoot init --quiet
+  $null=& git -C $AdapterFixtureRoot -c core.autocrlf=false add -- $AdapterPath
+  $MeasuredAdapterOwner=[pscustomobject]@{adapter_path=$AdapterPath;adapter_digest_sha256=Get-Sha256 -LiteralPath $AdapterFixturePath}
+  $MeasuredAdapterState=Get-PersonalOwnerCanaryAdapterState -OwnerCanary $MeasuredAdapterOwner -RepositoryRoot $AdapterFixtureRoot
+  if(-not[bool]$MeasuredAdapterState.passed-or-not[bool]$MeasuredAdapterState.tracked-or[bool]$MeasuredAdapterState.reparse_point){throw 'positive: tracked measured owner-canary adapter was rejected'}
+  $InputNameSet=[ordered]@{}
+  foreach($InputName in @('GONOW_AGENT_API_URL','GONOW_OWNER_CANARY_IDENTITY_REF','GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER','GONOW_RELEASE_B_BUDGET_CAP_REF','GONOW_RELEASE_B_JOURNEY_ADAPTER','GONOW_RELEASE_B_FLAG_ADAPTER','GONOW_RELEASE_B_AUDIT_ADAPTER','GONOW_RELEASE_B_KILL_SWITCH_ADAPTER','GONOW_RELEASE_B_OLD_PATH_ADAPTER','GONOW_RELEASE_B_TRACE_ADAPTER','GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER')){$InputNameSet[$InputName]='must-not-appear-in-readiness-output'}
+  $PositiveInputState=Get-PersonalOwnerCanaryInputState -EnvironmentNameSet $InputNameSet -RepositoryRoot $AdapterFixtureRoot
+  if(-not[bool]$PositiveInputState.passed-or[int]$PositiveInputState.failure_count-ne0-or[int]$PositiveInputState.secret_value_read_count-ne0-or($PositiveInputState|ConvertTo-Json -Depth 8 -Compress)-cmatch'must-not-appear'){throw 'positive: complete name-only owner-canary readiness inputs were rejected or leaked a value'}
+  $MissingInputNameSet=[ordered]@{};foreach($InputName in $InputNameSet.Keys){if([string]$InputName-cne'GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER'){$MissingInputNameSet[$InputName]='ignored'}}
+  $MissingInputState=Get-PersonalOwnerCanaryInputState -EnvironmentNameSet $MissingInputNameSet -RepositoryRoot $AdapterFixtureRoot
+  if([bool]$MissingInputState.passed-or'GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER'-notin@($MissingInputState.missing_environment_names)-or[int]$MissingInputState.secret_value_read_count-ne0){throw 'negative: owner canary readiness accepted a missing scoped credential provider'}
+  $MissingJourneyNameSet=[ordered]@{};foreach($InputName in $InputNameSet.Keys){if([string]$InputName-cne'GONOW_RELEASE_B_JOURNEY_ADAPTER'){$MissingJourneyNameSet[$InputName]='ignored'}}
+  $MissingJourneyState=Get-PersonalOwnerCanaryInputState -EnvironmentNameSet $MissingJourneyNameSet -RepositoryRoot $AdapterFixtureRoot
+  if([bool]$MissingJourneyState.passed-or'GONOW_RELEASE_B_JOURNEY_ADAPTER'-notin@($MissingJourneyState.missing_environment_names)-or[int]$MissingJourneyState.secret_value_read_count-ne0){throw 'negative: owner canary readiness accepted a missing typed production journey adapter'}
+  $WrongDigestAdapterOwner=[pscustomobject]@{adapter_path=$AdapterPath;adapter_digest_sha256='9'*64}
+  if([bool](Get-PersonalOwnerCanaryAdapterState -OwnerCanary $WrongDigestAdapterOwner -RepositoryRoot $AdapterFixtureRoot).passed){throw 'negative: owner canary accepted an adapter digest mismatch'}
+  $null=& git -C $AdapterFixtureRoot rm --cached --quiet -- $AdapterPath
+  if([bool](Get-PersonalOwnerCanaryAdapterState -OwnerCanary $MeasuredAdapterOwner -RepositoryRoot $AdapterFixtureRoot).passed){throw 'negative: owner canary accepted an untracked adapter'}
+  if([bool](Get-PersonalOwnerCanaryInputState -EnvironmentNameSet $InputNameSet -RepositoryRoot $AdapterFixtureRoot).passed){throw 'negative: owner canary readiness accepted an untracked adapter'}
+}finally{
+  if(Test-Path -LiteralPath $AdapterFixtureRoot -PathType Container){Remove-Item -LiteralPath $AdapterFixtureRoot -Recurse -Force}
+}
+$Material=New-PersonalOwnerCanaryCertificationMaterial -P10009Certification $P10009Certification -OwnerCanary $OwnerCanary -OwnerCanarySha256 $OwnerCanarySha -CertificationBindings $CertificationBindings -FinalCertificationSha256 $FinalCertificationSha -GeneratedAt '2026-01-01T00:46:00Z'
+$FinalCertification=$Material.final_certification|ConvertTo-Json -Depth 30 -Compress|ConvertFrom-Json -ErrorAction Stop;$Attestation=$Material.attestation|ConvertTo-Json -Depth 30 -Compress|ConvertFrom-Json -ErrorAction Stop
+$PositiveCanaryState=Get-PersonalOwnerCanaryArtifactState -P10009Certification $P10009Certification -P10009Accepted $true -OwnerCanary $OwnerCanary -FinalCertification $FinalCertification -Attestation $Attestation -OwnerCanarySha256 $OwnerCanarySha -FinalCertificationSha256 $FinalCertificationSha -CertificationBindings $CertificationBindings
+if(-not[bool]$PositiveCanaryState.passed-or[int]$PositiveCanaryState.failure_count-ne0){throw "positive: valid P10-010 personal owner-only production canary was rejected: $(@{checks=$PositiveCanaryState.checks;external_action_diagnostics=$PositiveCanaryState.external_action_diagnostics}|ConvertTo-Json -Depth 5 -Compress)"}
+$PositiveSourceState=Get-PersonalOwnerCanaryArtifactState -P10009Certification $P10009Certification -P10009Accepted $true -OwnerCanary $OwnerCanary -FinalCertification $null -Attestation $null -OwnerCanarySha256 $OwnerCanarySha -FinalCertificationSha256 ('0'*64) -CertificationBindings $CertificationBindings -RequireGeneratedArtifacts $false
+if(-not[bool]$PositiveSourceState.passed-or[int]$PositiveSourceState.checks.final_certification_missing-ne0-or[int]$PositiveSourceState.checks.attestation_missing-ne0){throw 'positive: valid source-only owner canary was rejected before runner generation'}
+function Copy-P10010Fixture([object]$Value){return $Value|ConvertTo-Json -Depth 20 -Compress|ConvertFrom-Json -ErrorAction Stop}
+$ReceiptRowsRoundTrip=@($ReceiptRows|ForEach-Object{$_|ConvertTo-Json -Depth 20 -Compress|ConvertFrom-Json -ErrorAction Stop})
+$PositiveReceiptState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $OwnerCanary -ReceiptRows $ReceiptRowsRoundTrip
+if(-not[bool]$PositiveReceiptState.passed-or[int]$PositiveReceiptState.failure_count-ne0-or[int]$PositiveReceiptState.receipt_row_count-ne53-or[string]$PositiveReceiptState.receipt_set_sha256-cne$ReceiptSetSha){throw 'positive: recomputable P10-010 receipt ledger was rejected'}
+$MissingReceiptState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $OwnerCanary -ReceiptRows @($ReceiptRowsRoundTrip|Select-Object -Skip 1)
+if([bool]$MissingReceiptState.passed){throw 'negative: P10-010 accepted a receipt ledger with a missing external-action row'}
+$MutatedReceiptRows=Copy-P10010Fixture $ReceiptRowsRoundTrip;$MutatedReceiptRows[0].observed_generation=8
+$MutatedReceiptState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $OwnerCanary -ReceiptRows $MutatedReceiptRows
+if([bool]$MutatedReceiptState.passed){throw 'negative: P10-010 accepted a receipt row whose recomputed hash no longer matched the report'}
+$WrongAdapterReceiptRows=Copy-P10010Fixture $ReceiptRowsRoundTrip;$WrongAdapterReceiptRows[0].adapter_digest_sha256='3'*64
+$WrongAdapterReceiptState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $OwnerCanary -ReceiptRows $WrongAdapterReceiptRows
+if([bool]$WrongAdapterReceiptState.passed){throw 'negative: P10-010 accepted a receipt produced by a different adapter digest'}
+$WrongUsageReceiptRows=Copy-P10010Fixture $ReceiptRowsRoundTrip;$WrongUsageReceiptRows[19].cost_usd=9
+$WrongUsageReceiptState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $OwnerCanary -ReceiptRows $WrongUsageReceiptRows
+if([bool]$WrongUsageReceiptState.passed){throw 'negative: P10-010 accepted a provider usage receipt whose cost did not reconcile'}
+$ExtraReceiptRows=@(Copy-P10010Fixture -Value $ReceiptRowsRoundTrip);$ExtraReceipt=[pscustomobject]@{schema_version='1.0';receipt_kind='external_action';subject_id_sha256='4'*64;candidate_head_oid=$P10010Candidate;build_digest_sha256=$BuildSha;behavior_digest_sha256=$BehaviorSha;owner_identity_ref_sha256=$OwnerIdentitySha;adapter_digest_sha256=$AdapterDigest;status='passed';redline_failure_count=0;executed_at='2026-01-01T00:10:00Z';target='gonow.agent.itinerary_planning.release_b';expected_generation=7;observed_generation=7;cost_usd=0;exit_code=0};$ExtraReceiptRows+= $ExtraReceipt
+$ExtraReceiptState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $OwnerCanary -ReceiptRows $ExtraReceiptRows
+if([bool]$ExtraReceiptState.passed){throw 'negative: P10-010 accepted an unreferenced receipt row'}
+$SchemaReceiptState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $OwnerCanary -ReceiptRows $ReceiptRowsRoundTrip -SchemaFailureCount 1
+if([bool]$SchemaReceiptState.passed){throw 'negative: P10-010 accepted a JSONL receipt parse failure'}
+$WrongReceiptTimeOwner=Copy-P10010Fixture $OwnerCanary;$WrongReceiptTimeRows=Copy-P10010Fixture $ReceiptRowsRoundTrip;$WrongReceiptTimeRows[18].executed_at='2026-01-01T00:07:00Z';$WrongReceiptTimeOwner.journeys[0].audit_receipt_sha256=Get-PersonalCertificationBindingHash -Value $WrongReceiptTimeRows[18];$WrongReceiptTimeOwner.receipt_set_sha256=Get-PersonalCertificationBindingHash -Value ([object[]]@($WrongReceiptTimeRows))
+$WrongReceiptTimeState=Get-PersonalOwnerCanaryReceiptState -OwnerCanary $WrongReceiptTimeOwner -ReceiptRows $WrongReceiptTimeRows
+if([bool]$WrongReceiptTimeState.passed){throw 'negative: P10-010 accepted a journey receipt timestamp outside its bound journey completion'}
+$InjectedReceiptFailure=Get-PersonalOwnerCanaryArtifactState -P10009Certification $P10009Certification -P10009Accepted $true -OwnerCanary $OwnerCanary -FinalCertification $FinalCertification -Attestation $Attestation -OwnerCanarySha256 $OwnerCanarySha -FinalCertificationSha256 $FinalCertificationSha -CertificationBindings $CertificationBindings -ReceiptLedgerFailureCount 1
+if([bool]$InjectedReceiptFailure.passed-or[int]$InjectedReceiptFailure.checks.receipt_ledger_failure_count-ne1){throw 'negative: P10-010 source state did not fail closed on receipt-ledger validation'}
+$InjectedAdapterFailure=Get-PersonalOwnerCanaryArtifactState -P10009Certification $P10009Certification -P10009Accepted $true -OwnerCanary $OwnerCanary -FinalCertification $FinalCertification -Attestation $Attestation -OwnerCanarySha256 $OwnerCanarySha -FinalCertificationSha256 $FinalCertificationSha -CertificationBindings $CertificationBindings -AdapterBindingFailureCount 1
+if([bool]$InjectedAdapterFailure.passed-or[int]$InjectedAdapterFailure.checks.adapter_binding_failure_count-ne1){throw 'negative: P10-010 source state did not fail closed on measured-adapter validation'}
+$ExternalCommandRows=@();foreach($Action in $ExternalActions){$CostText=[string]::Format([Globalization.CultureInfo]::InvariantCulture,'{0:0.#########}',[double]$Action.cost_usd);$ExternalCommandRows+=[pscustomobject]@{description='Execute P10-010 owner-only canary external action';exit_code=0;command="p10-owner-canary-adapter target=$($Action.target) action_id=$($Action.action_id) action_kind=$($Action.action_kind) journey_id_sha256=$($Action.journey_id_sha256) identity_ref_sha256=$($Action.identity_ref_sha256) expected_generation=$($Action.expected_generation) observed_generation=$($Action.observed_generation) executed_at=$($Action.executed_at) cost_usd=$CostText candidate_head_oid=$($Action.candidate_head_oid) build_digest_sha256=$($Action.build_digest_sha256) behavior_digest_sha256=$($Action.behavior_digest_sha256) adapter_path=$AdapterPath adapter_digest_sha256=$AdapterDigest receipt_sha256=$($Action.receipt_sha256)"}}
+$PositiveCommandState=Get-PersonalOwnerCanaryCommandState -OwnerCanary $OwnerCanary -Ledger ([pscustomobject]@{commands=$ExternalCommandRows})
+if(-not[bool]$PositiveCommandState.passed-or[int]$PositiveCommandState.matched_action_count-ne17){throw 'positive: complete P10-010 external action command receipts were rejected'}
+$MissingCommandState=Get-PersonalOwnerCanaryCommandState -OwnerCanary $OwnerCanary -Ledger ([pscustomobject]@{commands=@($ExternalCommandRows|Select-Object -Skip 1)})
+if([bool]$MissingCommandState.passed-or[int]$MissingCommandState.failure_count-lt1-or[int]$MissingCommandState.command_row_count-ne16){throw 'negative: P10-010 accepted a missing external action command receipt'}
+$WrongCostCommands=@($ExternalCommandRows|ForEach-Object{$_.PSObject.Copy()});$WrongCostCommands[0].command=$WrongCostCommands[0].command-replace'cost_usd=[^ ]+','cost_usd=999';$WrongCostState=Get-PersonalOwnerCanaryCommandState -OwnerCanary $OwnerCanary -Ledger ([pscustomobject]@{commands=$WrongCostCommands})
+if([bool]$WrongCostState.passed-or[int]$WrongCostState.failure_count-ne1){throw 'negative: P10-010 accepted an external action command with a mismatched cost binding'}
+$WrongAdapterCommands=@($ExternalCommandRows|ForEach-Object{$_.PSObject.Copy()});$WrongAdapterCommands[0].command=$WrongAdapterCommands[0].command-replace'adapter_digest_sha256=[^ ]+','adapter_digest_sha256=wrong';$WrongAdapterCommandState=Get-PersonalOwnerCanaryCommandState -OwnerCanary $OwnerCanary -Ledger ([pscustomobject]@{commands=$WrongAdapterCommands})
+if([bool]$WrongAdapterCommandState.passed-or[int]$WrongAdapterCommandState.failure_count-ne1){throw 'negative: P10-010 accepted an external action command from an unbound adapter'}
+$AmbiguousCommandRows=@($ExternalCommandRows|ForEach-Object{$_.PSObject.Copy()});$AmbiguousCommandRows[0].command+=' cost_usd=0';$AmbiguousCommandState=Get-PersonalOwnerCanaryCommandState -OwnerCanary $OwnerCanary -Ledger ([pscustomobject]@{commands=$AmbiguousCommandRows})
+if([bool]$AmbiguousCommandState.passed){throw 'negative: P10-010 accepted a canonical command with a duplicate trailing argument'}
+$ExtraCommandRows=@($ExternalCommandRows|ForEach-Object{$_.PSObject.Copy()});$ExtraCommandRows+=[pscustomobject]@{description='Execute P10-010 owner-only canary external action';exit_code=0;command='p10-owner-canary-adapter target=unbound-extra-action'}
+$ExtraCommandState=Get-PersonalOwnerCanaryCommandState -OwnerCanary $OwnerCanary -Ledger ([pscustomobject]@{commands=$ExtraCommandRows})
+if([bool]$ExtraCommandState.passed-or[int]$ExtraCommandState.command_row_count-ne18){throw 'negative: P10-010 accepted an unreferenced external-action command row'}
+function Assert-P10010CanaryRejected([string]$Name,[scriptblock]$Mutator,[string]$ExpectedCheck){$Data=[pscustomobject]@{p9=Copy-P10010Fixture $P10009Certification;p9Accepted=$true;owner=Copy-P10010Fixture $OwnerCanary;final=Copy-P10010Fixture $FinalCertification;attestation=Copy-P10010Fixture $Attestation;bindings=Copy-P10010Fixture $CertificationBindings;ownerSha=$OwnerCanarySha;finalSha=$FinalCertificationSha};&$Mutator $Data;$State=Get-PersonalOwnerCanaryArtifactState -P10009Certification $Data.p9 -P10009Accepted ([bool]$Data.p9Accepted) -OwnerCanary $Data.owner -FinalCertification $Data.final -Attestation $Data.attestation -OwnerCanarySha256 ([string]$Data.ownerSha) -FinalCertificationSha256 ([string]$Data.finalSha) -CertificationBindings $Data.bindings;$CheckValue=if($State.checks-is[Collections.IDictionary]){$State.checks[$ExpectedCheck]}else{$State.checks.PSObject.Properties[$ExpectedCheck].Value};if([bool]$State.passed-or[int]$CheckValue-lt1){throw "negative: P10-010 accepted invalid $Name without $ExpectedCheck"}}
+Assert-P10010CanaryRejected 'P10-009 dependency' {param($d)$d.p9Accepted=$false} 'p10_009_certification_invalid'
+Assert-P10010CanaryRejected 'owner canary profile' {param($d)$d.owner.governance_profile='enterprise'} 'report_status_failure_count'
+Assert-P10010CanaryRejected 'candidate identity' {param($d)$d.owner.candidate_head_oid='2'*40} 'identity_binding_failure_count'
+Assert-P10010CanaryRejected 'journey count' {param($d)$d.owner.journey_count=9} 'journey_count_failure_count'
+Assert-P10010CanaryRejected 'journey class coverage' {param($d)$d.owner.journey_class_counts.cancel=0} 'journey_class_failure_count'
+Assert-P10010CanaryRejected 'journey trace receipt' {param($d)$d.owner.journeys[0].trace_receipt_sha256='invalid'} 'journey_detail_failure_count'
+Assert-P10010CanaryRejected 'duplicate journey trace receipt' {param($d)$d.owner.journeys[1].trace_receipt_sha256=$d.owner.journeys[0].trace_receipt_sha256} 'journey_detail_failure_count'
+Assert-P10010CanaryRejected 'journey provider total mismatch' {param($d)$d.owner.cost.provider_call_count=11;$d.owner.cost.usage_receipt_count=11} 'journey_detail_failure_count'
+Assert-P10010CanaryRejected 'elapsed window' {param($d)$d.owner.ended_at='2026-01-01T00:29:00Z';$d.owner.elapsed_minutes=29} 'elapsed_window_failure_count'
+Assert-P10010CanaryRejected 'production boundary' {param($d)$d.owner.environment.production_endpoint=$false} 'production_boundary_failure_count'
+Assert-P10010CanaryRejected 'owner isolation' {param($d)$d.owner.allocation.non_owner_request_count=1} 'owner_scope_failure_count'
+Assert-P10010CanaryRejected 'usage receipt parity' {param($d)$d.owner.cost.usage_receipt_count=11} 'cost_failure_count'
+Assert-P10010CanaryRejected 'audit receipt parity' {param($d)$d.owner.audit_receipt_count=11} 'receipt_failure_count'
+Assert-P10010CanaryRejected 'journey audit receipt parity' {param($d)$d.owner.journey_audit_receipt_count=11} 'receipt_failure_count'
+Assert-P10010CanaryRejected 'external action receipt detail' {param($d)$d.owner.external_actions[0].exit_code=1} 'external_action_field_failure_count'
+Assert-P10010CanaryRejected 'baseline old path unavailable' {param($d)$d.owner.external_actions[0].old_path_available=$false} 'external_action_field_failure_count'
+Assert-P10010CanaryRejected 'external action outside canary window' {param($d)$d.owner.external_actions[0].executed_at='2025-12-31T23:59:59Z'} 'external_action_field_failure_count'
+Assert-P10010CanaryRejected 'journey action outside bound journey window' {param($d)$d.owner.external_actions[2].executed_at='2026-01-01T00:04:59Z'} 'external_action_field_failure_count'
+Assert-P10010CanaryRejected 'duplicate external action id' {param($d)$d.owner.external_actions[1].action_id=$d.owner.external_actions[0].action_id} 'external_action_binding_failure_count'
+Assert-P10010CanaryRejected 'external action sequence coverage' {param($d)$d.owner.external_actions[0].action_kind='journey_execute';$d.owner.external_actions[0].journey_id_sha256=$d.owner.journeys[0].journey_id_sha256;$d.owner.external_actions[0].allocation_scope='owner_only'} 'external_action_binding_failure_count'
+Assert-P10010CanaryRejected 'external action generation chain' {param($d)$d.owner.external_actions[2].expected_generation=9;$d.owner.external_actions[2].observed_generation=9} 'external_action_field_failure_count'
+Assert-P10010CanaryRejected 'duplicate journey action binding' {param($d)$d.owner.external_actions[3].journey_id_sha256=$d.owner.external_actions[2].journey_id_sha256} 'external_action_binding_failure_count'
+Assert-P10010CanaryRejected 'kill switch timing action' {param($d)$d.owner.external_actions[14].kill_switch_seconds=31} 'external_action_field_failure_count'
+Assert-P10010CanaryRejected 'cross-tenant safety redline' {param($d)$d.owner.security.cross_tenant_leak_count=1} 'safety_redline_failure_count'
+Assert-P10010CanaryRejected 'skipped owner journey' {param($d)$d.owner.skipped_journey_count=1} 'source_integrity_failure_count'
+Assert-P10010CanaryRejected 'rollback drill' {param($d)$d.owner.reliability.rollback_drill='failed'} 'rollback_failure_count'
+Assert-P10010CanaryRejected 'unexpected production write' {param($d)$d.owner.unexpected_production_write_count=1} 'unexpected_production_write_count'
+Assert-P10010CanaryRejected 'final certification hash binding' {param($d)$d.final.owner_canary_report_sha256='0'*64} 'final_certification_failure_count'
+Assert-P10010CanaryRejected 'final receipt-set binding' {param($d)$d.final.receipt_set_sha256='0'*64} 'final_certification_failure_count'
+Assert-P10010CanaryRejected 'attestation hash binding' {param($d)$d.attestation.final_certification_sha256='0'*64} 'attestation_failure_count'
+Assert-P10010CanaryRejected 'attestation adapter binding' {param($d)$d.attestation.adapter_digest_sha256='0'*64} 'attestation_failure_count'
+Assert-P10010CanaryRejected 'attestation repository binding' {param($d)$d.attestation.bindings.agents_sha256='0'*64} 'attestation_failure_count'
+Assert-P10010CanaryRejected 'missing catalog binding' {param($d)$d.bindings.catalog_sha256=''} 'certification_binding_schema_failure_count'
+if ($Scope -ceq 'P10-010') {
+  Write-Output 'Invoke-TaskGate P10-010 focused contracts passed'
+  exit 0
 }
 if ($RunnerText -notmatch 'Get-P10089GateModeState' -or
     $RunnerText -notmatch 'TASK-P10-089:HarnessCatalogAggregate' -or

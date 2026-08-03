@@ -575,12 +575,23 @@ function New-BlockedResult {
 }
 
 function Get-PersonalReleaseCertificationState {
+  param([string]$ExpectedCandidateHeadOid = '')
   $RelativeRoot = 'docs/execution/evidence/phase-10/P10-009'
   $CertificationPath = Join-Path $script:RepositoryRoot "$RelativeRoot/personal-release-certification.json"
   $ManifestPath = Join-Path $script:RepositoryRoot "$RelativeRoot/certification-manifest.json"
   $Result = if (Test-Path -LiteralPath $CertificationPath -PathType Leaf) { Get-Content -LiteralPath $CertificationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
   $Manifest = if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) { Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
-  $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $CurrentHead = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $Head = if ([string]::IsNullOrWhiteSpace($ExpectedCandidateHeadOid)) { $CurrentHead } else { $ExpectedCandidateHeadOid }
+  $CandidateCommitMissing = 1
+  if ($Head -cmatch '^[0-9a-f]{40,64}$') {
+    & git -C $script:RepositoryRoot cat-file -e "$Head^{commit}" 2>$null
+    $CandidateCommitMissing = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+  }
+  if ($CandidateCommitMissing -eq 0) {
+    & git -C $script:RepositoryRoot merge-base --is-ancestor $Head $CurrentHead 2>$null
+    $CandidateNotAncestor = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+  } else { $CandidateNotAncestor = 1 }
   $Checks = [ordered]@{
     certification_missing = if ($null -eq $Result) { 1 } else { 0 }
     manifest_missing = if ($null -eq $Manifest) { 1 } else { 0 }
@@ -588,7 +599,9 @@ function Get-PersonalReleaseCertificationState {
     evidence_type_invalid = if ($null -ne $Result -and [string]$Result.evidence_type -ceq 'personal_compressed_release_certification') { 0 } else { 1 }
     production_observation_claim_count = if ($null -ne $Result -and -not [bool]$Result.production_observation_required) { 0 } else { 1 }
     automated_gate_acceptance_disabled = if ($null -ne $Result -and [bool]$Result.automated_gate_acceptance) { 0 } else { 1 }
-    candidate_drift_count = if ($null -ne $Result -and [string]$Result.candidate_head_oid -ceq $Head -and [int]$Result.candidate_drift_count -eq 0) { 0 } else { 1 }
+    candidate_drift_count = if ($null -ne $Result -and $null -ne $Manifest -and [string]$Result.candidate_head_oid -ceq $Head -and [string]$Manifest.candidate_head_oid -ceq $Head -and [int]$Result.candidate_drift_count -eq 0) { 0 } else { 1 }
+    candidate_commit_missing = $CandidateCommitMissing
+    candidate_not_ancestor = $CandidateNotAncestor
     certification_gate_failure_count = if ($null -ne $Result) { [int]$Result.certification_gate_failure_count } else { 5 }
     mandatory_skip_count = if ($null -ne $Result) { [int]$Result.mandatory_skip_count } else { 1 }
     xfail_count = if ($null -ne $Result) { [int]$Result.xfail_count } else { 1 }
@@ -617,6 +630,1087 @@ function Get-PersonalReleaseCertificationState {
     certification_sha256 = if (Test-Path -LiteralPath $CertificationPath -PathType Leaf) { Get-Sha256 -LiteralPath $CertificationPath } else { $ZeroHash }
     checks = $Checks
     result = $Result
+  }
+}
+
+function Get-PersonalCertificationPropertyValue {
+  param([object]$Object,[string]$Name,[object]$Default = $null)
+  if ($null -eq $Object) { return $Default }
+  if ($Object -is [Collections.IDictionary]) {
+    if ($Object.Contains($Name)) { return $Object[$Name] }
+    return $Default
+  }
+  $Property = $Object.PSObject.Properties[$Name]
+  if ($null -eq $Property) { return $Default }
+  return $Property.Value
+}
+
+function Get-PersonalCertificationBindingHash {
+  param([Parameter(Mandatory = $true)][object]$Value)
+  return Get-Utf8Sha256 -Value ($Value | ConvertTo-Json -Depth 30 -Compress)
+}
+
+function Get-P10010PreAttestationGateState {
+  $RequiredModes = @(
+    'Preflight',
+    'WorkPreflight',
+    'WorksetVerify',
+    'Verify',
+    'Security',
+    'Evidence',
+    'RollbackVerify'
+  )
+  $Ledger = if (Test-Path -LiteralPath $script:GatePath -PathType Leaf) {
+    Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  } else { $null }
+  $Rows = if ($null -ne $Ledger) { @($Ledger.results) } else { @() }
+  $Missing = 0
+  $Failed = 0
+  $DetailFailures = 0
+  $Structured = @()
+  foreach ($ModeId in $RequiredModes) {
+    $Matches = @($Rows | Where-Object { [string]$_.check_id -ceq $ModeId })
+    if ($Matches.Count -ne 1) {
+      $Missing++
+      continue
+    }
+    $Row = $Matches[0]
+    $Detail = $null
+    try { $Detail = [string]$Row.detail | ConvertFrom-Json -ErrorAction Stop } catch { $DetailFailures++ }
+    if ([string]$Row.status -cne 'passed' -or $null -eq $Detail) {
+      $Failed++
+    }
+    if ($null -ne $Detail) {
+      if (-not [string]::IsNullOrWhiteSpace([string](Get-PersonalCertificationPropertyValue $Detail 'reason_code' ''))) { $DetailFailures++ }
+      $ProductionWrites = Get-PersonalCertificationPropertyValue $Detail.checks 'production_write_count' 0
+      if ([int]$ProductionWrites -ne 0) { $DetailFailures++ }
+    }
+    $Structured += [ordered]@{
+      check_id = $ModeId
+      status = [string]$Row.status
+      detail_sha256 = Get-Utf8Sha256 -Value ([string]$Row.detail)
+      evidence_path = [string]$Row.evidence_path
+      evidence_sha256 = [string]$Row.evidence_sha256
+    }
+  }
+  $FailureCount = $Missing + $Failed + $DetailFailures
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    missing_mode_count = $Missing
+    failed_mode_count = $Failed
+    detail_failure_count = $DetailFailures
+    results = $Structured
+    result_set_sha256 = if ($Structured.Count -eq $RequiredModes.Count) {
+      Get-PersonalCertificationBindingHash -Value $Structured
+    } else { $ZeroHash }
+  }
+}
+
+function Get-PersonalOwnerCanaryRepositoryBindingState {
+  param(
+    [Parameter(Mandatory = $true)][object]$P10009Certification,
+    [object]$PreAttestationGateState = $null,
+    [switch]$RequirePreAttestation
+  )
+  $Paths = [ordered]@{
+    agents = 'AGENTS.md'
+    execplan = 'execplan.md'
+    architecture_registration = 'docs/execution/evidence/boot/BOOT-005/architecture-artifact-registration.json'
+    phase_manifest = 'docs/execution/evidence/phase-10/phase-runtime-manifest.json'
+    p10_009_manifest = 'docs/execution/evidence/phase-10/P10-009/certification-manifest.json'
+    dataset_manifest = 'docs/execution/evidence/phase-10/P10-005/dataset-manifest-v01.json'
+    state_space_seed = 'docs/execution/evidence/phase-10/P10-009/state-space-report.json'
+    quality_seed = 'docs/execution/evidence/phase-10/P10-009/quality-slice-report.json'
+    fault_plan = 'docs/execution/evidence/phase-10/P10-009/fault-injection-report.json'
+    pricing = 'docs/execution/evidence/phase-10/P10-009/pricing-snapshot.json'
+    rollback = 'docs/execution/evidence/phase-10/P10-009/rollback-operations-report.json'
+    flutter_lock = 'pubspec.lock'
+    python_lock = 'agent-service/uv.lock'
+    toolchain_lock = 'tool/bootstrap/requirements.lock'
+    runner = 'docs/execution/commands/Invoke-TaskGate.ps1'
+  }
+  $Hashes = [ordered]@{}
+  $Missing = 0
+  foreach ($Name in $Paths.Keys) {
+    $Full = Join-Path $script:RepositoryRoot ([string]$Paths[$Name])
+    if (-not (Test-Path -LiteralPath $Full -PathType Leaf)) {
+      $Missing++
+      $Hashes[$Name] = $ZeroHash
+    } else {
+      $Hashes[$Name] = Get-Sha256 -LiteralPath $Full
+    }
+  }
+
+  $Architecture = $null
+  $PhaseManifest = $null
+  $P10009Manifest = $null
+  if ($Hashes.architecture_registration -cne $ZeroHash) {
+    $Architecture = Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Paths.architecture_registration) -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  }
+  if ($Hashes.phase_manifest -cne $ZeroHash) {
+    $PhaseManifest = Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Paths.phase_manifest) -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  }
+  if ($Hashes.p10_009_manifest -cne $ZeroHash) {
+    $P10009Manifest = Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Paths.p10_009_manifest) -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  }
+
+  $Candidate = [string]$P10009Certification.candidate_head_oid
+  $CurrentHead = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $GitObjectFormat = Get-GitObjectFormat
+  $PhaseBase = if ($null -ne $PhaseManifest) { [string]$PhaseManifest.phase_base_oid } else { '' }
+  $Landing = (@(& git -C $script:RepositoryRoot rev-parse codex/gonow-agent-landing 2>$null) -join '').Trim()
+  $CandidateAncestryFailure = 1
+  $PhaseBaseAncestryFailure = 1
+  if ($Candidate -cmatch '^[0-9a-f]{40,64}$') {
+    & git -C $script:RepositoryRoot merge-base --is-ancestor $Candidate $CurrentHead 2>$null
+    $CandidateAncestryFailure = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+  }
+  if ($PhaseBase -cmatch '^[0-9a-f]{40,64}$' -and $Candidate -cmatch '^[0-9a-f]{40,64}$') {
+    & git -C $script:RepositoryRoot merge-base --is-ancestor $PhaseBase $Candidate 2>$null
+    $PhaseBaseAncestryFailure = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+  }
+
+  $ReleaseGateIds = @('C1','C2','C3','C4','C5')
+  $ReleaseGateRows = @()
+  $ReleaseGateFailures = 0
+  $P10009Result = Get-PersonalCertificationPropertyValue $P10009Certification 'result' $null
+  $P10009Gates = @((Get-PersonalCertificationPropertyValue $P10009Result 'gates' @()))
+  foreach ($GateId in $ReleaseGateIds) {
+    $Matches = @($P10009Gates | Where-Object { [string]$_.gate_id -ceq $GateId })
+    if ($Matches.Count -ne 1) { $ReleaseGateFailures++; continue }
+    $Gate = $Matches[0]
+    $ReportHash = [string]$Gate.report_sha256
+    if ([string]$Gate.status -cne 'passed' -or $ReportHash -cnotmatch '^[0-9a-f]{64}$' -or @($Gate.failure_codes).Count -ne 0) {
+      $ReleaseGateFailures++
+    }
+    $ReleaseGateRows += [ordered]@{
+      gate_id = $GateId
+      status = [string]$Gate.status
+      report_path = [string]$Gate.report_path
+      report_sha256 = $ReportHash
+      failure_count = @($Gate.failure_codes).Count
+    }
+  }
+
+  $LockFiles = @(
+    [ordered]@{ path = [string]$Paths.flutter_lock; sha256 = [string]$Hashes.flutter_lock },
+    [ordered]@{ path = [string]$Paths.python_lock; sha256 = [string]$Hashes.python_lock },
+    [ordered]@{ path = [string]$Paths.toolchain_lock; sha256 = [string]$Hashes.toolchain_lock }
+  )
+  $SeedInputs = @(
+    [ordered]@{ path = [string]$Paths.state_space_seed; sha256 = [string]$Hashes.state_space_seed },
+    [ordered]@{ path = [string]$Paths.quality_seed; sha256 = [string]$Hashes.quality_seed }
+  )
+  $StatusLines = @(& git -C $script:RepositoryRoot status --porcelain=v1 -uall)
+  $SourceDirty = 0
+  $CredentialLike = 0
+  foreach ($StatusLine in $StatusLines) {
+    if ([string]::IsNullOrWhiteSpace([string]$StatusLine) -or $StatusLine.Length -lt 4) { continue }
+    $RelativePath = $StatusLine.Substring(3).Trim().Replace('\','/')
+    if ($RelativePath.Contains(' -> ')) { $RelativePath = ($RelativePath -split ' -> ')[-1] }
+    if ($RelativePath -cmatch '(^|/)(\.env($|\.)|id_rsa|id_ed25519|.*\.(pem|key|p12|pfx))$') { $CredentialLike++ }
+    if (-not $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-010/', [StringComparison]::Ordinal) -and
+        $RelativePath -cne 'docs/execution/status/TASK-P10-010.json') {
+      $SourceDirty++
+    }
+  }
+  $ArchitectureHash = if ($null -ne $Architecture) { [string]$Architecture.source_artifact_sha256 } else { '' }
+  $PreState = if ($null -ne $PreAttestationGateState) { $PreAttestationGateState } else {
+    [ordered]@{ passed = $false; failure_count = 1; results = @(); result_set_sha256 = $ZeroHash }
+  }
+  $Checks = [ordered]@{
+    required_input_missing_count = $Missing
+    architecture_binding_failure_count = if ($ArchitectureHash -ceq '644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6' -and [bool]$Architecture.local_adapter_read_back_match) { 0 } else { 1 }
+    candidate_ancestry_failure_count = $CandidateAncestryFailure
+    phase_base_ancestry_failure_count = $PhaseBaseAncestryFailure
+    landing_binding_failure_count = if ($Landing -cmatch '^[0-9a-f]{40,64}$' -and $Landing -ceq $PhaseBase) { 0 } else { 1 }
+    p10_009_manifest_binding_failure_count = if ($null -ne $P10009Result -and $null -ne $P10009Manifest -and [string]$P10009Result.manifest_sha256 -ceq [string]$Hashes.p10_009_manifest -and [string]$P10009Manifest.candidate_head_oid -ceq $Candidate) { 0 } else { 1 }
+    release_config_binding_failure_count = if ($null -ne $P10009Result -and $null -ne $P10009Manifest -and [string]$P10009Result.config_sha256 -cmatch '^[0-9a-f]{64}$' -and [string]$P10009Result.runner_sha256 -cmatch '^[0-9a-f]{64}$' -and [string]$P10009Result.config_sha256 -ceq [string]$P10009Manifest.config_sha256 -and [string]$P10009Result.runner_sha256 -ceq [string]$P10009Manifest.runner_sha256) { 0 } else { 1 }
+    release_gate_failure_count = $ReleaseGateFailures
+    source_tracked_dirty_count = $SourceDirty
+    untracked_credential_like_count = $CredentialLike
+    pre_attestation_gate_failure_count = if ($RequirePreAttestation -and -not [bool]$PreState.passed) { [Math]::Max(1,[int]$PreState.failure_count) } else { 0 }
+  }
+  $FailureCount = 0
+  foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  $Values = [ordered]@{
+    profile = 'personal_automated'
+    candidate_head_oid = $Candidate
+    git_object_format = $GitObjectFormat
+    phase_base_oid = $PhaseBase
+    landing_oid = $Landing
+    approval_tip_oid = $CurrentHead
+    agents_sha256 = [string]$Hashes.agents
+    execplan_sha256 = [string]$Hashes.execplan
+    architecture_sha256 = $ArchitectureHash
+    lock_files = $LockFiles
+    lock_set_sha256 = Get-PersonalCertificationBindingHash -Value $LockFiles
+    test_manifest_sha256 = [string]$Hashes.p10_009_manifest
+    dataset_sha256 = [string]$Hashes.dataset_manifest
+    seed_inputs = $SeedInputs
+    seed_sha256 = Get-PersonalCertificationBindingHash -Value $SeedInputs
+    fault_plan_sha256 = [string]$Hashes.fault_plan
+    pricing_sha256 = [string]$Hashes.pricing
+    evidence_manifest_sha256 = [string]$Hashes.p10_009_manifest
+    rollback_report_sha256 = [string]$Hashes.rollback
+    runner_digest_sha256 = [string]$Hashes.runner
+    catalog_sha256 = [string]$script:CatalogSha256
+    release_certification_config_sha256 = [string](Get-PersonalCertificationPropertyValue $P10009Result 'config_sha256' '')
+    release_certification_runner_sha256 = [string](Get-PersonalCertificationPropertyValue $P10009Result 'runner_sha256' '')
+    p10_009_certification_sha256 = [string]$P10009Certification.certification_sha256
+    release_gate_results = $ReleaseGateRows
+    release_gate_result_set_sha256 = if ($ReleaseGateRows.Count -eq 5) { Get-PersonalCertificationBindingHash -Value $ReleaseGateRows } else { $ZeroHash }
+    pre_attestation_mode_results = @($PreState.results)
+    pre_attestation_mode_result_set_sha256 = [string]$PreState.result_set_sha256
+    source_tracked_dirty_count = $SourceDirty
+    untracked_credential_like_count = $CredentialLike
+  }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    checks = $Checks
+    values = $Values
+  }
+}
+
+function New-PersonalOwnerCanaryCertificationMaterial {
+  param(
+    [Parameter(Mandatory = $true)][object]$P10009Certification,
+    [Parameter(Mandatory = $true)][object]$OwnerCanary,
+    [Parameter(Mandatory = $true)][string]$OwnerCanarySha256,
+    [Parameter(Mandatory = $true)][object]$CertificationBindings,
+    [Parameter(Mandatory = $true)][string]$FinalCertificationSha256,
+    [Parameter(Mandatory = $true)][string]$GeneratedAt
+  )
+  $P10009Result = Get-PersonalCertificationPropertyValue $P10009Certification 'result' $null
+  $Candidate = [string]$P10009Certification.candidate_head_oid
+  $Build = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'build_digest_sha256' '')
+  $Behavior = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'behavior_digest_sha256' '')
+  $Security = Get-PersonalCertificationPropertyValue $OwnerCanary 'security' $null
+  $Reliability = Get-PersonalCertificationPropertyValue $OwnerCanary 'reliability' $null
+  $BindingHash = Get-PersonalCertificationBindingHash -Value $CertificationBindings
+  $RedlineCount = 0
+  foreach ($Field in @('arbitrary_sql_executor_count','cross_tenant_leak_count','unauthorized_write_count','secret_or_pii_leak_count','missing_audit_receipt_count','forbidden_tool_execution_count')) {
+    $RedlineCount += [int](Get-PersonalCertificationPropertyValue $Security $Field 1)
+  }
+  foreach ($Field in @('candidate_drift_count','duplicate_side_effect_count','duplicate_formal_side_effect_count','permanent_run_count','old_path_failures','traceability_failures')) {
+    $RedlineCount += [int](Get-PersonalCertificationPropertyValue $Reliability $Field 1)
+  }
+  $CommonCounts = [ordered]@{
+    mandatory_skip_count = [int](Get-PersonalCertificationPropertyValue $P10009Result 'mandatory_skip_count' 0) + [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'skipped_journey_count' 1)
+    xfail_count = [int](Get-PersonalCertificationPropertyValue $P10009Result 'xfail_count' 0) + [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'xfailed_journey_count' 1)
+    flaky_rerun_count = [int](Get-PersonalCertificationPropertyValue $P10009Result 'flaky_rerun_count' 0) + [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'flaky_rerun_count' 1)
+    open_p0_p1_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'open_p0_p1_count' 1)
+    data_loss_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'data_loss_count' 1)
+    unrecoverable_defect_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'unrecoverable_defect_count' 1)
+    redline_failure_count = $RedlineCount
+  }
+  $Final = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P10-010'
+    governance_profile = 'personal_automated'
+    evidence_type = 'personal_compressed_release_certification'
+    generated_by = 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts'
+    generated_at = $GeneratedAt
+    candidate_head_oid = $Candidate
+    build_digest_sha256 = $Build
+    behavior_digest_sha256 = $Behavior
+    adapter_digest_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+    receipt_set_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')
+    binding_set_sha256 = $BindingHash
+    bindings = $CertificationBindings
+    c1_c5_passed = $true
+    owner_canary_passed = $true
+    rollback_status = [string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' '')
+    mandatory_skip_count = [int]$CommonCounts.mandatory_skip_count
+    xfail_count = [int]$CommonCounts.xfail_count
+    flaky_rerun_count = [int]$CommonCounts.flaky_rerun_count
+    open_p0_p1_count = [int]$CommonCounts.open_p0_p1_count
+    data_loss_count = [int]$CommonCounts.data_loss_count
+    unrecoverable_defect_count = [int]$CommonCounts.unrecoverable_defect_count
+    redline_failure_count = [int]$CommonCounts.redline_failure_count
+    overall_status = 'passed'
+    production_observation_required = $false
+    automated_gate_acceptance = $true
+    p10_009_certification_sha256 = [string]$P10009Certification.certification_sha256
+    owner_canary_report_sha256 = $OwnerCanarySha256
+    residual_risk = 'not_validated_against_31_day_real_user_and_infrastructure_drift'
+  }
+  $Attestation = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P10-010'
+    governance_profile = 'personal_automated'
+    acceptance_method = 'automated_attestation'
+    status = 'accepted'
+    generated_by = 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts'
+    generated_at = $GeneratedAt
+    candidate_head_oid = $Candidate
+    git_object_format = [string]$CertificationBindings.git_object_format
+    phase_base_oid = [string]$CertificationBindings.phase_base_oid
+    landing_oid = [string]$CertificationBindings.landing_oid
+    approval_tip_oid = [string]$CertificationBindings.approval_tip_oid
+    build_digest_sha256 = $Build
+    behavior_digest_sha256 = $Behavior
+    adapter_digest_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+    receipt_set_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')
+    runner_digest_sha256 = [string]$CertificationBindings.runner_digest_sha256
+    binding_set_sha256 = $BindingHash
+    bindings = $CertificationBindings
+    release_gate_results = @($CertificationBindings.release_gate_results)
+    task_gate_results = @($CertificationBindings.pre_attestation_mode_results)
+    mandatory_skip_count = [int]$CommonCounts.mandatory_skip_count
+    xfail_count = [int]$CommonCounts.xfail_count
+    flaky_rerun_count = [int]$CommonCounts.flaky_rerun_count
+    open_p0_p1_count = [int]$CommonCounts.open_p0_p1_count
+    data_loss_count = [int]$CommonCounts.data_loss_count
+    unrecoverable_defect_count = [int]$CommonCounts.unrecoverable_defect_count
+    automated_acceptance_predicates_passed = $true
+    failed_predicate_count = 0
+    redline_failure_count = [int]$CommonCounts.redline_failure_count
+    rollback_status = [string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' '')
+    p10_009_certification_sha256 = [string]$P10009Certification.certification_sha256
+    owner_canary_report_sha256 = $OwnerCanarySha256
+    final_certification_sha256 = $FinalCertificationSha256
+  }
+  return [ordered]@{ final_certification = $Final; attestation = $Attestation }
+}
+
+function Get-PersonalOwnerCanaryArtifactState {
+  param(
+    [object]$P10009Certification,
+    [bool]$P10009Accepted,
+    [object]$OwnerCanary,
+    [object]$FinalCertification,
+    [object]$Attestation,
+    [string]$OwnerCanarySha256,
+    [string]$FinalCertificationSha256,
+    [object]$CertificationBindings = $null,
+    [int]$RepositoryBindingFailureCount = 0,
+    [int]$ReceiptLedgerFailureCount = 0,
+    [int]$AdapterBindingFailureCount = 0,
+    [bool]$RequireGeneratedArtifacts = $true
+  )
+  $Hex64 = '^[0-9a-f]{64}$'
+  $Candidate = [string](Get-PersonalCertificationPropertyValue $P10009Certification 'candidate_head_oid' '')
+  $P10009Sha = [string](Get-PersonalCertificationPropertyValue $P10009Certification 'certification_sha256' '')
+  $Environment = Get-PersonalCertificationPropertyValue $OwnerCanary 'environment' $null
+  $Allocation = Get-PersonalCertificationPropertyValue $OwnerCanary 'allocation' $null
+  $Cost = Get-PersonalCertificationPropertyValue $OwnerCanary 'cost' $null
+  $Reliability = Get-PersonalCertificationPropertyValue $OwnerCanary 'reliability' $null
+  $Security = Get-PersonalCertificationPropertyValue $OwnerCanary 'security' $null
+  $JourneyClasses = Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_class_counts' $null
+
+  $Start = [DateTimeOffset]::MinValue; $End = [DateTimeOffset]::MinValue
+  $StartValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'started_at' ''), [ref]$Start)
+  $EndValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'ended_at' ''), [ref]$End)
+  $ElapsedMinutes = if ($StartValid -and $EndValid -and $End -ge $Start) { ($End - $Start).TotalMinutes } else { -1 }
+  $ReportedMinutes = [double](Get-PersonalCertificationPropertyValue $OwnerCanary 'elapsed_minutes' -1)
+  $JourneyCount = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_count' 0)
+  $JourneyClassFailures = 0
+  foreach ($ClassId in @('success','cancel','disconnect_resume','reject','adopt','cas_conflict')) {
+    if ([int](Get-PersonalCertificationPropertyValue $JourneyClasses $ClassId 0) -lt 1) { $JourneyClassFailures++ }
+  }
+  $ProductionBoundaryFailures = 0
+  foreach ($Boundary in @('production_configuration','production_endpoint','real_postgresql','live_provider','provider_usage_receipts','trace_alert_wiring','kill_switch_wiring','old_path_wiring')) {
+    if (-not [bool](Get-PersonalCertificationPropertyValue $Environment $Boundary $false)) { $ProductionBoundaryFailures++ }
+  }
+  $OwnerRef = [string](Get-PersonalCertificationPropertyValue $Allocation 'owner_identity_ref_sha256' '')
+  $OwnerScopeFailures = 0
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'baseline_percent' -1) -ne 0) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'final_percent' -1) -ne 0) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'owner_identity_count' 0) -ne 1) { $OwnerScopeFailures++ }
+  if ($OwnerRef -cnotmatch $Hex64 -or $OwnerRef -ceq ('0' * 64)) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'non_owner_allocation_count' 1) -ne 0) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'non_owner_request_count' 1) -ne 0) { $OwnerScopeFailures++ }
+
+  $BudgetCap = [double](Get-PersonalCertificationPropertyValue $Cost 'budget_cap_usd' 0)
+  $ObservedCost = [double](Get-PersonalCertificationPropertyValue $Cost 'observed_cost_usd' -1)
+  $ProviderCalls = [int](Get-PersonalCertificationPropertyValue $Cost 'provider_call_count' 0)
+  $UsageReceipts = [int](Get-PersonalCertificationPropertyValue $Cost 'usage_receipt_count' 0)
+  $CostFailures = 0
+  if ($BudgetCap -le 0 -or $ObservedCost -lt 0 -or $ObservedCost -gt $BudgetCap) { $CostFailures++ }
+  if ($ProviderCalls -lt 1 -or $UsageReceipts -ne $ProviderCalls -or [int](Get-PersonalCertificationPropertyValue $Cost 'cost_receipt_missing_count' 1) -ne 0) { $CostFailures++ }
+  $ExternalActions = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'external_action_count' 0)
+  $AuditReceipts = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'audit_receipt_count' 0)
+  $OwnerCandidate = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'candidate_head_oid' '')
+  $OwnerBuild = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'build_digest_sha256' '')
+  $OwnerBehavior = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'behavior_digest_sha256' '')
+  $JourneyRows = @((Get-PersonalCertificationPropertyValue $OwnerCanary 'journeys' @()))
+  $JourneyDetailFailures = 0; $JourneyIds = @(); $RunHashes = @(); $TraceHashes = @(); $AuditHashes = @(); $UsageHashes = @(); $JourneyProviderTotal = 0; $JourneyUsageTotal = 0; $DerivedClassCounts = @{}; $JourneyWindows = @{}
+  $ExpectedOutcomes = [ordered]@{success='succeeded';cancel='cancelled';disconnect_resume='succeeded_after_resume';reject='rejected_no_formal_write';adopt='adopted_once';cas_conflict='conflict_no_duplicate'}
+  foreach($Journey in $JourneyRows){
+    $ClassId = [string](Get-PersonalCertificationPropertyValue $Journey 'journey_class' '')
+    if (-not $DerivedClassCounts.ContainsKey($ClassId)) { $DerivedClassCounts[$ClassId] = 0 }; $DerivedClassCounts[$ClassId]++
+    $JourneyId = [string](Get-PersonalCertificationPropertyValue $Journey 'journey_id_sha256' ''); $JourneyIds += $JourneyId
+    $JourneyStart=[DateTimeOffset]::MinValue;$JourneyEnd=[DateTimeOffset]::MinValue
+    $JourneyStartValid=[DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Journey 'started_at' ''),[ref]$JourneyStart)
+    $JourneyEndValid=[DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Journey 'ended_at' ''),[ref]$JourneyEnd)
+    if($JourneyId-cmatch$Hex64-and$JourneyId-cne('0'*64)-and$JourneyStartValid-and$JourneyEndValid-and$JourneyEnd-ge$JourneyStart){$JourneyWindows[$JourneyId]=[ordered]@{started_at=$JourneyStart;ended_at=$JourneyEnd}}
+    $JourneyProviderCalls=[int](Get-PersonalCertificationPropertyValue $Journey 'provider_call_count' -1)
+    $JourneyUsageReceipts=[int](Get-PersonalCertificationPropertyValue $Journey 'usage_receipt_count' -1)
+    $RunHash=[string](Get-PersonalCertificationPropertyValue $Journey 'run_id_sha256' '')
+    $TraceHash=[string](Get-PersonalCertificationPropertyValue $Journey 'trace_receipt_sha256' '')
+    $AuditHash=[string](Get-PersonalCertificationPropertyValue $Journey 'audit_receipt_sha256' '')
+    $UsageHash=[string](Get-PersonalCertificationPropertyValue $Journey 'usage_receipt_set_sha256' '')
+    $RunHashes += $RunHash; $TraceHashes += $TraceHash; $AuditHashes += $AuditHash
+    if ($JourneyProviderCalls -gt 0) { $UsageHashes += $UsageHash }
+    $JourneyProviderTotal += [Math]::Max(0,$JourneyProviderCalls); $JourneyUsageTotal += [Math]::Max(0,$JourneyUsageReceipts)
+    $ExpectedFormalWrites=if($ClassId-ceq'adopt'){1}else{0}
+    if (-not $ExpectedOutcomes.Contains($ClassId) -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'outcome' '') -cne [string]$ExpectedOutcomes[$ClassId] -or
+        $JourneyId -cnotmatch $Hex64 -or $JourneyId -ceq ('0'*64) -or
+        $RunHash -cnotmatch $Hex64 -or $RunHash -ceq ('0'*64) -or
+        $TraceHash -cnotmatch $Hex64 -or $TraceHash -ceq ('0'*64) -or
+        $AuditHash -cnotmatch $Hex64 -or $AuditHash -ceq ('0'*64) -or
+        -not$JourneyStartValid -or -not$JourneyEndValid -or $JourneyEnd-lt$JourneyStart -or $JourneyStart-lt$Start -or $JourneyEnd-gt$End -or
+        $JourneyProviderCalls-lt0 -or $JourneyUsageReceipts-ne$JourneyProviderCalls -or
+        ($JourneyProviderCalls-gt0-and($UsageHash-cnotmatch$Hex64-or$UsageHash-ceq('0'*64))) -or
+        [int](Get-PersonalCertificationPropertyValue $Journey 'formal_write_count' -1)-ne$ExpectedFormalWrites -or
+        [int](Get-PersonalCertificationPropertyValue $Journey 'unexpected_write_count' 1)-ne0 -or
+        [int](Get-PersonalCertificationPropertyValue $Journey 'duplicate_side_effect_count' 1)-ne0 -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'candidate_head_oid' '')-cne$OwnerCandidate -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'build_digest_sha256' '')-cne$OwnerBuild -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'behavior_digest_sha256' '')-cne$OwnerBehavior) { $JourneyDetailFailures++ }
+  }
+  if($JourneyRows.Count-ne$JourneyCount-or
+     @($JourneyIds|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($RunHashes|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($TraceHashes|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($AuditHashes|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($UsageHashes|Sort-Object -Unique).Count-ne$UsageHashes.Count-or
+     $JourneyProviderTotal-ne$ProviderCalls-or$JourneyUsageTotal-ne$UsageReceipts){$JourneyDetailFailures++}
+  foreach($ClassId in $ExpectedOutcomes.Keys){if([int](Get-PersonalCertificationPropertyValue $JourneyClasses $ClassId 0)-ne[int]$DerivedClassCounts[$ClassId]){$JourneyDetailFailures++}}
+  $ActionRows = @((Get-PersonalCertificationPropertyValue $OwnerCanary 'external_actions' @()))
+  $ActionFieldFailures = 0; $ActionBindingFailures = 0; $ActionCost = 0.0; $ActionIds = @(); $ActionReceiptHashes = @(); $ActionKinds = @(); $JourneyActionRefs = @(); $ActionTimes = @(); $PreviousObservedGeneration = $null
+  foreach ($Action in $ActionRows) {
+    $ActionIdValue = [string](Get-PersonalCertificationPropertyValue $Action 'action_id' '')
+    $ActionKind = [string](Get-PersonalCertificationPropertyValue $Action 'action_kind' '')
+    $JourneyRef = [string](Get-PersonalCertificationPropertyValue $Action 'journey_id_sha256' '')
+    $ExpectedGeneration = [int](Get-PersonalCertificationPropertyValue $Action 'expected_generation' -1)
+    $ObservedGeneration = [int](Get-PersonalCertificationPropertyValue $Action 'observed_generation' -1)
+    $ActionCostValue = [double](Get-PersonalCertificationPropertyValue $Action 'cost_usd' -1)
+    $ReceiptHash = [string](Get-PersonalCertificationPropertyValue $Action 'receipt_sha256' '')
+    $ActionExecutedAt = [DateTimeOffset]::MinValue
+    $ActionTimeValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Action 'executed_at' ''), [ref]$ActionExecutedAt)
+    $MutatesGeneration = $ActionKind -in @('owner_allocation_enable','kill_switch_drill','allocation_zero_final')
+    $KindSpecificValid = switch ($ActionKind) {
+      'allocation_zero_baseline' { [int](Get-PersonalCertificationPropertyValue $Action 'allocation_percent_after' -1) -eq 0 -and [bool](Get-PersonalCertificationPropertyValue $Action 'old_path_available' $false) }
+      'owner_allocation_enable' { [string](Get-PersonalCertificationPropertyValue $Action 'allocation_scope' '') -ceq 'owner_only' -and [int](Get-PersonalCertificationPropertyValue $Action 'non_owner_allocation_count' 1) -eq 0 }
+      'journey_execute' {
+        $JourneyWindow=if($JourneyWindows.ContainsKey($JourneyRef)){$JourneyWindows[$JourneyRef]}else{$null}
+        $JourneyRef -cmatch $Hex64 -and $JourneyRef -cne ('0'*64) -and
+        $null-ne$JourneyWindow -and $ActionTimeValid -and $ActionExecutedAt-ge[DateTimeOffset]$JourneyWindow.started_at -and $ActionExecutedAt-le[DateTimeOffset]$JourneyWindow.ended_at -and
+        [string](Get-PersonalCertificationPropertyValue $Action 'allocation_scope' '') -ceq 'owner_only' -and [int](Get-PersonalCertificationPropertyValue $Action 'non_owner_allocation_count' 1) -eq 0
+      }
+      'kill_switch_drill' { [int](Get-PersonalCertificationPropertyValue $Action 'allocation_percent_after' -1) -eq 0 -and [double](Get-PersonalCertificationPropertyValue $Action 'kill_switch_seconds' 31) -ge 0 -and [double](Get-PersonalCertificationPropertyValue $Action 'kill_switch_seconds' 31) -le 30 }
+      'old_path_probe' { [bool](Get-PersonalCertificationPropertyValue $Action 'old_path_available' $false) }
+      'allocation_zero_final' { [int](Get-PersonalCertificationPropertyValue $Action 'allocation_percent_after' -1) -eq 0 }
+      default { $false }
+    }
+    if ($ActionIdValue -cnotmatch $Hex64 -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'target' '') -cne 'gonow.agent.itinerary_planning.release_b' -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'identity_ref_sha256' '') -cne $OwnerRef -or
+        $ExpectedGeneration -lt 0 -or $ObservedGeneration -ne ($ExpectedGeneration + $(if($MutatesGeneration){1}else{0})) -or
+        ($null -ne $PreviousObservedGeneration -and $ExpectedGeneration -ne [int]$PreviousObservedGeneration) -or
+        -not $ActionTimeValid -or $ActionExecutedAt -lt $Start -or $ActionExecutedAt -gt $End -or
+        $ActionCostValue -lt 0 -or [int](Get-PersonalCertificationPropertyValue $Action 'exit_code' 1) -ne 0 -or
+        $ReceiptHash -cnotmatch $Hex64 -or $ReceiptHash -ceq ('0' * 64) -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'candidate_head_oid' '') -cne $OwnerCandidate -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'build_digest_sha256' '') -cne $OwnerBuild -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'behavior_digest_sha256' '') -cne $OwnerBehavior -or
+        -not $KindSpecificValid) {
+      $ActionFieldFailures++
+    }
+    $PreviousObservedGeneration = $ObservedGeneration
+    $ActionCost += [Math]::Max([double]0,$ActionCostValue)
+    $ActionIds += $ActionIdValue
+    $ActionReceiptHashes += $ReceiptHash
+    $ActionKinds += $ActionKind
+    $ActionTimes += $ActionExecutedAt
+    if ($ActionKind -ceq 'journey_execute') { $JourneyActionRefs += $JourneyRef }
+  }
+  $ExpectedActionKinds = @('allocation_zero_baseline','owner_allocation_enable') + @('journey_execute') * $JourneyCount + @('kill_switch_drill','old_path_probe','allocation_zero_final')
+  $ActionTimeOrderFailures = 0; for($ActionIndex=1;$ActionIndex-lt$ActionTimes.Count;$ActionIndex++){if($ActionTimes[$ActionIndex]-lt$ActionTimes[$ActionIndex-1]){$ActionTimeOrderFailures++}}
+  if ($ActionRows.Count -ne $ExternalActions -or $ExternalActions -ne ($JourneyCount + 5) -or
+      @($ActionIds | Sort-Object -Unique).Count -ne $ActionRows.Count -or
+      @($ActionReceiptHashes | Sort-Object -Unique).Count -ne $ActionRows.Count -or
+      ($ActionKinds -join ',') -cne ($ExpectedActionKinds -join ',') -or
+      @($JourneyActionRefs | Sort-Object -Unique).Count -ne $JourneyCount -or
+      @($JourneyIds | Where-Object { $_ -notin $JourneyActionRefs }).Count -ne 0 -or
+      $ActionTimeOrderFailures -ne 0 -or
+      [Math]::Abs($ActionCost-$ObservedCost) -gt 0.000001) { $ActionBindingFailures++ }
+  $JourneyAuditReceipts = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_audit_receipt_count' 0)
+  $ReceiptFailures = if ($ExternalActions -gt 0 -and $AuditReceipts -eq $ExternalActions -and $JourneyAuditReceipts -eq $JourneyCount -and $ActionRows.Count -eq $ExternalActions) { 0 } else { 1 }
+
+  $SafetyRedlines = 0
+  foreach ($Field in @('arbitrary_sql_executor_count','cross_tenant_leak_count','unauthorized_write_count','secret_or_pii_leak_count','missing_audit_receipt_count','forbidden_tool_execution_count')) {
+    $SafetyRedlines += [int](Get-PersonalCertificationPropertyValue $Security $Field 1)
+  }
+  foreach ($Field in @('candidate_drift_count','duplicate_side_effect_count','duplicate_formal_side_effect_count','permanent_run_count','old_path_failures','traceability_failures')) {
+    $SafetyRedlines += [int](Get-PersonalCertificationPropertyValue $Reliability $Field 1)
+  }
+  $SourceIntegrityFailures = 0
+  foreach ($Field in @('skipped_journey_count','xfailed_journey_count','flaky_rerun_count','open_p0_p1_count','data_loss_count','unrecoverable_defect_count')) {
+    $SourceIntegrityFailures += [int](Get-PersonalCertificationPropertyValue $OwnerCanary $Field 1)
+  }
+  $RollbackFailures = 0
+  if ([string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' '') -cne 'passed') { $RollbackFailures++ }
+  $KillSeconds = [double](Get-PersonalCertificationPropertyValue $Reliability 'kill_switch_seconds' 31)
+  if ($KillSeconds -lt 0 -or $KillSeconds -gt 30) { $RollbackFailures++ }
+
+  $FinalCandidate = [string](Get-PersonalCertificationPropertyValue $FinalCertification 'candidate_head_oid' '')
+  $FinalBuild = [string](Get-PersonalCertificationPropertyValue $FinalCertification 'build_digest_sha256' '')
+  $FinalBehavior = [string](Get-PersonalCertificationPropertyValue $FinalCertification 'behavior_digest_sha256' '')
+  $AttestedCandidate = [string](Get-PersonalCertificationPropertyValue $Attestation 'candidate_head_oid' '')
+  $AttestedBuild = [string](Get-PersonalCertificationPropertyValue $Attestation 'build_digest_sha256' '')
+  $AttestedBehavior = [string](Get-PersonalCertificationPropertyValue $Attestation 'behavior_digest_sha256' '')
+  $IdentityFailures = 0
+  if ($Candidate -notmatch '^[0-9a-f]{40,64}$' -or $OwnerCandidate -cne $Candidate -or ($RequireGeneratedArtifacts -and ($FinalCandidate -cne $Candidate -or $AttestedCandidate -cne $Candidate))) { $IdentityFailures++ }
+  if ($OwnerBuild -cnotmatch $Hex64 -or ($RequireGeneratedArtifacts -and ($FinalBuild -cne $OwnerBuild -or $AttestedBuild -cne $OwnerBuild)) -or [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'distinct_build_digest_count' 0) -ne 1) { $IdentityFailures++ }
+  if ($OwnerBehavior -cnotmatch $Hex64 -or ($RequireGeneratedArtifacts -and ($FinalBehavior -cne $OwnerBehavior -or $AttestedBehavior -cne $OwnerBehavior)) -or [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'distinct_behavior_digest_count' 0) -ne 1) { $IdentityFailures++ }
+
+  $BindingSchemaFailures = 0
+  if ($RequireGeneratedArtifacts) {
+    if ($null -eq $CertificationBindings -or
+        [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'profile' '') -cne 'personal_automated' -or
+        [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'candidate_head_oid' '') -cne $Candidate -or
+        [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'git_object_format' '') -notin @('sha1','sha256')) { $BindingSchemaFailures++ }
+    foreach ($OidField in @('phase_base_oid','landing_oid','approval_tip_oid')) {
+      if ([string](Get-PersonalCertificationPropertyValue $CertificationBindings $OidField '') -cnotmatch '^[0-9a-f]{40,64}$') { $BindingSchemaFailures++ }
+    }
+    foreach ($HashField in @('agents_sha256','execplan_sha256','architecture_sha256','lock_set_sha256','test_manifest_sha256','dataset_sha256','seed_sha256','fault_plan_sha256','pricing_sha256','evidence_manifest_sha256','rollback_report_sha256','runner_digest_sha256','catalog_sha256','release_certification_config_sha256','release_certification_runner_sha256','p10_009_certification_sha256','release_gate_result_set_sha256','pre_attestation_mode_result_set_sha256')) {
+      if ([string](Get-PersonalCertificationPropertyValue $CertificationBindings $HashField '') -cnotmatch $Hex64) { $BindingSchemaFailures++ }
+    }
+    if (@((Get-PersonalCertificationPropertyValue $CertificationBindings 'lock_files' @())).Count -lt 3 -or
+        @((Get-PersonalCertificationPropertyValue $CertificationBindings 'release_gate_results' @())).Count -ne 5 -or
+        @((Get-PersonalCertificationPropertyValue $CertificationBindings 'pre_attestation_mode_results' @())).Count -ne 7 -or
+        [int](Get-PersonalCertificationPropertyValue $CertificationBindings 'source_tracked_dirty_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $CertificationBindings 'untracked_credential_like_count' 1) -ne 0) { $BindingSchemaFailures++ }
+  }
+
+  $FinalFailures = 0
+  $AttestationFailures = 0
+  if ($RequireGeneratedArtifacts) {
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'schema_version' '') -cne '1.0' -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'task_id' '') -cne 'TASK-P10-010') { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'governance_profile' '') -cne 'personal_automated' -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'evidence_type' '') -cne 'personal_compressed_release_certification') { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'generated_by' '') -cne 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts') { $FinalFailures++ }
+    if (-not [bool](Get-PersonalCertificationPropertyValue $FinalCertification 'c1_c5_passed' $false) -or -not [bool](Get-PersonalCertificationPropertyValue $FinalCertification 'owner_canary_passed' $false) -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'overall_status' '') -cne 'passed') { $FinalFailures++ }
+    if ([bool](Get-PersonalCertificationPropertyValue $FinalCertification 'production_observation_required' $true) -or -not [bool](Get-PersonalCertificationPropertyValue $FinalCertification 'automated_gate_acceptance' $false)) { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'p10_009_certification_sha256' '') -cne $P10009Sha -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'owner_canary_report_sha256' '') -cne $OwnerCanarySha256) { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'adapter_digest_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '') -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'receipt_set_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')) { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'residual_risk' '') -cne 'not_validated_against_31_day_real_user_and_infrastructure_drift') { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'rollback_status' '') -cne 'passed' -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'mandatory_skip_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'xfail_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'flaky_rerun_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'open_p0_p1_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'data_loss_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'unrecoverable_defect_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'redline_failure_count' 1) -ne 0) { $FinalFailures++ }
+
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'schema_version' '') -cne '1.0' -or [string](Get-PersonalCertificationPropertyValue $Attestation 'task_id' '') -cne 'TASK-P10-010') { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'governance_profile' '') -cne 'personal_automated' -or [string](Get-PersonalCertificationPropertyValue $Attestation 'acceptance_method' '') -cne 'automated_attestation' -or [string](Get-PersonalCertificationPropertyValue $Attestation 'status' '') -cne 'accepted') { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'generated_by' '') -cne 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts') { $AttestationFailures++ }
+    if (-not [bool](Get-PersonalCertificationPropertyValue $Attestation 'automated_acceptance_predicates_passed' $false) -or [int](Get-PersonalCertificationPropertyValue $Attestation 'failed_predicate_count' 1) -ne 0 -or [int](Get-PersonalCertificationPropertyValue $Attestation 'redline_failure_count' 1) -ne 0) { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'p10_009_certification_sha256' '') -cne $P10009Sha -or [string](Get-PersonalCertificationPropertyValue $Attestation 'owner_canary_report_sha256' '') -cne $OwnerCanarySha256 -or [string](Get-PersonalCertificationPropertyValue $Attestation 'final_certification_sha256' '') -cne $FinalCertificationSha256) { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'adapter_digest_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '') -or [string](Get-PersonalCertificationPropertyValue $Attestation 'receipt_set_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')) { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'rollback_status' '') -cne 'passed' -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'mandatory_skip_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'xfail_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'flaky_rerun_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'open_p0_p1_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'data_loss_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'unrecoverable_defect_count' 1) -ne 0) { $AttestationFailures++ }
+
+    $ExpectedBindingHash = if ($null -ne $CertificationBindings) { Get-PersonalCertificationBindingHash -Value $CertificationBindings } else { $ZeroHash }
+    $FinalBindings = Get-PersonalCertificationPropertyValue $FinalCertification 'bindings' $null
+    $AttestationBindings = Get-PersonalCertificationPropertyValue $Attestation 'bindings' $null
+    $FinalBindingHash = if ($null -ne $FinalBindings) { Get-PersonalCertificationBindingHash -Value $FinalBindings } else { $ZeroHash }
+    $AttestationBindingHash = if ($null -ne $AttestationBindings) { Get-PersonalCertificationBindingHash -Value $AttestationBindings } else { $ZeroHash }
+    if ($ExpectedBindingHash -ceq $ZeroHash -or
+        $FinalBindingHash -cne $ExpectedBindingHash -or
+        $AttestationBindingHash -cne $ExpectedBindingHash -or
+        [string](Get-PersonalCertificationPropertyValue $FinalCertification 'binding_set_sha256' '') -cne $ExpectedBindingHash -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'binding_set_sha256' '') -cne $ExpectedBindingHash) {
+      $FinalFailures++
+      $AttestationFailures++
+    }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'git_object_format' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'git_object_format' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'phase_base_oid' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'phase_base_oid' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'landing_oid' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'landing_oid' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'approval_tip_oid' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'approval_tip_oid' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'runner_digest_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'runner_digest_sha256' '')) { $AttestationFailures++ }
+    $GeneratedAt = [DateTimeOffset]::MinValue
+    $GenerationTimestampValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Attestation 'generated_at' ''), [ref]$GeneratedAt)
+    if (-not $GenerationTimestampValid -or $GeneratedAt -lt $End -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'generated_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Attestation 'generated_at' '')) { $AttestationFailures++ }
+  }
+
+  $Checks = [ordered]@{
+    p10_009_certification_invalid = if ($P10009Accepted -and [bool](Get-PersonalCertificationPropertyValue $P10009Certification 'passed' $false)) { 0 } else { 1 }
+    owner_canary_missing = if ($null -eq $OwnerCanary) { 1 } else { 0 }
+    final_certification_missing = if ($RequireGeneratedArtifacts -and $null -eq $FinalCertification) { 1 } else { 0 }
+    attestation_missing = if ($RequireGeneratedArtifacts -and $null -eq $Attestation) { 1 } else { 0 }
+    report_status_failure_count = if ([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'schema_version' '') -ceq '1.0' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'task_id' '') -ceq 'TASK-P10-010' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'governance_profile' '') -ceq 'personal_automated' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'status' '') -ceq 'passed' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'evidence_type' '') -ceq 'owner_only_production_canary') { 0 } else { 1 }
+    identity_binding_failure_count = $IdentityFailures
+    journey_count_failure_count = if ($JourneyCount -ge 10 -and $JourneyCount -le 20) { 0 } else { 1 }
+    journey_class_failure_count = $JourneyClassFailures
+    journey_detail_failure_count = $JourneyDetailFailures
+    elapsed_window_failure_count = if ($ElapsedMinutes -ge 30 -and $ElapsedMinutes -le 60 -and [Math]::Abs($ElapsedMinutes-$ReportedMinutes) -le 0.1) { 0 } else { 1 }
+    production_boundary_failure_count = $ProductionBoundaryFailures
+    owner_scope_failure_count = $OwnerScopeFailures
+    cost_failure_count = $CostFailures
+    receipt_failure_count = $ReceiptFailures
+    external_action_field_failure_count = $ActionFieldFailures
+    external_action_binding_failure_count = $ActionBindingFailures
+    safety_redline_failure_count = $SafetyRedlines
+    source_integrity_failure_count = $SourceIntegrityFailures
+    rollback_failure_count = $RollbackFailures
+    unexpected_production_write_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'unexpected_production_write_count' 1)
+    final_certification_failure_count = $FinalFailures
+    attestation_failure_count = $AttestationFailures
+    repository_binding_failure_count = $RepositoryBindingFailureCount
+    receipt_ledger_failure_count = $ReceiptLedgerFailureCount
+    adapter_binding_failure_count = $AdapterBindingFailureCount
+    certification_binding_schema_failure_count = $BindingSchemaFailures
+  }
+  $FailureCount = 0; foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  return [ordered]@{passed=($FailureCount-eq0);failure_count=$FailureCount;candidate_head_oid=$Candidate;owner_canary_sha256=$OwnerCanarySha256;final_certification_sha256=$FinalCertificationSha256;external_action_diagnostics=[ordered]@{declared_count=$ExternalActions;row_count=$ActionRows.Count;unique_receipt_count=@($ActionReceiptHashes|Sort-Object -Unique).Count;action_cost_usd=[Math]::Round($ActionCost,9);observed_cost_usd=[Math]::Round($ObservedCost,9)};checks=$Checks;owner_canary=$OwnerCanary;final_certification=$FinalCertification;attestation=$Attestation}
+}
+
+function Get-PersonalOwnerCanaryAdapterState {
+  param(
+    [object]$OwnerCanary,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot
+  )
+  $ExpectedPath = 'docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'
+  $RelativePath = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_path' '')
+  $ExpectedDigest = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+  $ActualDigest = ''
+  $FailureCount = 0
+  $Exists = $false
+  $Tracked = $false
+  $ReparsePoint = $false
+  if ($RelativePath -cne $ExpectedPath -or $ExpectedDigest -cnotmatch '^[0-9a-f]{64}$' -or $ExpectedDigest -ceq ('0' * 64)) { $FailureCount++ }
+  if ($RelativePath -ceq $ExpectedPath) {
+    $RootFull = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+    $FullPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $RelativePath))
+    if (-not $FullPath.StartsWith($RootFull + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+      $FailureCount++
+    } elseif (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+      $Exists = $true
+      $Item = Get-Item -LiteralPath $FullPath -Force
+      $ReparsePoint = [bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+      if ($ReparsePoint) { $FailureCount++ }
+      $ActualDigest = Get-Sha256 -LiteralPath $FullPath
+      if ($ActualDigest -cne $ExpectedDigest) { $FailureCount++ }
+      $TrackedPaths = @(& git -C $RepositoryRoot ls-files --cached -- $RelativePath)
+      $Tracked = $LASTEXITCODE -eq 0 -and $RelativePath -in @($TrackedPaths)
+      if (-not $Tracked) { $FailureCount++ }
+    } else {
+      $FailureCount++
+    }
+  }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    adapter_path = $RelativePath
+    expected_adapter_path = $ExpectedPath
+    adapter_digest_sha256 = $ExpectedDigest
+    actual_adapter_digest_sha256 = $ActualDigest
+    exists = $Exists
+    tracked = $Tracked
+    reparse_point = $ReparsePoint
+  }
+}
+
+function Get-PersonalOwnerCanaryInputState {
+  param(
+    [object]$EnvironmentNameSet = $null,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot
+  )
+  $RequiredNames = @(
+    'GONOW_AGENT_API_URL',
+    'GONOW_OWNER_CANARY_IDENTITY_REF',
+    'GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER',
+    'GONOW_RELEASE_B_BUDGET_CAP_REF',
+    'GONOW_RELEASE_B_JOURNEY_ADAPTER',
+    'GONOW_RELEASE_B_FLAG_ADAPTER',
+    'GONOW_RELEASE_B_AUDIT_ADAPTER',
+    'GONOW_RELEASE_B_KILL_SWITCH_ADAPTER',
+    'GONOW_RELEASE_B_OLD_PATH_ADAPTER',
+    'GONOW_RELEASE_B_TRACE_ADAPTER',
+    'GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER'
+  )
+  $Presence = [ordered]@{}
+  foreach ($Name in $RequiredNames) {
+    if ($null -ne $EnvironmentNameSet) {
+      $Present = if ($EnvironmentNameSet -is [Collections.IDictionary]) { $EnvironmentNameSet.Contains($Name) } else { $null -ne $EnvironmentNameSet.PSObject.Properties[$Name] }
+    } else {
+      $Present = Test-Path -LiteralPath "Env:$Name"
+    }
+    $Presence[$Name] = [bool]$Present
+  }
+  $MissingNames = @($RequiredNames | Where-Object { -not [bool]$Presence[$_] })
+  $AdapterPath = 'docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'
+  $AdapterFull = Join-Path $RepositoryRoot $AdapterPath
+  $AdapterExists = Test-Path -LiteralPath $AdapterFull -PathType Leaf
+  $AdapterTracked = $false
+  $AdapterReparsePoint = $false
+  $AdapterDigest = ''
+  if ($AdapterExists) {
+    $AdapterItem = Get-Item -LiteralPath $AdapterFull -Force
+    $AdapterReparsePoint = [bool]($AdapterItem.Attributes -band [IO.FileAttributes]::ReparsePoint)
+    $AdapterDigest = Get-Sha256 -LiteralPath $AdapterFull
+    $TrackedPaths = @(& git -C $RepositoryRoot ls-files --cached -- $AdapterPath)
+    $AdapterTracked = $LASTEXITCODE -eq 0 -and $AdapterPath -in @($TrackedPaths)
+  }
+  $AdapterReady = $AdapterExists -and $AdapterTracked -and -not $AdapterReparsePoint -and $AdapterDigest -cmatch '^[0-9a-f]{64}$'
+  $FailureCount = $MissingNames.Count + $(if($AdapterReady){0}else{1})
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    inspection_mode = 'environment_name_presence_only'
+    secret_value_read_count = 0
+    environment_name_presence = $Presence
+    missing_environment_names = $MissingNames
+    adapter_path = $AdapterPath
+    adapter_exists = $AdapterExists
+    adapter_tracked = $AdapterTracked
+    adapter_reparse_point = $AdapterReparsePoint
+    adapter_digest_sha256 = $AdapterDigest
+    production_write_count = 0
+  }
+}
+
+function Get-PersonalOwnerCanaryState {
+  param([switch]$SourceOnly)
+  $P10009StatusPath = Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-009.json'
+  $P10009Status = if (Test-Path -LiteralPath $P10009StatusPath -PathType Leaf) { Get-Content -LiteralPath $P10009StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $ExpectedCandidate = if ($null -ne $P10009Status) { [string]$P10009Status.head_oid } else { '' }
+  $P10009 = Get-PersonalReleaseCertificationState -ExpectedCandidateHeadOid $ExpectedCandidate
+  $P10009Accepted =
+    $null -ne $P10009Status -and
+    [string]$P10009Status.task_id -ceq 'TASK-P10-009' -and
+    [string]$P10009Status.status -ceq 'accepted' -and
+    -not [bool]$P10009Status.reviewer_independent -and
+    [string]$P10009Status.governance_profile -ceq 'personal_automated' -and
+    [string]$P10009Status.acceptance_method -ceq 'automated_attestation' -and
+    [string]$P10009Status.decision_reference -ceq [string]$P10009.certification_path -and
+    [string]$P10009Status.attestation_sha256 -ceq [string]$P10009.certification_sha256 -and
+    [string]$P10009Status.head_oid -ceq [string]$P10009.candidate_head_oid
+  $OwnerPath = Join-Path $script:TaskEvidenceDirectory 'owner-canary-report.json'
+  $ReceiptPath = Join-Path $script:TaskEvidenceDirectory 'owner-canary-receipts.jsonl'
+  $FinalPath = Join-Path $script:TaskEvidenceDirectory 'personal-release-certification.json'
+  $AttestationPath = Join-Path $script:TaskEvidenceDirectory 'automated-acceptance-attestation.json'
+  $Owner = if (Test-Path -LiteralPath $OwnerPath -PathType Leaf) { Get-Content -LiteralPath $OwnerPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $ReceiptRows = @()
+  $ReceiptSchemaFailures = 0
+  if (Test-Path -LiteralPath $ReceiptPath -PathType Leaf) {
+    foreach ($Line in [IO.File]::ReadLines($ReceiptPath, [Text.UTF8Encoding]::new($false))) {
+      if ([string]::IsNullOrWhiteSpace($Line)) { continue }
+      try { $ReceiptRows += ($Line | ConvertFrom-Json -ErrorAction Stop) } catch { $ReceiptSchemaFailures++ }
+    }
+  } else {
+    $ReceiptSchemaFailures++
+  }
+  $Final = if (-not $SourceOnly -and (Test-Path -LiteralPath $FinalPath -PathType Leaf)) { Get-Content -LiteralPath $FinalPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Attestation = if (-not $SourceOnly -and (Test-Path -LiteralPath $AttestationPath -PathType Leaf)) { Get-Content -LiteralPath $AttestationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $PreAttestationState = if ($SourceOnly) { $null } else { Get-P10010PreAttestationGateState }
+  $BindingState = Get-PersonalOwnerCanaryRepositoryBindingState -P10009Certification $P10009 -PreAttestationGateState $PreAttestationState -RequirePreAttestation:(-not $SourceOnly)
+  $ReceiptState = Get-PersonalOwnerCanaryReceiptState -OwnerCanary $Owner -ReceiptRows $ReceiptRows -SchemaFailureCount $ReceiptSchemaFailures
+  $AdapterState = Get-PersonalOwnerCanaryAdapterState -OwnerCanary $Owner -RepositoryRoot $script:RepositoryRoot
+  $State = Get-PersonalOwnerCanaryArtifactState -P10009Certification $P10009 -P10009Accepted $P10009Accepted -OwnerCanary $Owner -FinalCertification $Final -Attestation $Attestation -OwnerCanarySha256 $(if(Test-Path -LiteralPath $OwnerPath -PathType Leaf){Get-Sha256 -LiteralPath $OwnerPath}else{$ZeroHash}) -FinalCertificationSha256 $(if(Test-Path -LiteralPath $FinalPath -PathType Leaf){Get-Sha256 -LiteralPath $FinalPath}else{$ZeroHash}) -CertificationBindings $BindingState.values -RepositoryBindingFailureCount ([int]$BindingState.failure_count) -ReceiptLedgerFailureCount ([int]$ReceiptState.failure_count) -AdapterBindingFailureCount ([int]$AdapterState.failure_count) -RequireGeneratedArtifacts:(-not $SourceOnly)
+  $State['repository_bindings'] = $BindingState
+  $State['receipt_ledger'] = $ReceiptState
+  $State['adapter_binding'] = $AdapterState
+  $State['source_only'] = [bool]$SourceOnly
+  return $State
+}
+
+function Get-PersonalOwnerCanaryCommandState {
+  param([object]$OwnerCanary,[object]$Ledger)
+  $ActionRows = @((Get-PersonalCertificationPropertyValue $OwnerCanary 'external_actions' @()))
+  $Commands = if ($null -ne $Ledger) { @($Ledger.commands) } else { @() }
+  $EligibleCommands = @($Commands | Where-Object { [string]$_.description -ceq 'Execute P10-010 owner-only canary external action' })
+  $AdapterPathValue = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_path' '')
+  $AdapterDigestValue = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+  $FailureCount = 0; $MatchedCount = 0
+  foreach($Action in $ActionRows){
+    $ActionIdValue = [string](Get-PersonalCertificationPropertyValue $Action 'action_id' '')
+    $ReceiptValue = [string](Get-PersonalCertificationPropertyValue $Action 'receipt_sha256' '')
+    $IdentityValue = [string](Get-PersonalCertificationPropertyValue $Action 'identity_ref_sha256' '')
+    $Generation = [int](Get-PersonalCertificationPropertyValue $Action 'expected_generation' -1)
+    $ObservedGeneration = [int](Get-PersonalCertificationPropertyValue $Action 'observed_generation' -1)
+    $ActionKindValue = [string](Get-PersonalCertificationPropertyValue $Action 'action_kind' '')
+    $JourneyValue = [string](Get-PersonalCertificationPropertyValue $Action 'journey_id_sha256' '')
+    $ExecutedAtValue = [string](Get-PersonalCertificationPropertyValue $Action 'executed_at' '')
+    $CostText = [string]::Format([Globalization.CultureInfo]::InvariantCulture,'{0:0.#########}',[double](Get-PersonalCertificationPropertyValue $Action 'cost_usd' -1))
+    $CandidateValue = [string](Get-PersonalCertificationPropertyValue $Action 'candidate_head_oid' '')
+    $BuildValue = [string](Get-PersonalCertificationPropertyValue $Action 'build_digest_sha256' '')
+    $BehaviorValue = [string](Get-PersonalCertificationPropertyValue $Action 'behavior_digest_sha256' '')
+    if ($ActionIdValue -cnotmatch '^[0-9a-f]{64}$' -or $ReceiptValue -cnotmatch '^[0-9a-f]{64}$' -or $IdentityValue -cnotmatch '^[0-9a-f]{64}$' -or $CandidateValue -cnotmatch '^[0-9a-f]{40,64}$' -or $BuildValue -cnotmatch '^[0-9a-f]{64}$' -or $BehaviorValue -cnotmatch '^[0-9a-f]{64}$' -or $AdapterPathValue -cne 'docs/execution/commands/Invoke-PersonalOwnerCanary.ps1' -or $AdapterDigestValue -cnotmatch '^[0-9a-f]{64}$' -or $ActionKindValue -notin @('allocation_zero_baseline','owner_allocation_enable','journey_execute','kill_switch_drill','old_path_probe','allocation_zero_final') -or $JourneyValue -cnotmatch '^[0-9a-f]{64}$' -or $Generation -lt 0 -or $ObservedGeneration -lt $Generation) { $FailureCount++; continue }
+    $ExpectedCommand="p10-owner-canary-adapter target=gonow.agent.itinerary_planning.release_b action_id=$ActionIdValue action_kind=$ActionKindValue journey_id_sha256=$JourneyValue identity_ref_sha256=$IdentityValue expected_generation=$Generation observed_generation=$ObservedGeneration executed_at=$ExecutedAtValue cost_usd=$CostText candidate_head_oid=$CandidateValue build_digest_sha256=$BuildValue behavior_digest_sha256=$BehaviorValue adapter_path=$AdapterPathValue adapter_digest_sha256=$AdapterDigestValue receipt_sha256=$ReceiptValue"
+    $Rows = @($EligibleCommands | Where-Object { [int]$_.exit_code -eq 0 -and [string]$_.command -ceq $ExpectedCommand })
+    if ($Rows.Count -ne 1) { $FailureCount++ } else { $MatchedCount++ }
+  }
+  if($EligibleCommands.Count-ne$ActionRows.Count){$FailureCount++}
+  return [ordered]@{passed=($ActionRows.Count-gt0-and$FailureCount-eq0-and$MatchedCount-eq$ActionRows.Count);failure_count=$FailureCount+$(if($ActionRows.Count-gt0){0}else{1});expected_action_count=$ActionRows.Count;command_row_count=$EligibleCommands.Count;matched_action_count=$MatchedCount;adapter_path=$AdapterPathValue;adapter_digest_sha256=$AdapterDigestValue}
+}
+
+function Get-PersonalOwnerCanaryReceiptState {
+  param(
+    [object]$OwnerCanary,
+    [object[]]$ReceiptRows,
+    [int]$SchemaFailureCount = 0
+  )
+  $Hex64 = '^[0-9a-f]{64}$'
+  $Candidate = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'candidate_head_oid' '')
+  $Build = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'build_digest_sha256' '')
+  $Behavior = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'behavior_digest_sha256' '')
+  $AdapterDigest = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+  $Allocation = Get-PersonalCertificationPropertyValue $OwnerCanary 'allocation' $null
+  $OwnerRef = [string](Get-PersonalCertificationPropertyValue $Allocation 'owner_identity_ref_sha256' '')
+  $Cost = Get-PersonalCertificationPropertyValue $OwnerCanary 'cost' $null
+  $ObservedCost = [double](Get-PersonalCertificationPropertyValue $Cost 'observed_cost_usd' -1)
+  $Start = [DateTimeOffset]::MinValue; $End = [DateTimeOffset]::MinValue
+  $StartValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'started_at' ''), [ref]$Start)
+  $EndValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'ended_at' ''), [ref]$End)
+  $Expected = @()
+  foreach ($Action in @((Get-PersonalCertificationPropertyValue $OwnerCanary 'external_actions' @()))) {
+    $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Action 'receipt_sha256' ''); kind = 'external_action'; subject = [string](Get-PersonalCertificationPropertyValue $Action 'action_id' ''); source = $Action }
+  }
+  foreach ($Journey in @((Get-PersonalCertificationPropertyValue $OwnerCanary 'journeys' @()))) {
+    $JourneyId = [string](Get-PersonalCertificationPropertyValue $Journey 'journey_id_sha256' '')
+    $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Journey 'trace_receipt_sha256' ''); kind = 'journey_trace'; subject = $JourneyId; source = $Journey }
+    $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Journey 'audit_receipt_sha256' ''); kind = 'journey_audit'; subject = $JourneyId; source = $Journey }
+    if ([int](Get-PersonalCertificationPropertyValue $Journey 'provider_call_count' 0) -gt 0) {
+      $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Journey 'usage_receipt_set_sha256' ''); kind = 'provider_usage'; subject = $JourneyId; source = $Journey }
+    }
+  }
+  $FailureCount = $SchemaFailureCount
+  if (-not $StartValid -or -not $EndValid -or $End -lt $Start -or $AdapterDigest -cnotmatch $Hex64 -or $AdapterDigest -ceq ('0'*64)) { $FailureCount++ }
+  $RowsByHash = @{}
+  $UsageCost = 0.0
+  foreach ($Row in @($ReceiptRows)) {
+    $RowHash = Get-PersonalCertificationBindingHash -Value $Row
+    if ($RowsByHash.ContainsKey($RowHash)) { $FailureCount++ } else { $RowsByHash[$RowHash] = $Row }
+    $ExecutedAt = [DateTimeOffset]::MinValue
+    $ExecutedAtValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' ''), [ref]$ExecutedAt)
+    if ([string](Get-PersonalCertificationPropertyValue $Row 'schema_version' '') -cne '1.0' -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'receipt_kind' '') -notin @('external_action','journey_trace','journey_audit','provider_usage') -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'subject_id_sha256' '') -cnotmatch $Hex64 -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'candidate_head_oid' '') -cne $Candidate -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'build_digest_sha256' '') -cne $Build -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'behavior_digest_sha256' '') -cne $Behavior -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'owner_identity_ref_sha256' '') -cne $OwnerRef -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'adapter_digest_sha256' '') -cne $AdapterDigest -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'status' '') -cne 'passed' -or
+        [int](Get-PersonalCertificationPropertyValue $Row 'redline_failure_count' 1) -ne 0 -or
+        -not $ExecutedAtValid -or $ExecutedAt -lt $Start -or $ExecutedAt -gt $End) { $FailureCount++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Row 'receipt_kind' '') -ceq 'provider_usage') {
+      $UsageCost += [Math]::Max([double]0,[double](Get-PersonalCertificationPropertyValue $Row 'cost_usd' -1))
+    }
+  }
+  foreach ($Reference in $Expected) {
+    if ([string]$Reference.hash -cnotmatch $Hex64 -or -not $RowsByHash.ContainsKey([string]$Reference.hash)) { $FailureCount++; continue }
+    $Row = $RowsByHash[[string]$Reference.hash]
+    if ([string](Get-PersonalCertificationPropertyValue $Row 'receipt_kind' '') -cne [string]$Reference.kind -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'subject_id_sha256' '') -cne [string]$Reference.subject) { $FailureCount++; continue }
+    $Source = $Reference.source
+    if ([string]$Reference.kind -ceq 'external_action') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'target' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'target' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'action_kind' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'action_kind' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'journey_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'journey_id_sha256' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'executed_at' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'expected_generation' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'expected_generation' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'observed_generation' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'observed_generation' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'allocation_percent_after' -2) -ne [int](Get-PersonalCertificationPropertyValue $Source 'allocation_percent_after' -3) -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'allocation_scope' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'allocation_scope' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'non_owner_allocation_count' 1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'non_owner_allocation_count' 2) -or
+          [Math]::Abs([double](Get-PersonalCertificationPropertyValue $Row 'kill_switch_seconds' -2)-[double](Get-PersonalCertificationPropertyValue $Source 'kill_switch_seconds' -3)) -gt 0.000000001 -or
+          [bool](Get-PersonalCertificationPropertyValue $Row 'old_path_available' $false) -ne [bool](Get-PersonalCertificationPropertyValue $Source 'old_path_available' $true) -or
+          [Math]::Abs([double](Get-PersonalCertificationPropertyValue $Row 'cost_usd' -1)-[double](Get-PersonalCertificationPropertyValue $Source 'cost_usd' -2)) -gt 0.000000001 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'exit_code' 1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'exit_code' 2)) { $FailureCount++ }
+    } elseif ([string]$Reference.kind -ceq 'journey_trace') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'run_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'run_id_sha256' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'journey_class' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'journey_class' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'outcome' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'outcome' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'started_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'started_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'ended_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '')) { $FailureCount++ }
+    } elseif ([string]$Reference.kind -ceq 'journey_audit') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'run_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'run_id_sha256' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'formal_write_count' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'formal_write_count' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'unexpected_write_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'duplicate_side_effect_count' 1) -ne 0) { $FailureCount++ }
+    } elseif ([string]$Reference.kind -ceq 'provider_usage') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'run_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'run_id_sha256' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'provider_call_count' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'provider_call_count' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'usage_receipt_count' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'usage_receipt_count' -2) -or
+          [double](Get-PersonalCertificationPropertyValue $Row 'cost_usd' -1) -lt 0) { $FailureCount++ }
+    }
+  }
+  $ExternalReceiptCount = @($Expected | Where-Object { [string]$_.kind -ceq 'external_action' }).Count
+  $JourneyAuditReceiptCount = @($Expected | Where-Object { [string]$_.kind -ceq 'journey_audit' }).Count
+  if (@($ReceiptRows).Count -ne $Expected.Count -or @($Expected | ForEach-Object { [string]$_.hash } | Sort-Object -Unique).Count -ne $Expected.Count -or
+      $ExternalReceiptCount -ne [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'external_action_count' -1) -or
+      $JourneyAuditReceiptCount -ne [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_audit_receipt_count' -1) -or
+      [Math]::Abs($UsageCost-$ObservedCost) -gt 0.000001) { $FailureCount++ }
+  $ExpectedSetHash = Get-PersonalCertificationBindingHash -Value ([object[]]@($ReceiptRows))
+  if ([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '') -cne $ExpectedSetHash) { $FailureCount++ }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0 -and $Expected.Count -gt 0)
+    failure_count = $FailureCount + $(if($Expected.Count-gt0){0}else{1})
+    expected_receipt_count = $Expected.Count
+    receipt_row_count = @($ReceiptRows).Count
+    receipt_set_sha256 = $ExpectedSetHash
+    adapter_digest_sha256 = $AdapterDigest
+    provider_usage_cost_usd = [Math]::Round($UsageCost,9)
+  }
+}
+
+function Write-PersonalOwnerCanaryArtifactHashes {
+  $Required = @(
+    'docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md',
+    'docs/execution/evidence/phase-10/P10-010/owner-canary-input-inventory.json',
+    'docs/execution/evidence/phase-10/P10-010/owner-canary-report.json',
+    'docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl',
+    'docs/execution/evidence/phase-10/P10-010/security-report.json',
+    'docs/execution/evidence/phase-10/P10-010/rollback-report.json',
+    'docs/execution/evidence/phase-10/P10-010/personal-release-certification.json',
+    'docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json'
+  )
+  $Artifacts = @()
+  $Missing = 0
+  $SchemaFailures = 0
+  foreach ($RelativePath in $Required) {
+    $Full = Join-Path $script:RepositoryRoot $RelativePath
+    if (-not (Test-Path -LiteralPath $Full -PathType Leaf)) { $Missing++; continue }
+    if ($RelativePath.EndsWith('.json')) {
+      try { $null = Get-Content -LiteralPath $Full -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $SchemaFailures++ }
+    } elseif ($RelativePath.EndsWith('.jsonl')) {
+      $LineCount = 0
+      foreach ($Line in [IO.File]::ReadLines($Full, [Text.UTF8Encoding]::new($false))) {
+        if ([string]::IsNullOrWhiteSpace($Line)) { continue }
+        $LineCount++
+        try { $null = $Line | ConvertFrom-Json -ErrorAction Stop } catch { $SchemaFailures++ }
+      }
+      if ($LineCount -eq 0) { $SchemaFailures++ }
+    }
+    $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.jsonl')){'application/x-ndjson'}else{'text/markdown'}) -ArtifactType 'personal-owner-canary-release-evidence' -GeneratedByStep 'TASK-P10-010:AutomatedAcceptancePreflight'
+  }
+  $State = Get-PersonalOwnerCanaryState
+  $Document = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P10-010'
+    git_object_format = Get-GitObjectFormat
+    candidate_head_oid = [string]$State.candidate_head_oid
+    governance_head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+    generated_by = 'Invoke-TaskGate.ps1:Write-PersonalOwnerCanaryArtifactHashes'
+    artifacts = $Artifacts
+    production_write_count = [int]$State.checks.unexpected_production_write_count
+    recorded_at = [DateTimeOffset]::Now.ToString('o')
+  }
+  $Path = Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json'
+  Write-AtomicJson -LiteralPath $Path -Value $Document
+  $HashMismatches = 0
+  foreach ($Artifact in $Artifacts) {
+    $Full = Join-Path $script:RepositoryRoot ([string]$Artifact.path_or_reference)
+    if (-not (Test-Path -LiteralPath $Full -PathType Leaf) -or (Get-Sha256 -LiteralPath $Full) -cne [string]$Artifact.sha256) { $HashMismatches++ }
+  }
+  $FailureCount = $Missing + $SchemaFailures + $HashMismatches + [int]$Document.production_write_count
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    missing_count = $Missing
+    schema_failure_count = $SchemaFailures
+    hash_mismatch_count = $HashMismatches
+    artifact_count = $Artifacts.Count
+    artifact_hashes_sha256 = Get-Sha256 -LiteralPath $Path
+  }
+}
+
+function New-PersonalOwnerCanaryCertificationArtifacts {
+  $SourceState = Get-PersonalOwnerCanaryState -SourceOnly
+  $Owner = $SourceState.owner_canary
+  $LedgerPath = Join-Path $script:TaskEvidenceDirectory 'commands.json'
+  $Ledger = if (Test-Path -LiteralPath $LedgerPath -PathType Leaf) {
+    Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  } else { $null }
+  $CommandState = Get-PersonalOwnerCanaryCommandState -OwnerCanary $Owner -Ledger $Ledger
+  $PreAttestationState = Get-P10010PreAttestationGateState
+  if (-not [bool]$SourceState.passed -or -not [bool]$CommandState.passed -or -not [bool]$PreAttestationState.passed) {
+    return [ordered]@{
+      passed = $false
+      failure_count = [int]$SourceState.failure_count + [int]$CommandState.failure_count + [int]$PreAttestationState.failure_count
+      source_state = $SourceState
+      command_state = $CommandState
+      pre_attestation_state = $PreAttestationState
+      generation_status = 'not_started_source_predicate_failure'
+    }
+  }
+  $P10009StatusPath = Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-009.json'
+  $P10009Status = Get-Content -LiteralPath $P10009StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  $P10009 = Get-PersonalReleaseCertificationState -ExpectedCandidateHeadOid ([string]$P10009Status.head_oid)
+  $BindingState = Get-PersonalOwnerCanaryRepositoryBindingState -P10009Certification $P10009 -PreAttestationGateState $PreAttestationState -RequirePreAttestation
+  if (-not [bool]$BindingState.passed) {
+    return [ordered]@{
+      passed = $false
+      failure_count = [int]$BindingState.failure_count
+      source_state = $SourceState
+      command_state = $CommandState
+      pre_attestation_state = $PreAttestationState
+      binding_state = $BindingState
+      generation_status = 'not_started_repository_binding_failure'
+    }
+  }
+
+  $OwnerPath = Join-Path $script:TaskEvidenceDirectory 'owner-canary-report.json'
+  $FinalPath = Join-Path $script:TaskEvidenceDirectory 'personal-release-certification.json'
+  $AttestationPath = Join-Path $script:TaskEvidenceDirectory 'automated-acceptance-attestation.json'
+  $OwnerHash = Get-Sha256 -LiteralPath $OwnerPath
+  $GeneratedAt = [DateTimeOffset]::Now.ToString('o')
+  $FinalExisted = Test-Path -LiteralPath $FinalPath -PathType Leaf
+  if ($FinalExisted) {
+    $ExistingFinal = Get-Content -LiteralPath $FinalPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $GeneratedAt = [string](Get-PersonalCertificationPropertyValue $ExistingFinal 'generated_at' '')
+  }
+  $Material = New-PersonalOwnerCanaryCertificationMaterial -P10009Certification $P10009 -OwnerCanary $Owner -OwnerCanarySha256 $OwnerHash -CertificationBindings $BindingState.values -FinalCertificationSha256 $ZeroHash -GeneratedAt $GeneratedAt
+  if ($FinalExisted) {
+    if ((Get-PersonalCertificationBindingHash -Value $ExistingFinal) -cne (Get-PersonalCertificationBindingHash -Value $Material.final_certification)) {
+      return [ordered]@{passed=$false;failure_count=1;generation_status='existing_final_certification_conflict'}
+    }
+  } else {
+    Write-AtomicJson -LiteralPath $FinalPath -Value $Material.final_certification
+  }
+  $FinalHash = Get-Sha256 -LiteralPath $FinalPath
+  $Material = New-PersonalOwnerCanaryCertificationMaterial -P10009Certification $P10009 -OwnerCanary $Owner -OwnerCanarySha256 $OwnerHash -CertificationBindings $BindingState.values -FinalCertificationSha256 $FinalHash -GeneratedAt $GeneratedAt
+  $AttestationExisted = Test-Path -LiteralPath $AttestationPath -PathType Leaf
+  if ($AttestationExisted) {
+    $ExistingAttestation = Get-Content -LiteralPath $AttestationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    if ((Get-PersonalCertificationBindingHash -Value $ExistingAttestation) -cne (Get-PersonalCertificationBindingHash -Value $Material.attestation)) {
+      return [ordered]@{passed=$false;failure_count=1;generation_status='existing_automated_attestation_conflict'}
+    }
+  } else {
+    Write-AtomicJson -LiteralPath $AttestationPath -Value $Material.attestation
+  }
+  $FinalState = Get-PersonalOwnerCanaryState
+  if (-not [bool]$FinalState.passed) {
+    return [ordered]@{passed=$false;failure_count=[int]$FinalState.failure_count;generation_status='generated_artifact_revalidation_failed';state=$FinalState}
+  }
+  $ArtifactState = Write-PersonalOwnerCanaryArtifactHashes
+  $Passed = [bool]$ArtifactState.passed
+  return [ordered]@{
+    passed = $Passed
+    failure_count = if ($Passed) { 0 } else { [int]$ArtifactState.failure_count }
+    generation_status = if ($FinalExisted -and $AttestationExisted) { 'idempotent_noop' } else { 'generated_by_runner' }
+    final_certification_sha256 = $FinalHash
+    attestation_sha256 = Get-Sha256 -LiteralPath $AttestationPath
+    state = $FinalState
+    artifact_state = $ArtifactState
   }
 }
 
@@ -1788,7 +2882,7 @@ function Get-P10ObservationWindowState {
   return [ordered]@{passed=($Failure-eq0);checks=$Checks;minimum_nonoverlap_observation_hours=$MinimumTotalHours;observed_nonoverlap_hours=[Math]::Round($ObservedTotalHours,3)}
 }
 
-function Get-P10010GateModeState {$RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify');if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}};$Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json;$Results=@($Ledger.results);$MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1});$FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;$Rows=@($Results|Where-Object{[string]$_.check_id-ceq$ModeName});$Rows.Count-eq1-and[string]$Rows[0].status-cne'passed'});return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}}
+function Get-P10010GateModeState {$RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify','AutomatedAcceptancePreflight');if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}};$Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json;$Results=@($Ledger.results);$MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1});$FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;$Rows=@($Results|Where-Object{[string]$_.check_id-ceq$ModeName});$Rows.Count-eq1-and[string]$Rows[0].status-cne'passed'});return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}}
 function Get-P10010ChangedPaths {$Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard);$CandidateCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- 'docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md' 'docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json')-join'').Trim();$ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\phase-runtime-manifest.json';$Belongs=$false;if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'-and(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){$Manifest=Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json;& git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) $CandidateCommit 2>$null;$Belongs=$LASTEXITCODE-eq0-and$CandidateCommit-cne[string]$Manifest.phase_base_oid};if($Belongs){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)};return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)}
 function Test-P10010PathAllowed {param([Parameter(Mandatory=$true)][string]$RelativePath);if($RelativePath-ceq'docs/execution/status/TASK-P10-010.json'){return $true};return $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-010/',[StringComparison]::Ordinal)}
 
@@ -5083,6 +6177,29 @@ function Invoke-ModeSecurity {
     $Checks=[ordered]@{no_extra_boundary=($ImplementationChanges-eq0);valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count;unsafe_command_example_count=[regex]::Matches($Text,'(?i)(git\s+reset\s+--hard|git\s+clean\s+-fdx|force-push|rm\s+-rf)').Count;implementation_file_change_count=$ImplementationChanges;unexpected_paths=$Unexpected.Count;production_write_count=0}
     if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unsafe_command_example_count+[int]$Checks.implementation_file_change_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p10_089_security_failed' $Checks};return New-PassedResult $Checks
   }
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $State=Get-PersonalOwnerCanaryState -SourceOnly;$Owner=$State.owner_canary;$Security=Get-PersonalCertificationPropertyValue $Owner 'security' $null;$Reliability=Get-PersonalCertificationPropertyValue $Owner 'reliability' $null
+    $Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)})
+    $Text='';foreach($Name in @('release-b-gate-dossier.md','owner-canary-input-inventory.json','owner-canary-report.json','owner-canary-receipts.jsonl','personal-release-certification.json','automated-acceptance-attestation.json')){$Full=Join-Path $script:TaskEvidenceDirectory $Name;if(Test-Path -LiteralPath $Full -PathType Leaf){$Text+=[IO.File]::ReadAllText($Full,[Text.UTF8Encoding]::new($false))+"`n"}}
+    $SecretScan=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count
+    $PiiScan=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count
+    $Checks=[ordered]@{
+      arbitrary_sql_executor_count=[int](Get-PersonalCertificationPropertyValue $Security 'arbitrary_sql_executor_count' 1)
+      cross_tenant_leak_count=[int](Get-PersonalCertificationPropertyValue $Security 'cross_tenant_leak_count' 1)
+      unauthorized_write_count=[int](Get-PersonalCertificationPropertyValue $Security 'unauthorized_write_count' 1)
+      secret_or_pii_leak_count=[int](Get-PersonalCertificationPropertyValue $Security 'secret_or_pii_leak_count' 1)+$SecretScan+$PiiScan
+      duplicate_side_effect_count=[int](Get-PersonalCertificationPropertyValue $Reliability 'duplicate_side_effect_count' 1)
+      permanent_run_count=[int](Get-PersonalCertificationPropertyValue $Reliability 'permanent_run_count' 1)
+      missing_audit_receipt_count=[int](Get-PersonalCertificationPropertyValue $Security 'missing_audit_receipt_count' 1)
+      forbidden_tool_execution_count=[int](Get-PersonalCertificationPropertyValue $Security 'forbidden_tool_execution_count' 1)
+      receipt_ledger_failure_count=[int]$State.checks.receipt_ledger_failure_count
+      adapter_binding_failure_count=[int]$State.checks.adapter_binding_failure_count
+      unexpected_paths=$Unexpected.Count
+      production_write_count=[int](Get-PersonalCertificationPropertyValue $Owner 'unexpected_production_write_count' 1)
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;governance_profile='personal_automated';checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_security_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-010') {$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$DossierPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-dossier.md';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json';$Text=if(Test-Path -LiteralPath $DossierPath){Get-Content -LiteralPath $DossierPath -Raw -Encoding UTF8}else{''};$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Checks=[ordered]@{arbitrary_sql_executor_count=[regex]::Matches($Text,'(?im)(?:execute\s+arbitrary\s+sql|psql\s+.*(?:-c|--command))').Count;restore_verification_failures=if($null-ne$Report){[int]$Report.security.restore_verification_failures}else{1};pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=if($null-ne$Report){[int]$Report.security.missing_audit_receipt_count}else{1};unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {$Paths=@(Get-P10009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10009PathAllowed -RelativePath $_)});$ObservationPath=Join-Path $script:TaskEvidenceDirectory 'rollout-observation.json';$Text=if(Test-Path -LiteralPath $ObservationPath){Get-Content -LiteralPath $ObservationPath -Raw -Encoding UTF8}else{''};$Report=if($Text){$Text|ConvertFrom-Json}else{$null};$Actions=if($null-ne$Report){[int]$Report.external_action_count}else{0};$Receipts=if($null-ne$Report){@($Report.audit_receipts).Count}else{0};$Checks=[ordered]@{missing_audit_receipt_count=[Math]::Max(0,$Actions-$Receipts);pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;unapproved_external_action_count=if($null-ne$Report-and[bool]$Report.production_activation){$Actions}else{0};unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_009_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-008') {$Paths=@(Get-P10008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10008PathAllowed -RelativePath $_)});$Text=@(@('cost-report.json','cost-denominator.md')|ForEach-Object{$P=Join-Path $script:TaskEvidenceDirectory $_;if(Test-Path -LiteralPath $P){Get-Content -LiteralPath $P -Raw -Encoding UTF8}})-join"`n";$Checks=[ordered]@{no_extra_boundary=(@($Paths|Where-Object{$_-match'(^agent-service/|^contracts/|^supabase/|migrations/)'}).Count-eq0);valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p10_008_security_failed' $Checks};return New-PassedResult $Checks}
@@ -6481,6 +7598,34 @@ function Invoke-ModeVerify {
     Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/C.json') -Value $Release;return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-990') {$P=Get-P10LocalProjection;$State=Get-P10GateModeState;Write-P10LocalProjectionEvidence -ReadyForReview ([bool]$P.local_projection_passed-and[bool]$State.passed);$Checks=[ordered]@{overall_status=if([bool]$P.local_projection_passed-and[bool]$State.passed){'passed'}else{'failed'};primary_assertion=[bool]$P.local_projection_passed;first_phase_le_p10_unimplemented_count=[int]$P.checks.first_phase_le_p10_unimplemented_count;e0_e1_complete=([int]$P.checks.e1_failure_count-eq0);rollout_complete=([int]$P.checks.rollout_failure_count-eq0);approval_complete=([int]$P.checks.status_failure_count+[int]$P.checks.release_gate_failure_count-eq0);formal_phase_acceptance='pending_external';forced_rejection_count=if([bool]$P.local_projection_passed-and[bool]$State.passed){0}else{1};missing_gate_modes=@($State.missing_modes).Count;failed_gate_modes=@($State.failed_modes).Count;production_write_count=0};if([string]$Checks.overall_status-cne'passed'){return New-BlockedResult 'p10_990_acceptance_verification_failed' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $State=Get-PersonalOwnerCanaryState -SourceOnly;$Owner=$State.owner_canary;$Allocation=Get-PersonalCertificationPropertyValue $Owner 'allocation' $null;$Reliability=Get-PersonalCertificationPropertyValue $Owner 'reliability' $null;$Cost=Get-PersonalCertificationPropertyValue $Owner 'cost' $null
+    $Checks=[ordered]@{
+      primary_assertion_passed=[bool]$State.passed
+      c1_c5_passed=([int]$State.checks.p10_009_certification_invalid-eq0)
+      candidate_drift_count=[int]$State.checks.identity_binding_failure_count+[int](Get-PersonalCertificationPropertyValue $Reliability 'candidate_drift_count' 1)
+      owner_canary_journey_count=[int](Get-PersonalCertificationPropertyValue $Owner 'journey_count' 0)
+      owner_canary_journeys_gte=([int](Get-PersonalCertificationPropertyValue $Owner 'journey_count' 0)-ge10)
+      owner_canary_minutes=[double](Get-PersonalCertificationPropertyValue $Owner 'elapsed_minutes' 0)
+      owner_canary_minutes_gte=([double](Get-PersonalCertificationPropertyValue $Owner 'elapsed_minutes' 0)-ge30)
+      non_owner_allocation_count=[int](Get-PersonalCertificationPropertyValue $Allocation 'non_owner_allocation_count' 1)
+      old_path_failures=[int](Get-PersonalCertificationPropertyValue $Reliability 'old_path_failures' 1)
+      traceability_failures=[int](Get-PersonalCertificationPropertyValue $Reliability 'traceability_failures' 1)
+      cost_receipt_missing_count=[int](Get-PersonalCertificationPropertyValue $Cost 'cost_receipt_missing_count' 1)
+      receipt_ledger_failure_count=[int]$State.checks.receipt_ledger_failure_count
+      adapter_binding_failure_count=[int]$State.checks.adapter_binding_failure_count
+      rollback_drill=[string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' 'missing')
+      source_acceptance_predicates_passed=[bool]$State.passed
+      automated_acceptance_predicates_passed=[bool]$State.passed
+      safety_redline_failure_count=[int]$State.checks.safety_redline_failure_count
+      owner_scope_failure_count=[int]$State.checks.owner_scope_failure_count
+      production_boundary_failure_count=[int]$State.checks.production_boundary_failure_count
+      final_certification_failure_count=0
+      attestation_failure_count=0
+      production_write_count=[int]$State.checks.unexpected_production_write_count
+    }
+    if(-not[bool]$State.passed){return New-BlockedResult 'p10_010_personal_owner_canary_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-010') {
     $ReportPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Slices=if($null-ne$Report){@($Report.critical_slices)}else{@()};$Required=@('security','reliability','quality','cost','operations','sample_sufficiency');$Ids=@($Slices|ForEach-Object{[string]$_.id});$SliceValid=$Slices.Count-eq6-and@($Required|Where-Object{$_-notin$Ids}).Count-eq0-and@($Slices|Where-Object{-not[bool]$_.threshold_approved-or-not[bool]$_.passed-or[double]$_.degradation-gt[double]$_.maximum_approved_degradation}).Count-eq0
     $RolloutPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-009/rollout-observation.json';$PlanPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-007/rollout-plan-report.json';$StatusPath=Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-009.json';$Rollout=if(Test-Path -LiteralPath $RolloutPath){Get-Content -LiteralPath $RolloutPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Plan=if(Test-Path -LiteralPath $PlanPath){Get-Content -LiteralPath $PlanPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$P10009Status=if(Test-Path -LiteralPath $StatusPath){Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$WindowState=Get-P10ObservationWindowState -Observation $Rollout -Plan $Plan;$RolloutHash=if(Test-Path -LiteralPath $RolloutPath){Get-Sha256 -LiteralPath $RolloutPath}else{''};$RolloutArtifactHashMismatch=if($null-ne$Report-and[string]$Report.p10_009.artifact_sha256-ceq$RolloutHash){0}else{1}
@@ -8405,6 +9550,15 @@ function Invoke-ModeEvidence {
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=$Head;artifacts=$Artifacts})
     $Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=$Head;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p10_089_evidence_failed' $Checks};return New-PassedResult $Checks
   }
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $Required=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/owner-canary-input-inventory.json','docs/execution/evidence/phase-10/P10-010/owner-canary-report.json','docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl','docs/execution/evidence/phase-10/P10-010/security-report.json')
+    $Artifacts=@();$Missing=0;$Schema=0
+    foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}}elseif($RelativePath.EndsWith('.jsonl')){$LineCount=0;foreach($Line in [IO.File]::ReadLines($Full,[Text.UTF8Encoding]::new($false))){if([string]::IsNullOrWhiteSpace($Line)){continue};$LineCount++;try{$null=$Line|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};if($LineCount-eq0){$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.jsonl')){'application/x-ndjson'}else{'text/markdown'}) -ArtifactType 'personal-owner-canary-release-evidence' -GeneratedByStep 'TASK-P10-010:Evidence'}
+    $State=Get-PersonalOwnerCanaryState -SourceOnly
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;candidate_head_oid=[string]$State.candidate_head_oid;governance_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=[int]$State.checks.unexpected_production_write_count})
+    $Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;owner_canary_contract_failure_count=if([bool]$State.passed){0}else{[int]$State.failure_count};production_write_count=[int]$State.checks.unexpected_production_write_count}
+    if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_evidence_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-010') {$Required=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json','docs/execution/evidence/phase-10/P10-010/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}else{'text/markdown'}) -ArtifactType 'phase-10-release-b-gate-evidence' -GeneratedByStep 'TASK-P10-010:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_010_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {$Required=@('docs/execution/evidence/phase-10/P10-009/rollout-observation.json','docs/execution/evidence/phase-10/P10-009/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType 'application/json' -ArtifactType 'phase-10-rollout-observation-evidence' -GeneratedByStep 'TASK-P10-009:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_009_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-008') {$Required=@('docs/execution/evidence/phase-10/P10-008/cost-report.json','docs/execution/evidence/phase-10/P10-008/cost-denominator.md','docs/execution/evidence/phase-10/P10-008/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}else{'text/markdown'}) -ArtifactType 'phase-10-cost-accounting-evidence' -GeneratedByStep 'TASK-P10-008:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_008_evidence_failed' $Checks};return New-PassedResult $Checks}
@@ -9830,6 +10984,64 @@ function Invoke-ModeEvidence {
 }
 
 function Invoke-ModePreflight {
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $DependencyStatusPath = Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P10-009.json'
+    $DependencyStatus = if (Test-Path -LiteralPath $DependencyStatusPath -PathType Leaf) {
+      Get-Content -LiteralPath $DependencyStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } else { $null }
+    $ExpectedCandidate = if ($null -ne $DependencyStatus) { [string]$DependencyStatus.head_oid } else { '' }
+    $Certification = Get-PersonalReleaseCertificationState -ExpectedCandidateHeadOid $ExpectedCandidate
+    $InputState = Get-PersonalOwnerCanaryInputState -RepositoryRoot $script:RepositoryRoot
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'owner-canary-input-inventory.json') -Value ([ordered]@{
+      schema_version = '1.0'
+      task_id = 'TASK-P10-010'
+      governance_profile = 'personal_automated'
+      candidate_head_oid = $ExpectedCandidate
+      inspection_mode = [string]$InputState.inspection_mode
+      secret_value_read_count = [int]$InputState.secret_value_read_count
+      environment_name_presence = $InputState.environment_name_presence
+      missing_environment_names = @($InputState.missing_environment_names)
+      adapter = [ordered]@{path=[string]$InputState.adapter_path;exists=[bool]$InputState.adapter_exists;tracked=[bool]$InputState.adapter_tracked;reparse_point=[bool]$InputState.adapter_reparse_point;sha256=[string]$InputState.adapter_digest_sha256}
+      dependency_certification_passed = [bool]$Certification.passed
+      readiness_status = if ([bool]$InputState.passed -and [bool]$Certification.passed) { 'ready' } else { 'blocked_missing_inputs_or_dependency' }
+      production_write_count = 0
+      recorded_at = [DateTimeOffset]::Now.ToString('o')
+    })
+    $Paths = @(Get-P10010ChangedPaths)
+    $Unexpected = @($Paths | Where-Object { -not (Test-P10010PathAllowed -RelativePath $_) })
+    $StatusValid =
+      $null -ne $DependencyStatus -and
+      [string]$DependencyStatus.task_id -ceq 'TASK-P10-009' -and
+      [string]$DependencyStatus.status -ceq 'accepted' -and
+      -not [bool]$DependencyStatus.reviewer_independent -and
+      [string]$DependencyStatus.governance_profile -ceq 'personal_automated' -and
+      [string]$DependencyStatus.acceptance_method -ceq 'automated_attestation' -and
+      [string]$DependencyStatus.decision_reference -ceq [string]$Certification.certification_path -and
+      [string]$DependencyStatus.attestation_sha256 -ceq [string]$Certification.certification_sha256 -and
+      [string]$DependencyStatus.head_oid -ceq [string]$Certification.candidate_head_oid
+    $Checks = [ordered]@{
+      task_id_match = $true
+      dependency_failures = if ($StatusValid -and [bool]$Certification.passed) { 0 } else { 1 }
+      status_cas_conflict = 0
+      unexpected_paths = $Unexpected.Count
+      base_drift = [int]$Certification.checks.candidate_not_ancestor
+      prior_phase_regression_failures = if ([bool]$Certification.passed) { 0 } else { [int]$Certification.failure_count }
+      accepted_dependency_task_id = if ($null -ne $DependencyStatus) { [string]$DependencyStatus.task_id } else { '' }
+      accepted_candidate_head_oid = $ExpectedCandidate
+      personal_automated_dependency_valid = $StatusValid
+      owner_canary_input_failure_count = [int]$InputState.failure_count
+      secret_value_read_count = [int]$InputState.secret_value_read_count
+      adapter_ready = ([bool]$InputState.adapter_exists -and [bool]$InputState.adapter_tracked -and -not [bool]$InputState.adapter_reparse_point)
+      reviewer_independent_required = $false
+      automated_attestation_required = $true
+      production_write_count = 0
+    }
+    if ([int]$Checks.dependency_failures + [int]$Checks.status_cas_conflict + [int]$Checks.unexpected_paths +
+        [int]$Checks.base_drift + [int]$Checks.prior_phase_regression_failures + [int]$Checks.owner_canary_input_failure_count + [int]$Checks.secret_value_read_count -ne 0) {
+      return New-BlockedResult 'p10_010_personal_preflight_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P11-089') {
     if($ExecutionMode-cne'formal_adopted'){return New-BlockedResult 'p11_089_formal_p11_010_acceptance_required' ([ordered]@{implementation_terminal=$false;dependency_failures=1;unexpected_paths=0;unresolved_evidence=1;prior_phase_regression_failures=0;base_drift=0;production_write_count=0})};$Boundary=Get-P11089ExecutionBoundaryState;$Manifest=$Boundary.dependency.manifest;$PriorFailures=if($null-ne$Manifest){[int]$Manifest.prior_phase_regression_failures+[int]$Manifest.not_run+[int]$Manifest.future_oid_literal_count+[int]$Manifest.base_drift+[int]$Manifest.source_hash_drift}else{1};$Checks=[ordered]@{implementation_terminal=([int]$Boundary.dependency.checks.accepted_predecessor_count-eq10);dependency_failures=if([bool]$Boundary.passed){0}else{1};unexpected_paths=@($Boundary.branch.unexpected_paths).Count;unresolved_evidence=if([bool]$Boundary.dependency.passed){0}else{1};prior_phase_regression_failures=$PriorFailures;base_drift=if([bool]$Boundary.branch.checks.base_ancestor){0}else{1};accepted_implementation_task_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0};if(-not[bool]$Checks.implementation_terminal-or[int]$Checks.dependency_failures+[int]$Checks.unexpected_paths+[int]$Checks.unresolved_evidence+[int]$Checks.prior_phase_regression_failures+[int]$Checks.base_drift-ne0){return New-BlockedResult 'p11_089_preflight_failed' $Checks};return New-PassedResult $Checks
   }
@@ -10852,6 +12064,20 @@ function Invoke-ModeWorkPreflight {
     if (-not [bool]$Checks.work_contract_frozen) { return New-BlockedResult 'p10_009_work_preflight_failed' $Checks }
     return New-PassedResult $Checks
   }
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $RequiredChange='verify C1–C5 hashes → prove same candidate/build → allocation 0 baseline → enable owner identity only → execute 10–20 scripted journeys for 30–60min → monitor receipts/redlines → allocation 0 → aggregate → auto accept or rollback'
+    $RequiredTargets=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/owner-canary-input-inventory.json','docs/execution/evidence/phase-10/P10-010/owner-canary-report.json','docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl','docs/execution/evidence/phase-10/P10-010/personal-release-certification.json','docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json')
+    $RequiredAdapterPath='docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'
+    $RequiredArguments=@('candidate=bound_from_p10_009','endpoint_ref=GONOW_AGENT_API_URL','owner_identity_ref=GONOW_OWNER_CANARY_IDENTITY_REF','credential_provider=GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER','budget_cap_ref=GONOW_RELEASE_B_BUDGET_CAP_REF','adapter_path=docs/execution/commands/Invoke-PersonalOwnerCanary.ps1','adapter_digest=sha256','journey_adapter=GONOW_RELEASE_B_JOURNEY_ADAPTER','flag_adapter=GONOW_RELEASE_B_FLAG_ADAPTER','audit_adapter=GONOW_RELEASE_B_AUDIT_ADAPTER','kill_switch_adapter=GONOW_RELEASE_B_KILL_SWITCH_ADAPTER','old_path_adapter=GONOW_RELEASE_B_OLD_PATH_ADAPTER','trace_adapter=GONOW_RELEASE_B_TRACE_ADAPTER','provider_usage_adapter=GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER','owner_identity_only=true','allocation_baseline=0','journeys=10..20','minutes=30..60','action_lifecycle=baseline_zero>owner_enable>journeys>kill>old_path>final_zero','generation_fencing=continuous','receipt_ledger=owner-canary-receipts.jsonl','final_allocation=0')
+    $Actions=@($script:Task.work_contract.external_actions)
+    $ActionValid=$Actions.Count-eq1-and[string]$Actions[0].adapter_capability-ceq'p10_owner_canary_adapter'-and[string]$Actions[0].identity-ceq'scoped_owner_canary_identity_ref'-and[string]$Actions[0].target-ceq'gonow.agent.itinerary_planning.release_b'-and(@($Actions[0].arguments)-join"`n")-ceq($RequiredArguments-join"`n")-and[string]$Actions[0].idempotency_or_cas-ceq'candidate_oid+owner_identity_ref+expected_generation+attempt_id'-and[string]$Actions[0].receipt-ceq'docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl'-and[string]$Actions[0].rollback-ceq'allocation_zero_then_kill_switch_and_old_path'
+    $AdapterInputValid=$RequiredAdapterPath-in@($script:Task.read_only_inputs)
+    $TargetsValid=@($RequiredTargets|Where-Object{$_-notin@($script:Task.file_allowlist)}).Count-eq0
+    $Checks=[ordered]@{work_contract_frozen=(@($script:Task.work_contract.required_changes).Count-eq1-and[string]$script:Task.work_contract.required_changes[0]-ceq$RequiredChange-and$TargetsValid-and$ActionValid-and$AdapterInputValid);ambiguous_target_count=0;unresolved_adapter_count=if($ActionValid-and$AdapterInputValid){0}else{1};implementation_write_count=0;external_action_contract_count=$Actions.Count;adapter_input_frozen=$AdapterInputValid;argument_contract_exact=$ActionValid;production_write_count=0}
+    $ExternalAction = if ($Actions.Count -eq 1) { $Actions[0] } else { $null }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'work-preflight.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;required_change=$RequiredChange;repo_patch_targets=$RequiredTargets;adapter_path=$RequiredAdapterPath;external_action=$ExternalAction;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if(-not[bool]$Checks.work_contract_frozen-or[int]$Checks.unresolved_adapter_count-ne0){return New-BlockedResult 'p10_010_work_preflight_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P11-089') {
     $Boundary=Get-P11089ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_work_preflight_boundary_failed' $Boundary};$Definition=Get-P11089Definition;$Required=@($script:Task.work_contract.required_changes);$ExpectedAssertion="primary assertion and DoD bound to execplan card sha256=$($Definition.card_sha)";$FilesMatch=(@($script:Task.file_allowlist|Sort-Object)-join',')-ceq((@($Definition.files|Sort-Object))-join',');$DirectoryValid=@($script:Task.directory_allowlist).Count-eq1-and[string]$script:Task.directory_allowlist[0]-ceq[string]$Definition.directories[0].path;$Checks=[ordered]@{work_contract_frozen=($Required.Count-eq1-and[string]$Required[0]-ceq[string]$Definition.required_change-and$FilesMatch-and$DirectoryValid-and$ExpectedAssertion-in@($script:Task.expected_assertions));ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;accepted_implementation_task_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'work-preflight.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;required_change=[string]$Definition.required_change;files=@($Definition.files);directory=[string]$Definition.directories[0].path;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if(-not[bool]$Checks.work_contract_frozen-or[int]$Checks.accepted_implementation_task_count-ne10){return New-BlockedResult 'p11_089_work_preflight_failed' $Checks};return New-PassedResult $Checks
   }
@@ -10996,6 +12222,16 @@ function Invoke-ModeWorksetVerify {
     $LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=if(Test-Path -LiteralPath $LedgerPath){Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Latest=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$Latest++}}}
     $Text=@($RequiredChanges|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf}|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n";$Gaps=0;foreach($Marker in @('Enable','Disable','Degrade','First checks','Situation','Task','Action','Result','pending_external','contract_change: false')){if($Text-cnotmatch[regex]::Escape($Marker)){$Gaps++}}
     $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($null-ne$Ledger){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$Latest;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_089_workset_failed' $Checks};return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)})
+    $Required=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/owner-canary-input-inventory.json','docs/execution/evidence/phase-10/P10-010/owner-canary-report.json','docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl','docs/execution/evidence/phase-10/P10-010/work-preflight.json','docs/execution/evidence/phase-10/P10-010/commands.json')
+    $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)})
+    $LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$LatestFailures=0
+    if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Where-Object{[string]$_.description-cne'Invoke TaskGate mode WorksetVerify'}|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}}
+    $State=Get-PersonalOwnerCanaryState -SourceOnly;$Owner=$State.owner_canary;$ExternalCommandState=Get-PersonalOwnerCanaryCommandState -OwnerCanary $Owner -Ledger $Ledger
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@($script:Task.read_only_inputs)}).Count;unrecorded_action_count=[int]$ExternalCommandState.failure_count;work_contract_assertion_gaps=$Missing.Count+$(if([bool]$State.passed){0}else{[int]$State.failure_count});nonzero_exit_count=$LatestFailures;candidate_drift_count=[int]$State.checks.identity_binding_failure_count;non_owner_allocation_count=[int]$State.checks.owner_scope_failure_count;production_write_count=[int]$State.checks.unexpected_production_write_count}
+    if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_workset_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-010') {$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Changed=@($Required|Where-Object{$_-in$Paths});$Text=@($Required|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)}|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_)-Raw -Encoding UTF8})-join"`n";$Markers=@('security','reliability','quality','cost','operations','sample_sufficiency','open_p0_p1','required_owner_approval_missing','rollback_drill','P10-009','artifact_sha256','minimum_nonoverlap_observation_hours','observed_nonoverlap_hours');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps+$(if($Changed.Count-lt2){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_workset_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {$Paths=@(Get-P10009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10009PathAllowed -RelativePath $_)});$Required='docs/execution/evidence/phase-10/P10-009/rollout-observation.json';$Full=Join-Path $script:RepositoryRoot $Required;$Missing=if(Test-Path -LiteralPath $Full -PathType Leaf){0}else{1};$Text=if($Missing-eq0){Get-Content -LiteralPath $Full -Raw -Encoding UTF8}else{''};$Markers=@('gonow.agent.itinerary_planning.release_b','approved_cohort_ids_only','stop_rule_bypass_count','timer_restarted_on_transition','required_adopted_runs','required_hours','window_started_at','window_ended_at','blocked_pending_approved_production_rollout','old_path_available');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing+$Gaps+$(if($Required-notin$Paths){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_009_workset_failed' $Checks};return New-PassedResult $Checks}
@@ -12310,6 +13546,14 @@ function Invoke-ModeRollbackVerify {
   }
   if ($TaskId -ceq 'TASK-P10-990') {& git -C $script:RepositoryRoot diff --check;$Exit=$LASTEXITCODE;$Paths=@(Get-P10990ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10990PathAllowed -RelativePath $_)});$Checks=[ordered]@{old_path_failures=0;unexpected_writes=$Unexpected.Count;rollback_not_run=0;diff_check_exit_code=$Exit;rollback_strategy='revert only the Phase 10 acceptance candidate and P10-990 generated evidence; retain rollout, audit, cost, and gate evidence';production_write_count=0};if([int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_990_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-089') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10089PathAllowed -RelativePath $_)});$Implementation=@($Paths|Where-Object{$_-match'^(?:agent-service/app|agent-service/migrations|supabase|lib|contracts)/'}).Count;$Required=@('docs/architecture/release-b-operations.md','docs/runbooks/release-b-rollout.md','docs/runbooks/agent-kill-switch.md','docs/api/release-b-gates.md');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Checks=[ordered]@{implementation_files_changed=$Implementation;broken_links=$Missing.Count;unexpected_writes=$Unexpected.Count;diff_check_exit_code=$Diff;rollback_strategy='revert only TASK-P10-089 documentation and generated evidence to the accepted P10-010 head; preserve implementation, blockers, and immutable task evidence';production_write_count=0};if((@($Checks.Values|Where-Object{$_-is[int]})|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_089_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    & git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)})
+    $State=Get-PersonalOwnerCanaryState -SourceOnly;$Owner=$State.owner_canary;$Allocation=Get-PersonalCertificationPropertyValue $Owner 'allocation' $null;$Reliability=Get-PersonalCertificationPropertyValue $Owner 'reliability' $null
+    $Passed=[bool]$State.passed-and[string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' '')-ceq'passed'-and[int](Get-PersonalCertificationPropertyValue $Reliability 'old_path_failures' 1)-eq0-and[int](Get-PersonalCertificationPropertyValue $Allocation 'final_percent' -1)-eq0-and[double](Get-PersonalCertificationPropertyValue $Reliability 'kill_switch_seconds' 31)-le30
+    $Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;allocation_returned_to_zero=([int](Get-PersonalCertificationPropertyValue $Allocation 'final_percent' -1)-eq0);kill_switch_and_old_path_passed=$Passed;rollback_strategy='set owner allocation to zero, activate the kill switch, verify the old route, preserve durable Run/Candidate/audit/usage evidence';production_write_count=[int]$State.checks.unexpected_production_write_count}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;governance_profile='personal_automated';checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code+[int]$Checks.production_write_count-ne0){return New-BlockedResult 'p10_010_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-010') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Passed=$null-ne$Report-and[bool]$Report.rollback.kill_switch_ready-and[bool]$Report.rollback.old_path_available-and[int]$Report.rollback.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;kill_switch_and_old_path_passed=$Passed;rollback_strategy='activate the kill switch, set allocation to zero, keep the old route, and retain all gate evidence';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_010_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10009PathAllowed -RelativePath $_)});$ObservationPath=Join-Path $script:TaskEvidenceDirectory 'rollout-observation.json';$Report=if(Test-Path -LiteralPath $ObservationPath){Get-Content -LiteralPath $ObservationPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Passed=$null-ne$Report-and-not[bool]$Report.production_activation-and[int]$Report.current_allocation_percent-eq0-and[bool]$Report.rollback.kill_switch_ready-and[bool]$Report.rollback.old_path_available-and[int]$Report.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;allocation_zero_and_old_path_passed=$Passed;rollback_strategy='keep allocation at zero; use the kill switch and old route; preserve observation and audit evidence';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_009_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-008') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10008PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'cost-report.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Passed=$null-ne$Report-and[string]$Report.rollback.first_route-ceq'economic'-and[bool]$Report.rollback.old_path_available-and[int]$Report.rollback.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;economic_route_and_old_path_passed=$Passed;rollback_strategy='route to the economic tier or old path; retain cost ledgers and never hide failed-attempt cost';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_008_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
@@ -13016,6 +14260,31 @@ function Invoke-ModeAutomatedAcceptancePreflight {
     }
     if (-not [bool]$Certification.passed) { return New-BlockedResult 'p10_009_automated_acceptance_preflight_failed' $Checks }
     return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P10-010') {
+    $Generation=New-PersonalOwnerCanaryCertificationArtifacts;$State=Get-PersonalCertificationPropertyValue $Generation 'state' $null;$AttestationPath='docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json';$AttestationFull=Join-Path $script:RepositoryRoot $AttestationPath
+    if($null-eq$State){$Source=Get-PersonalOwnerCanaryState -SourceOnly;$Checks=[ordered]@{personal_profile=([string]$Governance.profile-ceq'personal_automated');generation_status=[string](Get-PersonalCertificationPropertyValue $Generation 'generation_status' 'failed');generation_failure_count=[int](Get-PersonalCertificationPropertyValue $Generation 'failure_count' 1);mandatory_gate_failures=[int](Get-PersonalCertificationPropertyValue $Generation 'failure_count' 1);automated_attestation_valid=$false;attestation_path=$AttestationPath;attestation_sha256=$ZeroHash;production_observation_required=$false;production_write_count=[int]$Source.checks.unexpected_production_write_count};return New-BlockedResult 'p10_010_automated_acceptance_generation_failed' $Checks}
+    $Checks=[ordered]@{
+      personal_profile=([string]$Governance.profile-ceq'personal_automated')
+      generation_status=[string]$Generation.generation_status
+      generation_failure_count=[int]$Generation.failure_count
+      candidate_drift=[int]$State.checks.identity_binding_failure_count
+      mandatory_gate_failures=if([bool]$State.passed){0}else{[int]$State.failure_count}
+      owner_canary_journey_failures=[int]$State.checks.journey_count_failure_count+[int]$State.checks.journey_class_failure_count
+      owner_canary_window_failures=[int]$State.checks.elapsed_window_failure_count
+      non_owner_scope_failures=[int]$State.checks.owner_scope_failure_count
+      production_boundary_failures=[int]$State.checks.production_boundary_failure_count
+      redline_failures=[int]$State.checks.safety_redline_failure_count
+      receipt_ledger_failures=[int]$State.checks.receipt_ledger_failure_count
+      adapter_binding_failures=[int]$State.checks.adapter_binding_failure_count
+      rollback_failures=[int]$State.checks.rollback_failure_count
+      automated_attestation_valid=([bool]$State.passed-and(Test-Path -LiteralPath $AttestationFull -PathType Leaf))
+      attestation_path=$AttestationPath
+      attestation_sha256=if(Test-Path -LiteralPath $AttestationFull -PathType Leaf){Get-Sha256 -LiteralPath $AttestationFull}else{$ZeroHash}
+      production_observation_required=$false
+      production_write_count=[int]$State.checks.unexpected_production_write_count
+    }
+    if(-not[bool]$Generation.passed-or-not[bool]$State.passed){return New-BlockedResult 'p10_010_automated_acceptance_preflight_failed' $Checks};return New-PassedResult $Checks
   }
   return Invoke-PendingMode 'AutomatedAcceptancePreflight'
 }
@@ -14463,7 +15732,7 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
     $ModeState=Get-P10089GateModeState;if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P10-010') {
     $ModeState=Get-P10010GateModeState
-    if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_010_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
+    if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath 'docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json'}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_010_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-P10-009') {
     $ModeState=Get-P10009GateModeState
     if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath 'docs/execution/evidence/phase-10/P10-009/personal-release-certification.json'}else{$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_009_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
