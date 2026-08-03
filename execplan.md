@@ -13629,6 +13629,29 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 用户得到可追溯引用；运维能切 alias、回滚索引并验证删除不复活。
 
+### 本轮 local-provisional 施工投影（2026-08-03）
+
+仓库 owner 已明确要求：Phase 10 的实验保持并行，不等待其正式收尾，立即从已固定且可重放的候选
+`7b5913d53a65316b2c22a17cd52b8ee45562fae1` 开始 Phase 11 的高质量单 Agent 实现。该决定只授权可逆、
+非生产的本地实现、测试、证据与 checkpoint；它不声称 Release B stable、`TASK-REL-C-000 accepted`、
+RAG 量化触发已满足，也不授权生产数据写、Release C acceptance、Phase 11 正式 merge 或远程 push。
+
+本投影由两个根因级 enabler 承担，不改写正式 DAG：
+
+1. `REPAIR-P11-ENTRY-001`：P11-000 保留 `p11_000_formal_selection_required` blocker；若且仅若
+   `phase-runtime-manifest.json` 精确绑定上述 base、`execution_mode=local_provisional`、本轮 owner 指令、
+   入口回归零失败/零 mandatory not-run、Phase 12 未选择且生产写为零，P11-001 可把该 blocker 作为
+   `local_projection` 前置。后继 P11 本地任务只接受已提交的 `ready_for_review`、完整机械门禁、artifact
+   hash 与 ancestor 证明；formal 模式仍只接受 `accepted + independent review`。
+2. `REPAIR-P11-SINGLE-AGENT-WIRING-001`：在 P11-007 后、P11-009 前完成单 Agent 接线，允许最小修改
+   `agent-service/app/worker/itinerary_processor.py`、`agent-service/app/worker/composition.py`、
+   `agent-service/app/runtime/feature_flags.py` 及其直接测试/合同。flag-off 必须保持当前无 RAG 行为；
+   flag-on 时新 Run 固定 Knowledge manifest、检索 claim 必须有 citation、实时事实仍只来自 Tool。
+
+两个 enabler 的回滚均为普通 Git revert；入口投影回滚后所有 P11 后继恢复 formal predecessor 门禁，
+单 Agent 接线回滚后关闭独立 RAG flag 并保留 Knowledge 数据、tombstone 与审计。P11-990/999 不接受
+local projection，Release/远程动作继续 fail closed。Phase 12（尤其 P12C Multi-Agent）保持 dormant。
+
 
 ### §10 验收锚点（逐字引用，机器比较）
 
