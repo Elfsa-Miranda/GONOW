@@ -62,6 +62,7 @@ function Get-GovernanceProfileState {
     agents_hash_mismatch = 0
     execplan_hash_mismatch = 0
     adr_hash_mismatch = 0
+    architecture_hash_mismatch = 0
     decision_commit_missing = 0
     decision_commit_not_ancestor = 0
     remote_mismatch = 0
@@ -86,6 +87,9 @@ function Get-GovernanceProfileState {
         $Checks[$Binding.key] = 1
       }
     }
+    if ([string]$Adoption.documents.architecture.version -cne '1.6.1' -or [string]$Adoption.documents.architecture.sha256 -cne '644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6') {
+      $Checks.architecture_hash_mismatch = 1
+    }
     $DecisionCommit = [string]$Adoption.decision_source.governance_content_commit_oid
     & git -C $script:RepositoryRoot cat-file -e "$DecisionCommit^{commit}" 2>$null
     if ($LASTEXITCODE -ne 0) {
@@ -106,6 +110,7 @@ function Get-GovernanceProfileState {
     plan_version = '2.0.0-personal'
     adoption_path = $AdoptionRelativePath
     adoption_sha256 = if (Test-Path -LiteralPath $AdoptionPath -PathType Leaf) { Get-Sha256 -LiteralPath $AdoptionPath } else { $ZeroHash }
+    architecture_sha256 = if ($null -ne $Adoption) { [string]$Adoption.documents.architecture.sha256 } else { $ZeroHash }
     failure_count = $FailureCount
     checks = $Checks
   }
@@ -2375,6 +2380,16 @@ function Get-P11990Definition {
   return [ordered]@{task_id='TASK-P11-990';prerequisites=@((1..10|ForEach-Object{'TASK-P11-{0:D3}'-f$_})+@('TASK-P11-089'));direct_prerequisite='TASK-P11-089';card_sha='e58916c8ae97809cde7940a4d4b877da70b1c996cf3e42746888d9f44719ab3d';required_change=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5rGH5oC7IHNvdXJjZeOAgUFDTOOAgWRlbGV0ZeOAgWV2YWwg5LiOIHJvbGxvdXQgYWNjZXB0ZWQgZXZpZGVuY2XvvIzmiafooYwgbWFuZGF0b3J5IHJlZ3Jlc3Npb24g5LiO55Sf5Lqn5ZCM6YWN572u6ZqU56a7IHJvbGxiYWNrIHJlY2VpcHQg5qCh6aqM77yM55Sf5oiQIGFjY2VwdGFuY2UvaW5kZXjvvIzpqozor4HkupTop5LoibLni6znq4vmibnlh4blubbkv53mjIEgYWNjZXB0ZWQ9ZmFsc2Ug55u05Yiw5aSW6YOo54q25oCB6L+B56e7'));files=@('docs/execution/evidence/phase-11/acceptance.md','docs/execution/evidence/index.json');directories=@();modes=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security','Verify');applicable_ct=@('CT-001','CT-002','CT-003','CT-004','CT-005','CT-006','CT-007','CT-008','CT-010','CT-011','CT-012','CT-013','CT-014');approval_roles=@('Data','Engineering','Privacy','Product','Security')}
 }
 
+function Test-P11990PersonalFormalExecution {
+  if ($ExecutionMode -cne 'formal_adopted') { return $false }
+  $Governance = Get-GovernanceProfileState
+  return [bool]$Governance.passed -and [string]$Governance.profile -ceq 'personal_automated'
+}
+
+function Test-P11990ProjectedOrPersonalExecution {
+  return $ExecutionMode -ceq 'local_provisional' -or (Test-P11990PersonalFormalExecution)
+}
+
 function Get-P11990DependencyState {return Get-P11AtomicDependencyState -Definition (Get-P11990Definition)}
 function Get-P11990BranchState {param([Parameter(Mandatory=$true)][object]$Dependency);return Get-P11AtomicBranchState -Definition (Get-P11990Definition) -Dependency $Dependency}
 function Get-P11990ExecutionBoundaryState {$Dependency=Get-P11990DependencyState;$Branch=Get-P11990BranchState -Dependency $Dependency;return [ordered]@{passed=([bool]$Dependency.passed-and[bool]$Branch.passed);dependency=$Dependency;branch=$Branch;dependency_failures=if([bool]$Dependency.passed-and[bool]$Branch.passed){0}else{1};production_write_count=0}}
@@ -2431,11 +2446,11 @@ function Get-P11990LocalBlockerState {
 }
 
 function Get-P11990LocalApprovalState {
-  $Path=Join-Path $script:TaskEvidenceDirectory 'approval-pending.json';$Definition=Get-P11990Definition;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return [ordered]@{passed=$false;pending_role_count=$Definition.approval_roles.Count;missing_role_count=$Definition.approval_roles.Count;formal_acceptance_status='pending_external'}};try{$Receipt=Get-Content -LiteralPath $Path -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{return [ordered]@{passed=$false;pending_role_count=$Definition.approval_roles.Count;missing_role_count=$Definition.approval_roles.Count;formal_acceptance_status='pending_external'}};$Requirements=@($Receipt.requirements);$Roles=@($Requirements|ForEach-Object{[string]$_.role});$Invalid=@($Requirements|Where-Object{[string]$_.status-cne'pending_external'-or$null-ne$_.actor_id});$Missing=@($Definition.approval_roles|Where-Object{$_-notin$Roles});$Passed=[string]$Receipt.schema_version-ceq'1.0'-and[string]$Receipt.task_id-ceq'TASK-P11-990'-and[string]$Receipt.candidate_head_oid-ceq$Head-and[string]$Receipt.formal_acceptance_status-ceq'pending_external'-and-not[bool]$Receipt.accepted-and$Requirements.Count-eq$Definition.approval_roles.Count-and$Invalid.Count+$Missing.Count-eq0;return [ordered]@{passed=$Passed;pending_role_count=$Requirements.Count;missing_role_count=$Missing.Count;invalid_requirement_count=$Invalid.Count;formal_acceptance_status='pending_external';accepted=$false;production_write_count=0}
+  $Path=Join-Path $script:TaskEvidenceDirectory 'approval-pending.json';$Definition=Get-P11990Definition;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Personal=Test-P11990PersonalFormalExecution;$ExpectedRequirementStatus=if($Personal){'covered_by_automated_gate'}else{'pending_external'};$ExpectedAcceptanceStatus=if($Personal){'automated_attestation_pending'}else{'pending_external'};if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return [ordered]@{passed=$false;pending_role_count=$Definition.approval_roles.Count;missing_role_count=$Definition.approval_roles.Count;formal_acceptance_status=$ExpectedAcceptanceStatus}};try{$Receipt=Get-Content -LiteralPath $Path -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{return [ordered]@{passed=$false;pending_role_count=$Definition.approval_roles.Count;missing_role_count=$Definition.approval_roles.Count;formal_acceptance_status=$ExpectedAcceptanceStatus}};$Requirements=@($Receipt.requirements);$Roles=@($Requirements|ForEach-Object{[string]$_.role});$Invalid=@($Requirements|Where-Object{[string]$_.status-cne$ExpectedRequirementStatus-or$null-ne$_.actor_id});$Missing=@($Definition.approval_roles|Where-Object{$_-notin$Roles});$GovernanceValid=if($Personal){[string]$Receipt.governance_profile-ceq'personal_automated'-and[string]$Receipt.acceptance_method-ceq'automated_attestation'}else{$true};$Passed=[string]$Receipt.schema_version-ceq'1.0'-and[string]$Receipt.task_id-ceq'TASK-P11-990'-and[string]$Receipt.candidate_head_oid-ceq$Head-and[string]$Receipt.formal_acceptance_status-ceq$ExpectedAcceptanceStatus-and-not[bool]$Receipt.accepted-and$Requirements.Count-eq$Definition.approval_roles.Count-and$Invalid.Count+$Missing.Count-eq0-and$GovernanceValid;return [ordered]@{passed=$Passed;pending_role_count=if($Personal){0}else{$Requirements.Count};covered_evidence_domain_count=if($Personal){$Requirements.Count}else{0};missing_role_count=$Missing.Count;invalid_requirement_count=$Invalid.Count;formal_acceptance_status=$ExpectedAcceptanceStatus;accepted=$false;production_write_count=0}
 }
 
 function Get-P11990LocalRollbackState {
-  $Path=Join-Path $script:TaskEvidenceDirectory 'rollback-drill.local.json';$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return [ordered]@{passed=$false;scenario_count=0;test_count=0;failures=1;skipped=1;formal_rollback_status='pending_external'}};try{$Receipt=Get-Content -LiteralPath $Path -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{return [ordered]@{passed=$false;scenario_count=0;test_count=0;failures=1;skipped=1;formal_rollback_status='pending_external'}};$Scenarios=@($Receipt.scenarios);$Passed=[string]$Receipt.schema_version-ceq'1.0'-and[string]$Receipt.task_id-ceq'TASK-P11-990'-and[string]$Receipt.candidate_head_oid-ceq$Head-and[string]$Receipt.environment_class-ceq'local_isolated'-and[bool]$Receipt.reviewer_is_implementer-and[string]$Receipt.independent_review_status-ceq'pending_external'-and-not[bool]$Receipt.production_same_configuration_executed-and$Scenarios.Count-eq3-and@($Scenarios|Where-Object{-not[bool]$_.passed}).Count-eq0-and[int]$Receipt.test_count-gt0-and[int]$Receipt.failures+[int]$Receipt.errors+[int]$Receipt.skipped+[int]$Receipt.xfailed+[int]$Receipt.production_write_count-eq0;return [ordered]@{passed=$Passed;scenario_count=$Scenarios.Count;test_count=[int]$Receipt.test_count;failures=[int]$Receipt.failures;errors=[int]$Receipt.errors;skipped=[int]$Receipt.skipped;xfailed=[int]$Receipt.xfailed;formal_rollback_status='pending_external';production_write_count=0}
+  $Path=Join-Path $script:TaskEvidenceDirectory 'rollback-drill.local.json';$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Personal=Test-P11990PersonalFormalExecution;$ExpectedReview=if($Personal){'automated_clean_context'}else{'pending_external'};$ExpectedFormal=if($Personal){'automated_attestation_pending'}else{'pending_external'};if(-not(Test-Path -LiteralPath $Path -PathType Leaf)){return [ordered]@{passed=$false;scenario_count=0;test_count=0;failures=1;skipped=1;formal_rollback_status=$ExpectedFormal}};try{$Receipt=Get-Content -LiteralPath $Path -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{return [ordered]@{passed=$false;scenario_count=0;test_count=0;failures=1;skipped=1;formal_rollback_status=$ExpectedFormal}};$Scenarios=@($Receipt.scenarios);$ProfileValid=if($Personal){[string]$Receipt.governance_profile-ceq'personal_automated'}else{$true};$Passed=[string]$Receipt.schema_version-ceq'1.0'-and[string]$Receipt.task_id-ceq'TASK-P11-990'-and[string]$Receipt.candidate_head_oid-ceq$Head-and[string]$Receipt.environment_class-ceq'local_isolated'-and[bool]$Receipt.reviewer_is_implementer-and[string]$Receipt.independent_review_status-ceq$ExpectedReview-and-not[bool]$Receipt.production_same_configuration_executed-and[string]$Receipt.formal_rollback_status-ceq$ExpectedFormal-and$ProfileValid-and$Scenarios.Count-eq3-and@($Scenarios|Where-Object{-not[bool]$_.passed}).Count-eq0-and[int]$Receipt.test_count-gt0-and[int]$Receipt.failures+[int]$Receipt.errors+[int]$Receipt.skipped+[int]$Receipt.xfailed+[int]$Receipt.production_write_count-eq0;return [ordered]@{passed=$Passed;scenario_count=$Scenarios.Count;test_count=[int]$Receipt.test_count;failures=[int]$Receipt.failures;errors=[int]$Receipt.errors;skipped=[int]$Receipt.skipped;xfailed=[int]$Receipt.xfailed;formal_rollback_status=$ExpectedFormal;independent_review_status=$ExpectedReview;production_write_count=0}
 }
 
 function Get-P11990LocalDocumentationState {
@@ -2456,6 +2471,168 @@ function Write-P11990AcceptanceEvidence {
 function Write-P11990ArtifactEvidence {
   param([switch]$RequireFinal,[switch]$LocalProjection)
   $Targets=@(Get-P11990SourceTargets);if($LocalProjection){$Targets+=@((Get-P11990Definition).files)+@('docs/execution/evidence/phase-11/P11-990/approval-pending.json','docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json','docs/execution/evidence/phase-11/P11-990/rollback-tests.xml','docs/execution/evidence/phase-11/P11-990/regression-summary.json');if($RequireFinal){$Targets+=@('docs/execution/evidence/phase-11/P11-990/local-verification.json','docs/execution/evidence/phase-11/P11-990/gate-summary.json')}}elseif($RequireFinal){$Targets+=@((Get-P11990Definition).files)+@('docs/execution/evidence/phase-11/P11-990/approval-receipts.json','docs/execution/evidence/phase-11/P11-990/rollback-drill.json','docs/execution/evidence/phase-11/P11-990/regression-summary.json','docs/execution/evidence/phase-11/P11-990/local-verification.json','docs/execution/evidence/phase-11/P11-990/gate-summary.json')};$Artifacts=@();$Missing=0;$Schema=0;$Redaction=0;foreach($RelativePath in @($Targets|Sort-Object -Unique)){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};$Raw=[IO.File]::ReadAllText($Full,[Text.UTF8Encoding]::new($false));if($RelativePath.EndsWith('.json')){try{$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Redaction+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:raw_user_data|prompt|response|reasoning)"\s*:)').Count;$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.yaml')){'application/yaml'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/markdown'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $Mime -ArtifactType 'phase-11-acceptance' -GeneratedByStep 'TASK-P11-990:Evidence'};$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();Write-AtomicJson -LiteralPath $script:ArtifactPath -Value (New-ArtifactHashesDocument -Artifacts $Artifacts -GeneratedByStep 'TASK-P11-990:Evidence');return [ordered]@{passed=($Missing+$Schema+$Redaction-eq0);schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Redaction;artifact_count=$Artifacts.Count;head_oid=$Head;local_projection=[bool]$LocalProjection;production_write_count=0}
+}
+
+function Get-P11990PersonalAttestationState {
+  $Governance = Get-GovernanceProfileState
+  $Boundary = Get-P11990ExecutionBoundaryState
+  $Modes = Get-P11990GateModeState -IncludeVerify
+  $Harness = Get-P11990HarnessState
+  $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $LandingOid = (& git -C $script:RepositoryRoot rev-parse refs/heads/codex/gonow-agent-landing 2>$null).Trim()
+  $LandingExit = $LASTEXITCODE
+  $ManifestPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/phase-runtime-manifest.json'
+  $GatePath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/gate-results.json'
+  $RegressionPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/regression-summary.json'
+  $RollbackPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json'
+  $RagPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-009/rag-manifest.json'
+  $RolloutPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-010/rollout.yaml'
+  $ReleaseCertificationPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-009/personal-release-certification.json'
+  $ArtifactPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/artifact-hashes.json'
+  $RequiredPaths = @(
+    'AGENTS.md',
+    'execplan.md',
+    'docs/architecture/adr/ADR-P10-001-personal-automated-release-governance.md',
+    'docs/execution/evidence/governance/personal-automation-adoption-v1.json',
+    'pubspec.lock',
+    'agent-service/uv.lock',
+    'docs/execution/evidence/phase-04/P04-008/behavior-pin-report.json',
+    'agent-service/tests/eval/datasets/rag/manifest-v01.json',
+    'docs/execution/evidence/phase-11/P11-009/rag-manifest.json',
+    'docs/execution/evidence/phase-11/P11-010/rollout.yaml',
+    'docs/execution/evidence/phase-11/P11-990/regression-summary.json',
+    'docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json',
+    'docs/execution/evidence/phase-11/P11-990/gate-results.json',
+    'docs/execution/evidence/phase-11/P11-990/artifact-hashes.json'
+  )
+  $Bindings = @()
+  $BindingMissing = 0
+  foreach ($RelativePath in $RequiredPaths) {
+    $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+    if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $BindingMissing++; continue }
+    $Bindings += [ordered]@{ path = $RelativePath; sha256 = Get-Sha256 -LiteralPath $FullPath; size_bytes = (Get-Item -LiteralPath $FullPath).Length }
+  }
+  $Manifest = if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) { Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Gate = if (Test-Path -LiteralPath $GatePath -PathType Leaf) { Get-Content -LiteralPath $GatePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Regression = if (Test-Path -LiteralPath $RegressionPath -PathType Leaf) { Get-Content -LiteralPath $RegressionPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Rollback = if (Test-Path -LiteralPath $RollbackPath -PathType Leaf) { Get-Content -LiteralPath $RollbackPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Rag = if (Test-Path -LiteralPath $RagPath -PathType Leaf) { Get-Content -LiteralPath $RagPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $ReleaseCertification = if (Test-Path -LiteralPath $ReleaseCertificationPath -PathType Leaf) { Get-Content -LiteralPath $ReleaseCertificationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $RolloutText = if (Test-Path -LiteralPath $RolloutPath -PathType Leaf) { Get-Content -LiteralPath $RolloutPath -Raw -Encoding UTF8 } else { '' }
+  $Security = $null
+  if ($null -ne $Gate) {
+    $SecurityRows = @($Gate.results | Where-Object { [string]$_.check_id -ceq 'Security' -and [string]$_.status -ceq 'passed' })
+    if ($SecurityRows.Count -eq 1) { try { $Security = $SecurityRows[0].detail | ConvertFrom-Json -ErrorAction Stop } catch {} }
+  }
+  $Accepted = if ($null -ne $Boundary.dependency.checks) { [int]$Boundary.dependency.checks.accepted_predecessor_count } else { 0 }
+  $Projected = if ($null -ne $Boundary.dependency.checks) { [int]$Boundary.dependency.checks.projected_predecessor_count } else { 0 }
+  $Checks = [ordered]@{
+    governance_profile_invalid = if ([bool]$Governance.passed -and [string]$Governance.profile -ceq 'personal_automated') { 0 } else { 1 }
+    execution_mode_invalid = if ($ExecutionMode -ceq 'formal_adopted') { 0 } else { 1 }
+    dependency_or_branch_failure = if ([bool]$Boundary.passed -and $Accepted -eq 11 -and $Projected -eq 0) { 0 } else { 1 }
+    mandatory_gate_failure_count = if ([bool]$Modes.passed) { 0 } else { @($Modes.missing_modes).Count + @($Modes.failed_modes).Count }
+    harness_failure_count = if ([bool]$Harness.passed) { 0 } else { 1 }
+    binding_missing_count = $BindingMissing
+    phase_base_landing_mismatch = if ($LandingExit -eq 0 -and $null -ne $Manifest -and [string]$Manifest.execution_mode -ceq 'formal_adopted' -and [string]$Manifest.phase_base_oid -ceq $LandingOid -and [string]$Manifest.formal_phase_base_oid -ceq $LandingOid) { 0 } else { 1 }
+    candidate_drift_count = if ($null -ne $Gate -and [string]$Gate.head_oid -ceq $Head -and $null -ne $Rollback -and [string]$Rollback.candidate_head_oid -ceq $Head) { 0 } else { 1 }
+    regression_failure_count = if ($null -ne $Regression) { [int]$Regression.checks.failed + [int]$Regression.checks.not_run + [int]$Regression.checks.persisted_mandatory_failure_count + [int]$Regression.checks.runner_contract_test_exit } else { 1 }
+    mandatory_skip_count = if ($null -ne $Regression) { [int]$Regression.checks.skipped } else { 1 }
+    xfail_count = if ($null -ne $Regression) { [int]$Regression.checks.xfailed } else { 1 }
+    flaky_rerun_count = if ((Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'agent-service/scripts/ci.ps1') -Raw -Encoding UTF8) -cmatch '(?i)--reruns|pytest-rerunfailures') { 1 } else { 0 }
+    rollback_failure_count = if ($null -ne $Rollback) { [int]$Rollback.failures + [int]$Rollback.errors + [int]$Rollback.skipped + [int]$Rollback.xfailed + [int]$Rollback.production_write_count + $(if (@($Rollback.scenarios | Where-Object { -not [bool]$_.passed }).Count -eq 0) { 0 } else { 1 }) } else { 1 }
+    release_b_certification_failure_count = if ($null -ne $ReleaseCertification -and [string]$ReleaseCertification.governance_profile -ceq 'personal_automated' -and [string]$ReleaseCertification.overall_status -ceq 'passed' -and [int]$ReleaseCertification.certification_gate_pass_count -eq 5) { 0 } else { 1 }
+    security_redline_failure_count = if ($null -ne $Security) { [int]$Security.checks.valid_secret_finding_count + [int]$Security.checks.pii_canary_leak_count + [int]$Security.checks.missing_audit_receipt_count } else { 1 }
+    rag_redline_failure_count = if ($null -ne $Rag) { [int]$Rag.observed_metrics.tenant_leak_count + [int]$Rag.observed_metrics.acl_leak_count + [int]$Rag.observed_metrics.rls_unexpected_allow_count + [int]$Rag.observed_metrics.stale_version_leak_count + [int]$Rag.observed_metrics.deletion_failure_count + [int]$Rag.observed_metrics.ssrf_escape_count + [int]$Rag.observed_metrics.unauthorized_tool_exec_count } else { 1 }
+    quality_failure_count = if ($null -ne $Rag -and [double]$Rag.observed_metrics.recall_at_1 -ge 1.0 -and [double]$Rag.observed_metrics.citation_precision -ge 1.0 -and [double]$Rag.observed_metrics.p95_latency_ms -le 25.0 -and [double]$Rag.observed_metrics.cost_usd_per_successful_query -le 0.0) { 0 } else { 1 }
+    single_agent_boundary_failure_count = if ($RolloutText -cmatch 'capability:\s+single_agent_rag' -and $RolloutText -cmatch 'parallel_phase12:\s+false' -and $RolloutText -cmatch 'production_allocation_percent:\s+0') { 0 } else { 1 }
+    parallel_phase12_ref_count = @(& git -C $script:RepositoryRoot for-each-ref --format='%(refname)' 'refs/heads/codex/phase-12*').Count
+    production_write_count = if ($null -ne $Regression) { [int]$Regression.checks.production_write_count } else { 1 }
+  }
+  $FailureCount = 0
+  foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    candidate_head_oid = $Head
+    phase_base_oid = if ($null -ne $Manifest) { [string]$Manifest.phase_base_oid } else { '' }
+    landing_oid = $LandingOid
+    governance = $Governance
+    bindings = $Bindings
+    checks = $Checks
+    artifact_manifest_sha256 = if (Test-Path -LiteralPath $ArtifactPath -PathType Leaf) { Get-Sha256 -LiteralPath $ArtifactPath } else { $ZeroHash }
+    behavior_digest = if (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-04/P04-008/behavior-pin-report.json') -PathType Leaf) { [string](Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-04/P04-008/behavior-pin-report.json') -Raw -Encoding UTF8 | ConvertFrom-Json).new_run_digest } else { '' }
+    dataset_sha256 = if ($null -ne $Rag) { [string]$Rag.dataset.dataset_sha256 } else { '' }
+  }
+}
+
+function Write-P11990PersonalAcceptanceAttestation {
+  if (-not (Test-P11990PersonalFormalExecution)) { throw 'P11 personal attestation requires formal_adopted personal_automated execution' }
+  $Preflight = Get-P11990PersonalAttestationState
+  if (-not [bool]$Preflight.passed) { throw "P11 personal attestation preflight failed: $($Preflight.checks | ConvertTo-Json -Compress)" }
+  $Head = [string]$Preflight.candidate_head_oid
+  $AcceptanceText = @(
+    '# Phase 11 acceptance',
+    '',
+    'Status: accepted by candidate-bound automated attestation under `personal_automated` governance; landing merge remains a separate exact-tree gate.',
+    "Phase base OID: $($Preflight.phase_base_oid)",
+    "Candidate head OID: $Head",
+    '',
+    '## Scope',
+    '',
+    'Single-agent RAG source governance, ACL/RLS isolation, deletion, citations, deterministic evaluation, zero-allocation rollout controls, and rollback evidence from P11-001 through P11-089.',
+    '',
+    '## Automated evidence domains',
+    '',
+    'Data, Engineering, Privacy, Product, and Security remain evidence domains. They are satisfied by the repository-owner-authorized mechanical attestation and are not represented as five natural-person signatures.',
+    '',
+    '## Safety and rollout boundary',
+    '',
+    'All security and RAG redline counters are zero. The RAG flag remains default-off with production allocation zero. Multi-agent and Phase 12 implementation remain dormant.',
+    '',
+    '## Evidence boundary',
+    '',
+    'The RAG quality dataset is synthetic and deterministic. Release B real-boundary certification is inherited only through its exact accepted attestation; this report does not claim 31 days of production observation.'
+  )
+  Write-AtomicText -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/acceptance.md') -Text (($AcceptanceText -join "`n") + "`n")
+  $IndexPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/index.json'
+  $Index = Get-Content -LiteralPath $IndexPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  $Phases = @($Index.phases | Where-Object { [string]$_.phase -cne 'Phase 11' })
+  $Phases += [ordered]@{phase='Phase 11';candidate_head_oid=$Head;local_projection_status='superseded_by_personal_automated_acceptance';formal_acceptance_status='accepted';accepted=$true;acceptance_method='automated_attestation';acceptance_path='docs/execution/evidence/phase-11/acceptance.md';premerge_manifest_path='docs/execution/evidence/phase-11/artifact-manifest.premerge.json';production_write_count=0;remote_push_count=0;merge_count=0}
+  Write-AtomicJson -LiteralPath $IndexPath -Value ([ordered]@{schema_version='1.1';generated_at=[DateTimeOffset]::Now.ToString('o');execution_mode='formal_adopted';governance_profile='personal_automated';phases=$Phases})
+  $Artifact = Write-P11990ArtifactEvidence -RequireFinal -LocalProjection
+  if (-not [bool]$Artifact.passed) { throw 'P11 personal attestation final artifact manifest failed' }
+  $State = Get-P11990PersonalAttestationState
+  if (-not [bool]$State.passed) { throw "P11 personal attestation final validation failed: $($State.checks | ConvertTo-Json -Compress)" }
+  $Attestation = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P11-990'
+    phase = 'Phase 11'
+    profile = 'personal_automated'
+    acceptance_method = 'automated_attestation'
+    overall_status = 'passed'
+    candidate_head_oid = [string]$State.candidate_head_oid
+    git_object_format = Get-GitObjectFormat
+    phase_base_oid = [string]$State.phase_base_oid
+    landing_oid = [string]$State.landing_oid
+    architecture_sha256 = [string]$State.governance.architecture_sha256
+    governance_adoption_sha256 = [string]$State.governance.adoption_sha256
+    artifact_manifest_sha256 = [string]$State.artifact_manifest_sha256
+    behavior_digest = [string]$State.behavior_digest
+    dataset_sha256 = [string]$State.dataset_sha256
+    pricing_profile = 'not_applicable_no_model_calls'
+    seed_profile = 'deterministic_dataset_no_random_seed'
+    checks = $State.checks
+    bindings = $State.bindings
+    automated_gate_acceptance = $true
+    production_observation_required = $false
+    production_write_count = 0
+    remote_push_count = 0
+    merge_count = 0
+    recorded_at = [DateTimeOffset]::Now.ToString('o')
+  }
+  $RelativePath = 'docs/execution/evidence/phase-11/P11-990/personal-acceptance-attestation.json'
+  Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation
+  return [ordered]@{ path = $RelativePath; sha256 = Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath); candidate_head_oid = $Head }
 }
 
 function Get-P12000GateModeState {
@@ -5044,7 +5221,7 @@ function Invoke-ModeSecurity {
     if ((@($Checks.Values) | Measure-Object -Sum).Sum -ne 0) { return New-BlockedResult 'p10_009_security_failed' $Checks }
     return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_security_boundary_failed' $Boundary};$Definition=Get-P11990Definition;$LocalFiles=@('docs/execution/evidence/phase-11/P11-990/approval-pending.json','docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json','docs/execution/evidence/phase-11/P11-990/rollback-tests.xml','docs/execution/evidence/phase-11/P11-990/regression-summary.json');$Targets=@(Get-P11990SourceTargets)+@($Definition.files)+$LocalFiles;$Missing=0;$Secret=0;$Pii=0;foreach($RelativePath in @($Targets|Sort-Object -Unique)){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};$Raw=[IO.File]::ReadAllText($Full,[Text.UTF8Encoding]::new($false));$Secret+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;$Pii+=[regex]::Matches($Raw,'(?i)"(?:raw_user_data|prompt|response|reasoning)"\s*:').Count};$AuditTargets=@($Definition.prerequisites|ForEach-Object{"docs/execution/evidence/phase-11/$($_.Substring(5))/commands.json"})+@($LocalFiles[0],$LocalFiles[1]);$AuditMissing=@($AuditTargets|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)}).Count;$Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected;$Checks=[ordered]@{valid_secret_finding_count=$Secret;pii_canary_leak_count=$Pii;missing_audit_receipt_count=$AuditMissing;missing_scan_target_count=$Missing;accepted_predecessor_count=$Accepted;projected_predecessor_count=$Projected;satisfied_predecessor_count=$Satisfied;formal_security_review_status='pending_external';production_write_count=0};if($Secret+$Pii+$AuditMissing+$Missing-ne0-or$Satisfied-ne11){return New-BlockedResult 'p11_990_local_security_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
@@ -6448,7 +6625,7 @@ function Invoke-ModeVerify {
     if (-not [bool]$State.passed) { return New-BlockedResult 'p10_009_personal_certification_failed' $Checks }
     return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
     $Boundary=Get-P11990ExecutionBoundaryState;$Modes=Get-P11990GateModeState;$Harness=Get-P11990HarnessState;$Docs=Get-P11990LocalDocumentationState;$Rollback=Get-P11990LocalRollbackState;$Approval=Get-P11990LocalApprovalState;$RegressionPath=Join-Path $script:TaskEvidenceDirectory 'regression-summary.json';$Regression=if(Test-Path -LiteralPath $RegressionPath -PathType Leaf){Get-Content -LiteralPath $RegressionPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$RegressionFailure=if($null-ne$Regression){[int]$Regression.checks.failed+[int]$Regression.checks.not_run+[int]$Regression.checks.skipped+[int]$Regression.checks.xfailed}else{1};$Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected;$Ready=[bool]$Boundary.passed-and[bool]$Modes.passed-and[bool]$Harness.passed-and[bool]$Docs.passed-and[bool]$Rollback.passed-and[bool]$Approval.passed-and$RegressionFailure-eq0-and$Satisfied-eq11;$State=Write-P11990LocalAcceptanceEvidence -ReadyForReview $Ready;$Ct=[ordered]@{};foreach($Id in @((Get-P11990Definition).applicable_ct)){$Ct[$Id]=if($RegressionFailure-eq0){'passed'}else{'failed'}};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'local-verification.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=[string]$State.candidate_head_oid;execution_mode=$ExecutionMode;primary_assertion_passed=$Ready;mapped_count=[int]$Harness.control_count;first_phase_le_p11_unimplemented_count=[int]$Harness.first_phase_le_p11_unimplemented_count;accepted_predecessor_count=$Accepted;projected_predecessor_count=$Projected;satisfied_predecessor_count=$Satisfied;applicable_ct_results=$Ct;applicable_ct_skipped=0;applicable_ct_xfailed=0;formal_acceptance_status='pending_external';accepted=$false;production_write_count=0;remote_push_count=0;merge_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')});$Checks=[ordered]@{overall_status=if($Ready){'passed'}else{'failed'};primary_assertion=$Ready;first_phase_le_p11_unimplemented_count=[int]$Harness.first_phase_le_p11_unimplemented_count;mandatory_gate_invalid=if([bool]$Modes.passed-and$RegressionFailure-eq0){0}else{1};scope_or_worktree_invalid=if([bool]$Boundary.branch.passed){0}else{1};open_security_or_privacy_violation=[int]$Docs.threat_model_review_missing+[int]$Docs.unresolved_local_blocker_count;rollback_not_executed_or_incomplete=if([bool]$Rollback.passed){0}else{1};formal_approval_pending_count=[int]$Approval.pending_role_count;formal_production_rollback_pending=1;required_delivery_missing=[int]$Docs.missing_count;missing_gate_modes=@($Modes.missing_modes).Count;failed_gate_modes=@($Modes.failed_modes).Count;accepted_predecessor_count=$Accepted;projected_predecessor_count=$Projected;satisfied_predecessor_count=$Satisfied;formal_phase_acceptance='pending_external';accepted=$false;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'gate-summary.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=[string]$State.candidate_head_oid;execution_mode=$ExecutionMode;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});$Artifact=Write-P11990ArtifactEvidence -RequireFinal -LocalProjection;if(-not[bool]$Artifact.passed){$Checks.overall_status='failed';$Checks.required_delivery_missing+=[int]$Artifact.unhashed_artifacts};if([string]$Checks.overall_status-cne'passed'){return New-BlockedResult 'p11_990_local_acceptance_verification_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
@@ -8332,7 +8509,7 @@ function Get-P11999FinalEvidenceState {
   $ManifestValid=[string]$Manifest.phase-ceq'Phase 11'-and[int]$Manifest.revision-eq1-and$null-eq$Manifest.supersedes_manifest_sha256-and[int]$Manifest.manifest_self_reference_count+[int]$Manifest.phase_close_self_reference_count-eq0-and[string]$Manifest.merge_oid-ceq$MergeOid-and$ManifestHashInvalid-eq0;$CloseValid=[string]$Close.phase-ceq'Phase 11'-and[string]$Close.task_id-ceq'TASK-P11-999'-and[string]$Close.merge_oid-ceq$MergeOid-and[string]$Close.artifact_manifest_path-ceq[string]$Paths.manifest-and[string]$Close.artifact_manifest_sha256-ceq(Get-Sha256 -LiteralPath $ManifestPath)-and[string]$Close.phase_close_oid_locator-ceq'the git commit containing this record'-and[string]$Close.next_phase_base_rule-ceq'use the exact commit containing this record'
   $HashDoc=$Values.artifact;$HashInvalid=0;$HashedPaths=@($HashDoc.artifacts|ForEach-Object{[string]$_.path});foreach($Row in @($HashDoc.artifacts)){$Full=Join-Path $script:RepositoryRoot ([string]$Row.path);if(-not(Test-Path -LiteralPath $Full -PathType Leaf)-or[string]$Row.sha256-cne(Get-Sha256 -LiteralPath $Full)-or[long]$Row.size_bytes-ne(Get-Item -LiteralPath $Full).Length){$HashInvalid++}};$RequiredHashPaths=@($Paths.Keys|Where-Object{$_-notin@('artifact')}|ForEach-Object{[string]$Paths[$_]})+@($IntegrationTree,$IntegrationSmoke);$Unhashed=@($RequiredHashPaths|Where-Object{$_-notin$HashedPaths}).Count
   $Gate=$Values.gate;$RequiredModes=@('MergePreflight','Cleanup','Merge','MergeTreeVerification','Security','IntegrationSmoke','PostMergeEvidence','Retrospective','RollbackVerify');$GateInvalid=@($RequiredModes|Where-Object{$Name=$_;@($Gate.results|Where-Object{[string]$_.check_id-ceq$Name-and[string]$_.status-ceq'passed'}).Count-ne1}).Count;$SecurityRow=@($Gate.results|Where-Object{[string]$_.check_id-ceq'Security'-and[string]$_.status-ceq'passed'});$SecurityDetail=if($SecurityRow.Count-eq1){try{[string]$SecurityRow[0].detail|ConvertFrom-Json -ErrorAction Stop}catch{$null}}else{$null};$SecurityFailure=if($null-ne$SecurityDetail){[int]$SecurityDetail.checks.valid_secret_finding_count+[int]$SecurityDetail.checks.pii_canary_leak_count+[int]$SecurityDetail.checks.missing_audit_receipt_count+[int]$SecurityDetail.checks.identity_denied_mismatch+[int]$SecurityDetail.checks.authorization_bypass_count}else{1}
-  $IndexRow=@($Values.index.phases|Where-Object{[string]$_.phase-ceq'Phase 11'-and[bool]$_.accepted-and[string]$_.formal_acceptance_status-ceq'accepted'-and[string]$_.merge_oid-ceq$MergeOid});$Status=$Values.status;$StatusValid=[string]$Status.task_id-ceq'TASK-P11-999'-and[string]$Status.status-ceq'accepted'-and[bool]$Status.reviewer_independent-and[string]$Status.decision_reference-ceq[string]$Paths.authorization-and@($Status.evidence_paths)-contains[string]$Paths.close
+  $IndexRow=@($Values.index.phases|Where-Object{[string]$_.phase-ceq'Phase 11'-and[bool]$_.accepted-and[string]$_.formal_acceptance_status-ceq'accepted'-and[string]$_.merge_oid-ceq$MergeOid});$Status=$Values.status;$StatusValid=[string]$Status.task_id-ceq'TASK-P11-999'-and[string]$Status.status-ceq'accepted'-and-not[bool]$Status.reviewer_independent-and[string]$Status.governance_profile-ceq'personal_automated'-and[string]$Status.acceptance_method-ceq'automated_attestation'-and[string]$Status.attestation_sha256-ceq[string]$Values.authorization.acceptance_attestation_sha256-and[string]$Status.decision_reference-ceq[string]$Paths.authorization-and@($Status.evidence_paths)-contains[string]$Paths.close
   $CloseCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- ([string]$Paths.close))-join'').Trim();$Head=(@(& git -C $script:RepositoryRoot rev-parse HEAD 2>$null)-join'').Trim();$CloseCommitValid=$CloseCommit-cmatch$OidPattern-and$CloseCommit-ceq$Head;$LandingClean=@(& git -C $script:RepositoryRoot status --porcelain=v1).Count-eq0
   $TextTargets=@($Paths.Values)+@($IntegrationTree,$IntegrationSmoke);$Redaction=0;foreach($Relative in $TextTargets){$Full=Join-Path $script:RepositoryRoot ([string]$Relative);if(Test-Path -LiteralPath $Full -PathType Leaf){$Raw=[IO.File]::ReadAllText($Full,[Text.UTF8Encoding]::new($false));$Redaction+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:raw_user_data|prompt|response|reasoning)"\s*:)').Count}}
   $Primary=$Missing+$Schema+$HashInvalid+$Unhashed+$GateInvalid+$SecurityFailure+$Redaction-eq0-and$TreeValid-and$SmokeValid-and$CleanupValid-and$ManifestValid-and$CloseValid-and$IndexRow.Count-eq1-and$StatusValid-and$CloseCommitValid-and$LandingClean-and$Retrospective-cmatch'(?m)^## STAR and difficulties$'
@@ -8404,7 +8581,7 @@ function Invoke-ModeEvidence {
   if ($TaskId -ceq 'TASK-P11-999') {
     $State=Get-P11999FinalEvidenceState;if(-not[bool]$State.passed){return New-BlockedResult 'p11_999_final_evidence_failed' $State.checks};return New-PassedResult $State.checks
   }
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_evidence_boundary_failed' $Boundary};$State=Write-P11990ArtifactEvidence -LocalProjection;$Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected;$Checks=[ordered]@{schema_errors=[int]$State.schema_errors;unhashed_artifacts=[int]$State.unhashed_artifacts;redaction_failures=[int]$State.redaction_failures;artifact_count=[int]$State.artifact_count;base_head_oid_match=([bool]$Boundary.dependency.passed-and[bool]$Boundary.branch.passed);accepted_predecessor_count=$Accepted;projected_predecessor_count=$Projected;satisfied_predecessor_count=$Satisfied;formal_acceptance_status='pending_external';production_write_count=0};if(-not[bool]$State.passed-or-not[bool]$Checks.base_head_oid_match-or$Satisfied-ne11){return New-BlockedResult 'p11_990_local_evidence_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
@@ -12968,7 +13145,7 @@ function Invoke-ModeRollbackVerify {
   Invoke-PendingMode 'RollbackVerify'
 }
 function Invoke-ModeAcceptancePreflight {
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
     $Boundary=Get-P11990ExecutionBoundaryState;$Blockers=Get-P11990LocalBlockerState;$Harness=Get-P11990HarnessState;$Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected;$Checks=[ordered]@{terminal_task_gaps=if([bool]$Boundary.dependency.passed-and$Satisfied-eq11){0}else{1};unexpected_paths=@($Boundary.branch.unexpected_paths).Count;unresolved_local_blocker_count=[int]$Blockers.unresolved_local_blocker_count;formal_pending_blocker_count=[int]$Blockers.formal_pending_blocker_count;first_phase_le_p11_unimplemented_count=[int]$Harness.first_phase_le_p11_unimplemented_count;base_drift=if([bool]$Boundary.branch.checks.base_ancestor){0}else{1};accepted_predecessor_count=$Accepted;projected_predecessor_count=$Projected;satisfied_predecessor_count=$Satisfied;phase_base_oid=[string]$Boundary.dependency.manifest.phase_base_oid;candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();formal_acceptance_status='pending_external';production_write_count=0};if(-not[bool]$Boundary.passed-or[int]$Checks.terminal_task_gaps+[int]$Checks.unexpected_paths+[int]$Checks.unresolved_local_blocker_count+[int]$Checks.first_phase_le_p11_unimplemented_count+[int]$Checks.base_drift-ne0){return New-BlockedResult 'p11_990_local_acceptance_preflight_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
@@ -13110,8 +13287,8 @@ function Invoke-ModeAutomatedAcceptancePreflight {
 }
 
 function Invoke-ModeApprovalValidation {
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
-    $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_approval_boundary_failed' $Boundary};$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Requirements=@((Get-P11990Definition).approval_roles|ForEach-Object{[ordered]@{role=$_;status='pending_external';actor_id=$null}});Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'approval-pending.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=$Head;formal_acceptance_status='pending_external';accepted=$false;requirements=$Requirements;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')});$Approval=Get-P11990LocalApprovalState;$Checks=[ordered]@{pending_role_count=[int]$Approval.pending_role_count;missing_role_count=[int]$Approval.missing_role_count;invalid_requirement_count=[int]$Approval.invalid_requirement_count;independent_owner_approval_status='pending_external';local_mechanical_progress_allowed=[bool]$Approval.passed;accepted=$false;production_write_count=0};if(-not[bool]$Approval.passed){return New-BlockedResult 'p11_990_local_approval_record_invalid' $Checks};return New-PassedResult $Checks
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
+    $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_approval_boundary_failed' $Boundary};$Personal=Test-P11990PersonalFormalExecution;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$RequirementStatus=if($Personal){'covered_by_automated_gate'}else{'pending_external'};$AcceptanceStatus=if($Personal){'automated_attestation_pending'}else{'pending_external'};$Requirements=@((Get-P11990Definition).approval_roles|ForEach-Object{[ordered]@{role=$_;status=$RequirementStatus;actor_id=$null}});$Receipt=[ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=$Head;formal_acceptance_status=$AcceptanceStatus;accepted=$false;requirements=$Requirements;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')};if($Personal){$Receipt['governance_profile']='personal_automated';$Receipt['acceptance_method']='automated_attestation'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'approval-pending.json') -Value $Receipt;$Approval=Get-P11990LocalApprovalState;$Checks=[ordered]@{pending_role_count=[int]$Approval.pending_role_count;covered_evidence_domain_count=[int]$Approval.covered_evidence_domain_count;missing_role_count=[int]$Approval.missing_role_count;invalid_requirement_count=[int]$Approval.invalid_requirement_count;independent_owner_approval_status=if($Personal){'replaced_by_owner_authorized_automated_attestation'}else{'pending_external'};local_mechanical_progress_allowed=[bool]$Approval.passed;accepted=$false;production_write_count=0};if(-not[bool]$Approval.passed){return New-BlockedResult 'p11_990_local_approval_record_invalid' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_approval_boundary_failed' $Boundary};$Approval=Get-P11990ApprovalState;$Checks=[ordered]@{approval_count=[int]$Approval.approval_count;required_role_missing_count=[int]$Approval.required_role_missing_count;approval_age_days=$Approval.approval_age_days;conditional_approval_open_count=[int]$Approval.conditional_approval_open_count;approval_oid_mismatch_count=[int]$Approval.approval_oid_mismatch_count;reviewer_collision_count=[int]$Approval.reviewer_collision_count;schema_errors=[int]$Approval.schema_errors;evidence_sha256=[string]$Approval.evidence_sha256;independent_owner_approval_status=if([bool]$Approval.passed){'validated'}else{'invalid_or_pending'};accepted=$false;production_write_count=0};if(-not[bool]$Approval.passed){return New-BlockedResult 'p11_990_independent_approvals_invalid' $Checks};return New-PassedResult $Checks
@@ -13209,7 +13386,7 @@ function Invoke-ModeApprovalValidation {
 }
 
 function Invoke-ModeBuildAcceptance {
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
     $Boundary=Get-P11990ExecutionBoundaryState;$Harness=Get-P11990HarnessState;$Blockers=Get-P11990LocalBlockerState;$State=Write-P11990LocalAcceptanceEvidence -ReadyForReview $false;$Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected;$Checks=[ordered]@{acceptance_generated=(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/acceptance.md')-PathType Leaf);index_generated=(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/index.json')-PathType Leaf);primary_assertion_inputs_complete=([bool]$Boundary.passed-and[bool]$Harness.passed-and[bool]$Blockers.passed-and$Satisfied-eq11);base_oid=[string]$Boundary.dependency.manifest.phase_base_oid;head_oid=[string]$State.candidate_head_oid;accepted_predecessor_count=$Accepted;projected_predecessor_count=$Projected;satisfied_predecessor_count=$Satisfied;formal_acceptance_status='pending_external';accepted=$false;production_write_count=0};if(-not[bool]$Checks.acceptance_generated-or-not[bool]$Checks.index_generated-or-not[bool]$Checks.primary_assertion_inputs_complete){return New-BlockedResult 'p11_990_local_build_acceptance_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
@@ -13603,8 +13780,8 @@ function Invoke-ModeRegression {
 }
 
 function Invoke-ModeRollbackDrill {
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
-    $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_rollback_drill_boundary_failed' $Boundary};$ProvisionRoot=Join-Path $script:TaskEvidenceDirectory 'rollback-contract-provision';$XmlPath=Join-Path $script:TaskEvidenceDirectory 'rollback-tests.xml';if(Test-Path -LiteralPath $XmlPath -PathType Leaf){Remove-Item -LiteralPath $XmlPath -Force};$Provision=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'agent-service/scripts/ci.ps1'),'-Stage','Contract','-ReportRoot',$ProvisionRoot);$Python=Join-Path $script:RepositoryRoot 'agent-service/.venv/Scripts/python.exe';$Run=if([int]$Provision.exit_code-eq0-and(Test-Path -LiteralPath $Python -PathType Leaf)){Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','--strict-config','--strict-markers',"--junitxml=$XmlPath",'agent-service/tests/contract/test_gemini_itinerary_processor.py','agent-service/tests/contract/test_single_agent_rag_processor.py','agent-service/tests/contract/test_rag_deletion.py')}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}};$Tests=0;$Failures=0;$Errors=0;$Skipped=0;if(Test-Path -LiteralPath $XmlPath -PathType Leaf){[xml]$Xml=Get-Content -LiteralPath $XmlPath -Raw -Encoding UTF8;$Suites=if($null-ne$Xml.testsuites.testsuite){@($Xml.testsuites.testsuite)}else{@($Xml.testsuite)};foreach($Suite in $Suites){$Tests+=[int]$Suite.tests;$Failures+=[int]$Suite.failures;$Errors+=[int]$Suite.errors;$Skipped+=[int]$Suite.skipped}}else{$Failures++};$Passed=[int]$Provision.exit_code+[int]$Run.exit_code+$Failures+$Errors+$Skipped-eq0-and$Tests-gt0;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Scenarios=@([ordered]@{id='default_disabled_old_path';passed=$Passed;evidence='legacy Gemini itinerary processor contract suite'},[ordered]@{id='in_flight_provider_failure';passed=$Passed;evidence='single-agent provider failure and citation contract suite'},[ordered]@{id='old_version_reads_new_data';passed=$Passed;evidence='deletion restore and tombstone contract suite'});Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-drill.local.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=$Head;environment_class='local_isolated';reviewer_is_implementer=$true;reviewer_actor_id='codex-local-implementation';independent_review_status='pending_external';production_same_configuration_executed=$false;formal_rollback_status='pending_external';scenarios=$Scenarios;test_count=$Tests;failures=$Failures;errors=$Errors;skipped=$Skipped;xfailed=0;dependency_sync_and_contract_exit_code=[int]$Provision.exit_code;command_exit_code=[int]$Run.exit_code;duration_seconds=[double]$Provision.duration_seconds+[double]$Run.duration_seconds;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')});$State=Get-P11990LocalRollbackState;$Checks=[ordered]@{scenario_count=[int]$State.scenario_count;test_count=[int]$State.test_count;failures=[int]$State.failures;errors=[int]$State.errors;skipped=[int]$State.skipped;xfailed=[int]$State.xfailed;dependency_sync_and_contract_exit_code=[int]$Provision.exit_code;evidence_class='local_isolated_not_production_same_configuration';independent_review_status='pending_external';production_write_count=0};if(-not[bool]$State.passed){return New-BlockedResult 'p11_990_local_rollback_drill_failed' $Checks};return New-PassedResult $Checks
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
+    $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_rollback_drill_boundary_failed' $Boundary};$Personal=Test-P11990PersonalFormalExecution;$ProvisionRoot=Join-Path $script:TaskEvidenceDirectory 'rollback-contract-provision';$XmlPath=Join-Path $script:TaskEvidenceDirectory 'rollback-tests.xml';if(Test-Path -LiteralPath $XmlPath -PathType Leaf){Remove-Item -LiteralPath $XmlPath -Force};$Provision=Invoke-RedactedExternal -Executable 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $script:RepositoryRoot 'agent-service/scripts/ci.ps1'),'-Stage','Contract','-ReportRoot',$ProvisionRoot);$Python=Join-Path $script:RepositoryRoot 'agent-service/.venv/Scripts/python.exe';$Run=if([int]$Provision.exit_code-eq0-and(Test-Path -LiteralPath $Python -PathType Leaf)){Invoke-RedactedExternal -Executable $Python -Arguments @('-m','pytest','-q','--strict-config','--strict-markers',"--junitxml=$XmlPath",'agent-service/tests/contract/test_gemini_itinerary_processor.py','agent-service/tests/contract/test_single_agent_rag_processor.py','agent-service/tests/contract/test_rag_deletion.py')}else{[ordered]@{exit_code=1;duration_seconds=0;output_line_count=0}};$Tests=0;$Failures=0;$Errors=0;$Skipped=0;if(Test-Path -LiteralPath $XmlPath -PathType Leaf){[xml]$Xml=Get-Content -LiteralPath $XmlPath -Raw -Encoding UTF8;$Suites=if($null-ne$Xml.testsuites.testsuite){@($Xml.testsuites.testsuite)}else{@($Xml.testsuite)};foreach($Suite in $Suites){$Tests+=[int]$Suite.tests;$Failures+=[int]$Suite.failures;$Errors+=[int]$Suite.errors;$Skipped+=[int]$Suite.skipped}}else{$Failures++};$Passed=[int]$Provision.exit_code+[int]$Run.exit_code+$Failures+$Errors+$Skipped-eq0-and$Tests-gt0;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$ReviewStatus=if($Personal){'automated_clean_context'}else{'pending_external'};$FormalStatus=if($Personal){'automated_attestation_pending'}else{'pending_external'};$Scenarios=@([ordered]@{id='default_disabled_old_path';passed=$Passed;evidence='legacy Gemini itinerary processor contract suite'},[ordered]@{id='in_flight_provider_failure';passed=$Passed;evidence='single-agent provider failure and citation contract suite'},[ordered]@{id='old_version_reads_new_data';passed=$Passed;evidence='deletion restore and tombstone contract suite'});Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-drill.local.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=$Head;environment_class='local_isolated';governance_profile=if($Personal){'personal_automated'}else{'local_provisional'};reviewer_is_implementer=$true;reviewer_actor_id='codex-local-implementation';independent_review_status=$ReviewStatus;production_same_configuration_executed=$false;formal_rollback_status=$FormalStatus;scenarios=$Scenarios;test_count=$Tests;failures=$Failures;errors=$Errors;skipped=$Skipped;xfailed=0;dependency_sync_and_contract_exit_code=[int]$Provision.exit_code;command_exit_code=[int]$Run.exit_code;duration_seconds=[double]$Provision.duration_seconds+[double]$Run.duration_seconds;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')});$State=Get-P11990LocalRollbackState;$Checks=[ordered]@{scenario_count=[int]$State.scenario_count;test_count=[int]$State.test_count;failures=[int]$State.failures;errors=[int]$State.errors;skipped=[int]$State.skipped;xfailed=[int]$State.xfailed;dependency_sync_and_contract_exit_code=[int]$Provision.exit_code;evidence_class=if($Personal){'owner_authorized_personal_automated_clean_context'}else{'local_isolated_not_production_same_configuration'};independent_review_status=$ReviewStatus;formal_rollback_status=$FormalStatus;production_write_count=0};if(-not[bool]$State.passed){return New-BlockedResult 'p11_990_local_rollback_drill_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_rollback_drill_boundary_failed' $Boundary};$State=Get-P11990RollbackState;$Checks=[ordered]@{scenario_count=[int]$State.scenario_count;idle_scenario_passed=([bool]$State.passed-and[int]$State.scenario_count-eq3);in_flight_run_count=[int]$State.in_flight_run_count;old_version_reads_new_data=[bool]$State.passed;illegal_terminal=[int]$State.illegal_terminal;old_path_failures=[int]$State.old_path_failures;new_errors_5m=[int]$State.new_errors_5m;schema_errors=[int]$State.schema_errors;evidence_class='independent_production_same_configuration_isolated_receipt';production_write_count=0};if(-not[bool]$State.passed){return New-BlockedResult 'p11_990_rollback_drill_invalid_or_pending' $Checks};return New-PassedResult $Checks
@@ -13981,7 +14158,7 @@ function Invoke-ModeDocumentation {
     if([int]$Checks.undocumented_contract_diff+[int]$Checks.documentation_marker_gap_count+[int]$Checks.threat_model_review_missing+[int]$Checks.threat_model_hash_missing+[int]$Checks.star_index_error_count-ne0-or[int]$Checks.observable_changes-lt1-or[int]$Checks.kt_sections-lt5-or[int]$Checks.hardest_item_count-lt0-or[int]$Checks.hardest_item_count-gt3-or-not[bool]$Checks.local_document_review_passed-or-not[bool]$Checks.handoff_journey_passed-or$Satisfied-ne10){return New-BlockedResult 'p11_089_documentation_failed' $Checks}
     return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P11-990' -and $ExecutionMode -ceq 'local_provisional') {
+  if ($TaskId -ceq 'TASK-P11-990' -and (Test-P11990ProjectedOrPersonalExecution)) {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_documentation_boundary_failed' $Boundary};$State=Get-P11990LocalDocumentationState;$Accepted=[int]$Boundary.dependency.checks.accepted_predecessor_count;$Projected=[int]$Boundary.dependency.checks.projected_predecessor_count;$Satisfied=$Accepted+$Projected;$Checks=[ordered]@{document_review_passed=[bool]$State.document_review_passed;kt_sections=[int]$State.kt_sections;hardest_item_count=[int]$State.hardest_item_count;handoff_journey_passed=[bool]$State.handoff_journey_passed;threat_model_review_missing=[int]$State.threat_model_review_missing;unresolved_local_blocker_count=[int]$State.unresolved_local_blocker_count;formal_pending_blocker_count=[int]$State.formal_pending_blocker_count;applicable_ct_failure_count=[int]$State.applicable_ct_failure_count;missing_count=[int]$State.missing_count;accepted_predecessor_count=$Accepted;projected_predecessor_count=$Projected;satisfied_predecessor_count=$Satisfied;independent_review_status='pending_external';production_write_count=0};if(-not[bool]$State.passed-or$Satisfied-ne11){return New-BlockedResult 'p11_990_local_documentation_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-990') {
@@ -14608,7 +14785,7 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
     if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p12_000_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-P11-990') {
     $ModeState=Get-P11990GateModeState -IncludeVerify
-    if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p11_990_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
+    if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;if(Test-P11990PersonalFormalExecution){$Attestation=Write-P11990PersonalAcceptanceAttestation;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)}else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p11_990_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-P11-089') {
     $ModeState=Get-P11089GateModeState
     if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p11_089_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
