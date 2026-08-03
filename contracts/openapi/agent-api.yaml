@@ -210,7 +210,7 @@
         "properties": {
           "name": {"type": "string", "const": "agent-api"},
           "major": {"type": "integer", "const": 1},
-          "version": {"type": "string", "const": "1.1.0"},
+          "version": {"type": "string", "const": "1.1.1"},
           "spec_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
         }
       },

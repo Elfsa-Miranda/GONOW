@@ -23,8 +23,8 @@
     {
       "version_id": "new_service",
       "artifact_kind": "agent_api_source_contract",
-      "source_reference": "P10-runtime-composition-repair",
-      "agent_api_version": "1.1.0"
+      "source_reference": "P11-rag-documentation-metadata",
+      "agent_api_version": "1.1.1"
     }
   ],
   "services": {
@@ -41,8 +41,8 @@
       "descriptor": {
         "name": "agent-api",
         "major": 1,
-        "version": "1.1.0",
-        "spec_sha256": "bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0"
+        "version": "1.1.1",
+        "spec_sha256": "1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8"
       },
       "candidate_only": true
     }

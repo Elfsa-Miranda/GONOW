@@ -11,7 +11,7 @@ void main() {
   test('generated digest is bound to the server OpenAPI bytes', () {
     expect(
       agentApiSpecSha256,
-      'bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0',
+      '1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8',
     );
     expect(agentApiContractVersion, '1.1.0');
     expect(agentApiGeneratorVersion, '1.1.0');
