@@ -292,3 +292,14 @@ See `docs/architecture/flutter-agent-integration.md`, `docs/api/flutter-agent-cl
 `docs/runbooks/flutter-agent-rollback.md`. The local suite does not authorize production mapping,
 real-device acceptance, remote merge, deployment, or formal acceptance; those remain
 `pending_external`.
+
+## Single-Agent RAG (Phase 11 local provisional)
+
+Phase 11 adds a PostgreSQL-backed knowledge lifecycle, tenant/ACL hard filters, deterministic hybrid fusion, local reranking, traceable citations, immutable knowledge packages, deletion tombstones, and a typed evidence port into the existing itinerary Agent. It does not add a multi-agent coordinator. `contract_change: documentation_only` for the public API: the existing Candidate citation wire shape is retained and knowledge citations are projected into that shape.
+
+- Enable: keep `gonow.agent.itinerary_planning.rag` off until an authenticated principal-aware provider and approved cohort receipt are present; then inject that provider into `GeminiItineraryProcessor` with `rag_enabled=True`.
+- Disable: set allocation to zero. The default processor path remains uncited and compatible with the prior Candidate contract.
+- Degrade: an empty authorized result may continue without knowledge claims; an enabled but missing/failing provider or an unknown claim fails closed before Candidate persistence.
+- First checks: inspect the feature-flag generation, tenant/principal context, active knowledge alias, deletion tombstone, P11-009 quality manifest, and Worker error code before retrying.
+
+Operational details: [RAG architecture](docs/architecture/rag.md), [rollback](docs/runbooks/rag-rollback.md), [knowledge deletion](docs/runbooks/knowledge-deletion.md), and [citation contract](docs/api/rag-citations.md).

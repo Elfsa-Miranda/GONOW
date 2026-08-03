@@ -63,6 +63,13 @@ def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:
     assert "REVOKE CONNECT ON DATABASE gonow_p03_test FROM PUBLIC" in provisioner
     assert "migrator role contract failed" in provisioner
     assert "probe role unexpectedly has CONNECT" in provisioner
+    assert "PgvectorVersion = '0.8.1'" in provisioner
+    assert "PgvectorCommit = '778dacf20c07caf904557a88705142631818d8cb'" in provisioner
+    assert "Locked pgvector source commit mismatch" in provisioner
+    assert "CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public" in provisioner
+    assert "CREATE EXTENSION IF NOT EXISTS btree_gin WITH SCHEMA public" in provisioner
+    assert "pgvector version contract failed" in provisioner
+    assert "pgvector-provisioning.json" in provisioner
     assert "if: ${{ always() }}" in workflow[cleanup:]
 
 

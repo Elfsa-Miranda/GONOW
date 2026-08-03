@@ -27,7 +27,7 @@ from app.worker.execution import DurableWorkerExecutor
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 PROBE = REPOSITORY_ROOT / "tool" / "runtime_journey_probe.dart"
 EXPECTED_SPEC_SHA256 = (
-    "bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0"
+    "1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8"
 )
 
 

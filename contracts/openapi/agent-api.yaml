@@ -2,11 +2,17 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GoNow Agent API",
-    "version": "1.1.0",
-    "description": "Phase 10 runtime-composition repair contract. Production activation remains gated."
+    "version": "1.1.1",
+    "description": "Phase 11 documents the local-provisional single-Agent RAG citation projection. Production activation remains gated."
   },
   "x-contract-name": "agent-api",
-  "x-baseline-status": "phase-10-composition-repair-provisional",
+  "x-baseline-status": "phase-11-single-agent-rag-local-provisional",
+  "x-phase-11-rag": {
+    "contract_change": "documentation_only",
+    "candidate_citation_wire_shape_changed": false,
+    "feature_flag": "gonow.agent.itinerary_planning.rag",
+    "production_enabled": false
+  },
   "x-error-codes": [
     "auth.forbidden",
     "auth.invalid_token",
@@ -204,7 +210,7 @@
         "properties": {
           "name": {"type": "string", "const": "agent-api"},
           "major": {"type": "integer", "const": 1},
-          "version": {"type": "string", "const": "1.1.0"},
+          "version": {"type": "string", "const": "1.1.1"},
           "spec_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
         }
       },
@@ -249,6 +255,7 @@
         }
       },
       "CandidateCitation": {
+        "description": "Stable Candidate citation wire shape. Authorized knowledge citations are projected to evidence://knowledge references; manifest/source/version/chunk lineage remains server-side and auditable.",
         "type": "object",
         "additionalProperties": false,
         "required": ["claim_id", "evidence_id", "source_ref", "sha256"],

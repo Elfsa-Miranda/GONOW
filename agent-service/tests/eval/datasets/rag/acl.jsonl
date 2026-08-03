@@ -1,0 +1,12 @@
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D001","tenant_id":"tenant-a","principal_ids":[],"group_ids":[],"tenant_read":true}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D002","tenant_id":"tenant-a","principal_ids":["alice"],"group_ids":["travel-planners"],"tenant_read":false}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D003","tenant_id":"tenant-a","principal_ids":[],"group_ids":[],"tenant_read":true}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D004","tenant_id":"tenant-a","principal_ids":["bob"],"group_ids":[],"tenant_read":false}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D005","tenant_id":"tenant-b","principal_ids":[],"group_ids":[],"tenant_read":true}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D006","tenant_id":"tenant-a","principal_ids":["alice"],"group_ids":[],"tenant_read":false}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D007","tenant_id":"tenant-a","principal_ids":["alice"],"group_ids":[],"tenant_read":false}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D008","tenant_id":"tenant-a","principal_ids":[],"group_ids":[],"tenant_read":true}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D009","tenant_id":"tenant-a","principal_ids":[],"group_ids":[],"tenant_read":true}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D010","tenant_id":"tenant-a","principal_ids":[],"group_ids":[],"tenant_read":true}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D011","tenant_id":"tenant-a","principal_ids":[],"group_ids":[],"tenant_read":true}
+{"record_type":"acl","schema_version":"1.0","doc_id":"RAG-D012","tenant_id":"tenant-a","principal_ids":[],"group_ids":[],"tenant_read":true}

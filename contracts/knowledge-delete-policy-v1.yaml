@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "gonow.knowledge-delete-policy",
+  "policy_version": "1.0.0",
+  "status": "candidate_local_provisional",
+  "default_decision": "deny_without_matching_rule",
+  "request_contract": {
+    "required_fields": [
+      "delete_request_id",
+      "requested_at",
+      "source_class_id",
+      "source_id",
+      "tenant_id"
+    ],
+    "idempotency_key": "tenant_id+delete_request_id",
+    "authorization": "source_owner_or_data_governance",
+    "missing_authorization": "deny"
+  },
+  "surfaces": [
+    "source_versions",
+    "chunks",
+    "embeddings",
+    "fts_indexes",
+    "knowledge_packages",
+    "aliases_for_new_runs",
+    "ingestion_jobs",
+    "caches",
+    "evaluation_corpora_when_not_legally_retained"
+  ],
+  "rules": [
+    {
+      "id": "delete-first-party-product-knowledge",
+      "source_class_id": "first_party_product_knowledge",
+      "triggers": [
+        "approval_revoked",
+        "license_revoked",
+        "retention_expired",
+        "source_owner_request"
+      ],
+      "sla": {
+        "read_deny_seconds": 0,
+        "durable_tombstone_seconds": 60,
+        "fanout_completion_seconds": 86400
+      },
+      "durable_tombstone_required": true,
+      "completion_receipt_required": true,
+      "restore_behavior": "never_resurrect_tombstoned_content"
+    },
+    {
+      "id": "delete-public-licensed-reference",
+      "source_class_id": "public_licensed_reference",
+      "triggers": [
+        "approval_revoked",
+        "license_revoked",
+        "retention_expired",
+        "source_owner_request"
+      ],
+      "sla": {
+        "read_deny_seconds": 0,
+        "durable_tombstone_seconds": 60,
+        "fanout_completion_seconds": 86400
+      },
+      "durable_tombstone_required": true,
+      "completion_receipt_required": true,
+      "restore_behavior": "never_resurrect_tombstoned_content"
+    },
+    {
+      "id": "delete-tenant-private-curated",
+      "source_class_id": "tenant_private_curated",
+      "triggers": [
+        "acl_revoked",
+        "approval_revoked",
+        "retention_expired",
+        "source_owner_request",
+        "tenant_erasure_request"
+      ],
+      "sla": {
+        "read_deny_seconds": 0,
+        "durable_tombstone_seconds": 60,
+        "fanout_completion_seconds": 3600
+      },
+      "durable_tombstone_required": true,
+      "completion_receipt_required": true,
+      "restore_behavior": "never_resurrect_tombstoned_content"
+    }
+  ],
+  "execution": {
+    "claim_protocol": "lease_with_fencing_token",
+    "maximum_attempts": 5,
+    "retry_backoff": "bounded_exponential_with_jitter",
+    "partial_success": "persist_surface_receipts_and_resume_remaining",
+    "terminal_failure": "keep_read_deny_and_escalate",
+    "outbox_required": true
+  },
+  "verification": {
+    "all_surface_receipts_required": true,
+    "acl_and_direct_id_reads_must_miss": true,
+    "index_and_cache_reads_must_miss": true,
+    "backup_restore_replay_required": true,
+    "tombstone_precedes_restore_replay": true
+  },
+  "legal_hold": {
+    "read_access_after_delete_request": "deny",
+    "physical_purge_may_pause_only_with_scoped_receipt": true,
+    "hold_receipt_must_bind_tenant_source_and_expiry": true
+  },
+  "rollback": {
+    "reverse_delete": "forbidden",
+    "repair_action": "resume_incomplete_fanout_from_durable_tombstone"
+  },
+  "production_write_count": 0
+}

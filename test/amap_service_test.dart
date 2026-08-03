@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gonow/core/services/amap_service.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   group('AmapService Tests', () {
@@ -33,56 +36,93 @@ void main() {
       expect(AmapService.extractLocationFromText('在海淀区'), '海淀区');
     });
 
-    // 注意：以下测试需要网络连接和有效的 API Key
     test('geocode - 应该返回有效的经纬度', () async {
-      final coords = await AmapService.geocode('天安门', city: '北京');
-      
-      if (coords != null) {
-        expect(coords['lat'], isNotNull);
-        expect(coords['lng'], isNotNull);
-        expect(coords['lat'], greaterThan(0));
-        expect(coords['lng'], greaterThan(0));
-        
-        // 天安门大致坐标范围验证
-        expect(coords['lat'], closeTo(39.9, 1.0));
-        expect(coords['lng'], closeTo(116.4, 1.0));
-      }
-    }, skip: '需要网络连接');
+      final coords = await AmapService.geocode(
+        '天安门',
+        city: '北京',
+        get: (uri) async {
+          expect(uri.host, 'restapi.amap.com');
+          expect(uri.path, '/v3/geocode/geo');
+          expect(uri.queryParameters['address'], '天安门');
+          expect(uri.queryParameters['city'], '北京');
+          return http.Response.bytes(
+            utf8.encode(
+              '{"status":"1","geocodes":[{"location":"116.397,39.908"}]}',
+            ),
+            200,
+          );
+        },
+      );
+
+      expect(coords, {'lat': 39.908, 'lng': 116.397});
+    });
 
     test('geocode - 应该支持非标准地名（区县/景区）', () async {
-      final coords1 = await AmapService.geocode('朝阳区');
-      final coords2 = await AmapService.geocode('西湖');
-      
-      if (coords1 != null) {
-        expect(coords1['lat'], isNotNull);
-        expect(coords1['lng'], isNotNull);
+      Future<http.Response> fakeGeocode(Uri uri) async {
+        final address = uri.queryParameters['address'];
+        final location = address == '朝阳区' ? '116.443,39.921' : '120.155,30.274';
+        return http.Response.bytes(
+          utf8.encode('{"status":"1","geocodes":[{"location":"$location"}]}'),
+          200,
+        );
       }
-      
-      if (coords2 != null) {
-        expect(coords2['lat'], isNotNull);
-        expect(coords2['lng'], isNotNull);
-      }
-    }, skip: '需要网络连接');
+
+      final coords1 = await AmapService.geocode('朝阳区', get: fakeGeocode);
+      final coords2 = await AmapService.geocode('西湖', get: fakeGeocode);
+
+      expect(coords1, {'lat': 39.921, 'lng': 116.443});
+      expect(coords2, {'lat': 30.274, 'lng': 120.155});
+    });
 
     test('getWeatherDescription - 应该返回天气描述', () async {
-      final weather = await AmapService.getWeatherDescription('北京');
-      
-      if (weather != null) {
-        expect(weather, contains('【实时天气数据】'));
-        expect(weather, contains('城市：'));
-        expect(weather, contains('天气：'));
-        expect(weather, contains('气温：'));
-        expect(weather, contains('℃'));
-      }
-    }, skip: '需要网络连接');
+      final weather = await AmapService.getWeatherDescription(
+        '北京',
+        get: (uri) async {
+          if (uri.path == '/v3/geocode/geo') {
+            return http.Response.bytes(
+              utf8.encode('{"status":"1","geocodes":[{"adcode":"110000"}]}'),
+              200,
+            );
+          }
+          expect(uri.path, '/v3/weather/weatherInfo');
+          expect(uri.queryParameters['city'], '110000');
+          return http.Response.bytes(
+            utf8.encode(
+              '{"status":"1","lives":[{"city":"北京","weather":"晴","temperature":"26","winddirection":"东","windpower":"3","humidity":"40"}]}',
+            ),
+            200,
+          );
+        },
+      );
+
+      expect(weather, '【实时天气数据】城市：北京，天气：晴，气温：26℃，风向：东风3级，湿度：40%');
+    });
 
     test('getWeatherDescription - 应该支持非标准地名', () async {
-      final weather = await AmapService.getWeatherDescription('朝阳区');
-      
-      if (weather != null) {
-        expect(weather, contains('【实时天气数据】'));
-      }
-    }, skip: '需要网络连接');
+      final requestedPaths = <String>[];
+      final weather = await AmapService.getWeatherDescription(
+        '朝阳区',
+        get: (uri) async {
+          requestedPaths.add(uri.path);
+          if (uri.path == '/v3/geocode/geo') {
+            expect(uri.queryParameters['address'], '朝阳区');
+            return http.Response.bytes(
+              utf8.encode('{"status":"1","geocodes":[{"adcode":"110105"}]}'),
+              200,
+            );
+          }
+          return http.Response.bytes(
+            utf8.encode(
+              '{"status":"1","lives":[{"city":"朝阳区","weather":"多云","temperature":"24","winddirection":"南","windpower":"2","humidity":"45"}]}',
+            ),
+            200,
+          );
+        },
+      );
+
+      expect(requestedPaths, ['/v3/geocode/geo', '/v3/weather/weatherInfo']);
+      expect(weather, contains('城市：朝阳区'));
+    });
 
     test('geocode - 空字符串应该返回 null', () async {
       final coords = await AmapService.geocode('');

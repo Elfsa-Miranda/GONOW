@@ -256,9 +256,9 @@ final class _JourneyRepository implements AgentRunRepository {
     AgentApiContractReceipt(
       name: 'agent-api',
       major: 1,
-      version: '1.1.0',
+      version: '1.1.1',
       specSha256:
-          'bc067228d99196391b9a0cdb9c687fadb5b0c2947418afe8687eca53e78e3fc0',
+          '1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8',
     ),
   );
 }

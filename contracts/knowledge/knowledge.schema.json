@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gonow.invalid/contracts/knowledge/knowledge-v1.schema.json",
+  "title": "GoNow Knowledge package and citation contract",
+  "description": "Internal Phase 11 contract. It does not change the public Candidate citation wire shape.",
+  "oneOf": [
+    {"$ref": "#/$defs/knowledgePackage"},
+    {"$ref": "#/$defs/knowledgeCitation"},
+    {"$ref": "#/$defs/deletionTombstone"}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "knowledgePackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "package_id", "tenant_id", "manifest_digest", "embedding_model_id", "dictionary_version", "certification_status", "production_write_count"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "package_id": {"$ref": "#/$defs/uuid"},
+        "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "manifest_digest": {"$ref": "#/$defs/digest"},
+        "embedding_model_id": {"$ref": "#/$defs/uuid"},
+        "dictionary_version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "certification_status": {"enum": ["candidate", "certified", "rejected"]},
+        "production_write_count": {"const": 0}
+      }
+    },
+    "knowledgeCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "citation_id", "manifest_digest", "source_id", "version_id", "chunk_id", "chunk_digest", "source_class", "license_identifier"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "citation_id": {"$ref": "#/$defs/digest"},
+        "manifest_digest": {"$ref": "#/$defs/digest"},
+        "source_id": {"$ref": "#/$defs/uuid"},
+        "version_id": {"$ref": "#/$defs/uuid"},
+        "chunk_id": {"$ref": "#/$defs/uuid"},
+        "chunk_digest": {"$ref": "#/$defs/digest"},
+        "source_class": {"type": "string", "minLength": 1, "maxLength": 80},
+        "license_identifier": {"type": "string", "minLength": 1, "maxLength": 80}
+      }
+    },
+    "deletionTombstone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "source_id", "tombstone_digest", "surface_count", "restore_behavior"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "source_id": {"$ref": "#/$defs/uuid"},
+        "tombstone_digest": {"$ref": "#/$defs/digest"},
+        "surface_count": {"const": 6},
+        "restore_behavior": {"const": "never_resurrect_tombstoned_content"}
+      }
+    }
+  }
+}

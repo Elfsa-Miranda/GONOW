@@ -26,15 +26,17 @@ def _specification() -> dict[str, object]:
 def test_openapi_lint_errors_are_zero() -> None:
     specification = _specification()
     assert specification["openapi"] == "3.1.0"
-    assert specification["info"]["version"] == "1.1.0"
+    assert specification["info"]["version"] == "1.1.1"
     assert specification["x-contract-name"] == "agent-api"
     operation_ids = [operation["operationId"] for path in specification["paths"].values() for operation in path.values()]
     assert len(operation_ids) == len(set(operation_ids))
 
 
-def test_phase_10_additive_run_paths_preserve_v1_contract() -> None:
+def test_phase_11_documentation_metadata_preserves_v1_wire_contract() -> None:
     specification = _specification()
-    assert specification["x-baseline-status"] == "phase-10-composition-repair-provisional"
+    assert specification["x-baseline-status"] == "phase-11-single-agent-rag-local-provisional"
+    assert specification["x-phase-11-rag"]["contract_change"] == "documentation_only"
+    assert specification["x-phase-11-rag"]["production_enabled"] is False
     assert "/v1/contracts/{name}/{major}" in specification["paths"]
     assert {
         "/v1/runs",
