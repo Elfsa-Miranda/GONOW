@@ -4,6 +4,20 @@ param([ValidateSet('Full','P10-010')][string]$Scope='Full')
 $ErrorActionPreference = 'Stop'
 Write-Verbose 'stage=bootstrap'
 $Root = Split-Path -Parent $PSScriptRoot
+$RepositoryRoot = (Resolve-Path -LiteralPath (Join-Path $Root '..\..\..')).Path
+$AttributesPath = Join-Path $RepositoryRoot '.gitattributes'
+$AttributesText = [IO.File]::ReadAllText($AttributesPath, [Text.UTF8Encoding]::new($false))
+$RequiredLfPatterns = @('*.md','*.json','*.jsonl','*.yaml','*.yml','*.xml','*.py','*.dart','*.ps1','*.psd1','*.sql')
+$MissingLfPatterns = @($RequiredLfPatterns | Where-Object {
+  $Pattern = '(?m)^' + [regex]::Escape($_) + '\s+text\s+eol=lf\s*$'
+  $AttributesText -cnotmatch $Pattern
+})
+if ($MissingLfPatterns.Count -ne 0 -or
+    $AttributesText -cnotmatch '(?m)^/AGENTS\.md\s+-text\s*$' -or
+    $AttributesText -cnotmatch '(?m)^/execplan\.md\s+-text\s*$' -or
+    $AttributesText -cnotmatch '(?m)^/docs/execution/commands/TaskGateCatalog\.psd1\s+-text\s*$') {
+  throw 'negative: repository text artifacts are not LF-stable across worktrees or immutable inputs lost their -text override'
+}
 $CatalogPath = Join-Path $Root 'TaskGateCatalog.psd1'
 try {
   $Catalog = Import-PowerShellDataFile -LiteralPath $CatalogPath -ErrorAction Stop
