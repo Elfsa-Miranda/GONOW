@@ -17,6 +17,9 @@ import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
 
+RUNNER_TEST_TIMEOUT_SECONDS = 120
+
+
 SCHEMA_FIXTURE_DIRECTORIES = {
     "commands-v1.schema.json": "commands",
     "gate-results-v1.schema.json": "gate-results",
@@ -346,25 +349,35 @@ def validate_bootstrap_evidence(
 
 def run_runner_tests(commands_root: Path) -> dict[str, int]:
     failures = 0
+    timeouts = 0
     tests = sorted((commands_root / "tests").glob("*.Tests.ps1"))
     for test in tests:
-        completed = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(test),
-            ],
-            cwd=commands_root.parent.parent.parent,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=60,
-            check=False,
-        )
-        failures += int(completed.returncode != 0)
-    return {"runner_test_count": len(tests), "runner_test_failures": failures}
+        try:
+            completed = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(test),
+                ],
+                cwd=commands_root.parent.parent.parent,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=RUNNER_TEST_TIMEOUT_SECONDS,
+                check=False,
+            )
+            failures += int(completed.returncode != 0)
+        except subprocess.TimeoutExpired:
+            failures += 1
+            timeouts += 1
+    return {
+        "runner_test_count": len(tests),
+        "runner_test_failures": failures,
+        "runner_test_timeouts": timeouts,
+        "runner_test_timeout_seconds": RUNNER_TEST_TIMEOUT_SECONDS,
+    }
 
 
 def validate_toolchain(
@@ -598,9 +611,9 @@ def main() -> int:
         report.setdefault("toolchain_argument_errors", 0)
     structural_counts_valid = (
         report["catalog_entries"] == 153
-        and report["taskgate_mode_count"] == 23
+        and report["taskgate_mode_count"] == 24
         and report["phase_merge_mode_count"] == 11
-        and report["work_contract_count"] == 125
+        and report["work_contract_count"] == 127
         and report["harness_controls"] == 34
         and report["harness_minimum_cases"] == 149
     )

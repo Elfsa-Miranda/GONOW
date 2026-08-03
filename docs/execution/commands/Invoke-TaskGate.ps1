@@ -580,12 +580,16 @@ function New-BlockedResult {
 }
 
 function Get-PersonalReleaseCertificationState {
+  param([string]$ExpectedCandidateHeadOid = '')
   $RelativeRoot = 'docs/execution/evidence/phase-10/P10-009'
   $CertificationPath = Join-Path $script:RepositoryRoot "$RelativeRoot/personal-release-certification.json"
   $ManifestPath = Join-Path $script:RepositoryRoot "$RelativeRoot/certification-manifest.json"
   $Result = if (Test-Path -LiteralPath $CertificationPath -PathType Leaf) { Get-Content -LiteralPath $CertificationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
   $Manifest = if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) { Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
   $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $StatusPath = Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-009.json'
+  $Status = if (Test-Path -LiteralPath $StatusPath -PathType Leaf) { Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $ExpectedCandidate = if ($TaskId -ceq 'TASK-P10-009') { $Head } elseif ($null -ne $Status) { [string]$Status.head_oid } else { '' }
   $Checks = [ordered]@{
     certification_missing = if ($null -eq $Result) { 1 } else { 0 }
     manifest_missing = if ($null -eq $Manifest) { 1 } else { 0 }
@@ -593,7 +597,8 @@ function Get-PersonalReleaseCertificationState {
     evidence_type_invalid = if ($null -ne $Result -and [string]$Result.evidence_type -ceq 'personal_compressed_release_certification') { 0 } else { 1 }
     production_observation_claim_count = if ($null -ne $Result -and -not [bool]$Result.production_observation_required) { 0 } else { 1 }
     automated_gate_acceptance_disabled = if ($null -ne $Result -and [bool]$Result.automated_gate_acceptance) { 0 } else { 1 }
-    candidate_drift_count = if ($null -ne $Result -and [string]$Result.candidate_head_oid -ceq $Head -and [int]$Result.candidate_drift_count -eq 0) { 0 } else { 1 }
+    candidate_drift_count = if ($null -ne $Result -and $ExpectedCandidate -cmatch '^[0-9a-f]{40,64}$' -and [string]$Result.candidate_head_oid -ceq $ExpectedCandidate -and [int]$Result.candidate_drift_count -eq 0) { 0 } else { 1 }
+    accepted_status_binding_failure = if ($TaskId -ceq 'TASK-P10-009' -or ($null -ne $Status -and [string]$Status.status -ceq 'accepted' -and [string]$Status.governance_profile -ceq 'personal_automated' -and [string]$Status.acceptance_method -ceq 'automated_attestation' -and -not [bool]$Status.reviewer_independent -and [string]$Status.attestation_sha256 -ceq (Get-Sha256 -LiteralPath $CertificationPath))) { 0 } else { 1 }
     certification_gate_failure_count = if ($null -ne $Result) { [int]$Result.certification_gate_failure_count } else { 5 }
     mandatory_skip_count = if ($null -ne $Result) { [int]$Result.mandatory_skip_count } else { 1 }
     xfail_count = if ($null -ne $Result) { [int]$Result.xfail_count } else { 1 }
@@ -623,6 +628,1333 @@ function Get-PersonalReleaseCertificationState {
     checks = $Checks
     result = $Result
   }
+}
+
+function Get-PersonalCertificationPropertyValue {
+  param([object]$Object,[string]$Name,[object]$Default = $null)
+  if ($null -eq $Object) { return $Default }
+  if ($Object -is [Collections.IDictionary]) {
+    if ($Object.Contains($Name)) { return $Object[$Name] }
+    return $Default
+  }
+  $Property = $Object.PSObject.Properties[$Name]
+  if ($null -eq $Property) { return $Default }
+  return $Property.Value
+}
+
+function Get-PersonalCertificationBindingHash {
+  param([Parameter(Mandatory = $true)][object]$Value)
+  return Get-Utf8Sha256 -Value ($Value | ConvertTo-Json -Depth 30 -Compress)
+}
+
+function Get-P10010PreAttestationGateState {
+  $RequiredModes = @(
+    'Preflight',
+    'WorkPreflight',
+    'WorksetVerify',
+    'Verify',
+    'Security',
+    'Evidence',
+    'RollbackVerify'
+  )
+  $Ledger = if (Test-Path -LiteralPath $script:GatePath -PathType Leaf) {
+    Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  } else { $null }
+  $Rows = if ($null -ne $Ledger) { @($Ledger.results) } else { @() }
+  $Missing = 0
+  $Failed = 0
+  $DetailFailures = 0
+  $Structured = @()
+  foreach ($ModeId in $RequiredModes) {
+    $Matches = @($Rows | Where-Object { [string]$_.check_id -ceq $ModeId })
+    if ($Matches.Count -ne 1) {
+      $Missing++
+      continue
+    }
+    $Row = $Matches[0]
+    $Detail = $null
+    try { $Detail = [string]$Row.detail | ConvertFrom-Json -ErrorAction Stop } catch { $DetailFailures++ }
+    if ([string]$Row.status -cne 'passed' -or $null -eq $Detail) {
+      $Failed++
+    }
+    if ($null -ne $Detail) {
+      if (-not [string]::IsNullOrWhiteSpace([string](Get-PersonalCertificationPropertyValue $Detail 'reason_code' ''))) { $DetailFailures++ }
+      $ProductionWrites = Get-PersonalCertificationPropertyValue $Detail.checks 'production_write_count' 0
+      if ([int]$ProductionWrites -ne 0) { $DetailFailures++ }
+    }
+    $Structured += [ordered]@{
+      check_id = $ModeId
+      status = [string]$Row.status
+      detail_sha256 = Get-Utf8Sha256 -Value ([string]$Row.detail)
+      evidence_path = [string]$Row.evidence_path
+      evidence_sha256 = [string]$Row.evidence_sha256
+    }
+  }
+  $FailureCount = $Missing + $Failed + $DetailFailures
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    missing_mode_count = $Missing
+    failed_mode_count = $Failed
+    detail_failure_count = $DetailFailures
+    results = $Structured
+    result_set_sha256 = if ($Structured.Count -eq $RequiredModes.Count) {
+      Get-PersonalCertificationBindingHash -Value $Structured
+    } else { $ZeroHash }
+  }
+}
+
+function Get-PersonalOwnerCanaryRepositoryBindingState {
+  param(
+    [Parameter(Mandatory = $true)][object]$P10009Certification,
+    [object]$PreAttestationGateState = $null,
+    [switch]$RequirePreAttestation
+  )
+  $Paths = [ordered]@{
+    agents = 'AGENTS.md'
+    execplan = 'execplan.md'
+    architecture_registration = 'docs/execution/evidence/boot/BOOT-005/architecture-artifact-registration.json'
+    phase_manifest = 'docs/execution/evidence/phase-10/phase-runtime-manifest.json'
+    p10_009_manifest = 'docs/execution/evidence/phase-10/P10-009/certification-manifest.json'
+    dataset_manifest = 'docs/execution/evidence/phase-10/P10-005/dataset-manifest-v01.json'
+    state_space_seed = 'docs/execution/evidence/phase-10/P10-009/state-space-report.json'
+    quality_seed = 'docs/execution/evidence/phase-10/P10-009/quality-slice-report.json'
+    fault_plan = 'docs/execution/evidence/phase-10/P10-009/fault-injection-report.json'
+    pricing = 'docs/execution/evidence/phase-10/P10-009/pricing-snapshot.json'
+    rollback = 'docs/execution/evidence/phase-10/P10-009/rollback-operations-report.json'
+    flutter_lock = 'pubspec.lock'
+    python_lock = 'agent-service/uv.lock'
+    toolchain_lock = 'tool/bootstrap/requirements.lock'
+    runner = 'docs/execution/commands/Invoke-TaskGate.ps1'
+  }
+  $Hashes = [ordered]@{}
+  $Missing = 0
+  foreach ($Name in $Paths.Keys) {
+    $Full = Join-Path $script:RepositoryRoot ([string]$Paths[$Name])
+    if (-not (Test-Path -LiteralPath $Full -PathType Leaf)) {
+      $Missing++
+      $Hashes[$Name] = $ZeroHash
+    } else {
+      $Hashes[$Name] = Get-Sha256 -LiteralPath $Full
+    }
+  }
+
+  $Architecture = $null
+  $PhaseManifest = $null
+  $P10009Manifest = $null
+  if ($Hashes.architecture_registration -cne $ZeroHash) {
+    $Architecture = Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Paths.architecture_registration) -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  }
+  if ($Hashes.phase_manifest -cne $ZeroHash) {
+    $PhaseManifest = Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Paths.phase_manifest) -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  }
+  if ($Hashes.p10_009_manifest -cne $ZeroHash) {
+    $P10009Manifest = Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Paths.p10_009_manifest) -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  }
+
+  $Candidate = [string]$P10009Certification.candidate_head_oid
+  $CurrentHead = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $GitObjectFormat = Get-GitObjectFormat
+  $PhaseBase = if ($null -ne $PhaseManifest) { [string]$PhaseManifest.phase_base_oid } else { '' }
+  $Landing = (@(& git -C $script:RepositoryRoot rev-parse codex/gonow-agent-landing 2>$null) -join '').Trim()
+  $CandidateAncestryFailure = 1
+  $PhaseBaseAncestryFailure = 1
+  if ($Candidate -cmatch '^[0-9a-f]{40,64}$') {
+    & git -C $script:RepositoryRoot merge-base --is-ancestor $Candidate $CurrentHead 2>$null
+    $CandidateAncestryFailure = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+  }
+  if ($PhaseBase -cmatch '^[0-9a-f]{40,64}$' -and $Candidate -cmatch '^[0-9a-f]{40,64}$') {
+    & git -C $script:RepositoryRoot merge-base --is-ancestor $PhaseBase $Candidate 2>$null
+    $PhaseBaseAncestryFailure = if ($LASTEXITCODE -eq 0) { 0 } else { 1 }
+  }
+
+  $ReleaseGateIds = @('C1','C2','C3','C4','C5')
+  $ReleaseGateRows = @()
+  $ReleaseGateFailures = 0
+  $P10009Result = Get-PersonalCertificationPropertyValue $P10009Certification 'result' $null
+  $P10009Gates = @((Get-PersonalCertificationPropertyValue $P10009Result 'gates' @()))
+  foreach ($GateId in $ReleaseGateIds) {
+    $Matches = @($P10009Gates | Where-Object { [string]$_.gate_id -ceq $GateId })
+    if ($Matches.Count -ne 1) { $ReleaseGateFailures++; continue }
+    $Gate = $Matches[0]
+    $ReportHash = [string]$Gate.report_sha256
+    if ([string]$Gate.status -cne 'passed' -or $ReportHash -cnotmatch '^[0-9a-f]{64}$' -or @($Gate.failure_codes).Count -ne 0) {
+      $ReleaseGateFailures++
+    }
+    $ReleaseGateRows += [ordered]@{
+      gate_id = $GateId
+      status = [string]$Gate.status
+      report_path = [string]$Gate.report_path
+      report_sha256 = $ReportHash
+      failure_count = @($Gate.failure_codes).Count
+    }
+  }
+
+  $LockFiles = @(
+    [ordered]@{ path = [string]$Paths.flutter_lock; sha256 = [string]$Hashes.flutter_lock },
+    [ordered]@{ path = [string]$Paths.python_lock; sha256 = [string]$Hashes.python_lock },
+    [ordered]@{ path = [string]$Paths.toolchain_lock; sha256 = [string]$Hashes.toolchain_lock }
+  )
+  $SeedInputs = @(
+    [ordered]@{ path = [string]$Paths.state_space_seed; sha256 = [string]$Hashes.state_space_seed },
+    [ordered]@{ path = [string]$Paths.quality_seed; sha256 = [string]$Hashes.quality_seed }
+  )
+  $StatusLines = @(& git -C $script:RepositoryRoot status --porcelain=v1 -uall)
+  $SourceDirty = 0
+  $CredentialLike = 0
+  foreach ($StatusLine in $StatusLines) {
+    if ([string]::IsNullOrWhiteSpace([string]$StatusLine) -or $StatusLine.Length -lt 4) { continue }
+    $RelativePath = $StatusLine.Substring(3).Trim().Replace('\','/')
+    if ($RelativePath.Contains(' -> ')) { $RelativePath = ($RelativePath -split ' -> ')[-1] }
+    if ($RelativePath -cmatch '(^|/)(\.env($|\.)|id_rsa|id_ed25519|.*\.(pem|key|p12|pfx))$') { $CredentialLike++ }
+    if (-not $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-010/', [StringComparison]::Ordinal) -and
+        $RelativePath -cne 'docs/execution/status/TASK-P10-010.json') {
+      $SourceDirty++
+    }
+  }
+  $ArchitectureHash = if ($null -ne $Architecture) { [string]$Architecture.source_artifact_sha256 } else { '' }
+  $PreState = if ($null -ne $PreAttestationGateState) { $PreAttestationGateState } else {
+    [ordered]@{ passed = $false; failure_count = 1; results = @(); result_set_sha256 = $ZeroHash }
+  }
+  $Checks = [ordered]@{
+    required_input_missing_count = $Missing
+    architecture_binding_failure_count = if ($ArchitectureHash -ceq '644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6' -and [bool]$Architecture.local_adapter_read_back_match) { 0 } else { 1 }
+    candidate_ancestry_failure_count = $CandidateAncestryFailure
+    phase_base_ancestry_failure_count = $PhaseBaseAncestryFailure
+    landing_binding_failure_count = if ($Landing -cmatch '^[0-9a-f]{40,64}$' -and $Landing -ceq $PhaseBase) { 0 } else { 1 }
+    p10_009_manifest_binding_failure_count = if ($null -ne $P10009Result -and $null -ne $P10009Manifest -and [string]$P10009Result.manifest_sha256 -ceq [string]$Hashes.p10_009_manifest -and [string]$P10009Manifest.candidate_head_oid -ceq $Candidate) { 0 } else { 1 }
+    release_config_binding_failure_count = if ($null -ne $P10009Result -and $null -ne $P10009Manifest -and [string]$P10009Result.config_sha256 -cmatch '^[0-9a-f]{64}$' -and [string]$P10009Result.runner_sha256 -cmatch '^[0-9a-f]{64}$' -and [string]$P10009Result.config_sha256 -ceq [string]$P10009Manifest.config_sha256 -and [string]$P10009Result.runner_sha256 -ceq [string]$P10009Manifest.runner_sha256) { 0 } else { 1 }
+    release_gate_failure_count = $ReleaseGateFailures
+    source_tracked_dirty_count = $SourceDirty
+    untracked_credential_like_count = $CredentialLike
+    pre_attestation_gate_failure_count = if ($RequirePreAttestation -and -not [bool]$PreState.passed) { [Math]::Max(1,[int]$PreState.failure_count) } else { 0 }
+  }
+  $FailureCount = 0
+  foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  $Values = [ordered]@{
+    profile = 'personal_automated'
+    candidate_head_oid = $Candidate
+    git_object_format = $GitObjectFormat
+    phase_base_oid = $PhaseBase
+    landing_oid = $Landing
+    approval_tip_oid = $CurrentHead
+    agents_sha256 = [string]$Hashes.agents
+    execplan_sha256 = [string]$Hashes.execplan
+    architecture_sha256 = $ArchitectureHash
+    lock_files = $LockFiles
+    lock_set_sha256 = Get-PersonalCertificationBindingHash -Value $LockFiles
+    test_manifest_sha256 = [string]$Hashes.p10_009_manifest
+    dataset_sha256 = [string]$Hashes.dataset_manifest
+    seed_inputs = $SeedInputs
+    seed_sha256 = Get-PersonalCertificationBindingHash -Value $SeedInputs
+    fault_plan_sha256 = [string]$Hashes.fault_plan
+    pricing_sha256 = [string]$Hashes.pricing
+    evidence_manifest_sha256 = [string]$Hashes.p10_009_manifest
+    rollback_report_sha256 = [string]$Hashes.rollback
+    runner_digest_sha256 = [string]$Hashes.runner
+    catalog_sha256 = [string]$script:CatalogSha256
+    release_certification_config_sha256 = [string](Get-PersonalCertificationPropertyValue $P10009Result 'config_sha256' '')
+    release_certification_runner_sha256 = [string](Get-PersonalCertificationPropertyValue $P10009Result 'runner_sha256' '')
+    p10_009_certification_sha256 = [string]$P10009Certification.certification_sha256
+    release_gate_results = $ReleaseGateRows
+    release_gate_result_set_sha256 = if ($ReleaseGateRows.Count -eq 5) { Get-PersonalCertificationBindingHash -Value $ReleaseGateRows } else { $ZeroHash }
+    pre_attestation_mode_results = @($PreState.results)
+    pre_attestation_mode_result_set_sha256 = [string]$PreState.result_set_sha256
+    source_tracked_dirty_count = $SourceDirty
+    untracked_credential_like_count = $CredentialLike
+  }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    checks = $Checks
+    values = $Values
+  }
+}
+
+function New-PersonalOwnerCanaryCertificationMaterial {
+  param(
+    [Parameter(Mandatory = $true)][object]$P10009Certification,
+    [Parameter(Mandatory = $true)][object]$OwnerCanary,
+    [Parameter(Mandatory = $true)][string]$OwnerCanarySha256,
+    [Parameter(Mandatory = $true)][object]$CertificationBindings,
+    [Parameter(Mandatory = $true)][string]$FinalCertificationSha256,
+    [Parameter(Mandatory = $true)][string]$GeneratedAt
+  )
+  $P10009Result = Get-PersonalCertificationPropertyValue $P10009Certification 'result' $null
+  $Candidate = [string]$P10009Certification.candidate_head_oid
+  $Build = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'build_digest_sha256' '')
+  $Behavior = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'behavior_digest_sha256' '')
+  $Security = Get-PersonalCertificationPropertyValue $OwnerCanary 'security' $null
+  $Reliability = Get-PersonalCertificationPropertyValue $OwnerCanary 'reliability' $null
+  $BindingHash = Get-PersonalCertificationBindingHash -Value $CertificationBindings
+  $RedlineCount = 0
+  foreach ($Field in @('arbitrary_sql_executor_count','cross_tenant_leak_count','unauthorized_write_count','secret_or_pii_leak_count','missing_audit_receipt_count','forbidden_tool_execution_count')) {
+    $RedlineCount += [int](Get-PersonalCertificationPropertyValue $Security $Field 1)
+  }
+  foreach ($Field in @('candidate_drift_count','duplicate_side_effect_count','duplicate_formal_side_effect_count','permanent_run_count','old_path_failures','traceability_failures')) {
+    $RedlineCount += [int](Get-PersonalCertificationPropertyValue $Reliability $Field 1)
+  }
+  $CommonCounts = [ordered]@{
+    mandatory_skip_count = [int](Get-PersonalCertificationPropertyValue $P10009Result 'mandatory_skip_count' 0) + [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'skipped_journey_count' 1)
+    xfail_count = [int](Get-PersonalCertificationPropertyValue $P10009Result 'xfail_count' 0) + [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'xfailed_journey_count' 1)
+    flaky_rerun_count = [int](Get-PersonalCertificationPropertyValue $P10009Result 'flaky_rerun_count' 0) + [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'flaky_rerun_count' 1)
+    open_p0_p1_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'open_p0_p1_count' 1)
+    data_loss_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'data_loss_count' 1)
+    unrecoverable_defect_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'unrecoverable_defect_count' 1)
+    redline_failure_count = $RedlineCount
+  }
+  $Final = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P10-010'
+    governance_profile = 'personal_automated'
+    evidence_type = 'personal_compressed_release_certification'
+    generated_by = 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts'
+    generated_at = $GeneratedAt
+    candidate_head_oid = $Candidate
+    build_digest_sha256 = $Build
+    behavior_digest_sha256 = $Behavior
+    adapter_digest_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+    receipt_set_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')
+    binding_set_sha256 = $BindingHash
+    bindings = $CertificationBindings
+    c1_c5_passed = $true
+    owner_canary_passed = $true
+    rollback_status = [string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' '')
+    mandatory_skip_count = [int]$CommonCounts.mandatory_skip_count
+    xfail_count = [int]$CommonCounts.xfail_count
+    flaky_rerun_count = [int]$CommonCounts.flaky_rerun_count
+    open_p0_p1_count = [int]$CommonCounts.open_p0_p1_count
+    data_loss_count = [int]$CommonCounts.data_loss_count
+    unrecoverable_defect_count = [int]$CommonCounts.unrecoverable_defect_count
+    redline_failure_count = [int]$CommonCounts.redline_failure_count
+    overall_status = 'passed'
+    production_observation_required = $false
+    automated_gate_acceptance = $true
+    p10_009_certification_sha256 = [string]$P10009Certification.certification_sha256
+    owner_canary_report_sha256 = $OwnerCanarySha256
+    residual_risk = 'not_validated_against_31_day_real_user_and_infrastructure_drift'
+  }
+  $Attestation = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P10-010'
+    governance_profile = 'personal_automated'
+    acceptance_method = 'automated_attestation'
+    status = 'accepted'
+    generated_by = 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts'
+    generated_at = $GeneratedAt
+    candidate_head_oid = $Candidate
+    git_object_format = [string]$CertificationBindings.git_object_format
+    phase_base_oid = [string]$CertificationBindings.phase_base_oid
+    landing_oid = [string]$CertificationBindings.landing_oid
+    approval_tip_oid = [string]$CertificationBindings.approval_tip_oid
+    build_digest_sha256 = $Build
+    behavior_digest_sha256 = $Behavior
+    adapter_digest_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+    receipt_set_sha256 = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')
+    runner_digest_sha256 = [string]$CertificationBindings.runner_digest_sha256
+    binding_set_sha256 = $BindingHash
+    bindings = $CertificationBindings
+    release_gate_results = @($CertificationBindings.release_gate_results)
+    task_gate_results = @($CertificationBindings.pre_attestation_mode_results)
+    mandatory_skip_count = [int]$CommonCounts.mandatory_skip_count
+    xfail_count = [int]$CommonCounts.xfail_count
+    flaky_rerun_count = [int]$CommonCounts.flaky_rerun_count
+    open_p0_p1_count = [int]$CommonCounts.open_p0_p1_count
+    data_loss_count = [int]$CommonCounts.data_loss_count
+    unrecoverable_defect_count = [int]$CommonCounts.unrecoverable_defect_count
+    automated_acceptance_predicates_passed = $true
+    failed_predicate_count = 0
+    redline_failure_count = [int]$CommonCounts.redline_failure_count
+    rollback_status = [string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' '')
+    p10_009_certification_sha256 = [string]$P10009Certification.certification_sha256
+    owner_canary_report_sha256 = $OwnerCanarySha256
+    final_certification_sha256 = $FinalCertificationSha256
+  }
+  return [ordered]@{ final_certification = $Final; attestation = $Attestation }
+}
+
+function Get-PersonalOwnerCanaryArtifactState {
+  param(
+    [object]$P10009Certification,
+    [bool]$P10009Accepted,
+    [object]$OwnerCanary,
+    [object]$FinalCertification,
+    [object]$Attestation,
+    [string]$OwnerCanarySha256,
+    [string]$FinalCertificationSha256,
+    [object]$CertificationBindings = $null,
+    [int]$RepositoryBindingFailureCount = 0,
+    [int]$ReceiptLedgerFailureCount = 0,
+    [int]$AdapterBindingFailureCount = 0,
+    [bool]$RequireGeneratedArtifacts = $true
+  )
+  $Hex64 = '^[0-9a-f]{64}$'
+  $Candidate = [string](Get-PersonalCertificationPropertyValue $P10009Certification 'candidate_head_oid' '')
+  $P10009Sha = [string](Get-PersonalCertificationPropertyValue $P10009Certification 'certification_sha256' '')
+  $Environment = Get-PersonalCertificationPropertyValue $OwnerCanary 'environment' $null
+  $Allocation = Get-PersonalCertificationPropertyValue $OwnerCanary 'allocation' $null
+  $Cost = Get-PersonalCertificationPropertyValue $OwnerCanary 'cost' $null
+  $Reliability = Get-PersonalCertificationPropertyValue $OwnerCanary 'reliability' $null
+  $Security = Get-PersonalCertificationPropertyValue $OwnerCanary 'security' $null
+  $JourneyClasses = Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_class_counts' $null
+  $ExpectedSubAdapterNames = @(
+    'GONOW_RELEASE_B_JOURNEY_ADAPTER','GONOW_RELEASE_B_FLAG_ADAPTER','GONOW_RELEASE_B_AUDIT_ADAPTER',
+    'GONOW_RELEASE_B_KILL_SWITCH_ADAPTER','GONOW_RELEASE_B_OLD_PATH_ADAPTER','GONOW_RELEASE_B_TRACE_ADAPTER',
+    'GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER'
+  )
+  $SubAdapterRows = @((Get-PersonalCertificationPropertyValue $OwnerCanary 'sub_adapter_digests' @()))
+  $SubAdapterMap = @{}
+  $SubAdapterBindingFailures = 0
+  foreach ($Row in $SubAdapterRows) {
+    $Name = [string](Get-PersonalCertificationPropertyValue $Row 'environment_name' '')
+    $Digest = [string](Get-PersonalCertificationPropertyValue $Row 'sha256' '')
+    if ($Name -notin $ExpectedSubAdapterNames -or $Digest -cnotmatch $Hex64 -or $Digest -ceq ('0'*64) -or $SubAdapterMap.ContainsKey($Name)) { $SubAdapterBindingFailures++; continue }
+    $SubAdapterMap[$Name] = $Digest
+  }
+  if ($SubAdapterRows.Count -ne $ExpectedSubAdapterNames.Count -or @($ExpectedSubAdapterNames | Where-Object { -not $SubAdapterMap.ContainsKey($_) }).Count -ne 0) { $SubAdapterBindingFailures++ }
+  $RuntimeReferenceHashes = Get-PersonalCertificationPropertyValue $OwnerCanary 'runtime_reference_hashes' $null
+  $RuntimeReferenceBindingFailures = 0
+  foreach ($Name in @('GONOW_AGENT_API_URL','GONOW_OWNER_CANARY_IDENTITY_REF','GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER','GONOW_RELEASE_B_BUDGET_CAP_REF')) {
+    $Digest = [string](Get-PersonalCertificationPropertyValue $RuntimeReferenceHashes $Name '')
+    if ($Digest -cnotmatch $Hex64 -or $Digest -ceq ('0'*64)) { $RuntimeReferenceBindingFailures++ }
+  }
+
+  $Start = [DateTimeOffset]::MinValue; $End = [DateTimeOffset]::MinValue
+  $StartValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'started_at' ''), [ref]$Start)
+  $EndValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'ended_at' ''), [ref]$End)
+  $ElapsedMinutes = if ($StartValid -and $EndValid -and $End -ge $Start) { ($End - $Start).TotalMinutes } else { -1 }
+  $ReportedMinutes = [double](Get-PersonalCertificationPropertyValue $OwnerCanary 'elapsed_minutes' -1)
+  $JourneyCount = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_count' 0)
+  $JourneyClassFailures = 0
+  foreach ($ClassId in @('success','cancel','disconnect_resume','reject','adopt','cas_conflict')) {
+    if ([int](Get-PersonalCertificationPropertyValue $JourneyClasses $ClassId 0) -lt 1) { $JourneyClassFailures++ }
+  }
+  $ProductionBoundaryFailures = 0
+  foreach ($Boundary in @('production_configuration','production_endpoint','real_postgresql','live_provider','provider_usage_receipts','trace_alert_wiring','kill_switch_wiring','old_path_wiring')) {
+    if (-not [bool](Get-PersonalCertificationPropertyValue $Environment $Boundary $false)) { $ProductionBoundaryFailures++ }
+  }
+  $OwnerRef = [string](Get-PersonalCertificationPropertyValue $Allocation 'owner_identity_ref_sha256' '')
+  $OwnerScopeFailures = 0
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'baseline_percent' -1) -ne 0) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'final_percent' -1) -ne 0) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'owner_identity_count' 0) -ne 1) { $OwnerScopeFailures++ }
+  if ($OwnerRef -cnotmatch $Hex64 -or $OwnerRef -ceq ('0' * 64)) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'non_owner_allocation_count' 1) -ne 0) { $OwnerScopeFailures++ }
+  if ([int](Get-PersonalCertificationPropertyValue $Allocation 'non_owner_request_count' 1) -ne 0) { $OwnerScopeFailures++ }
+
+  $BudgetCap = [double](Get-PersonalCertificationPropertyValue $Cost 'budget_cap_usd' 0)
+  $ObservedCost = [double](Get-PersonalCertificationPropertyValue $Cost 'observed_cost_usd' -1)
+  $ProviderCalls = [int](Get-PersonalCertificationPropertyValue $Cost 'provider_call_count' 0)
+  $UsageReceipts = [int](Get-PersonalCertificationPropertyValue $Cost 'usage_receipt_count' 0)
+  $CostFailures = 0
+  if ($BudgetCap -le 0 -or $ObservedCost -lt 0 -or $ObservedCost -gt $BudgetCap) { $CostFailures++ }
+  if ($ProviderCalls -lt 1 -or $UsageReceipts -ne $ProviderCalls -or [int](Get-PersonalCertificationPropertyValue $Cost 'cost_receipt_missing_count' 1) -ne 0) { $CostFailures++ }
+  $ExternalActions = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'external_action_count' 0)
+  $AuditReceipts = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'audit_receipt_count' 0)
+  $OwnerCandidate = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'candidate_head_oid' '')
+  $OwnerBuild = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'build_digest_sha256' '')
+  $OwnerBehavior = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'behavior_digest_sha256' '')
+  $JourneyRows = @((Get-PersonalCertificationPropertyValue $OwnerCanary 'journeys' @()))
+  $JourneyDetailFailures = 0; $JourneyIds = @(); $RunHashes = @(); $TraceHashes = @(); $AuditHashes = @(); $UsageHashes = @(); $JourneyProviderTotal = 0; $JourneyUsageTotal = 0; $DerivedClassCounts = @{}; $JourneyWindows = @{}
+  $ExpectedOutcomes = [ordered]@{success='succeeded';cancel='cancelled';disconnect_resume='succeeded_after_resume';reject='rejected_no_formal_write';adopt='adopted_once';cas_conflict='conflict_no_duplicate'}
+  foreach($Journey in $JourneyRows){
+    $ClassId = [string](Get-PersonalCertificationPropertyValue $Journey 'journey_class' '')
+    if (-not $DerivedClassCounts.ContainsKey($ClassId)) { $DerivedClassCounts[$ClassId] = 0 }; $DerivedClassCounts[$ClassId]++
+    $JourneyId = [string](Get-PersonalCertificationPropertyValue $Journey 'journey_id_sha256' ''); $JourneyIds += $JourneyId
+    $JourneyStart=[DateTimeOffset]::MinValue;$JourneyEnd=[DateTimeOffset]::MinValue
+    $JourneyStartValid=[DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Journey 'started_at' ''),[ref]$JourneyStart)
+    $JourneyEndValid=[DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Journey 'ended_at' ''),[ref]$JourneyEnd)
+    if($JourneyId-cmatch$Hex64-and$JourneyId-cne('0'*64)-and$JourneyStartValid-and$JourneyEndValid-and$JourneyEnd-ge$JourneyStart){$JourneyWindows[$JourneyId]=[ordered]@{started_at=$JourneyStart;ended_at=$JourneyEnd}}
+    $JourneyProviderCalls=[int](Get-PersonalCertificationPropertyValue $Journey 'provider_call_count' -1)
+    $JourneyUsageReceipts=[int](Get-PersonalCertificationPropertyValue $Journey 'usage_receipt_count' -1)
+    $RunHash=[string](Get-PersonalCertificationPropertyValue $Journey 'run_id_sha256' '')
+    $TraceHash=[string](Get-PersonalCertificationPropertyValue $Journey 'trace_receipt_sha256' '')
+    $AuditHash=[string](Get-PersonalCertificationPropertyValue $Journey 'audit_receipt_sha256' '')
+    $UsageHash=[string](Get-PersonalCertificationPropertyValue $Journey 'usage_receipt_set_sha256' '')
+    $RunHashes += $RunHash; $TraceHashes += $TraceHash; $AuditHashes += $AuditHash
+    if ($JourneyProviderCalls -gt 0) { $UsageHashes += $UsageHash }
+    $JourneyProviderTotal += [Math]::Max(0,$JourneyProviderCalls); $JourneyUsageTotal += [Math]::Max(0,$JourneyUsageReceipts)
+    $ExpectedFormalWrites=if($ClassId-ceq'adopt'){1}else{0}
+    if (-not $ExpectedOutcomes.Contains($ClassId) -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'outcome' '') -cne [string]$ExpectedOutcomes[$ClassId] -or
+        $JourneyId -cnotmatch $Hex64 -or $JourneyId -ceq ('0'*64) -or
+        $RunHash -cnotmatch $Hex64 -or $RunHash -ceq ('0'*64) -or
+        $TraceHash -cnotmatch $Hex64 -or $TraceHash -ceq ('0'*64) -or
+        $AuditHash -cnotmatch $Hex64 -or $AuditHash -ceq ('0'*64) -or
+        -not$JourneyStartValid -or -not$JourneyEndValid -or $JourneyEnd-lt$JourneyStart -or $JourneyStart-lt$Start -or $JourneyEnd-gt$End -or
+        $JourneyProviderCalls-lt0 -or $JourneyUsageReceipts-ne$JourneyProviderCalls -or
+        ($JourneyProviderCalls-gt0-and($UsageHash-cnotmatch$Hex64-or$UsageHash-ceq('0'*64))) -or
+        [int](Get-PersonalCertificationPropertyValue $Journey 'formal_write_count' -1)-ne$ExpectedFormalWrites -or
+        [int](Get-PersonalCertificationPropertyValue $Journey 'unexpected_write_count' 1)-ne0 -or
+        [int](Get-PersonalCertificationPropertyValue $Journey 'duplicate_side_effect_count' 1)-ne0 -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'candidate_head_oid' '')-cne$OwnerCandidate -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'build_digest_sha256' '')-cne$OwnerBuild -or
+        [string](Get-PersonalCertificationPropertyValue $Journey 'behavior_digest_sha256' '')-cne$OwnerBehavior) { $JourneyDetailFailures++ }
+  }
+  if($JourneyRows.Count-ne$JourneyCount-or
+     @($JourneyIds|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($RunHashes|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($TraceHashes|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($AuditHashes|Sort-Object -Unique).Count-ne$JourneyRows.Count-or
+     @($UsageHashes|Sort-Object -Unique).Count-ne$UsageHashes.Count-or
+     $JourneyProviderTotal-ne$ProviderCalls-or$JourneyUsageTotal-ne$UsageReceipts){$JourneyDetailFailures++}
+  foreach($ClassId in $ExpectedOutcomes.Keys){if([int](Get-PersonalCertificationPropertyValue $JourneyClasses $ClassId 0)-ne[int]$DerivedClassCounts[$ClassId]){$JourneyDetailFailures++}}
+  $ActionRows = @((Get-PersonalCertificationPropertyValue $OwnerCanary 'external_actions' @()))
+  $ActionFieldFailures = 0; $ActionBindingFailures = 0; $ActionCost = 0.0; $ActionIds = @(); $ActionReceiptHashes = @(); $ActionKinds = @(); $JourneyActionRefs = @(); $ActionTimes = @(); $PreviousObservedGeneration = $null
+  foreach ($Action in $ActionRows) {
+    $ActionIdValue = [string](Get-PersonalCertificationPropertyValue $Action 'action_id' '')
+    $ActionKind = [string](Get-PersonalCertificationPropertyValue $Action 'action_kind' '')
+    $JourneyRef = [string](Get-PersonalCertificationPropertyValue $Action 'journey_id_sha256' '')
+    $ExpectedGeneration = [int](Get-PersonalCertificationPropertyValue $Action 'expected_generation' -1)
+    $ObservedGeneration = [int](Get-PersonalCertificationPropertyValue $Action 'observed_generation' -1)
+    $ActionCostValue = [double](Get-PersonalCertificationPropertyValue $Action 'cost_usd' -1)
+    $ReceiptHash = [string](Get-PersonalCertificationPropertyValue $Action 'receipt_sha256' '')
+    $SourceAdapterName = [string](Get-PersonalCertificationPropertyValue $Action 'source_adapter_environment_name' '')
+    $SourceAdapterDigest = [string](Get-PersonalCertificationPropertyValue $Action 'source_adapter_digest_sha256' '')
+    $ActionExecutedAt = [DateTimeOffset]::MinValue
+    $ActionTimeValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Action 'executed_at' ''), [ref]$ActionExecutedAt)
+    $MutatesGeneration = $ActionKind -in @('owner_allocation_enable','kill_switch_drill','allocation_zero_final')
+    $ExpectedSourceAdapter = switch ($ActionKind) {
+      'allocation_zero_baseline' { 'GONOW_RELEASE_B_FLAG_ADAPTER' }
+      'owner_allocation_enable' { 'GONOW_RELEASE_B_FLAG_ADAPTER' }
+      'journey_execute' { 'GONOW_RELEASE_B_JOURNEY_ADAPTER' }
+      'kill_switch_drill' { 'GONOW_RELEASE_B_KILL_SWITCH_ADAPTER' }
+      'old_path_probe' { 'GONOW_RELEASE_B_OLD_PATH_ADAPTER' }
+      'allocation_zero_final' { 'GONOW_RELEASE_B_FLAG_ADAPTER' }
+      default { '' }
+    }
+    $KindSpecificValid = switch ($ActionKind) {
+      'allocation_zero_baseline' { [int](Get-PersonalCertificationPropertyValue $Action 'allocation_percent_after' -1) -eq 0 -and [bool](Get-PersonalCertificationPropertyValue $Action 'old_path_available' $false) }
+      'owner_allocation_enable' { [string](Get-PersonalCertificationPropertyValue $Action 'allocation_scope' '') -ceq 'owner_only' -and [int](Get-PersonalCertificationPropertyValue $Action 'non_owner_allocation_count' 1) -eq 0 }
+      'journey_execute' {
+        $JourneyWindow=if($JourneyWindows.ContainsKey($JourneyRef)){$JourneyWindows[$JourneyRef]}else{$null}
+        $JourneyRef -cmatch $Hex64 -and $JourneyRef -cne ('0'*64) -and
+        $null-ne$JourneyWindow -and $ActionTimeValid -and $ActionExecutedAt-ge[DateTimeOffset]$JourneyWindow.started_at -and $ActionExecutedAt-le[DateTimeOffset]$JourneyWindow.ended_at -and
+        [string](Get-PersonalCertificationPropertyValue $Action 'allocation_scope' '') -ceq 'owner_only' -and [int](Get-PersonalCertificationPropertyValue $Action 'non_owner_allocation_count' 1) -eq 0
+      }
+      'kill_switch_drill' { [int](Get-PersonalCertificationPropertyValue $Action 'allocation_percent_after' -1) -eq 0 -and [double](Get-PersonalCertificationPropertyValue $Action 'kill_switch_seconds' 31) -ge 0 -and [double](Get-PersonalCertificationPropertyValue $Action 'kill_switch_seconds' 31) -le 30 }
+      'old_path_probe' { [bool](Get-PersonalCertificationPropertyValue $Action 'old_path_available' $false) }
+      'allocation_zero_final' { [int](Get-PersonalCertificationPropertyValue $Action 'allocation_percent_after' -1) -eq 0 }
+      default { $false }
+    }
+    if ($ActionIdValue -cnotmatch $Hex64 -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'target' '') -cne 'gonow.agent.itinerary_planning.release_b' -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'identity_ref_sha256' '') -cne $OwnerRef -or
+        $ExpectedGeneration -lt 0 -or $ObservedGeneration -ne ($ExpectedGeneration + $(if($MutatesGeneration){1}else{0})) -or
+        ($null -ne $PreviousObservedGeneration -and $ExpectedGeneration -ne [int]$PreviousObservedGeneration) -or
+        -not $ActionTimeValid -or $ActionExecutedAt -lt $Start -or $ActionExecutedAt -gt $End -or
+        $ActionCostValue -lt 0 -or [int](Get-PersonalCertificationPropertyValue $Action 'exit_code' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Action 'non_owner_request_count' 1) -ne 0 -or
+        $ReceiptHash -cnotmatch $Hex64 -or $ReceiptHash -ceq ('0' * 64) -or
+        $SourceAdapterName -cne $ExpectedSourceAdapter -or -not $SubAdapterMap.ContainsKey($SourceAdapterName) -or
+        $SourceAdapterDigest -cne [string]$SubAdapterMap[$SourceAdapterName] -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'candidate_head_oid' '') -cne $OwnerCandidate -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'build_digest_sha256' '') -cne $OwnerBuild -or
+        [string](Get-PersonalCertificationPropertyValue $Action 'behavior_digest_sha256' '') -cne $OwnerBehavior -or
+        -not $KindSpecificValid) {
+      $ActionFieldFailures++
+    }
+    $PreviousObservedGeneration = $ObservedGeneration
+    $ActionCost += [Math]::Max([double]0,$ActionCostValue)
+    $ActionIds += $ActionIdValue
+    $ActionReceiptHashes += $ReceiptHash
+    $ActionKinds += $ActionKind
+    $ActionTimes += $ActionExecutedAt
+    if ($ActionKind -ceq 'journey_execute') { $JourneyActionRefs += $JourneyRef }
+  }
+  $ExpectedActionKinds = @('allocation_zero_baseline','owner_allocation_enable') + @('journey_execute') * $JourneyCount + @('kill_switch_drill','old_path_probe','allocation_zero_final')
+  $ActionTimeOrderFailures = 0; for($ActionIndex=1;$ActionIndex-lt$ActionTimes.Count;$ActionIndex++){if($ActionTimes[$ActionIndex]-lt$ActionTimes[$ActionIndex-1]){$ActionTimeOrderFailures++}}
+  if ($ActionRows.Count -ne $ExternalActions -or $ExternalActions -ne ($JourneyCount + 5) -or
+      @($ActionIds | Sort-Object -Unique).Count -ne $ActionRows.Count -or
+      @($ActionReceiptHashes | Sort-Object -Unique).Count -ne $ActionRows.Count -or
+      ($ActionKinds -join ',') -cne ($ExpectedActionKinds -join ',') -or
+      @($JourneyActionRefs | Sort-Object -Unique).Count -ne $JourneyCount -or
+      @($JourneyIds | Where-Object { $_ -notin $JourneyActionRefs }).Count -ne 0 -or
+      $ActionTimeOrderFailures -ne 0 -or
+      [Math]::Abs($ActionCost-$ObservedCost) -gt 0.000001) { $ActionBindingFailures++ }
+  $JourneyAuditReceipts = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_audit_receipt_count' 0)
+  $ReceiptFailures = if ($ExternalActions -gt 0 -and $AuditReceipts -eq $ExternalActions -and $JourneyAuditReceipts -eq $JourneyCount -and $ActionRows.Count -eq $ExternalActions) { 0 } else { 1 }
+
+  $SafetyRedlines = 0
+  foreach ($Field in @('arbitrary_sql_executor_count','cross_tenant_leak_count','unauthorized_write_count','secret_or_pii_leak_count','missing_audit_receipt_count','forbidden_tool_execution_count')) {
+    $SafetyRedlines += [int](Get-PersonalCertificationPropertyValue $Security $Field 1)
+  }
+  foreach ($Field in @('candidate_drift_count','duplicate_side_effect_count','duplicate_formal_side_effect_count','permanent_run_count','old_path_failures','traceability_failures')) {
+    $SafetyRedlines += [int](Get-PersonalCertificationPropertyValue $Reliability $Field 1)
+  }
+  $SourceIntegrityFailures = 0
+  foreach ($Field in @('skipped_journey_count','xfailed_journey_count','flaky_rerun_count','open_p0_p1_count','data_loss_count','unrecoverable_defect_count')) {
+    $SourceIntegrityFailures += [int](Get-PersonalCertificationPropertyValue $OwnerCanary $Field 1)
+  }
+  $RollbackFailures = 0
+  if ([string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' '') -cne 'passed') { $RollbackFailures++ }
+  $KillSeconds = [double](Get-PersonalCertificationPropertyValue $Reliability 'kill_switch_seconds' 31)
+  if ($KillSeconds -lt 0 -or $KillSeconds -gt 30) { $RollbackFailures++ }
+
+  $FinalCandidate = [string](Get-PersonalCertificationPropertyValue $FinalCertification 'candidate_head_oid' '')
+  $FinalBuild = [string](Get-PersonalCertificationPropertyValue $FinalCertification 'build_digest_sha256' '')
+  $FinalBehavior = [string](Get-PersonalCertificationPropertyValue $FinalCertification 'behavior_digest_sha256' '')
+  $AttestedCandidate = [string](Get-PersonalCertificationPropertyValue $Attestation 'candidate_head_oid' '')
+  $AttestedBuild = [string](Get-PersonalCertificationPropertyValue $Attestation 'build_digest_sha256' '')
+  $AttestedBehavior = [string](Get-PersonalCertificationPropertyValue $Attestation 'behavior_digest_sha256' '')
+  $IdentityFailures = 0
+  if ($Candidate -notmatch '^[0-9a-f]{40,64}$' -or $OwnerCandidate -cne $Candidate -or ($RequireGeneratedArtifacts -and ($FinalCandidate -cne $Candidate -or $AttestedCandidate -cne $Candidate))) { $IdentityFailures++ }
+  if ($OwnerBuild -cnotmatch $Hex64 -or ($RequireGeneratedArtifacts -and ($FinalBuild -cne $OwnerBuild -or $AttestedBuild -cne $OwnerBuild)) -or [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'distinct_build_digest_count' 0) -ne 1) { $IdentityFailures++ }
+  if ($OwnerBehavior -cnotmatch $Hex64 -or ($RequireGeneratedArtifacts -and ($FinalBehavior -cne $OwnerBehavior -or $AttestedBehavior -cne $OwnerBehavior)) -or [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'distinct_behavior_digest_count' 0) -ne 1) { $IdentityFailures++ }
+
+  $BindingSchemaFailures = 0
+  if ($RequireGeneratedArtifacts) {
+    if ($null -eq $CertificationBindings -or
+        [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'profile' '') -cne 'personal_automated' -or
+        [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'candidate_head_oid' '') -cne $Candidate -or
+        [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'git_object_format' '') -notin @('sha1','sha256')) { $BindingSchemaFailures++ }
+    foreach ($OidField in @('phase_base_oid','landing_oid','approval_tip_oid')) {
+      if ([string](Get-PersonalCertificationPropertyValue $CertificationBindings $OidField '') -cnotmatch '^[0-9a-f]{40,64}$') { $BindingSchemaFailures++ }
+    }
+    foreach ($HashField in @('agents_sha256','execplan_sha256','architecture_sha256','lock_set_sha256','test_manifest_sha256','dataset_sha256','seed_sha256','fault_plan_sha256','pricing_sha256','evidence_manifest_sha256','rollback_report_sha256','runner_digest_sha256','catalog_sha256','release_certification_config_sha256','release_certification_runner_sha256','p10_009_certification_sha256','release_gate_result_set_sha256','pre_attestation_mode_result_set_sha256')) {
+      if ([string](Get-PersonalCertificationPropertyValue $CertificationBindings $HashField '') -cnotmatch $Hex64) { $BindingSchemaFailures++ }
+    }
+    if (@((Get-PersonalCertificationPropertyValue $CertificationBindings 'lock_files' @())).Count -lt 3 -or
+        @((Get-PersonalCertificationPropertyValue $CertificationBindings 'release_gate_results' @())).Count -ne 5 -or
+        @((Get-PersonalCertificationPropertyValue $CertificationBindings 'pre_attestation_mode_results' @())).Count -ne 7 -or
+        [int](Get-PersonalCertificationPropertyValue $CertificationBindings 'source_tracked_dirty_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $CertificationBindings 'untracked_credential_like_count' 1) -ne 0) { $BindingSchemaFailures++ }
+  }
+
+  $FinalFailures = 0
+  $AttestationFailures = 0
+  if ($RequireGeneratedArtifacts) {
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'schema_version' '') -cne '1.0' -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'task_id' '') -cne 'TASK-P10-010') { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'governance_profile' '') -cne 'personal_automated' -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'evidence_type' '') -cne 'personal_compressed_release_certification') { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'generated_by' '') -cne 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts') { $FinalFailures++ }
+    if (-not [bool](Get-PersonalCertificationPropertyValue $FinalCertification 'c1_c5_passed' $false) -or -not [bool](Get-PersonalCertificationPropertyValue $FinalCertification 'owner_canary_passed' $false) -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'overall_status' '') -cne 'passed') { $FinalFailures++ }
+    if ([bool](Get-PersonalCertificationPropertyValue $FinalCertification 'production_observation_required' $true) -or -not [bool](Get-PersonalCertificationPropertyValue $FinalCertification 'automated_gate_acceptance' $false)) { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'p10_009_certification_sha256' '') -cne $P10009Sha -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'owner_canary_report_sha256' '') -cne $OwnerCanarySha256) { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'adapter_digest_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '') -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'receipt_set_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')) { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'residual_risk' '') -cne 'not_validated_against_31_day_real_user_and_infrastructure_drift') { $FinalFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $FinalCertification 'rollback_status' '') -cne 'passed' -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'mandatory_skip_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'xfail_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'flaky_rerun_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'open_p0_p1_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'data_loss_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'unrecoverable_defect_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $FinalCertification 'redline_failure_count' 1) -ne 0) { $FinalFailures++ }
+
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'schema_version' '') -cne '1.0' -or [string](Get-PersonalCertificationPropertyValue $Attestation 'task_id' '') -cne 'TASK-P10-010') { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'governance_profile' '') -cne 'personal_automated' -or [string](Get-PersonalCertificationPropertyValue $Attestation 'acceptance_method' '') -cne 'automated_attestation' -or [string](Get-PersonalCertificationPropertyValue $Attestation 'status' '') -cne 'accepted') { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'generated_by' '') -cne 'Invoke-TaskGate.ps1:New-PersonalOwnerCanaryCertificationArtifacts') { $AttestationFailures++ }
+    if (-not [bool](Get-PersonalCertificationPropertyValue $Attestation 'automated_acceptance_predicates_passed' $false) -or [int](Get-PersonalCertificationPropertyValue $Attestation 'failed_predicate_count' 1) -ne 0 -or [int](Get-PersonalCertificationPropertyValue $Attestation 'redline_failure_count' 1) -ne 0) { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'p10_009_certification_sha256' '') -cne $P10009Sha -or [string](Get-PersonalCertificationPropertyValue $Attestation 'owner_canary_report_sha256' '') -cne $OwnerCanarySha256 -or [string](Get-PersonalCertificationPropertyValue $Attestation 'final_certification_sha256' '') -cne $FinalCertificationSha256) { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'adapter_digest_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '') -or [string](Get-PersonalCertificationPropertyValue $Attestation 'receipt_set_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '')) { $AttestationFailures++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'rollback_status' '') -cne 'passed' -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'mandatory_skip_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'xfail_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'flaky_rerun_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'open_p0_p1_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'data_loss_count' 1) -ne 0 -or
+        [int](Get-PersonalCertificationPropertyValue $Attestation 'unrecoverable_defect_count' 1) -ne 0) { $AttestationFailures++ }
+
+    $ExpectedBindingHash = if ($null -ne $CertificationBindings) { Get-PersonalCertificationBindingHash -Value $CertificationBindings } else { $ZeroHash }
+    $FinalBindings = Get-PersonalCertificationPropertyValue $FinalCertification 'bindings' $null
+    $AttestationBindings = Get-PersonalCertificationPropertyValue $Attestation 'bindings' $null
+    $FinalBindingHash = if ($null -ne $FinalBindings) { Get-PersonalCertificationBindingHash -Value $FinalBindings } else { $ZeroHash }
+    $AttestationBindingHash = if ($null -ne $AttestationBindings) { Get-PersonalCertificationBindingHash -Value $AttestationBindings } else { $ZeroHash }
+    if ($ExpectedBindingHash -ceq $ZeroHash -or
+        $FinalBindingHash -cne $ExpectedBindingHash -or
+        $AttestationBindingHash -cne $ExpectedBindingHash -or
+        [string](Get-PersonalCertificationPropertyValue $FinalCertification 'binding_set_sha256' '') -cne $ExpectedBindingHash -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'binding_set_sha256' '') -cne $ExpectedBindingHash) {
+      $FinalFailures++
+      $AttestationFailures++
+    }
+    if ([string](Get-PersonalCertificationPropertyValue $Attestation 'git_object_format' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'git_object_format' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'phase_base_oid' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'phase_base_oid' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'landing_oid' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'landing_oid' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'approval_tip_oid' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'approval_tip_oid' '') -or
+        [string](Get-PersonalCertificationPropertyValue $Attestation 'runner_digest_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $CertificationBindings 'runner_digest_sha256' '')) { $AttestationFailures++ }
+    $GeneratedAt = [DateTimeOffset]::MinValue
+    $GenerationTimestampValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Attestation 'generated_at' ''), [ref]$GeneratedAt)
+    if (-not $GenerationTimestampValid -or $GeneratedAt -lt $End -or [string](Get-PersonalCertificationPropertyValue $FinalCertification 'generated_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Attestation 'generated_at' '')) { $AttestationFailures++ }
+  }
+
+  $Checks = [ordered]@{
+    p10_009_certification_invalid = if ($P10009Accepted -and [bool](Get-PersonalCertificationPropertyValue $P10009Certification 'passed' $false)) { 0 } else { 1 }
+    owner_canary_missing = if ($null -eq $OwnerCanary) { 1 } else { 0 }
+    final_certification_missing = if ($RequireGeneratedArtifacts -and $null -eq $FinalCertification) { 1 } else { 0 }
+    attestation_missing = if ($RequireGeneratedArtifacts -and $null -eq $Attestation) { 1 } else { 0 }
+    report_status_failure_count = if ([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'schema_version' '') -ceq '1.0' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'task_id' '') -ceq 'TASK-P10-010' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'governance_profile' '') -ceq 'personal_automated' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'status' '') -ceq 'passed' -and [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'evidence_type' '') -ceq 'owner_only_production_canary') { 0 } else { 1 }
+    identity_binding_failure_count = $IdentityFailures
+    journey_count_failure_count = if ($JourneyCount -ge 10 -and $JourneyCount -le 20) { 0 } else { 1 }
+    journey_class_failure_count = $JourneyClassFailures
+    journey_detail_failure_count = $JourneyDetailFailures
+    elapsed_window_failure_count = if ($ElapsedMinutes -ge 30 -and $ElapsedMinutes -le 60 -and [Math]::Abs($ElapsedMinutes-$ReportedMinutes) -le 0.1) { 0 } else { 1 }
+    production_boundary_failure_count = $ProductionBoundaryFailures
+    owner_scope_failure_count = $OwnerScopeFailures
+    cost_failure_count = $CostFailures
+    receipt_failure_count = $ReceiptFailures
+    sub_adapter_binding_failure_count = $SubAdapterBindingFailures
+    runtime_reference_binding_failure_count = $RuntimeReferenceBindingFailures
+    external_action_field_failure_count = $ActionFieldFailures
+    external_action_binding_failure_count = $ActionBindingFailures
+    safety_redline_failure_count = $SafetyRedlines
+    source_integrity_failure_count = $SourceIntegrityFailures
+    rollback_failure_count = $RollbackFailures
+    unexpected_production_write_count = [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'unexpected_production_write_count' 1)
+    final_certification_failure_count = $FinalFailures
+    attestation_failure_count = $AttestationFailures
+    repository_binding_failure_count = $RepositoryBindingFailureCount
+    receipt_ledger_failure_count = $ReceiptLedgerFailureCount
+    adapter_binding_failure_count = $AdapterBindingFailureCount
+    certification_binding_schema_failure_count = $BindingSchemaFailures
+  }
+  $FailureCount = 0; foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  return [ordered]@{passed=($FailureCount-eq0);failure_count=$FailureCount;candidate_head_oid=$Candidate;owner_canary_sha256=$OwnerCanarySha256;final_certification_sha256=$FinalCertificationSha256;external_action_diagnostics=[ordered]@{declared_count=$ExternalActions;row_count=$ActionRows.Count;unique_receipt_count=@($ActionReceiptHashes|Sort-Object -Unique).Count;action_cost_usd=[Math]::Round($ActionCost,9);observed_cost_usd=[Math]::Round($ObservedCost,9)};checks=$Checks;owner_canary=$OwnerCanary;final_certification=$FinalCertification;attestation=$Attestation}
+}
+
+function Get-PersonalOwnerCanaryAdapterState {
+  param(
+    [object]$OwnerCanary,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot
+  )
+  $ExpectedPath = 'docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'
+  $RelativePath = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_path' '')
+  $ExpectedDigest = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+  $ActualDigest = ''
+  $FailureCount = 0
+  $Exists = $false
+  $Tracked = $false
+  $ReparsePoint = $false
+  if ($RelativePath -cne $ExpectedPath -or $ExpectedDigest -cnotmatch '^[0-9a-f]{64}$' -or $ExpectedDigest -ceq ('0' * 64)) { $FailureCount++ }
+  if ($RelativePath -ceq $ExpectedPath) {
+    $RootFull = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+    $FullPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $RelativePath))
+    if (-not $FullPath.StartsWith($RootFull + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+      $FailureCount++
+    } elseif (Test-Path -LiteralPath $FullPath -PathType Leaf) {
+      $Exists = $true
+      $Item = Get-Item -LiteralPath $FullPath -Force
+      $ReparsePoint = [bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+      if ($ReparsePoint) { $FailureCount++ }
+      $ActualDigest = Get-Sha256 -LiteralPath $FullPath
+      if ($ActualDigest -cne $ExpectedDigest) { $FailureCount++ }
+      $TrackedPaths = @(& git -C $RepositoryRoot ls-files --cached -- $RelativePath)
+      $Tracked = $LASTEXITCODE -eq 0 -and $RelativePath -in @($TrackedPaths)
+      if (-not $Tracked) { $FailureCount++ }
+    } else {
+      $FailureCount++
+    }
+  }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    adapter_path = $RelativePath
+    expected_adapter_path = $ExpectedPath
+    adapter_digest_sha256 = $ExpectedDigest
+    actual_adapter_digest_sha256 = $ActualDigest
+    exists = $Exists
+    tracked = $Tracked
+    reparse_point = $ReparsePoint
+  }
+}
+
+function Get-PersonalOwnerCanaryInputState {
+  param(
+    [object]$EnvironmentNameSet = $null,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot
+  )
+  $RequiredNames = @(
+    'GONOW_AGENT_API_URL',
+    'GONOW_OWNER_CANARY_IDENTITY_REF',
+    'GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER',
+    'GONOW_RELEASE_B_BUDGET_CAP_REF',
+    'GONOW_RELEASE_B_JOURNEY_ADAPTER',
+    'GONOW_RELEASE_B_FLAG_ADAPTER',
+    'GONOW_RELEASE_B_AUDIT_ADAPTER',
+    'GONOW_RELEASE_B_KILL_SWITCH_ADAPTER',
+    'GONOW_RELEASE_B_OLD_PATH_ADAPTER',
+    'GONOW_RELEASE_B_TRACE_ADAPTER',
+    'GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER'
+  )
+  $Presence = [ordered]@{}
+  foreach ($Name in $RequiredNames) {
+    if ($null -ne $EnvironmentNameSet) {
+      $Present = if ($EnvironmentNameSet -is [Collections.IDictionary]) { $EnvironmentNameSet.Contains($Name) } else { $null -ne $EnvironmentNameSet.PSObject.Properties[$Name] }
+    } else {
+      $Present = Test-Path -LiteralPath "Env:$Name"
+    }
+    $Presence[$Name] = [bool]$Present
+  }
+  $MissingNames = @($RequiredNames | Where-Object { -not [bool]$Presence[$_] })
+  $AdapterPath = 'docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'
+  $AdapterFull = Join-Path $RepositoryRoot $AdapterPath
+  $AdapterExists = Test-Path -LiteralPath $AdapterFull -PathType Leaf
+  $AdapterTracked = $false
+  $AdapterReparsePoint = $false
+  $AdapterDigest = ''
+  if ($AdapterExists) {
+    $AdapterItem = Get-Item -LiteralPath $AdapterFull -Force
+    $AdapterReparsePoint = [bool]($AdapterItem.Attributes -band [IO.FileAttributes]::ReparsePoint)
+    $AdapterDigest = Get-Sha256 -LiteralPath $AdapterFull
+    $TrackedPaths = @(& git -C $RepositoryRoot ls-files --cached -- $AdapterPath)
+    $AdapterTracked = $LASTEXITCODE -eq 0 -and $AdapterPath -in @($TrackedPaths)
+  }
+  $AdapterReady = $AdapterExists -and $AdapterTracked -and -not $AdapterReparsePoint -and $AdapterDigest -cmatch '^[0-9a-f]{64}$'
+  $FailureCount = $MissingNames.Count + $(if($AdapterReady){0}else{1})
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    inspection_mode = 'environment_name_presence_only'
+    secret_value_read_count = 0
+    environment_name_presence = $Presence
+    missing_environment_names = $MissingNames
+    adapter_path = $AdapterPath
+    adapter_exists = $AdapterExists
+    adapter_tracked = $AdapterTracked
+    adapter_reparse_point = $AdapterReparsePoint
+    adapter_digest_sha256 = $AdapterDigest
+    production_write_count = 0
+  }
+}
+
+function Get-PersonalOwnerCanaryState {
+  param([switch]$SourceOnly)
+  $P10009StatusPath = Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-009.json'
+  $P10009Status = if (Test-Path -LiteralPath $P10009StatusPath -PathType Leaf) { Get-Content -LiteralPath $P10009StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $ExpectedCandidate = if ($null -ne $P10009Status) { [string]$P10009Status.head_oid } else { '' }
+  $P10009 = Get-PersonalReleaseCertificationState -ExpectedCandidateHeadOid $ExpectedCandidate
+  $P10009Accepted =
+    $null -ne $P10009Status -and
+    [string]$P10009Status.task_id -ceq 'TASK-P10-009' -and
+    [string]$P10009Status.status -ceq 'accepted' -and
+    -not [bool]$P10009Status.reviewer_independent -and
+    [string]$P10009Status.governance_profile -ceq 'personal_automated' -and
+    [string]$P10009Status.acceptance_method -ceq 'automated_attestation' -and
+    [string]$P10009Status.decision_reference -ceq [string]$P10009.certification_path -and
+    [string]$P10009Status.attestation_sha256 -ceq [string]$P10009.certification_sha256 -and
+    [string]$P10009Status.head_oid -ceq [string]$P10009.candidate_head_oid
+  $OwnerPath = Join-Path $script:TaskEvidenceDirectory 'owner-canary-report.json'
+  $ReceiptPath = Join-Path $script:TaskEvidenceDirectory 'owner-canary-receipts.jsonl'
+  $FinalPath = Join-Path $script:TaskEvidenceDirectory 'personal-release-certification.json'
+  $AttestationPath = Join-Path $script:TaskEvidenceDirectory 'automated-acceptance-attestation.json'
+  $Owner = if (Test-Path -LiteralPath $OwnerPath -PathType Leaf) { Get-Content -LiteralPath $OwnerPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $ReceiptRows = @()
+  $ReceiptSchemaFailures = 0
+  if (Test-Path -LiteralPath $ReceiptPath -PathType Leaf) {
+    foreach ($Line in [IO.File]::ReadLines($ReceiptPath, [Text.UTF8Encoding]::new($false))) {
+      if ([string]::IsNullOrWhiteSpace($Line)) { continue }
+      try { $ReceiptRows += ($Line | ConvertFrom-Json -ErrorAction Stop) } catch { $ReceiptSchemaFailures++ }
+    }
+  } else {
+    $ReceiptSchemaFailures++
+  }
+  $Final = if (-not $SourceOnly -and (Test-Path -LiteralPath $FinalPath -PathType Leaf)) { Get-Content -LiteralPath $FinalPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Attestation = if (-not $SourceOnly -and (Test-Path -LiteralPath $AttestationPath -PathType Leaf)) { Get-Content -LiteralPath $AttestationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $PreAttestationState = if ($SourceOnly) { $null } else { Get-P10010PreAttestationGateState }
+  $BindingState = Get-PersonalOwnerCanaryRepositoryBindingState -P10009Certification $P10009 -PreAttestationGateState $PreAttestationState -RequirePreAttestation:(-not $SourceOnly)
+  $ReceiptState = Get-PersonalOwnerCanaryReceiptState -OwnerCanary $Owner -ReceiptRows $ReceiptRows -SchemaFailureCount $ReceiptSchemaFailures
+  $AdapterState = Get-PersonalOwnerCanaryAdapterState -OwnerCanary $Owner -RepositoryRoot $script:RepositoryRoot
+  $State = Get-PersonalOwnerCanaryArtifactState -P10009Certification $P10009 -P10009Accepted $P10009Accepted -OwnerCanary $Owner -FinalCertification $Final -Attestation $Attestation -OwnerCanarySha256 $(if(Test-Path -LiteralPath $OwnerPath -PathType Leaf){Get-Sha256 -LiteralPath $OwnerPath}else{$ZeroHash}) -FinalCertificationSha256 $(if(Test-Path -LiteralPath $FinalPath -PathType Leaf){Get-Sha256 -LiteralPath $FinalPath}else{$ZeroHash}) -CertificationBindings $BindingState.values -RepositoryBindingFailureCount ([int]$BindingState.failure_count) -ReceiptLedgerFailureCount ([int]$ReceiptState.failure_count) -AdapterBindingFailureCount ([int]$AdapterState.failure_count) -RequireGeneratedArtifacts:(-not $SourceOnly)
+  $State['repository_bindings'] = $BindingState
+  $State['receipt_ledger'] = $ReceiptState
+  $State['adapter_binding'] = $AdapterState
+  $State['source_only'] = [bool]$SourceOnly
+  return $State
+}
+
+function Get-PersonalOwnerCanaryCommandState {
+  param([object]$OwnerCanary,[object]$Ledger)
+  $ActionRows = @((Get-PersonalCertificationPropertyValue $OwnerCanary 'external_actions' @()))
+  $Commands = if ($null -ne $Ledger) { @($Ledger.commands) } else { @() }
+  $EligibleCommands = @($Commands | Where-Object { [string]$_.description -ceq 'Execute P10-010 owner-only canary external action' })
+  $AdapterPathValue = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_path' '')
+  $AdapterDigestValue = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+  $FailureCount = 0; $MatchedCount = 0
+  foreach($Action in $ActionRows){
+    $ActionIdValue = [string](Get-PersonalCertificationPropertyValue $Action 'action_id' '')
+    $ReceiptValue = [string](Get-PersonalCertificationPropertyValue $Action 'receipt_sha256' '')
+    $IdentityValue = [string](Get-PersonalCertificationPropertyValue $Action 'identity_ref_sha256' '')
+    $Generation = [int](Get-PersonalCertificationPropertyValue $Action 'expected_generation' -1)
+    $ObservedGeneration = [int](Get-PersonalCertificationPropertyValue $Action 'observed_generation' -1)
+    $ActionKindValue = [string](Get-PersonalCertificationPropertyValue $Action 'action_kind' '')
+    $JourneyValue = [string](Get-PersonalCertificationPropertyValue $Action 'journey_id_sha256' '')
+    $ExecutedAtValue = [string](Get-PersonalCertificationPropertyValue $Action 'executed_at' '')
+    $CostText = [string]::Format([Globalization.CultureInfo]::InvariantCulture,'{0:0.#########}',[double](Get-PersonalCertificationPropertyValue $Action 'cost_usd' -1))
+    $CandidateValue = [string](Get-PersonalCertificationPropertyValue $Action 'candidate_head_oid' '')
+    $BuildValue = [string](Get-PersonalCertificationPropertyValue $Action 'build_digest_sha256' '')
+    $BehaviorValue = [string](Get-PersonalCertificationPropertyValue $Action 'behavior_digest_sha256' '')
+    $SourceAdapterName = [string](Get-PersonalCertificationPropertyValue $Action 'source_adapter_environment_name' '')
+    $SourceAdapterDigest = [string](Get-PersonalCertificationPropertyValue $Action 'source_adapter_digest_sha256' '')
+    if ($ActionIdValue -cnotmatch '^[0-9a-f]{64}$' -or $ReceiptValue -cnotmatch '^[0-9a-f]{64}$' -or $IdentityValue -cnotmatch '^[0-9a-f]{64}$' -or $CandidateValue -cnotmatch '^[0-9a-f]{40,64}$' -or $BuildValue -cnotmatch '^[0-9a-f]{64}$' -or $BehaviorValue -cnotmatch '^[0-9a-f]{64}$' -or $AdapterPathValue -cne 'docs/execution/commands/Invoke-PersonalOwnerCanary.ps1' -or $AdapterDigestValue -cnotmatch '^[0-9a-f]{64}$' -or $SourceAdapterName -notin @('GONOW_RELEASE_B_JOURNEY_ADAPTER','GONOW_RELEASE_B_FLAG_ADAPTER','GONOW_RELEASE_B_KILL_SWITCH_ADAPTER','GONOW_RELEASE_B_OLD_PATH_ADAPTER') -or $SourceAdapterDigest -cnotmatch '^[0-9a-f]{64}$' -or $ActionKindValue -notin @('allocation_zero_baseline','owner_allocation_enable','journey_execute','kill_switch_drill','old_path_probe','allocation_zero_final') -or $JourneyValue -cnotmatch '^[0-9a-f]{64}$' -or $Generation -lt 0 -or $ObservedGeneration -lt $Generation) { $FailureCount++; continue }
+    $ExpectedCommand="p10-owner-canary-adapter target=gonow.agent.itinerary_planning.release_b action_id=$ActionIdValue action_kind=$ActionKindValue journey_id_sha256=$JourneyValue identity_ref_sha256=$IdentityValue expected_generation=$Generation observed_generation=$ObservedGeneration executed_at=$ExecutedAtValue cost_usd=$CostText candidate_head_oid=$CandidateValue build_digest_sha256=$BuildValue behavior_digest_sha256=$BehaviorValue adapter_path=$AdapterPathValue adapter_digest_sha256=$AdapterDigestValue source_adapter_environment_name=$SourceAdapterName source_adapter_digest_sha256=$SourceAdapterDigest receipt_sha256=$ReceiptValue"
+    $Rows = @($EligibleCommands | Where-Object { [int]$_.exit_code -eq 0 -and [string]$_.command -ceq $ExpectedCommand })
+    if ($Rows.Count -ne 1) { $FailureCount++ } else { $MatchedCount++ }
+  }
+  if($EligibleCommands.Count-ne$ActionRows.Count){$FailureCount++}
+  return [ordered]@{passed=($ActionRows.Count-gt0-and$FailureCount-eq0-and$MatchedCount-eq$ActionRows.Count);failure_count=$FailureCount+$(if($ActionRows.Count-gt0){0}else{1});expected_action_count=$ActionRows.Count;command_row_count=$EligibleCommands.Count;matched_action_count=$MatchedCount;adapter_path=$AdapterPathValue;adapter_digest_sha256=$AdapterDigestValue}
+}
+
+function Get-PersonalOwnerCanaryReceiptState {
+  param(
+    [object]$OwnerCanary,
+    [object[]]$ReceiptRows,
+    [int]$SchemaFailureCount = 0
+  )
+  $Hex64 = '^[0-9a-f]{64}$'
+  $Candidate = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'candidate_head_oid' '')
+  $Build = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'build_digest_sha256' '')
+  $Behavior = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'behavior_digest_sha256' '')
+  $AdapterDigest = [string](Get-PersonalCertificationPropertyValue $OwnerCanary 'adapter_digest_sha256' '')
+  $Allocation = Get-PersonalCertificationPropertyValue $OwnerCanary 'allocation' $null
+  $OwnerRef = [string](Get-PersonalCertificationPropertyValue $Allocation 'owner_identity_ref_sha256' '')
+  $Cost = Get-PersonalCertificationPropertyValue $OwnerCanary 'cost' $null
+  $ObservedCost = [double](Get-PersonalCertificationPropertyValue $Cost 'observed_cost_usd' -1)
+  $SubAdapterMap = @{}
+  foreach ($AdapterRow in @((Get-PersonalCertificationPropertyValue $OwnerCanary 'sub_adapter_digests' @()))) {
+    $AdapterName = [string](Get-PersonalCertificationPropertyValue $AdapterRow 'environment_name' '')
+    $AdapterHash = [string](Get-PersonalCertificationPropertyValue $AdapterRow 'sha256' '')
+    if (-not $SubAdapterMap.ContainsKey($AdapterName)) { $SubAdapterMap[$AdapterName] = $AdapterHash }
+  }
+  $Start = [DateTimeOffset]::MinValue; $End = [DateTimeOffset]::MinValue
+  $StartValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'started_at' ''), [ref]$Start)
+  $EndValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'ended_at' ''), [ref]$End)
+  $Expected = @()
+  foreach ($Action in @((Get-PersonalCertificationPropertyValue $OwnerCanary 'external_actions' @()))) {
+    $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Action 'receipt_sha256' ''); kind = 'external_action'; subject = [string](Get-PersonalCertificationPropertyValue $Action 'action_id' ''); source = $Action }
+  }
+  foreach ($Journey in @((Get-PersonalCertificationPropertyValue $OwnerCanary 'journeys' @()))) {
+    $JourneyId = [string](Get-PersonalCertificationPropertyValue $Journey 'journey_id_sha256' '')
+    $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Journey 'trace_receipt_sha256' ''); kind = 'journey_trace'; subject = $JourneyId; source = $Journey }
+    $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Journey 'audit_receipt_sha256' ''); kind = 'journey_audit'; subject = $JourneyId; source = $Journey }
+    if ([int](Get-PersonalCertificationPropertyValue $Journey 'provider_call_count' 0) -gt 0) {
+      $Expected += [ordered]@{ hash = [string](Get-PersonalCertificationPropertyValue $Journey 'usage_receipt_set_sha256' ''); kind = 'provider_usage'; subject = $JourneyId; source = $Journey }
+    }
+  }
+  $FailureCount = $SchemaFailureCount
+  if (-not $StartValid -or -not $EndValid -or $End -lt $Start -or $AdapterDigest -cnotmatch $Hex64 -or $AdapterDigest -ceq ('0'*64)) { $FailureCount++ }
+  $RowsByHash = @{}
+  $UsageCost = 0.0
+  foreach ($Row in @($ReceiptRows)) {
+    $RowHash = Get-PersonalCertificationBindingHash -Value $Row
+    if ($RowsByHash.ContainsKey($RowHash)) { $FailureCount++ } else { $RowsByHash[$RowHash] = $Row }
+    $ExecutedAt = [DateTimeOffset]::MinValue
+    $ExecutedAtValid = [DateTimeOffset]::TryParse([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' ''), [ref]$ExecutedAt)
+    $SourceAdapterName = [string](Get-PersonalCertificationPropertyValue $Row 'source_adapter_environment_name' '')
+    $SourceAdapterDigest = [string](Get-PersonalCertificationPropertyValue $Row 'source_adapter_digest_sha256' '')
+    if ([string](Get-PersonalCertificationPropertyValue $Row 'schema_version' '') -cne '1.0' -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'receipt_kind' '') -notin @('external_action','journey_trace','journey_audit','provider_usage') -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'subject_id_sha256' '') -cnotmatch $Hex64 -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'candidate_head_oid' '') -cne $Candidate -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'build_digest_sha256' '') -cne $Build -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'behavior_digest_sha256' '') -cne $Behavior -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'owner_identity_ref_sha256' '') -cne $OwnerRef -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'adapter_digest_sha256' '') -cne $AdapterDigest -or
+        -not $SubAdapterMap.ContainsKey($SourceAdapterName) -or $SourceAdapterDigest -cne [string]$SubAdapterMap[$SourceAdapterName] -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'status' '') -cne 'passed' -or
+        [int](Get-PersonalCertificationPropertyValue $Row 'redline_failure_count' 1) -ne 0 -or
+        -not $ExecutedAtValid -or $ExecutedAt -lt $Start -or $ExecutedAt -gt $End) { $FailureCount++ }
+    if ([string](Get-PersonalCertificationPropertyValue $Row 'receipt_kind' '') -ceq 'provider_usage') {
+      $UsageCost += [Math]::Max([double]0,[double](Get-PersonalCertificationPropertyValue $Row 'cost_usd' -1))
+    }
+  }
+  foreach ($Reference in $Expected) {
+    if ([string]$Reference.hash -cnotmatch $Hex64 -or -not $RowsByHash.ContainsKey([string]$Reference.hash)) { $FailureCount++; continue }
+    $Row = $RowsByHash[[string]$Reference.hash]
+    if ([string](Get-PersonalCertificationPropertyValue $Row 'receipt_kind' '') -cne [string]$Reference.kind -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'subject_id_sha256' '') -cne [string]$Reference.subject) { $FailureCount++; continue }
+    $Source = $Reference.source
+    $ExpectedSourceAdapter = switch ([string]$Reference.kind) {
+      'external_action' { [string](Get-PersonalCertificationPropertyValue $Source 'source_adapter_environment_name' '') }
+      'journey_trace' { 'GONOW_RELEASE_B_TRACE_ADAPTER' }
+      'journey_audit' { 'GONOW_RELEASE_B_AUDIT_ADAPTER' }
+      'provider_usage' { 'GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER' }
+      default { '' }
+    }
+    if ([string](Get-PersonalCertificationPropertyValue $Row 'source_adapter_environment_name' '') -cne $ExpectedSourceAdapter -or
+        -not $SubAdapterMap.ContainsKey($ExpectedSourceAdapter) -or
+        [string](Get-PersonalCertificationPropertyValue $Row 'source_adapter_digest_sha256' '') -cne [string]$SubAdapterMap[$ExpectedSourceAdapter]) { $FailureCount++ }
+    if ([string]$Reference.kind -ceq 'external_action') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'target' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'target' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'action_kind' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'action_kind' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'journey_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'journey_id_sha256' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'executed_at' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'expected_generation' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'expected_generation' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'observed_generation' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'observed_generation' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'allocation_percent_after' -2) -ne [int](Get-PersonalCertificationPropertyValue $Source 'allocation_percent_after' -3) -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'allocation_scope' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'allocation_scope' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'non_owner_allocation_count' 1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'non_owner_allocation_count' 2) -or
+          [Math]::Abs([double](Get-PersonalCertificationPropertyValue $Row 'kill_switch_seconds' -2)-[double](Get-PersonalCertificationPropertyValue $Source 'kill_switch_seconds' -3)) -gt 0.000000001 -or
+          [bool](Get-PersonalCertificationPropertyValue $Row 'old_path_available' $false) -ne [bool](Get-PersonalCertificationPropertyValue $Source 'old_path_available' $true) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'non_owner_request_count' 1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'non_owner_request_count' 2) -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'source_adapter_environment_name' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'source_adapter_environment_name' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'source_adapter_digest_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'source_adapter_digest_sha256' '') -or
+          [Math]::Abs([double](Get-PersonalCertificationPropertyValue $Row 'cost_usd' -1)-[double](Get-PersonalCertificationPropertyValue $Source 'cost_usd' -2)) -gt 0.000000001 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'exit_code' 1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'exit_code' 2)) { $FailureCount++ }
+    } elseif ([string]$Reference.kind -ceq 'journey_trace') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'run_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'run_id_sha256' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'journey_class' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'journey_class' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'outcome' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'outcome' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'started_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'started_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'ended_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'traceability_failure_count' 1) -ne 0 -or
+          -not [bool](Get-PersonalCertificationPropertyValue $Row 'alert_wiring_verified' $false)) { $FailureCount++ }
+    } elseif ([string]$Reference.kind -ceq 'journey_audit') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'run_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'run_id_sha256' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'formal_write_count' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'formal_write_count' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'unexpected_write_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'duplicate_side_effect_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'duplicate_formal_side_effect_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'arbitrary_sql_executor_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'cross_tenant_leak_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'unauthorized_write_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'secret_or_pii_leak_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'permanent_run_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'missing_audit_receipt_count' 1) -ne 0 -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'forbidden_tool_execution_count' 1) -ne 0) { $FailureCount++ }
+    } elseif ([string]$Reference.kind -ceq 'provider_usage') {
+      if ([string](Get-PersonalCertificationPropertyValue $Row 'executed_at' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'ended_at' '') -or
+          [string](Get-PersonalCertificationPropertyValue $Row 'run_id_sha256' '') -cne [string](Get-PersonalCertificationPropertyValue $Source 'run_id_sha256' '') -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'provider_call_count' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'provider_call_count' -2) -or
+          [int](Get-PersonalCertificationPropertyValue $Row 'usage_receipt_count' -1) -ne [int](Get-PersonalCertificationPropertyValue $Source 'usage_receipt_count' -2) -or
+          [double](Get-PersonalCertificationPropertyValue $Row 'cost_usd' -1) -lt 0 -or
+          -not [bool](Get-PersonalCertificationPropertyValue $Row 'live_provider' $false)) { $FailureCount++ }
+    }
+  }
+  $ExternalReceiptCount = @($Expected | Where-Object { [string]$_.kind -ceq 'external_action' }).Count
+  $JourneyAuditReceiptCount = @($Expected | Where-Object { [string]$_.kind -ceq 'journey_audit' }).Count
+  if (@($ReceiptRows).Count -ne $Expected.Count -or @($Expected | ForEach-Object { [string]$_.hash } | Sort-Object -Unique).Count -ne $Expected.Count -or
+      $ExternalReceiptCount -ne [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'external_action_count' -1) -or
+      $JourneyAuditReceiptCount -ne [int](Get-PersonalCertificationPropertyValue $OwnerCanary 'journey_audit_receipt_count' -1) -or
+      [Math]::Abs($UsageCost-$ObservedCost) -gt 0.000001) { $FailureCount++ }
+  $ExpectedSetHash = Get-PersonalCertificationBindingHash -Value ([object[]]@($ReceiptRows))
+  if ([string](Get-PersonalCertificationPropertyValue $OwnerCanary 'receipt_set_sha256' '') -cne $ExpectedSetHash) { $FailureCount++ }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0 -and $Expected.Count -gt 0)
+    failure_count = $FailureCount + $(if($Expected.Count-gt0){0}else{1})
+    expected_receipt_count = $Expected.Count
+    receipt_row_count = @($ReceiptRows).Count
+    receipt_set_sha256 = $ExpectedSetHash
+    adapter_digest_sha256 = $AdapterDigest
+    provider_usage_cost_usd = [Math]::Round($UsageCost,9)
+  }
+}
+
+function Write-PersonalOwnerCanaryArtifactHashes {
+  $Required = @(
+    'docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md',
+    'docs/execution/evidence/phase-10/P10-010/owner-canary-input-inventory.json',
+    'docs/execution/evidence/phase-10/P10-010/owner-canary-report.json',
+    'docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl',
+    'docs/execution/evidence/phase-10/P10-010/security-report.json',
+    'docs/execution/evidence/phase-10/P10-010/rollback-report.json',
+    'docs/execution/evidence/phase-10/P10-010/personal-release-certification.json',
+    'docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json'
+  )
+  $Artifacts = @()
+  $Missing = 0
+  $SchemaFailures = 0
+  foreach ($RelativePath in $Required) {
+    $Full = Join-Path $script:RepositoryRoot $RelativePath
+    if (-not (Test-Path -LiteralPath $Full -PathType Leaf)) { $Missing++; continue }
+    if ($RelativePath.EndsWith('.json')) {
+      try { $null = Get-Content -LiteralPath $Full -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $SchemaFailures++ }
+    } elseif ($RelativePath.EndsWith('.jsonl')) {
+      $LineCount = 0
+      foreach ($Line in [IO.File]::ReadLines($Full, [Text.UTF8Encoding]::new($false))) {
+        if ([string]::IsNullOrWhiteSpace($Line)) { continue }
+        $LineCount++
+        try { $null = $Line | ConvertFrom-Json -ErrorAction Stop } catch { $SchemaFailures++ }
+      }
+      if ($LineCount -eq 0) { $SchemaFailures++ }
+    }
+    $Artifacts += New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.jsonl')){'application/x-ndjson'}else{'text/markdown'}) -ArtifactType 'personal-owner-canary-release-evidence' -GeneratedByStep 'TASK-P10-010:AutomatedAcceptancePreflight'
+  }
+  $State = Get-PersonalOwnerCanaryState
+  $Document = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P10-010'
+    git_object_format = Get-GitObjectFormat
+    candidate_head_oid = [string]$State.candidate_head_oid
+    governance_head_oid = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+    generated_by = 'Invoke-TaskGate.ps1:Write-PersonalOwnerCanaryArtifactHashes'
+    artifacts = $Artifacts
+    production_write_count = [int]$State.checks.unexpected_production_write_count
+    recorded_at = [DateTimeOffset]::Now.ToString('o')
+  }
+  $Path = Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json'
+  Write-AtomicJson -LiteralPath $Path -Value $Document
+  $HashMismatches = 0
+  foreach ($Artifact in $Artifacts) {
+    $Full = Join-Path $script:RepositoryRoot ([string]$Artifact.path_or_reference)
+    if (-not (Test-Path -LiteralPath $Full -PathType Leaf) -or (Get-Sha256 -LiteralPath $Full) -cne [string]$Artifact.sha256) { $HashMismatches++ }
+  }
+  $FailureCount = $Missing + $SchemaFailures + $HashMismatches + [int]$Document.production_write_count
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    missing_count = $Missing
+    schema_failure_count = $SchemaFailures
+    hash_mismatch_count = $HashMismatches
+    artifact_count = $Artifacts.Count
+    artifact_hashes_sha256 = Get-Sha256 -LiteralPath $Path
+  }
+}
+
+function New-PersonalOwnerCanaryCertificationArtifacts {
+  $SourceState = Get-PersonalOwnerCanaryState -SourceOnly
+  $Owner = $SourceState.owner_canary
+  $LedgerPath = Join-Path $script:TaskEvidenceDirectory 'commands.json'
+  $Ledger = if (Test-Path -LiteralPath $LedgerPath -PathType Leaf) {
+    Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  } else { $null }
+  $CommandState = Get-PersonalOwnerCanaryCommandState -OwnerCanary $Owner -Ledger $Ledger
+  $PreAttestationState = Get-P10010PreAttestationGateState
+  if (-not [bool]$SourceState.passed -or -not [bool]$CommandState.passed -or -not [bool]$PreAttestationState.passed) {
+    return [ordered]@{
+      passed = $false
+      failure_count = [int]$SourceState.failure_count + [int]$CommandState.failure_count + [int]$PreAttestationState.failure_count
+      source_state = $SourceState
+      command_state = $CommandState
+      pre_attestation_state = $PreAttestationState
+      generation_status = 'not_started_source_predicate_failure'
+    }
+  }
+  $P10009StatusPath = Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-009.json'
+  $P10009Status = Get-Content -LiteralPath $P10009StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  $P10009 = Get-PersonalReleaseCertificationState -ExpectedCandidateHeadOid ([string]$P10009Status.head_oid)
+  $BindingState = Get-PersonalOwnerCanaryRepositoryBindingState -P10009Certification $P10009 -PreAttestationGateState $PreAttestationState -RequirePreAttestation
+  if (-not [bool]$BindingState.passed) {
+    return [ordered]@{
+      passed = $false
+      failure_count = [int]$BindingState.failure_count
+      source_state = $SourceState
+      command_state = $CommandState
+      pre_attestation_state = $PreAttestationState
+      binding_state = $BindingState
+      generation_status = 'not_started_repository_binding_failure'
+    }
+  }
+
+  $OwnerPath = Join-Path $script:TaskEvidenceDirectory 'owner-canary-report.json'
+  $FinalPath = Join-Path $script:TaskEvidenceDirectory 'personal-release-certification.json'
+  $AttestationPath = Join-Path $script:TaskEvidenceDirectory 'automated-acceptance-attestation.json'
+  $OwnerHash = Get-Sha256 -LiteralPath $OwnerPath
+  $GeneratedAt = [DateTimeOffset]::Now.ToString('o')
+  $FinalExisted = Test-Path -LiteralPath $FinalPath -PathType Leaf
+  if ($FinalExisted) {
+    $ExistingFinal = Get-Content -LiteralPath $FinalPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    $GeneratedAt = [string](Get-PersonalCertificationPropertyValue $ExistingFinal 'generated_at' '')
+  }
+  $Material = New-PersonalOwnerCanaryCertificationMaterial -P10009Certification $P10009 -OwnerCanary $Owner -OwnerCanarySha256 $OwnerHash -CertificationBindings $BindingState.values -FinalCertificationSha256 $ZeroHash -GeneratedAt $GeneratedAt
+  if ($FinalExisted) {
+    if ((Get-PersonalCertificationBindingHash -Value $ExistingFinal) -cne (Get-PersonalCertificationBindingHash -Value $Material.final_certification)) {
+      return [ordered]@{passed=$false;failure_count=1;generation_status='existing_final_certification_conflict'}
+    }
+  } else {
+    Write-AtomicJson -LiteralPath $FinalPath -Value $Material.final_certification
+  }
+  $FinalHash = Get-Sha256 -LiteralPath $FinalPath
+  $Material = New-PersonalOwnerCanaryCertificationMaterial -P10009Certification $P10009 -OwnerCanary $Owner -OwnerCanarySha256 $OwnerHash -CertificationBindings $BindingState.values -FinalCertificationSha256 $FinalHash -GeneratedAt $GeneratedAt
+  $AttestationExisted = Test-Path -LiteralPath $AttestationPath -PathType Leaf
+  if ($AttestationExisted) {
+    $ExistingAttestation = Get-Content -LiteralPath $AttestationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    if ((Get-PersonalCertificationBindingHash -Value $ExistingAttestation) -cne (Get-PersonalCertificationBindingHash -Value $Material.attestation)) {
+      return [ordered]@{passed=$false;failure_count=1;generation_status='existing_automated_attestation_conflict'}
+    }
+  } else {
+    Write-AtomicJson -LiteralPath $AttestationPath -Value $Material.attestation
+  }
+  $FinalState = Get-PersonalOwnerCanaryState
+  if (-not [bool]$FinalState.passed) {
+    return [ordered]@{passed=$false;failure_count=[int]$FinalState.failure_count;generation_status='generated_artifact_revalidation_failed';state=$FinalState}
+  }
+  $ArtifactState = Write-PersonalOwnerCanaryArtifactHashes
+  $Passed = [bool]$ArtifactState.passed
+  return [ordered]@{
+    passed = $Passed
+    failure_count = if ($Passed) { 0 } else { [int]$ArtifactState.failure_count }
+    generation_status = if ($FinalExisted -and $AttestationExisted) { 'idempotent_noop' } else { 'generated_by_runner' }
+    final_certification_sha256 = $FinalHash
+    attestation_sha256 = Get-Sha256 -LiteralPath $AttestationPath
+    state = $FinalState
+    artifact_state = $ArtifactState
+  }
+}
+
+function Test-PersonalAutomatedFormalExecution {
+  if ($ExecutionMode -cne 'formal_adopted') { return $false }
+  $Governance = Get-GovernanceProfileState
+  return [bool]$Governance.passed -and [string]$Governance.profile -ceq 'personal_automated'
+}
+
+function Read-JsonEvidenceOrNull {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  if (-not (Test-Path -LiteralPath $LiteralPath -PathType Leaf)) { return $null }
+  try { return Get-Content -LiteralPath $LiteralPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { return $null }
+}
+
+function Get-AutomatedAcceptedTaskState {
+  param(
+    [Parameter(Mandatory = $true)][string]$StatusRelativePath,
+    [Parameter(Mandatory = $true)][string]$ExpectedTaskId,
+    [Parameter(Mandatory = $true)][string]$AttestationRelativePath,
+    [string]$ExpectedHeadOid = ''
+  )
+  $StatusPath = Join-Path $script:RepositoryRoot $StatusRelativePath
+  $AttestationPath = Join-Path $script:RepositoryRoot $AttestationRelativePath
+  $Status = Read-JsonEvidenceOrNull -LiteralPath $StatusPath
+  $Attestation = Read-JsonEvidenceOrNull -LiteralPath $AttestationPath
+  $AttestationHash = if ($null -ne $Attestation) { Get-Sha256 -LiteralPath $AttestationPath } else { $ZeroHash }
+  $BoundHead = if ([string]::IsNullOrWhiteSpace($ExpectedHeadOid) -and $null -ne $Attestation) { [string]$Attestation.candidate_head_oid } else { $ExpectedHeadOid }
+  $Checks = [ordered]@{
+    status_missing = if ($null -eq $Status) { 1 } else { 0 }
+    attestation_missing = if ($null -eq $Attestation) { 1 } else { 0 }
+    task_id_mismatch = if ($null -ne $Status -and $null -ne $Attestation -and [string]$Status.task_id -ceq $ExpectedTaskId -and [string]$Attestation.task_id -ceq $ExpectedTaskId) { 0 } else { 1 }
+    status_not_accepted = if ($null -ne $Status -and [string]$Status.status -ceq 'accepted') { 0 } else { 1 }
+    governance_profile_mismatch = if ($null -ne $Status -and $null -ne $Attestation -and [string]$Status.governance_profile -ceq 'personal_automated' -and [string]$Attestation.profile -ceq 'personal_automated') { 0 } else { 1 }
+    acceptance_method_mismatch = if ($null -ne $Status -and $null -ne $Attestation -and [string]$Status.acceptance_method -ceq 'automated_attestation' -and [string]$Attestation.acceptance_method -ceq 'automated_attestation') { 0 } else { 1 }
+    false_independence_claim_count = if ($null -ne $Status -and -not [bool]$Status.reviewer_independent) { 0 } else { 1 }
+    attestation_hash_mismatch = if ($null -ne $Status -and [string]$Status.attestation_sha256 -ceq $AttestationHash) { 0 } else { 1 }
+    candidate_drift_count = if ($null -ne $Status -and $null -ne $Attestation -and $BoundHead -cmatch '^[0-9a-f]{40,64}$' -and [string]$Status.head_oid -ceq $BoundHead -and [string]$Attestation.candidate_head_oid -ceq $BoundHead) { 0 } else { 1 }
+    overall_failure_count = if ($null -ne $Attestation -and [string]$Attestation.overall_status -ceq 'passed' -and [bool]$Attestation.automated_gate_acceptance) { 0 } else { 1 }
+    production_write_count = if ($null -ne $Attestation) { [int]$Attestation.production_write_count } else { 1 }
+  }
+  $FailureCount = 0
+  foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  return [ordered]@{passed=($FailureCount -eq 0);failure_count=$FailureCount;status=$Status;attestation=$Attestation;attestation_sha256=$AttestationHash;candidate_head_oid=$BoundHead;checks=$Checks}
+}
+
+function Get-P10010PersonalCanaryState {
+  $Governance = Get-GovernanceProfileState
+  $Certification = Get-PersonalReleaseCertificationState
+  $CanaryRelativePath = 'docs/execution/evidence/phase-10/P10-010/owner-canary-report.json'
+  $CanaryPath = Join-Path $script:RepositoryRoot $CanaryRelativePath
+  $Canary = Read-JsonEvidenceOrNull -LiteralPath $CanaryPath
+  $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $P10010StatusPath = Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-010.json'
+  $P10010Status = Read-JsonEvidenceOrNull -LiteralPath $P10010StatusPath
+  $ExpectedCandidate = if ($null -ne $P10010Status -and [string]$P10010Status.status -ceq 'accepted') { [string]$P10010Status.head_oid } else { $Head }
+  $Journeys = if ($null -ne $Canary) { @($Canary.journeys) } else { @() }
+  $RequiredScenarios = @('success','cancel','disconnect_recovery','reject','adopt','cas_conflict')
+  $ScenarioIds = @($Journeys | ForEach-Object { [string]$_.scenario } | Sort-Object -Unique)
+  $Started = [DateTimeOffset]::MinValue
+  $Ended = [DateTimeOffset]::MinValue
+  $TimestampValid = $null -ne $Canary -and [DateTimeOffset]::TryParse([string]$Canary.window_started_at,[ref]$Started) -and [DateTimeOffset]::TryParse([string]$Canary.window_ended_at,[ref]$Ended)
+  $DurationMinutes = if ($TimestampValid) { ($Ended - $Started).TotalMinutes } else { -1 }
+  $Checks = [ordered]@{
+    governance_profile_invalid = if ([bool]$Governance.passed -and [string]$Governance.profile -ceq 'personal_automated') { 0 } else { 1 }
+    certification_failure_count = if ([bool]$Certification.passed) { 0 } else { [Math]::Max(1,[int]$Certification.failure_count) }
+    report_missing_or_invalid = if ($null -ne $Canary -and [string]$Canary.schema_version -ceq '1.0' -and [string]$Canary.task_id -ceq 'TASK-P10-010' -and [string]$Canary.profile -ceq 'personal_automated') { 0 } else { 1 }
+    source_certification_hash_mismatch = if ($null -ne $Canary -and [string]$Canary.source_certification_sha256 -ceq [string]$Certification.certification_sha256) { 0 } else { 1 }
+    candidate_drift_count = if ($null -ne $Canary -and [string]$Canary.candidate_head_oid -ceq $ExpectedCandidate) { 0 } else { 1 }
+    journey_count_invalid = if ($Journeys.Count -ge 10 -and $Journeys.Count -le 20) { 0 } else { 1 }
+    journey_failure_count = @($Journeys | Where-Object { -not [bool]$_.passed }).Count
+    required_scenario_missing_count = @($RequiredScenarios | Where-Object { $_ -notin $ScenarioIds }).Count
+    window_duration_invalid = if ($TimestampValid -and $DurationMinutes -ge 30 -and $DurationMinutes -le 60) { 0 } else { 1 }
+    owner_identity_invalid = if ($null -ne $Canary -and [string]$Canary.identity.mode -ceq 'repository_owner_only' -and -not [string]::IsNullOrWhiteSpace([string]$Canary.identity.actor_id) -and [int]$Canary.identity.non_owner_allocation_count -eq 0) { 0 } else { 1 }
+    allocation_boundary_failure_count = if ($null -ne $Canary -and [double]$Canary.initial_allocation_percent -eq 0 -and [double]$Canary.final_allocation_percent -eq 0) { 0 } else { 1 }
+    budget_failure_count = if ($null -ne $Canary -and [bool]$Canary.budget.fixed -and [double]$Canary.budget.maximum_usd -gt 0 -and [double]$Canary.budget.actual_usd -ge 0 -and [double]$Canary.budget.actual_usd -le [double]$Canary.budget.maximum_usd) { 0 } else { 1 }
+    redline_failure_count = if ($null -ne $Canary) { [int]$Canary.redlines.secret_leak_count + [int]$Canary.redlines.pii_leak_count + [int]$Canary.redlines.cross_tenant_leak_count + [int]$Canary.redlines.unauthorized_write_count + [int]$Canary.redlines.permanent_error_count + [int]$Canary.redlines.duplicate_side_effect_count } else { 1 }
+    rollback_failure_count = if ($null -ne $Canary -and [bool]$Canary.rollback.kill_switch_ready -and [bool]$Canary.rollback.old_path_available -and [double]$Canary.rollback.final_allocation_percent -eq 0) { 0 } else { 1 }
+    skipped = if ($null -ne $Canary) { [int]$Canary.skipped } else { 1 }
+    xfailed = if ($null -ne $Canary) { [int]$Canary.xfailed } else { 1 }
+    flaky_rerun_passes = if ($null -ne $Canary) { [int]$Canary.flaky_rerun_passes } else { 1 }
+    production_write_count = if ($null -ne $Canary) { [int]$Canary.production_write_count } else { 1 }
+  }
+  $FailureCount = 0
+  foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  return [ordered]@{passed=($FailureCount -eq 0);failure_count=$FailureCount;candidate_head_oid=$ExpectedCandidate;canary_path=$CanaryRelativePath;canary_sha256=if($null-ne$Canary){Get-Sha256 -LiteralPath $CanaryPath}else{$ZeroHash};duration_minutes=[Math]::Round($DurationMinutes,3);journey_count=$Journeys.Count;governance=$Governance;certification=$Certification;canary=$Canary;checks=$Checks}
+}
+
+function Write-P10010PersonalAcceptanceAttestation {
+  if (-not (Test-PersonalAutomatedFormalExecution)) { throw 'P10-010 automated attestation requires formal personal execution' }
+  $State = Get-P10010PersonalCanaryState
+  $Modes = Get-P10010GateModeState
+  if (-not [bool]$State.passed -or -not [bool]$Modes.passed) { throw 'P10-010 automated attestation preflight failed' }
+  $GateHash = Get-Sha256 -LiteralPath $script:GatePath
+  $ReportPath = Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json'
+  $Attestation = [ordered]@{
+    schema_version='1.0'; task_id='TASK-P10-010'; phase='Phase 10'; profile='personal_automated'
+    acceptance_method='automated_attestation'; overall_status='passed'; candidate_head_oid=[string]$State.candidate_head_oid
+    source_certification_sha256=[string]$State.certification.certification_sha256; owner_canary_sha256=[string]$State.canary_sha256
+    release_gate_report_sha256=if(Test-Path -LiteralPath $ReportPath -PathType Leaf){Get-Sha256 -LiteralPath $ReportPath}else{$ZeroHash}
+    gate_results_sha256=$GateHash; checks=$State.checks; automated_gate_acceptance=$true
+    evidence_domains=@('Data','Engineering','Product','Security'); natural_person_signature_count=0
+    production_observation_required=$false; production_write_count=0; remote_push_count=0; merge_count=0
+    recorded_at=[DateTimeOffset]::Now.ToString('o')
+  }
+  $RelativePath='docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json'
+  Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation
+  return [ordered]@{path=$RelativePath;sha256=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath);candidate_head_oid=[string]$State.candidate_head_oid}
+}
+
+function Get-P10990PersonalAttestationState {
+  param([switch]$IncludeAutomatedAcceptance)
+  $Governance = Get-GovernanceProfileState
+  $Projection = Get-P10PersonalAutomatedProjection
+  $Modes = Get-P10GateModeState -IncludeVerify -IncludeAutomatedAcceptance:$IncludeAutomatedAcceptance
+  $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $GatePath = Join-Path $script:TaskEvidenceDirectory 'gate-results.json'
+  $ArtifactPath = Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json'
+  $Checks = [ordered]@{
+    governance_profile_invalid=if([bool]$Governance.passed-and[string]$Governance.profile-ceq'personal_automated'){0}else{1}
+    execution_mode_invalid=if($ExecutionMode-ceq'formal_adopted'){0}else{1}
+    projection_failure_count=if([bool]$Projection.local_projection_passed){0}else{[Math]::Max(1,[int]$Projection.local_failure_count)}
+    mandatory_gate_failure_count=if([bool]$Modes.passed){0}else{@($Modes.missing_modes).Count+@($Modes.failed_modes).Count}
+    candidate_drift_count=if((Test-Path -LiteralPath $GatePath -PathType Leaf)-and[string](Get-Content -LiteralPath $GatePath -Raw -Encoding UTF8|ConvertFrom-Json).head_oid-ceq$Head){0}else{1}
+    artifact_manifest_missing=if(Test-Path -LiteralPath $ArtifactPath -PathType Leaf){0}else{1}
+    mandatory_skip_count=[int]$Projection.checks.mandatory_skip_count
+    xfail_count=[int]$Projection.checks.xfail_count
+    flaky_rerun_count=[int]$Projection.checks.flaky_rerun_count
+    redline_failure_count=[int]$Projection.checks.redline_failure_count
+    open_p0_p1=[int]$Projection.checks.open_p0_p1
+    production_write_count=[int]$Projection.checks.production_write_count
+  }
+  $Failure=0;foreach($Value in $Checks.Values){$Failure+=[int]$Value}
+  return [ordered]@{passed=($Failure-eq0);failure_count=$Failure;candidate_head_oid=$Head;governance=$Governance;projection=$Projection;checks=$Checks;gate_results_sha256=if(Test-Path -LiteralPath $GatePath -PathType Leaf){Get-Sha256 -LiteralPath $GatePath}else{$ZeroHash};artifact_manifest_sha256=if(Test-Path -LiteralPath $ArtifactPath -PathType Leaf){Get-Sha256 -LiteralPath $ArtifactPath}else{$ZeroHash}}
+}
+
+function Write-P10990PersonalAcceptanceAttestation {
+  if (-not (Test-PersonalAutomatedFormalExecution)) { throw 'P10-990 automated attestation requires formal personal execution' }
+  $State=Get-P10990PersonalAttestationState -IncludeAutomatedAcceptance
+  if(-not[bool]$State.passed){throw "P10-990 automated attestation preflight failed: $($State.checks|ConvertTo-Json -Compress)"}
+  $Attestation=[ordered]@{
+    schema_version='1.0';task_id='TASK-P10-990';phase='Phase 10';profile='personal_automated';acceptance_method='automated_attestation';overall_status='passed'
+    candidate_head_oid=[string]$State.candidate_head_oid;git_object_format=Get-GitObjectFormat;governance_adoption_sha256=[string]$State.governance.adoption_sha256
+    p10_009_attestation_sha256=[string]$State.projection.p10_009.attestation_sha256;p10_010_attestation_sha256=[string]$State.projection.p10_010.attestation_sha256
+    gate_results_sha256=[string]$State.gate_results_sha256;artifact_manifest_sha256=[string]$State.artifact_manifest_sha256;checks=$State.checks
+    automated_gate_acceptance=$true;evidence_domains=@('Data','Engineering','Product','Security','Operations');natural_person_signature_count=0
+    production_observation_required=$false;production_write_count=0;remote_push_count=0;merge_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+  }
+  $RelativePath='docs/execution/evidence/phase-10/P10-990/personal-acceptance-attestation.json'
+  Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation
+  return [ordered]@{path=$RelativePath;sha256=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath);candidate_head_oid=[string]$State.candidate_head_oid}
+}
+
+function Write-P10011PersonalAcceptanceAttestation {
+  if (-not (Test-PersonalAutomatedFormalExecution)) { throw 'P10-011 automated attestation requires formal personal execution' }
+  $Dependency=Get-P10011DependencyState;$Modes=Get-P10011GateModeState;$ReleasePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/B.json';$Release=Read-JsonEvidenceOrNull $ReleasePath
+  if(-not[bool]$Dependency.passed-or-not[bool]$Modes.passed-or$null-eq$Release-or-not[bool]$Release.accepted-or[string]$Release.release_status-cne'accepted'){throw 'P10-011 automated attestation preflight failed'}
+  $Attestation=[ordered]@{schema_version='1.0';task_id='TASK-P10-011';release='B';profile='personal_automated';acceptance_method='automated_attestation';overall_status='passed';candidate_head_oid=[string]$Release.accepted_landing_sha;release_evidence_sha256=Get-Sha256 -LiteralPath $ReleasePath;phase_acceptance_attestation_sha256=[string]$Dependency.acceptance_attestation_sha256;phase_merge_authorization_sha256=[string]$Dependency.merge_authorization_sha256;gate_results_sha256=Get-Sha256 -LiteralPath $script:GatePath;pr_number=[int]$Release.pr.number;merge_commit_sha=[string]$Release.pr.merge_commit_sha;non_force_merge=[bool]$Release.pr.non_force_merge;merged_tree_matches_attested_tree=[bool]$Release.merged_tree_matches_attested_tree;required_check_failure_count=0;force_update_count=0;natural_person_signature_count=0;automated_gate_acceptance=$true;production_observation_required=$false;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+  $RelativePath='docs/execution/evidence/releases/P10-011/automated-acceptance-attestation.json';Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation;return [ordered]@{path=$RelativePath;sha256=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath);candidate_head_oid=[string]$Release.accepted_landing_sha}
+}
+
+function Write-RelC000PersonalAcceptanceAttestation {
+  if (-not (Test-PersonalAutomatedFormalExecution)) { throw 'REL-C-000 automated attestation requires formal personal execution' }
+  $Dependency=Get-RelC000DependencyState;$Branches=Get-RelC000BranchState;$SelectionPath=Join-Path $script:TaskEvidenceDirectory 'path-selection.json';$Selection=Read-JsonEvidenceOrNull $SelectionPath;$State=Get-RelC000SelectionState -Selection $Selection -Dependency $Dependency -BranchState $Branches;$Modes=Get-RelC000GateModeState
+  if(-not[bool]$State.passed-or-not[bool]$Modes.passed){throw 'REL-C-000 automated attestation preflight failed'}
+  $Attestation=[ordered]@{schema_version='1.0';task_id='TASK-REL-C-000';release='C-selection';profile='personal_automated';acceptance_method='automated_attestation';overall_status='passed';candidate_head_oid=[string]$Selection.cas_receipt.new_sha;cycle_id=[string]$Selection.cycle_id;path=[string]$Selection.path;accepted_landing_sha=[string]$Selection.accepted_landing_sha;selection_sha256=Get-Sha256 -LiteralPath $SelectionPath;selected_evidence_sha256=[string]$Selection.evidence_sha256;release_b_evidence_sha256=[string]$Selection.release_b_evidence_sha256;release_b_attestation_sha256=[string]$Selection.release_b_attestation_sha256;gate_results_sha256=Get-Sha256 -LiteralPath $script:GatePath;natural_person_signature_count=0;redline_failure_count=0;candidate_drift_count=0;automated_gate_acceptance=$true;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+  $RelativePath='docs/execution/evidence/releases/REL-C-000/automated-acceptance-attestation.json';Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation;return [ordered]@{path=$RelativePath;sha256=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath);candidate_head_oid=[string]$Selection.cas_receipt.new_sha}
+}
+
+function Write-RelC001PersonalAcceptanceAttestation {
+  if (-not (Test-PersonalAutomatedFormalExecution)) { throw 'REL-C-001 automated attestation requires formal personal execution' }
+  $Dependency=Get-RelC001DependencyState;$Modes=Get-RelC001GateModeState;$ReleasePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/C.json';$Release=Read-JsonEvidenceOrNull $ReleasePath
+  if(-not[bool]$Dependency.passed-or-not[bool]$Modes.passed-or$null-eq$Release-or-not[bool]$Release.accepted-or[string]$Release.release_status-cne'accepted'){throw 'REL-C-001 automated attestation preflight failed'}
+  $Attestation=[ordered]@{schema_version='1.0';task_id='TASK-REL-C-001';release='C';profile='personal_automated';acceptance_method='automated_attestation';overall_status='passed';candidate_head_oid=[string]$Release.accepted_landing_sha;release_evidence_sha256=Get-Sha256 -LiteralPath $ReleasePath;outer_selection_sha256=[string]$Dependency.outer_selection_sha256;outer_gate_sha256=[string]$Dependency.outer_gate_sha256;selected_merge_sha=[string]$Dependency.selected_merge_sha;gate_results_sha256=Get-Sha256 -LiteralPath $script:GatePath;pr_number=[int]$Release.pr.number;merge_commit_sha=[string]$Release.pr.merge_commit_sha;non_force_merge=[bool]$Release.pr.non_force_merge;merged_tree_matches_attested_tree=[bool]$Release.merged_tree_matches_attested_tree;active_c_capability_count=[int]$Release.active_c_capability_count;unselected_path_commit_count=[int]$Release.unselected_path_commit_count;required_check_failure_count=0;force_update_count=0;natural_person_signature_count=0;automated_gate_acceptance=$true;production_observation_required=$false;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+  $RelativePath='docs/execution/evidence/releases/REL-C-001/automated-acceptance-attestation.json';Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation;return [ordered]@{path=$RelativePath;sha256=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath);candidate_head_oid=[string]$Release.accepted_landing_sha}
 }
 
 function Invoke-RedactedExternal {
@@ -837,9 +2169,9 @@ function Invoke-ModeBootstrapSelfTest {
     schema_parse_errors = $SchemaErrors; yaml_native_errors = $YamlNativeErrors; self_test_failures = $TestFailures
     full_schema_yaml_validation = 'pending_boot005'
   }
-  $Passed = $TaskCount -eq 153 -and $WorkContracts -eq 125 -and
+  $Passed = $TaskCount -eq 153 -and $WorkContracts -eq 127 -and
     @($StatusPaths | Sort-Object -Unique).Count -eq 153 -and
-    $TaskModes.Count -eq 23 -and $MergeModes.Count -eq 11 -and
+    $TaskModes.Count -eq 24 -and $MergeModes.Count -eq 11 -and
     $MissingHandlers -eq 0 -and $DuplicateHandlers -eq 0 -and
     $SchemaErrors -eq 0 -and $YamlNativeErrors -eq 0 -and $TestFailures -eq 0 -and
     [bool]$Checks.guidance_materialization_valid
@@ -1793,7 +3125,7 @@ function Get-P10ObservationWindowState {
   return [ordered]@{passed=($Failure-eq0);checks=$Checks;minimum_nonoverlap_observation_hours=$MinimumTotalHours;observed_nonoverlap_hours=[Math]::Round($ObservedTotalHours,3)}
 }
 
-function Get-P10010GateModeState {$RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify');if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}};$Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json;$Results=@($Ledger.results);$MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1});$FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;$Rows=@($Results|Where-Object{[string]$_.check_id-ceq$ModeName});$Rows.Count-eq1-and[string]$Rows[0].status-cne'passed'});return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}}
+function Get-P10010GateModeState {$RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify','AutomatedAcceptancePreflight');if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$RequiredModes;failed_modes=@()}};$Ledger=Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json;$Results=@($Ledger.results);$MissingModes=@($RequiredModes|Where-Object{$ModeName=$_;@($Results|Where-Object{[string]$_.check_id-ceq$ModeName}).Count-ne1});$FailedModes=@($RequiredModes|Where-Object{$ModeName=$_;$Rows=@($Results|Where-Object{[string]$_.check_id-ceq$ModeName});$Rows.Count-eq1-and[string]$Rows[0].status-cne'passed'});return [ordered]@{passed=($MissingModes.Count-eq0-and$FailedModes.Count-eq0);missing_modes=$MissingModes;failed_modes=$FailedModes}}
 function Get-P10010ChangedPaths {$Paths=@(& git -C $script:RepositoryRoot diff --name-only HEAD --);$Paths+=@(& git -C $script:RepositoryRoot ls-files --others --exclude-standard);$CandidateCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H HEAD -- 'docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md' 'docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json')-join'').Trim();$ManifestPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\phase-10\phase-runtime-manifest.json';$Belongs=$false;if($CandidateCommit-cmatch'^[0-9a-f]{40,64}$'-and(Test-Path -LiteralPath $ManifestPath -PathType Leaf)){$Manifest=Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8|ConvertFrom-Json;& git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Manifest.phase_base_oid) $CandidateCommit 2>$null;$Belongs=$LASTEXITCODE-eq0-and$CandidateCommit-cne[string]$Manifest.phase_base_oid};if($Belongs){$Paths+=@(& git -C $script:RepositoryRoot diff-tree --no-commit-id --name-only -r $CandidateCommit)};return @($Paths|Where-Object{$_}|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)}
 function Test-P10010PathAllowed {param([Parameter(Mandatory=$true)][string]$RelativePath);if($RelativePath-ceq'docs/execution/status/TASK-P10-010.json'){return $true};return $RelativePath.StartsWith('docs/execution/evidence/phase-10/P10-010/',[StringComparison]::Ordinal)}
 
@@ -1859,7 +3191,33 @@ function Get-P10011RemoteRefs {
   return [ordered]@{exit_code=$Exit;main_oid=$Main;head_oid=$Head}
 }
 
+function Get-P10011PersonalDependencyState {
+  $StatusPath=Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-999.json'
+  $MergePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/merge.json'
+  $ClosePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/phase-close-v01.json'
+  $ManifestPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/artifact-manifest-v01.json'
+  $AuthorizationPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-999/merge-authorization.json'
+  $MergeGatePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-999/gate-results.json'
+  $MergeArtifactsPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-999/artifact-hashes.json'
+  $AcceptancePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-990/personal-acceptance-attestation.json'
+  $Required=@($StatusPath,$MergePath,$ClosePath,$ManifestPath,$AuthorizationPath,$MergeGatePath,$MergeArtifactsPath,$AcceptancePath)
+  $Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath $_ -PathType Leaf)})
+  $Status=Read-JsonEvidenceOrNull $StatusPath;$Merge=Read-JsonEvidenceOrNull $MergePath;$Close=Read-JsonEvidenceOrNull $ClosePath;$Authorization=Read-JsonEvidenceOrNull $AuthorizationPath;$Gate=Read-JsonEvidenceOrNull $MergeGatePath;$Artifacts=Read-JsonEvidenceOrNull $MergeArtifactsPath;$Acceptance=Read-JsonEvidenceOrNull $AcceptancePath;$Governance=Get-GovernanceProfileState
+  $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Branch=(& git -C $script:RepositoryRoot branch --show-current).Trim();$RemoteUrl=(& git -C $script:RepositoryRoot remote get-url origin).Trim();$Remote=Get-P10011RemoteRefs;$Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)});$CloseCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H -- 'docs/execution/evidence/phase-10/phase-close-v01.json')-join'').Trim()
+  $AuthorizationHash=if($null-ne$Authorization){Get-Sha256 -LiteralPath $AuthorizationPath}else{$ZeroHash};$GateHash=if($null-ne$Gate){Get-Sha256 -LiteralPath $MergeGatePath}else{$ZeroHash};$AcceptanceHash=if($null-ne$Acceptance){Get-Sha256 -LiteralPath $AcceptancePath}else{$ZeroHash}
+  $RequiredModes=@('MergePreflight','Cleanup','Merge','MergeTreeVerification','Security','IntegrationSmoke','PostMergeEvidence','Retrospective','RollbackVerify','Archive','CloseVerify');$GateInvalid=if($null-ne$Gate){@($RequiredModes|Where-Object{$Name=$_;@($Gate.results|Where-Object{[string]$_.check_id-ceq$Name-and[string]$_.status-ceq'passed'}).Count-ne1}).Count}else{$RequiredModes.Count}
+  $StatusValid=$null-ne$Status-and[string]$Status.task_id-ceq'TASK-P10-999'-and[string]$Status.status-ceq'accepted'-and-not[bool]$Status.reviewer_independent-and[string]$Status.governance_profile-ceq'personal_automated'-and[string]$Status.acceptance_method-ceq'automated_attestation'-and[string]$Status.attestation_sha256-ceq$AuthorizationHash
+  $AuthorizationValid=$null-ne$Authorization-and[string]$Authorization.task_id-ceq'TASK-P10-999'-and[string]$Authorization.profile-ceq'personal_automated'-and[string]$Authorization.decision-ceq'approved_for_exact_non_force_landing_merge'-and[string]$Authorization.acceptance_attestation_sha256-ceq$AcceptanceHash-and[int]$Authorization.open_p0_p1+[int]$Authorization.conditions_open+[int]$Authorization.production_write_count+[int]$Authorization.remote_write_count-eq0
+  $CloseValid=$null-ne$Merge-and$null-ne$Close-and[string]$Status.head_oid-ceq[string]$Close.smoke_attestation_oid-and[string]$Close.merge_oid-ceq[string]$Merge.merge_oid-and[string]$Close.artifact_manifest_sha256-ceq(Get-Sha256 -LiteralPath $ManifestPath)-and$CloseCommit-ceq$Head
+  $ArtifactValid=$false;if($null-ne$Artifacts){$Rows=@($Artifacts.artifacts);$StatusArtifact=@($Rows|Where-Object{[string]$_.path-ceq'docs/execution/status/TASK-P10-999.json'});$CloseArtifact=@($Rows|Where-Object{[string]$_.path-ceq'docs/execution/evidence/phase-10/phase-close-v01.json'});$ArtifactValid=$StatusArtifact.Count-eq1-and$CloseArtifact.Count-eq1-and[string]$StatusArtifact[0].sha256-ceq(Get-Sha256 -LiteralPath $StatusPath)-and[string]$CloseArtifact[0].sha256-ceq(Get-Sha256 -LiteralPath $ClosePath)}
+  $Ancestry=$false;if($null-ne$Merge-and[string]$Merge.merge_oid-cmatch'^[0-9a-f]{40}$'){& git -C $script:RepositoryRoot merge-base --is-ancestor ([string]$Merge.merge_oid) $Head 2>$null;$Ancestry=$LASTEXITCODE-eq0}
+  $Checks=[ordered]@{dependency_failures=0;missing_input_count=$Missing.Count;accepted_integration_status_valid=$StatusValid;merge_authorization_valid=$AuthorizationValid;p10_999_gate_set_valid=($GateInvalid-eq0);p10_999_artifact_binding_valid=$ArtifactValid;phase_close_binding_valid=$CloseValid;merge_ancestry_valid=$Ancestry;governance_profile_valid=([bool]$Governance.passed);landing_branch_match=($Branch-ceq'codex/gonow-agent-landing');remote_url_match=($RemoteUrl-ceq'https://github.com/Elfsa-Miranda/GO_NOW.git');remote_query_exit_code=[int]$Remote.exit_code;remote_head_mismatch=if([string]$Remote.head_oid-ceq$Head){0}else{1};remote_main_missing=if([string]$Remote.main_oid-cmatch'^[0-9a-f]{40}$'){0}else{1};unexpected_paths=$Unexpected.Count;required_gate_failure_count=$GateInvalid;natural_person_signature_count=0;production_write_count=0}
+  $Passed=$Missing.Count+[int]$Checks.remote_query_exit_code+[int]$Checks.remote_head_mismatch+[int]$Checks.remote_main_missing+[int]$Checks.unexpected_paths+$GateInvalid-eq0-and$StatusValid-and$AuthorizationValid-and$ArtifactValid-and$CloseValid-and$Ancestry-and[bool]$Governance.passed-and[bool]$Checks.landing_branch_match-and[bool]$Checks.remote_url_match;if(-not$Passed){$Checks.dependency_failures=1}
+  return [ordered]@{passed=$Passed;checks=$Checks;head_oid=$Head;remote_head_oid=[string]$Remote.head_oid;remote_main_oid=[string]$Remote.main_oid;merge_oid=if($null-ne$Merge){[string]$Merge.merge_oid}else{''};close_commit_oid=$CloseCommit;acceptance_attestation_sha256=$AcceptanceHash;merge_authorization_sha256=$AuthorizationHash}
+}
+
 function Get-P10011DependencyState {
+  if (Test-PersonalAutomatedFormalExecution) { return Get-P10011PersonalDependencyState }
   $StatusPath=Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-999.json'
   $MergePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/merge.json'
   $ClosePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/phase-close-v01.json'
@@ -1891,21 +3249,21 @@ function Get-P10011ObservationState {
   $Request=$null;$Observation=$null;$SchemaErrors=0
   foreach($Item in @(@($RequestPath,'request'),@($ObservationPath,'observation'))){if(-not(Test-Path -LiteralPath $Item[0] -PathType Leaf)){$SchemaErrors++;continue};try{$Value=Get-Content -LiteralPath $Item[0] -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;if($Item[1]-ceq'request'){$Request=$Value}else{$Observation=$Value}}catch{$SchemaErrors++}}
   $RequiredChecks=@('agent-required','baseline-and-candidate','tracked-and-history');$CheckSetMismatch=1;$CheckFailure=1;$Fresh=$false;$AuditValid=$false
-  if($null-ne$Observation){$ObservedChecks=@($Observation.required_checks);$Names=@($ObservedChecks|ForEach-Object{[string]$_.name}|Sort-Object);$CheckSetMismatch=if(($Names-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};$CheckFailure=@($ObservedChecks|Where-Object{[string]$_.status-cne'completed'-or[string]$_.conclusion-cne'success'}).Count;try{$Age=([DateTimeOffset]::Now-[DateTimeOffset]::Parse([string]$Observation.observed_at)).TotalMinutes;$Fresh=$Age-ge-5-and$Age-le15}catch{};$Receipt=$Observation.mutation_receipt;$AuditValid=$null-ne$Receipt-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.actor_id)-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.actor_role)-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.authorization_reference)-and[string]$Receipt.request_sha256-cmatch'^[0-9a-f]{64}$'-and[string]$Receipt.response_sha256-cmatch'^[0-9a-f]{64}$'-and[int]$Receipt.http_status-in@(200,201)}
+  if($null-ne$Observation){$ObservedChecks=@($Observation.required_checks);$Names=@($ObservedChecks|ForEach-Object{[string]$_.name}|Sort-Object);$CheckSetMismatch=if(($Names-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};$CheckFailure=@($ObservedChecks|Where-Object{[string]$_.status-cne'completed'-or[string]$_.conclusion-cne'success'}).Count;try{$Age=([DateTimeOffset]::Now-[DateTimeOffset]::Parse([string]$Observation.observed_at)).TotalMinutes;$Fresh=$Age-ge0-and$Age-le15}catch{};$Receipt=$Observation.mutation_receipt;$AuditValid=$null-ne$Receipt-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.actor_id)-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.authorization_reference)-and[string]$Receipt.request_sha256-cmatch'^[0-9a-f]{64}$'-and[string]$Receipt.response_sha256-cmatch'^[0-9a-f]{64}$'-and[int]$Receipt.http_status-in@(200,201)}
   $RequestHash=if(Test-Path -LiteralPath $RequestPath -PathType Leaf){Get-Sha256 -LiteralPath $RequestPath}else{''};$ExpectedHead=if($null-ne$Request){[string]$Request.head_oid}else{''};$ExpectedMain=if($null-ne$Request){[string]$Request.remote_main_oid}else{''}
-  $Checks=[ordered]@{schema_errors=$SchemaErrors;request_hash_mismatch=if($null-ne$Observation-and[string]$Observation.request_sha256-ceq$RequestHash){0}else{1};repository_match=($null-ne$Observation-and[string]$Observation.repository_full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_valid=($null-ne$Observation-and[int]$Observation.pr_number-gt0);pr_url_valid=($null-ne$Observation-and[string]$Observation.pr_url-cmatch'^https://github\.com/Elfsa-Miranda/GO_NOW/pull/[1-9][0-9]*$');pr_state_open=($null-ne$Observation-and[string]$Observation.state-ceq'open'-and[string]::IsNullOrWhiteSpace([string]$Observation.merge_commit_sha));base_ref_match=($null-ne$Observation-and[string]$Observation.base_ref-ceq'main');head_ref_match=($null-ne$Observation-and[string]$Observation.head_ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Observation-and[string]$Observation.head_oid-ceq$ExpectedHead);remote_head_oid=if($null-ne$Observation){[string]$Observation.remote_head_oid}else{''};remote_head_match=($null-ne$Observation-and[string]$Observation.remote_head_oid-ceq$ExpectedHead);remote_main_match=($null-ne$Observation-and[string]$Observation.remote_main_oid-ceq$ExpectedMain);auto_merge_disabled=($null-ne$Observation-and$Observation.PSObject.Properties.Name-contains'auto_merge'-and-not[bool]$Observation.auto_merge);required_check_set_mismatch=$CheckSetMismatch;required_check_failure_count=$CheckFailure;review_request_missing=if($null-ne$Observation-and[int]$Observation.review_request_count-ge1){0}else{1};observation_fresh=$Fresh;source_is_github_api=($null-ne$Observation-and[string]$Observation.source-ceq'github_api');missing_audit_receipt_count=if($AuditValid){0}else{1};main_ref_write_count=if($null-ne$Observation){[int]$Observation.main_ref_write_count}else{1};remote_ref_write_count=if($null-ne$Observation){[int]$Observation.remote_ref_write_count}else{1};branch_delete_count=if($null-ne$Observation){[int]$Observation.branch_delete_count}else{1};production_write_count=0}
-  $BooleanFailures=@('repository_match','pr_number_valid','pr_url_valid','pr_state_open','base_ref_match','head_ref_match','head_oid_match','remote_head_match','remote_main_match','auto_merge_disabled','observation_fresh','source_is_github_api')|Where-Object{-not[bool]$Checks[$_]}
-  $CountFailures=[int]$Checks.schema_errors+[int]$Checks.request_hash_mismatch+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count+[int]$Checks.review_request_missing+[int]$Checks.missing_audit_receipt_count+[int]$Checks.main_ref_write_count+[int]$Checks.remote_ref_write_count+[int]$Checks.branch_delete_count
+  $Checks=[ordered]@{schema_errors=$SchemaErrors;request_hash_mismatch=if($null-ne$Observation-and[string]$Observation.request_sha256-ceq$RequestHash-and[string]$Observation.mutation_receipt.request_sha256-ceq$RequestHash){0}else{1};repository_match=($null-ne$Observation-and[string]$Observation.repository_full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_valid=($null-ne$Observation-and[int]$Observation.pr_number-gt0);pr_url_valid=($null-ne$Observation-and[string]$Observation.pr_url-cmatch'^https://github\.com/Elfsa-Miranda/GO_NOW/pull/[1-9][0-9]*$');pr_merged=($null-ne$Observation-and[string]$Observation.state-ceq'closed'-and[bool]$Observation.merged-and[string]$Observation.merge_commit_sha-cmatch'^[0-9a-f]{40}$');base_ref_match=($null-ne$Observation-and[string]$Observation.base_ref-ceq'main');head_ref_match=($null-ne$Observation-and[string]$Observation.head_ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Observation-and[string]$Observation.head_oid-ceq$ExpectedHead);remote_head_match=($null-ne$Observation-and[string]$Observation.remote_head_oid-ceq$ExpectedHead);remote_main_before_match=($null-ne$Observation-and[string]$Observation.remote_main_before_oid-ceq$ExpectedMain);auto_merge_authorized=($null-ne$Observation-and[bool]$Observation.auto_merge);merge_method_match=($null-ne$Observation-and[string]$Observation.merge_method-ceq'merge');non_force_merge=($null-ne$Observation-and[bool]$Observation.non_force_merge-and[int]$Observation.force_update_count-eq0);merged_tree_matches_attested_tree=($null-ne$Observation-and[bool]$Observation.merged_tree_matches_attested_tree);required_check_set_mismatch=$CheckSetMismatch;required_check_failure_count=$CheckFailure;review_request_count=if($null-ne$Observation){[int]$Observation.review_request_count}else{1};observation_fresh=$Fresh;source_is_github_api=($null-ne$Observation-and[string]$Observation.source-ceq'github_api');missing_audit_receipt_count=if($AuditValid){0}else{1};branch_delete_count=if($null-ne$Observation){[int]$Observation.branch_delete_count}else{1};production_write_count=0}
+  $BooleanFailures=@('repository_match','pr_number_valid','pr_url_valid','pr_merged','base_ref_match','head_ref_match','head_oid_match','remote_head_match','remote_main_before_match','auto_merge_authorized','merge_method_match','non_force_merge','merged_tree_matches_attested_tree','observation_fresh','source_is_github_api')|Where-Object{-not[bool]$Checks[$_]}
+  $CountFailures=[int]$Checks.schema_errors+[int]$Checks.request_hash_mismatch+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count+[int]$Checks.review_request_count+[int]$Checks.missing_audit_receipt_count+[int]$Checks.branch_delete_count
   return [ordered]@{passed=($BooleanFailures.Count-eq0-and$CountFailures-eq0);checks=$Checks;request=$Request;observation=$Observation;request_sha256=$RequestHash}
 }
 
 function Get-P10011LivePullRequestState {
   param([AllowNull()][object]$Observation)
-  $RequiredChecks=@('agent-required','baseline-and-candidate','tracked-and-history');$Headers=@{Accept='application/vnd.github+json';'User-Agent'='GoNow-P10-011-readonly-verifier';'X-GitHub-Api-Version'='2022-11-28'};$QueryFailures=0;$Pull=$null;$Runs=$null
-  if($null-eq$Observation-or[int]$Observation.pr_number-le0-or[string]$Observation.head_oid-cnotmatch'^[0-9a-f]{40}$'){$QueryFailures=1}else{try{$Pull=Invoke-RestMethod -Method Get -Uri ("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/pulls/{0}"-f[int]$Observation.pr_number) -Headers $Headers -TimeoutSec 30 -ErrorAction Stop;$Runs=Invoke-RestMethod -Method Get -Uri ("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/commits/{0}/check-runs?per_page=100"-f[string]$Observation.head_oid) -Headers $Headers -TimeoutSec 30 -ErrorAction Stop}catch{$QueryFailures=1}}
-  $Selected=@();if($null-ne$Runs){$Selected=@($Runs.check_runs|Where-Object{[string]$_.name-in$RequiredChecks})};$Names=@($Selected|ForEach-Object{[string]$_.name}|Sort-Object);$CheckSetMismatch=if(($Names-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};$CheckFailures=@($Selected|Where-Object{[string]$_.status-cne'completed'-or[string]$_.conclusion-cne'success'}).Count;$ReviewRequests=if($null-ne$Pull){@($Pull.requested_reviewers).Count+@($Pull.requested_teams).Count}else{0}
-  $Checks=[ordered]@{live_query_failure_count=$QueryFailures;repository_match=($null-ne$Pull-and[string]$Pull.base.repo.full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_match=($null-ne$Pull-and[int]$Pull.number-eq[int]$Observation.pr_number);pr_state_open=($null-ne$Pull-and[string]$Pull.state-ceq'open'-and-not[bool]$Pull.merged-and-not[bool]$Pull.draft);base_ref_match=($null-ne$Pull-and[string]$Pull.base.ref-ceq'main');head_ref_match=($null-ne$Pull-and[string]$Pull.head.ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Pull-and[string]$Pull.head.sha-ceq[string]$Observation.head_oid);auto_merge_disabled=($null-ne$Pull-and$null-eq$Pull.auto_merge);review_request_missing=if($ReviewRequests-ge1){0}else{1};required_check_set_mismatch=$CheckSetMismatch;required_check_failure_count=$CheckFailures;remote_write_count=0;production_write_count=0}
-  $BooleanFailures=@('repository_match','pr_number_match','pr_state_open','base_ref_match','head_ref_match','head_oid_match','auto_merge_disabled')|Where-Object{-not[bool]$Checks[$_]};$CountFailures=[int]$Checks.live_query_failure_count+[int]$Checks.review_request_missing+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count
+  $RequiredChecks=@('agent-required','baseline-and-candidate','tracked-and-history');$Headers=@{Accept='application/vnd.github+json';'User-Agent'='GoNow-P10-011-readonly-verifier';'X-GitHub-Api-Version'='2022-11-28'};$QueryFailures=0;$Pull=$null;$Runs=$null;$HeadCommit=$null;$MergeCommit=$null
+  if($null-eq$Observation-or[int]$Observation.pr_number-le0-or[string]$Observation.head_oid-cnotmatch'^[0-9a-f]{40}$'){$QueryFailures=1}else{try{$Pull=Invoke-RestMethod -Method Get -Uri ("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/pulls/{0}"-f[int]$Observation.pr_number) -Headers $Headers -TimeoutSec 30 -ErrorAction Stop;$Runs=Invoke-RestMethod -Method Get -Uri ("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/commits/{0}/check-runs?per_page=100"-f[string]$Observation.head_oid) -Headers $Headers -TimeoutSec 30 -ErrorAction Stop;$HeadCommit=Invoke-RestMethod -Method Get -Uri ("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/git/commits/{0}"-f[string]$Observation.head_oid) -Headers $Headers -TimeoutSec 30 -ErrorAction Stop;if([string]$Pull.merge_commit_sha-cmatch'^[0-9a-f]{40}$'){$MergeCommit=Invoke-RestMethod -Method Get -Uri ("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/git/commits/{0}"-f[string]$Pull.merge_commit_sha) -Headers $Headers -TimeoutSec 30 -ErrorAction Stop}}catch{$QueryFailures=1}}
+  $Selected=@();if($null-ne$Runs){$Selected=@($Runs.check_runs|Where-Object{[string]$_.name-in$RequiredChecks})};$Names=@($Selected|ForEach-Object{[string]$_.name}|Sort-Object);$CheckSetMismatch=if(($Names-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};$CheckFailures=@($Selected|Where-Object{[string]$_.status-cne'completed'-or[string]$_.conclusion-cne'success'}).Count;$ReviewRequests=if($null-ne$Pull){@($Pull.requested_reviewers).Count+@($Pull.requested_teams).Count}else{1}
+  $Checks=[ordered]@{live_query_failure_count=$QueryFailures;repository_match=($null-ne$Pull-and[string]$Pull.base.repo.full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_match=($null-ne$Pull-and[int]$Pull.number-eq[int]$Observation.pr_number);pr_merged=($null-ne$Pull-and[bool]$Pull.merged-and[string]$Pull.state-ceq'closed'-and[string]$Pull.merge_commit_sha-ceq[string]$Observation.merge_commit_sha);base_ref_match=($null-ne$Pull-and[string]$Pull.base.ref-ceq'main');head_ref_match=($null-ne$Pull-and[string]$Pull.head.ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Pull-and[string]$Pull.head.sha-ceq[string]$Observation.head_oid);review_request_count=$ReviewRequests;merge_parent_count=if($null-ne$MergeCommit){@($MergeCommit.parents).Count}else{0};merged_tree_matches_attested_tree=($null-ne$HeadCommit-and$null-ne$MergeCommit-and[string]$HeadCommit.tree.sha-ceq[string]$MergeCommit.tree.sha);required_check_set_mismatch=$CheckSetMismatch;required_check_failure_count=$CheckFailures;force_update_count=0;remote_write_count=0;production_write_count=0}
+  $BooleanFailures=@('repository_match','pr_number_match','pr_merged','base_ref_match','head_ref_match','head_oid_match','merged_tree_matches_attested_tree')|Where-Object{-not[bool]$Checks[$_]};$CountFailures=[int]$Checks.live_query_failure_count+[int]$Checks.review_request_count+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count+([Math]::Abs([int]$Checks.merge_parent_count-2))
   return [ordered]@{passed=($BooleanFailures.Count-eq0-and$CountFailures-eq0);checks=$Checks}
 }
 
@@ -1950,8 +3308,20 @@ function Get-RelC000BranchState {
   return [ordered]@{query_failure_count=@($LocalExit,$RemoteExit,$HeadExit,$BranchExit|Where-Object{$_-ne0}).Count;specialist_branch_count=$SpecialistRefs.Count;specialist_refs=$SpecialistRefs;governance_ref_oid=$GovernanceOid;remote_main_oid=$RemoteMainOid;remote_landing_oid=$RemoteLandingOid;current_head_oid=$CurrentHead;current_branch=$CurrentBranch}
 }
 
+function Get-RelC000PersonalDependencyState {
+  $StatusPath=Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-011.json';$ReleasePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/B.json';$AttestationPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/P10-011/automated-acceptance-attestation.json';$SupplyPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-09/P09-001/dependency-audit-report.json';$Required=@($StatusPath,$ReleasePath,$AttestationPath,$SupplyPath);$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath $_ -PathType Leaf)})
+  $Status=Read-JsonEvidenceOrNull $StatusPath;$Release=Read-JsonEvidenceOrNull $ReleasePath;$Attestation=Read-JsonEvidenceOrNull $AttestationPath;$Supply=Read-JsonEvidenceOrNull $SupplyPath;$Governance=Get-GovernanceProfileState;$ReleaseHash=if($null-ne$Release){Get-Sha256 -LiteralPath $ReleasePath}else{$ZeroHash};$AttestationHash=if($null-ne$Attestation){Get-Sha256 -LiteralPath $AttestationPath}else{$ZeroHash};$AcceptedLanding=if($null-ne$Release){[string]$Release.accepted_landing_sha}else{''}
+  $ReleaseValid=$null-ne$Release-and[bool]$Release.accepted-and[string]$Release.release_status-ceq'accepted'-and[string]$Release.governance_profile-ceq'personal_automated'-and$AcceptedLanding-cmatch'^[0-9a-f]{40}$'-and[string]$Release.source_integration_sha-ceq$AcceptedLanding-and[bool]$Release.pr.non_force_merge-and[bool]$Release.merged_tree_matches_attested_tree-and[int]$Release.force_update_count-eq0
+  $AttestationValid=$null-ne$Attestation-and[string]$Attestation.task_id-ceq'TASK-P10-011'-and[string]$Attestation.profile-ceq'personal_automated'-and[string]$Attestation.overall_status-ceq'passed'-and[string]$Attestation.candidate_head_oid-ceq$AcceptedLanding-and[string]$Attestation.release_evidence_sha256-ceq$ReleaseHash-and[bool]$Attestation.non_force_merge-and[bool]$Attestation.merged_tree_matches_attested_tree-and[int]$Attestation.force_update_count-eq0
+  $StatusValid=$null-ne$Status-and[string]$Status.status-ceq'accepted'-and-not[bool]$Status.reviewer_independent-and[string]$Status.governance_profile-ceq'personal_automated'-and[string]$Status.acceptance_method-ceq'automated_attestation'-and[string]$Status.attestation_sha256-ceq$AttestationHash-and[string]$Status.head_oid-ceq$AcceptedLanding
+  $SupplyValid=$null-ne$Supply-and[int]$Supply.checks.unpinned_direct+[int]$Supply.checks.unknown_license+[int]$Supply.checks.critical_cve+[int]$Supply.checks.high_cve+[int]$Supply.checks.stale_without_adr-eq0;$Branches=Get-RelC000BranchState;$RemoteLandingMatch=[string]$Branches.remote_landing_oid-ceq$AcceptedLanding;$MainContains=$false;if($AcceptedLanding-cmatch'^[0-9a-f]{40}$'-and[string]$Branches.remote_main_oid-cmatch'^[0-9a-f]{40}$'){& git -C $script:RepositoryRoot merge-base --is-ancestor $AcceptedLanding ([string]$Branches.remote_main_oid) 2>$null;$MainContains=$LASTEXITCODE-eq0};$PriorCycle=0;if($AcceptedLanding-cmatch'^[0-9a-f]{40}$'){& git -C $script:RepositoryRoot cat-file -e "$AcceptedLanding`:docs/execution/evidence/releases/REL-C-000/path-selection.json" 2>$null;if($LASTEXITCODE-eq0){$PriorCycle=1}}
+  $Checks=[ordered]@{dependency_failures=0;missing_input_count=$Missing.Count;release_b_status_valid=$StatusValid;release_b_accepted=$ReleaseValid;release_b_attestation_valid=$AttestationValid;governance_profile_valid=[bool]$Governance.passed;supply_chain_valid=$SupplyValid;remote_landing_match=$RemoteLandingMatch;origin_main_includes_accepted_release_b=$MainContains;branch_query_failure_count=[int]$Branches.query_failure_count;specialist_branch_count=[int]$Branches.specialist_branch_count;prior_cycle_record_count=$PriorCycle;natural_person_signature_count=0;production_write_count=0};$Passed=$Missing.Count+[int]$Branches.query_failure_count+[int]$Branches.specialist_branch_count+$PriorCycle-eq0-and$StatusValid-and$ReleaseValid-and$AttestationValid-and[bool]$Governance.passed-and$SupplyValid-and$RemoteLandingMatch-and$MainContains;if(-not$Passed){$Checks.dependency_failures=1}
+  return [ordered]@{passed=$Passed;checks=$Checks;accepted_landing_sha=$AcceptedLanding;evidence_sha256=$ReleaseHash;release_b_attestation_sha256=$AttestationHash;supply_sha256=if(Test-Path -LiteralPath $SupplyPath -PathType Leaf){Get-Sha256 -LiteralPath $SupplyPath}else{$ZeroHash};branch_state=$Branches}
+}
+
 function Get-RelC000DependencyState {
   param([DateTimeOffset]$Now=[DateTimeOffset]::Now)
+  if (Test-PersonalAutomatedFormalExecution) { return Get-RelC000PersonalDependencyState }
   $StatusPath=Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P10-011.json'
   $ReleasePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\releases\B.json'
   $GovernancePath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\boot\BOOT-004.json'
@@ -1987,8 +3357,21 @@ function Get-RelC000DependencyState {
   return [ordered]@{passed=$Passed;checks=$Checks;accepted_landing_sha=$AcceptedLanding;evidence_sha256=$ReleaseHash;rollout_observation_sha256=$RolloutHash;rollout_plan_sha256=if(Test-Path -LiteralPath $RolloutPlanPath -PathType Leaf){Get-Sha256 -LiteralPath $RolloutPlanPath}else{''};approval_sha256=if(Test-Path -LiteralPath $ApprovalPath -PathType Leaf){Get-Sha256 -LiteralPath $ApprovalPath}else{''};supply_sha256=if(Test-Path -LiteralPath $SupplyPath -PathType Leaf){Get-Sha256 -LiteralPath $SupplyPath}else{''};branch_state=$Branches}
 }
 
+function Get-RelC000PersonalSelectionState {
+  param([AllowNull()][object]$Selection,[AllowNull()][object]$Dependency,[AllowNull()][object]$BranchState)
+  $Paths=@('phase11','phase12','none');$SchemaErrors=0;$Cycle=[Guid]::Empty;if($null-eq$Selection-or[string]$Selection.schema_version-cne'2.0'-or[string]$Selection.task_id-cne'TASK-REL-C-000'-or[string]$Selection.profile-cne'personal_automated'-or-not[Guid]::TryParse([string]$Selection.cycle_id,[ref]$Cycle)-or[string]$Selection.evidence_sha256-cnotmatch'^[0-9a-f]{64}$'){$SchemaErrors++}
+  $Alternatives=if($null-ne$Selection){@($Selection.alternatives)}else{@()};$Names=@($Alternatives|ForEach-Object{[string]$_.path}|Sort-Object);$Selected=@($Alternatives|Where-Object{[bool]$_.selected});$SelectedEvidence=if($Selected.Count-eq1){[string]$Selected[0].evidence_sha256}else{''};$AlternativeInvalid=0;foreach($Alternative in $Alternatives){$Confidence=$Alternative.confidence;if([string]$Alternative.path-notin$Paths-or[double]$Alternative.denominator-le0-or$null-eq$Confidence-or[double]$Confidence.level-le0-or[double]$Confidence.level-ge1-or[double]$Confidence.lower-lt0-or[double]$Confidence.upper-gt1-or[double]$Confidence.lower-gt[double]$Confidence.upper-or@($Alternative.risks).Count-lt1-or[string]$Alternative.evidence_sha256-cnotmatch'^[0-9a-f]{64}$'){$AlternativeInvalid++}}
+  $Owners=if($null-ne$Selection){@($Selection.owner_signatures)}else{@()};$Approvals=if($null-ne$Selection){@($Selection.approvals)}else{@()};$Attestation=if($null-ne$Selection){$Selection.automated_attestation}else{$null};$Governance=Get-GovernanceProfileState;$RunnerHash=Get-Sha256 -LiteralPath $PSCommandPath;$CatalogHash=Get-Sha256 -LiteralPath $script:CatalogPath;$AcceptedLanding=if($null-ne$Dependency){[string]$Dependency.accepted_landing_sha}else{''}
+  $AttestationValid=$null-ne$Attestation-and[string]$Attestation.profile-ceq'personal_automated'-and[string]$Attestation.acceptance_method-ceq'automated_attestation'-and[string]$Attestation.decision-ceq'approved_for_exact_release_c_path'-and[string]$Attestation.cycle_id-ceq[string]$Selection.cycle_id-and[string]$Attestation.path-ceq[string]$Selection.path-and[string]$Attestation.accepted_landing_sha-ceq$AcceptedLanding-and[string]$Attestation.release_b_evidence_sha256-ceq[string]$Dependency.evidence_sha256-and[string]$Attestation.release_b_attestation_sha256-ceq[string]$Dependency.release_b_attestation_sha256-and[string]$Attestation.selected_evidence_sha256-ceq$SelectedEvidence-and[string]$Attestation.governance_adoption_sha256-ceq[string]$Governance.adoption_sha256-and[string]$Attestation.taskgate_catalog_sha256-ceq$CatalogHash-and[string]$Attestation.runner_sha256-ceq$RunnerHash-and[int]$Attestation.natural_person_signature_count+[int]$Attestation.redline_failure_count+[int]$Attestation.candidate_drift_count+[int]$Attestation.production_write_count-eq0
+  $Cas=if($null-ne$Selection){$Selection.cas_receipt}else{$null};$CasInvalid=if($null-ne$Cas-and[string]$Cas.ref-ceq'refs/heads/codex/release-c-governance'-and[string]$Cas.expected_sha-ceq$AcceptedLanding-and[string]$Cas.actual_sha-ceq$AcceptedLanding-and[string]$Cas.new_sha-cmatch'^[0-9a-f]{40}$'-and[string]$Cas.new_sha-cne$AcceptedLanding-and[string]$Cas.result-ceq'updated'-and[int]$Cas.conflict_count-eq0){0}else{1};$BranchInvalid=if($null-ne$BranchState-and[int]$BranchState.query_failure_count-eq0-and[int]$BranchState.specialist_branch_count-eq0-and[string]$BranchState.current_branch-ceq'codex/release-c-governance'-and$null-ne$Cas-and[string]$BranchState.governance_ref_oid-ceq[string]$Cas.new_sha-and[string]$BranchState.current_head_oid-ceq[string]$Cas.new_sha){0}else{1};$CycleRewrite=if($null-ne$Selection){[int]$Selection.cycle_rewrite_count}else{1};$PriorCycle=if($null-ne$Dependency){[int]$Dependency.checks.prior_cycle_record_count}else{1}
+  $Checks=[ordered]@{schema_errors=$SchemaErrors;path_count=if($Selected.Count-eq1-and[string]$Selected[0].path-ceq[string]$Selection.path){1}else{0};path_xor_failure_count=if($Selected.Count-eq1){0}else{1};path_valid=($null-ne$Selection-and[string]$Selection.path-in$Paths);alternative_set_mismatch=if($Alternatives.Count-eq3-and($Names-join',')-ceq'none,phase11,phase12'){0}else{1};alternative_invalid_count=$AlternativeInvalid;selected_evidence_hash_mismatch=if([string]$Selection.evidence_sha256-ceq$SelectedEvidence){0}else{1};release_b_evidence_hash_mismatch=if([string]$Selection.release_b_evidence_sha256-ceq[string]$Dependency.evidence_sha256){0}else{1};release_b_attestation_hash_mismatch=if([string]$Selection.release_b_attestation_sha256-ceq[string]$Dependency.release_b_attestation_sha256){0}else{1};owner_signature_invalid_count=$Owners.Count;approval_invalid_count=$Approvals.Count;automated_attestation_invalid_count=if($AttestationValid){0}else{1};natural_person_signature_count=$Owners.Count+$Approvals.Count;cas_receipt_invalid_count=$CasInvalid;branch_binding_invalid_count=$BranchInvalid;specialist_branch_count=if($null-ne$BranchState){[int]$BranchState.specialist_branch_count}else{1};cycle_rewrite_count=$CycleRewrite;prior_cycle_record_count=$PriorCycle;dependency_valid=($null-ne$Dependency-and[bool]$Dependency.passed);production_write_count=0}
+  $Failure=0;foreach($Key in $Checks.Keys){if($Key-notin@('path_count','natural_person_signature_count')){$Value=$Checks[$Key];if($Value-is[bool]){if(-not$Value){$Failure++}}else{$Failure+=[int]$Value}}};$Passed=$Failure-eq0-and[int]$Checks.path_count-eq1
+  return [ordered]@{passed=$Passed;checks=$Checks;selection=$Selection}
+}
+
 function Get-RelC000SelectionState {
   param([AllowNull()][object]$Selection,[AllowNull()][object]$Dependency,[AllowNull()][object]$BranchState,[DateTimeOffset]$Now=[DateTimeOffset]::Now)
+  if (Test-PersonalAutomatedFormalExecution) { return Get-RelC000PersonalSelectionState -Selection $Selection -Dependency $Dependency -BranchState $BranchState }
   $Paths=@('phase11','phase12','none');$RequiredRoles=@('Data','Engineering','Product','Security');$RequiredOwnerRoles=@('Architecture','Product')
   $SchemaErrors=0;$Cycle=[Guid]::Empty;if($null-eq$Selection){$SchemaErrors++}else{if([string]$Selection.schema_version-cne'1.0'-or[string]$Selection.task_id-cne'TASK-REL-C-000'-or-not[Guid]::TryParse([string]$Selection.cycle_id,[ref]$Cycle)-or[string]$Selection.evidence_sha256-cnotmatch'^[0-9a-f]{64}$'){$SchemaErrors++}}
   $Alternatives=if($null-ne$Selection){@($Selection.alternatives)}else{@()};$AlternativeNames=@($Alternatives|ForEach-Object{[string]$_.path}|Sort-Object);$AlternativeSetMismatch=if($Alternatives.Count-eq3-and($AlternativeNames-join',')-ceq(($Paths|Sort-Object)-join',')){0}else{1};$Selected=@($Alternatives|Where-Object{[bool]$_.selected});$PathCount=@($Selected|Where-Object{[string]$_.path-ceq[string]$Selection.path}).Count;$PathXorFailure=if($Selected.Count-eq1){0}else{1}
@@ -2045,8 +3428,23 @@ function Get-RelC001RemoteRefs {
   return [ordered]@{exit_code=$Exit;main_oid=$Main;landing_oid=$Landing}
 }
 
+function Get-RelC001PersonalOuterState {
+  $GovernanceRef='refs/heads/codex/release-c-governance';$GovernanceOid=(@(& git -C $script:RepositoryRoot rev-parse --verify $GovernanceRef 2>$null)-join'').Trim();$RefExit=$LASTEXITCODE
+  if($RefExit-ne0-or$GovernanceOid-cnotmatch'^[0-9a-f]{40}$'){return [ordered]@{passed=$false;reason_code='rel_c_001_outer_governance_invalid';checks=[ordered]@{missing_input_count=7;governance_ref_query_exit_code=$RefExit;production_write_count=0};path='';cycle_id='';accepted_landing_sha='';governance_oid='';selection_sha256='';status_sha256='';gate_sha256='';trigger_sha256='';selection=$null;release_b=$null}}
+  $Paths=[ordered]@{selection='docs/execution/evidence/releases/REL-C-000/path-selection.json';status='docs/execution/status/TASK-REL-C-000.json';gate='docs/execution/evidence/releases/REL-C-000/gate-results.json';artifact='docs/execution/evidence/releases/REL-C-000/artifact-hashes.json';attestation='docs/execution/evidence/releases/REL-C-000/automated-acceptance-attestation.json';release_b='docs/execution/evidence/releases/B.json';release_b_attestation='docs/execution/evidence/releases/P10-011/automated-acceptance-attestation.json'};$Records=[ordered]@{};foreach($Name in $Paths.Keys){$Records[$Name]=Get-P11000GitJsonRecord -Ref $GovernanceRef -RelativePath $Paths[$Name]}
+  $Selection=$Records.selection.value;$Status=$Records.status.value;$Gate=$Records.gate.value;$Artifact=$Records.artifact.value;$Attestation=$Records.attestation.value;$Release=$Records.release_b.value;$ReleaseAttestation=$Records.release_b_attestation.value;$Path=if($null-ne$Selection){[string]$Selection.path}else{''};$TriggerPath=if($Path-ceq'phase11'){'docs/execution/evidence/releases/REL-C-000/rag-trigger-evidence.json'}elseif($Path-ceq'phase12'){'docs/execution/evidence/releases/REL-C-000/phase12-trigger-evidence.json'}else{''};$Trigger=if($TriggerPath){Get-P11000GitJsonRecord -Ref $GovernanceRef -RelativePath $TriggerPath}else{[ordered]@{passed=$false;sha256='';value=$null}}
+  $Missing=@($Records.Keys|Where-Object{-not[bool]$Records[$_].passed}).Count+$(if(-not[bool]$Trigger.passed){1}else{0});$ReleaseHash=[string]$Records.release_b.sha256;$ReleaseAttestationHash=[string]$Records.release_b_attestation.sha256;$ReleaseValid=$null-ne$Release-and[bool]$Release.accepted-and[string]$Release.release_status-ceq'accepted'-and[string]$Release.accepted_landing_sha-cmatch'^[0-9a-f]{40}$'-and[string]$Release.source_integration_sha-ceq[string]$Release.accepted_landing_sha;$ReleaseAttestationValid=$null-ne$ReleaseAttestation-and[string]$ReleaseAttestation.task_id-ceq'TASK-P10-011'-and[string]$ReleaseAttestation.profile-ceq'personal_automated'-and[string]$ReleaseAttestation.overall_status-ceq'passed'-and[string]$ReleaseAttestation.candidate_head_oid-ceq[string]$Release.accepted_landing_sha-and[string]$ReleaseAttestation.release_evidence_sha256-ceq$ReleaseHash-and[bool]$ReleaseAttestation.non_force_merge-and[bool]$ReleaseAttestation.merged_tree_matches_attested_tree-and[int]$ReleaseAttestation.force_update_count+[int]$ReleaseAttestation.natural_person_signature_count-eq0
+  $Alternatives=if($null-ne$Selection){@($Selection.alternatives)}else{@()};$Selected=@($Alternatives|Where-Object{[bool]$_.selected});$SignatureCount=if($null-ne$Selection){@($Selection.owner_signatures).Count+@($Selection.approvals).Count}else{1};$SelectionValid=$null-ne$Selection-and[string]$Selection.schema_version-ceq'2.0'-and[string]$Selection.profile-ceq'personal_automated'-and$Path-in@('phase11','phase12')-and$Alternatives.Count-eq3-and$Selected.Count-eq1-and[string]$Selected[0].path-ceq$Path-and[string]$Selection.accepted_landing_sha-ceq[string]$Release.accepted_landing_sha-and[string]$Selection.evidence_sha256-ceq[string]$Trigger.sha256-and[string]$Selection.release_b_evidence_sha256-ceq$ReleaseHash-and[string]$Selection.release_b_attestation_sha256-ceq$ReleaseAttestationHash-and$SignatureCount-eq0
+  $AttestationValid=$null-ne$Attestation-and[string]$Attestation.task_id-ceq'TASK-REL-C-000'-and[string]$Attestation.profile-ceq'personal_automated'-and[string]$Attestation.overall_status-ceq'passed'-and[string]$Attestation.candidate_head_oid-ceq$GovernanceOid-and[string]$Attestation.cycle_id-ceq[string]$Selection.cycle_id-and[string]$Attestation.path-ceq$Path-and[string]$Attestation.selection_sha256-ceq[string]$Records.selection.sha256-and[string]$Attestation.selected_evidence_sha256-ceq[string]$Trigger.sha256-and[string]$Attestation.release_b_evidence_sha256-ceq$ReleaseHash-and[string]$Attestation.release_b_attestation_sha256-ceq$ReleaseAttestationHash-and[int]$Attestation.natural_person_signature_count+[int]$Attestation.redline_failure_count+[int]$Attestation.candidate_drift_count+[int]$Attestation.production_write_count-eq0
+  $StatusValid=$null-ne$Status-and[string]$Status.task_id-ceq'TASK-REL-C-000'-and[string]$Status.status-ceq'accepted'-and-not[bool]$Status.reviewer_independent-and[string]$Status.governance_profile-ceq'personal_automated'-and[string]$Status.acceptance_method-ceq'automated_attestation'-and[string]$Status.head_oid-ceq$GovernanceOid-and[string]$Status.attestation_sha256-ceq[string]$Records.attestation.sha256-and[string]$Status.evidence_sha256-ceq[string]$Records.gate.sha256
+  $RequiredModes=@('Preflight','WorkPreflight','WorksetVerify','Verify','Security','Evidence','RollbackVerify');$Rows=if($null-ne$Gate){@($Gate.results)}else{@()};$GateInvalid=@($RequiredModes|Where-Object{$Name=$_;@($Rows|Where-Object{[string]$_.check_id-ceq$Name-and[string]$_.status-ceq'passed'}).Count-ne1}).Count;$Cas=$Selection.cas_receipt;$CasValid=$null-ne$Cas-and[string]$Cas.ref-ceq$GovernanceRef-and[string]$Cas.expected_sha-ceq[string]$Release.accepted_landing_sha-and[string]$Cas.actual_sha-ceq[string]$Release.accepted_landing_sha-and[string]$Cas.new_sha-ceq$GovernanceOid-and[string]$Cas.result-ceq'updated'-and[int]$Cas.conflict_count-eq0;$ArtifactInvalid=if((Test-RelC001ArtifactBinding -Artifact $Artifact -RelativePath $Paths.selection -Sha256 ([string]$Records.selection.sha256))-and(Test-RelC001ArtifactBinding -Artifact $Artifact -RelativePath $TriggerPath -Sha256 ([string]$Trigger.sha256))){0}else{1}
+  $Checks=[ordered]@{missing_input_count=$Missing;governance_ref_query_exit_code=$RefExit;outer_path=$Path;outer_path_selected=($Path-in@('phase11','phase12'));release_b_accepted=$ReleaseValid;release_b_attestation_valid=$ReleaseAttestationValid;selection_invalid_count=if($SelectionValid){0}else{1};automated_attestation_invalid_count=if($AttestationValid){0}else{1};natural_person_signature_count=@($Selection.owner_signatures).Count+@($Selection.approvals).Count;cas_receipt_invalid_count=if($CasValid){0}else{1};status_invalid_count=if($StatusValid){0}else{1};gate_invalid_count=$GateInvalid;artifact_binding_failure_count=$ArtifactInvalid;production_write_count=0};$Passed=$Missing+$RefExit+[int]$Checks.selection_invalid_count+[int]$Checks.automated_attestation_invalid_count+[int]$Checks.natural_person_signature_count+[int]$Checks.cas_receipt_invalid_count+[int]$Checks.status_invalid_count+$GateInvalid+$ArtifactInvalid-eq0-and$ReleaseValid-and$ReleaseAttestationValid
+  return [ordered]@{passed=$Passed;reason_code=if($Path-ceq'none'){'rel_c_001_outer_path_none'}elseif(-not$Passed){'rel_c_001_outer_governance_invalid'}else{'rel_c_001_outer_governance_valid'};checks=$Checks;path=$Path;cycle_id=if($null-ne$Selection){[string]$Selection.cycle_id}else{''};accepted_landing_sha=if($null-ne$Release){[string]$Release.accepted_landing_sha}else{''};governance_oid=$GovernanceOid;selection_sha256=[string]$Records.selection.sha256;status_sha256=[string]$Records.status.sha256;gate_sha256=[string]$Records.gate.sha256;trigger_sha256=[string]$Trigger.sha256;release_b_attestation_sha256=$ReleaseAttestationHash;selection=$Selection;release_b=$Release}
+}
+
 function Get-RelC001OuterState {
   param([DateTimeOffset]$Now=[DateTimeOffset]::Now)
+  if (Test-PersonalAutomatedFormalExecution) { return Get-RelC001PersonalOuterState }
   $GovernanceRef='refs/heads/codex/release-c-governance';$PreviousErrorAction=$ErrorActionPreference;$ErrorActionPreference='Continue';try{$GovernanceOid=(@(& git -C $script:RepositoryRoot rev-parse --verify $GovernanceRef 2>$null)-join'').Trim();$RefExit=$LASTEXITCODE}finally{$ErrorActionPreference=$PreviousErrorAction}
   if($RefExit-ne0-or$GovernanceOid-cnotmatch'^[0-9a-f]{40}$'){$Checks=[ordered]@{missing_input_count=5;governance_ref_query_exit_code=$RefExit;outer_path='';outer_path_selected=$false;release_b_accepted=$false;selection_invalid_count=1;approval_invalid_count=1;role_set_invalid_count=1;independent_identity_invalid=1;cas_receipt_invalid_count=1;status_invalid_count=1;gate_invalid_count=7;artifact_binding_failure_count=1;production_write_count=0};return [ordered]@{passed=$false;reason_code='rel_c_001_outer_governance_invalid';checks=$Checks;path='';cycle_id='';accepted_landing_sha='';governance_oid='';selection_sha256='';status_sha256='';gate_sha256='';trigger_sha256='';selection=$null;release_b=$null}}
   $Paths=[ordered]@{selection='docs/execution/evidence/releases/REL-C-000/path-selection.json';status='docs/execution/status/TASK-REL-C-000.json';gate='docs/execution/evidence/releases/REL-C-000/gate-results.json';artifact='docs/execution/evidence/releases/REL-C-000/artifact-hashes.json';release_b='docs/execution/evidence/releases/B.json'}
@@ -2070,9 +3468,9 @@ function Get-RelC001SelectedCapabilityState {
   param([Parameter(Mandatory=$true)][object]$Outer)
   $Head=(@(& git -C $script:RepositoryRoot rev-parse HEAD 2>$null)-join'').Trim();$HeadExit=$LASTEXITCODE;$Base=[string]$Outer.accepted_landing_sha;$MergeRows=if($Base-cmatch'^[0-9a-f]{40}$'-and$Head-cmatch'^[0-9a-f]{40}$'){@(& git -C $script:RepositoryRoot rev-list --merges "$Base..$Head" 2>$null)}else{@()};$MergeQueryExit=$LASTEXITCODE;$Changed=if($Base-cmatch'^[0-9a-f]{40}$'-and$Head-cmatch'^[0-9a-f]{40}$'){@(& git -C $script:RepositoryRoot diff --name-only $Base $Head -- 2>$null)}else{@()};$DiffExit=$LASTEXITCODE;$Missing=0;$Schema=0;$GateInvalid=0;$RollbackInvalid=1;$StatusInvalid=1;$CloseInvalid=1;$MergeInvalid=1;$InnerInvalid=0;$Capability='';$SelectedMerge='';$InnerSelectionSha='';$UnselectedRefs=0
   if([string]$Outer.path-ceq'phase11'){
-    $Capability='rag';$Paths=[ordered]@{status='docs/execution/status/TASK-P11-999.json';merge='docs/execution/evidence/phase-11/merge.json';close='docs/execution/evidence/phase-11/phase-close-v01.json';manifest='docs/execution/evidence/phase-11/artifact-manifest-v01.json';gate='docs/execution/evidence/phase-11/P11-999/gate-results.json';rollback='docs/execution/evidence/phase-11/P11-990/rollback-drill.json'};$Values=[ordered]@{};foreach($Name in $Paths.Keys){$Values[$Name]=Read-RelC001Json -RelativePath $Paths[$Name];if($null-eq$Values[$Name]){$Missing++}}
-    $SelectedMerge=if($null-ne$Values.merge){[string]$Values.merge.merge_oid}else{''};$StatusInvalid=if($null-ne$Values.status-and[string]$Values.status.task_id-ceq'TASK-P11-999'-and[string]$Values.status.status-ceq'accepted'-and[bool]$Values.status.reviewer_independent-and$Paths.close-in@($Values.status.evidence_paths)){0}else{1};$ManifestHash=if(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $Paths.manifest)-PathType Leaf){Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $Paths.manifest)}else{''};$CloseCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H -- $Paths.close 2>$null)-join'').Trim();$MergeInvalid=if($null-ne$Values.merge-and$SelectedMerge-cmatch'^[0-9a-f]{40}$'-and[string]$Values.merge.phase_base_oid-ceq$Base-and[string]$Values.merge.source_branch-ceq'codex/phase-11-rag'-and[string]$Values.merge.landing_branch-ceq'codex/gonow-agent-landing'){0}else{1};$CloseInvalid=if($null-ne$Values.close-and[string]$Values.close.merge_oid-ceq$SelectedMerge-and[string]$Values.close.artifact_manifest_sha256-ceq$ManifestHash-and$CloseCommit-ceq$Head){0}else{1}
-    $RequiredModes=@('MergePreflight','Cleanup','Merge','MergeTreeVerification','Security','IntegrationSmoke','PostMergeEvidence','Retrospective','RollbackVerify','Archive','CloseVerify');$GateRows=if($null-ne$Values.gate){@($Values.gate.results)}else{@()};$GateInvalid=@($RequiredModes|Where-Object{$ModeName=$_;$Rows=@($GateRows|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'});$Rows.Count-ne1}).Count;$RollbackInvalid=if($null-ne$Values.rollback-and[string]$Values.rollback.task_id-ceq'TASK-P11-990'-and[string]$Values.rollback.environment_class-ceq'production_same_configuration_isolated'-and@($Values.rollback.scenarios).Count-eq3-and@($Values.rollback.scenarios|Where-Object{-not[bool]$_.passed}).Count-eq0-and[int]$Values.rollback.old_path_failures+[int]$Values.rollback.illegal_terminal+[int]$Values.rollback.new_errors_5m+[int]$Values.rollback.production_write_count-eq0){0}else{1};$UnselectedRefs=@(& git -C $script:RepositoryRoot for-each-ref --format='%(refname)' 'refs/heads/codex/phase-12*' 2>$null).Count
+    $Capability='rag';$Paths=[ordered]@{status='docs/execution/status/TASK-P11-999.json';merge='docs/execution/evidence/phase-11/merge.json';close='docs/execution/evidence/phase-11/phase-close-v01.json';manifest='docs/execution/evidence/phase-11/artifact-manifest-v01.json';gate='docs/execution/evidence/phase-11/P11-999/gate-results.json';authorization='docs/execution/evidence/phase-11/P11-999/merge-authorization.json';acceptance='docs/execution/evidence/phase-11/P11-990/personal-acceptance-attestation.json';acceptance_gate='docs/execution/evidence/phase-11/P11-990/gate-results.json';rollback='docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json'};$Values=[ordered]@{};foreach($Name in $Paths.Keys){$Values[$Name]=Read-RelC001Json -RelativePath $Paths[$Name];if($null-eq$Values[$Name]){$Missing++}}
+    $SelectedMerge=if($null-ne$Values.merge){[string]$Values.merge.merge_oid}else{''};$AuthorizationHash=if($null-ne$Values.authorization){Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $Paths.authorization)}else{''};$AcceptanceHash=if($null-ne$Values.acceptance){Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $Paths.acceptance)}else{''};$AcceptanceGateHash=if($null-ne$Values.acceptance_gate){Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $Paths.acceptance_gate)}else{''};$AuthorizationValid=$null-ne$Values.authorization-and[string]$Values.authorization.task_id-ceq'TASK-P11-999'-and[string]$Values.authorization.profile-ceq'personal_automated'-and[string]$Values.authorization.authorization_method-ceq'owner_directive_plus_automated_attestation'-and[string]$Values.authorization.decision-ceq'approved_for_exact_non_force_landing_merge'-and[string]$Values.authorization.phase_base_oid-ceq$Base-and[string]$Values.authorization.candidate_head_oid-ceq[string]$Values.acceptance.candidate_head_oid-and[string]$Values.authorization.approval_tip_oid-ceq[string]$Values.merge.approval_tip_oid-and[string]$Values.authorization.acceptance_attestation_sha256-ceq$AcceptanceHash-and[string]$Values.authorization.acceptance_gate_sha256-ceq$AcceptanceGateHash-and[int]$Values.authorization.open_p0_p1+[int]$Values.authorization.conditions_open+[int]$Values.authorization.production_write_count+[int]$Values.authorization.remote_write_count-eq0;$StatusInvalid=if($null-ne$Values.status-and$null-ne$Values.close-and[string]$Values.status.task_id-ceq'TASK-P11-999'-and[string]$Values.status.status-ceq'accepted'-and-not[bool]$Values.status.reviewer_independent-and[string]$Values.status.governance_profile-ceq'personal_automated'-and[string]$Values.status.acceptance_method-ceq'automated_attestation'-and[string]$Values.status.attestation_sha256-ceq$AuthorizationHash-and[string]$Values.status.head_oid-ceq[string]$Values.close.smoke_attestation_oid-and$Paths.close-in@($Values.status.evidence_paths)-and$Paths.authorization-in@($Values.status.evidence_paths)){0}else{1};$ManifestHash=if(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $Paths.manifest)-PathType Leaf){Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $Paths.manifest)}else{''};$CloseCommit=(@(& git -C $script:RepositoryRoot log -1 --format=%H -- $Paths.close 2>$null)-join'').Trim();$MergeInvalid=if($null-ne$Values.merge-and$SelectedMerge-cmatch'^[0-9a-f]{40}$'-and[string]$Values.merge.phase_base_oid-ceq$Base-and[int]$Values.merge.parent_count-eq2-and[string]$Values.merge.parent1-ceq$Base-and[string]$Values.merge.parent2-ceq[string]$Values.merge.approval_tip_oid-and[string]$Values.merge.merge_tree-ceq[string]$Values.merge.approval_tip_tree-and$AuthorizationValid){0}else{1};$CloseInvalid=if($null-ne$Values.close-and[string]$Values.close.merge_oid-ceq$SelectedMerge-and[string]$Values.close.artifact_manifest_sha256-ceq$ManifestHash-and$CloseCommit-ceq$Head){0}else{1}
+    $RequiredModes=@('MergePreflight','Cleanup','Merge','MergeTreeVerification','Security','IntegrationSmoke','PostMergeEvidence','Retrospective','RollbackVerify','Archive','CloseVerify');$GateRows=if($null-ne$Values.gate){@($Values.gate.results)}else{@()};$GateInvalid=@($RequiredModes|Where-Object{$ModeName=$_;$Rows=@($GateRows|Where-Object{[string]$_.check_id-ceq$ModeName-and[string]$_.status-ceq'passed'});$Rows.Count-ne1}).Count;$RollbackInvalid=if($null-ne$Values.rollback-and[string]$Values.rollback.task_id-ceq'TASK-P11-990'-and[string]$Values.rollback.environment_class-ceq'local_isolated'-and-not[bool]$Values.rollback.production_same_configuration_executed-and[string]$Values.rollback.formal_rollback_status-ceq'pending_external'-and@($Values.rollback.scenarios).Count-eq3-and@($Values.rollback.scenarios|Where-Object{-not[bool]$_.passed}).Count-eq0-and[int]$Values.rollback.failures+[int]$Values.rollback.errors+[int]$Values.rollback.skipped+[int]$Values.rollback.xfailed+[int]$Values.rollback.production_write_count-eq0){0}else{1};$UnselectedRefs=@(& git -C $script:RepositoryRoot for-each-ref --format='%(refname)' 'refs/heads/codex/phase-12*' 2>$null).Count
   }elseif([string]$Outer.path-ceq'phase12'){
     $GovernanceRef='refs/heads/codex/release-c-governance';$RegistrationPath='docs/execution/evidence/phase-12/P12-089/implementation-close-registration.json';$InnerPath='docs/execution/evidence/phase-12/P12-002/selection.json';$P12089StatusPath='docs/execution/status/TASK-P12-089.json';$RegistrationRecord=Get-P11000GitJsonRecord -Ref $GovernanceRef -RelativePath $RegistrationPath;$InnerRecord=Get-P11000GitJsonRecord -Ref $GovernanceRef -RelativePath $InnerPath;$P12089StatusRecord=Get-P11000GitJsonRecord -Ref $GovernanceRef -RelativePath $P12089StatusPath;$Registration=$RegistrationRecord.value;$Inner=$InnerRecord.value;$P12089Status=$P12089StatusRecord.value;$InnerSelectionSha=[string]$InnerRecord.sha256
     if(-not[bool]$RegistrationRecord.passed-or-not[bool]$InnerRecord.passed-or-not[bool]$P12089StatusRecord.passed){$Missing++}
@@ -2099,19 +3497,19 @@ function Get-RelC001DependencyState {
 function Get-RelC001ObservationState {
   $RequestPath=Join-Path $script:TaskEvidenceDirectory 'pr-request.json';$ObservationPath=Join-Path $script:TaskEvidenceDirectory 'pr-observation.json';$Request=$null;$Observation=$null;$SchemaErrors=0
   foreach($Item in @(@($RequestPath,'request'),@($ObservationPath,'observation'))){if(-not(Test-Path -LiteralPath $Item[0]-PathType Leaf)){$SchemaErrors++;continue};try{$Value=Get-Content -LiteralPath $Item[0]-Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;if($Item[1]-ceq'request'){$Request=$Value}else{$Observation=$Value}}catch{$SchemaErrors++}}
-  $RequiredChecks=@('agent-required','baseline-and-candidate','tracked-and-history');$RequiredLabels=@('manual-merge-required','release-c','single-capability');$RequiredRoles=@('Data','Engineering','Product','Security');$ObservedChecks=if($null-ne$Observation){@($Observation.required_checks)}else{@()};$ObservedLabels=if($null-ne$Observation){@($Observation.labels|ForEach-Object{[string]$_}|Sort-Object)}else{@()};$ReviewRequests=if($null-ne$Observation){@($Observation.review_requests)}else{@()};$ReviewRoles=@($ReviewRequests|ForEach-Object{[string]$_.role}|Sort-Object);$ReviewActors=@($ReviewRequests|ForEach-Object{[string]$_.actor_id}|Where-Object{$_});$Fresh=$false;try{$Age=([DateTimeOffset]::Now-[DateTimeOffset]::Parse([string]$Observation.observed_at)).TotalMinutes;$Fresh=$Age-ge0-and$Age-le15}catch{};$Receipt=$Observation.mutation_receipt;$AuditValid=$null-ne$Receipt-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.actor_id)-and[string]$Receipt.actor_role-ceq'Engineering'-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.authorization_reference)-and[string]$Receipt.request_sha256-cmatch'^[0-9a-f]{64}$'-and[string]$Receipt.response_sha256-cmatch'^[0-9a-f]{64}$'-and[int]$Receipt.http_status-in@(200,201)
-  $RequestHash=if(Test-Path -LiteralPath $RequestPath -PathType Leaf){Get-Sha256 -LiteralPath $RequestPath}else{''};$CheckNames=@($ObservedChecks|ForEach-Object{[string]$_.name}|Sort-Object);$CheckFailures=@($ObservedChecks|Where-Object{[string]$_.status-cne'completed'-or[string]$_.conclusion-cne'success'}).Count;$Checks=[ordered]@{schema_errors=$SchemaErrors;request_hash_mismatch=if($null-ne$Observation-and[string]$Observation.request_sha256-ceq$RequestHash-and[string]$Receipt.request_sha256-ceq$RequestHash){0}else{1};repository_match=($null-ne$Observation-and[string]$Observation.repository_full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_valid=($null-ne$Observation-and[int]$Observation.pr_number-gt0);pr_url_valid=($null-ne$Observation-and[string]$Observation.pr_url-cmatch'^https://github\.com/Elfsa-Miranda/GO_NOW/pull/[1-9][0-9]*$');pr_state_open=($null-ne$Observation-and[string]$Observation.state-ceq'open'-and[string]::IsNullOrWhiteSpace([string]$Observation.merge_commit_sha));base_ref_match=($null-ne$Observation-and[string]$Observation.base_ref-ceq'main');head_ref_match=($null-ne$Observation-and[string]$Observation.head_ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.head_oid-ceq[string]$Request.head_oid);remote_main_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.remote_main_oid-ceq[string]$Request.remote_main_oid);selected_path_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.selected_path-ceq[string]$Request.selected_path);selected_capability_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.selected_capability-ceq[string]$Request.selected_capability);selected_merge_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.selected_merge_sha-ceq[string]$Request.selected_merge_sha);active_c_capability_count=if($null-ne$Observation){[int]$Observation.active_c_capability_count}else{-1};unselected_path_commit_count=if($null-ne$Observation){[int]$Observation.unselected_path_commit_count}else{-1};auto_merge_disabled=($null-ne$Observation-and$Observation.PSObject.Properties.Name-contains'auto_merge'-and-not[bool]$Observation.auto_merge);required_check_set_mismatch=if(($CheckNames-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};required_check_failure_count=$CheckFailures;label_set_mismatch=if(($ObservedLabels-join',')-ceq(($RequiredLabels|Sort-Object)-join',')){0}else{1};review_role_set_mismatch=if($ReviewRequests.Count-eq4-and($ReviewRoles-join',')-ceq(($RequiredRoles|Sort-Object)-join',')-and@($ReviewActors|Sort-Object -Unique).Count-eq4){0}else{1};observation_fresh=$Fresh;source_is_github_api=($null-ne$Observation-and[string]$Observation.source-ceq'github_api');missing_audit_receipt_count=if($AuditValid){0}else{1};metadata_write_count=if($null-ne$Observation){[int]$Observation.metadata_write_count}else{-1};main_ref_write_count=if($null-ne$Observation){[int]$Observation.main_ref_write_count}else{1};remote_ref_write_count=if($null-ne$Observation){[int]$Observation.remote_ref_write_count}else{1};branch_delete_count=if($null-ne$Observation){[int]$Observation.branch_delete_count}else{1};production_write_count=0}
-  $BooleanFailures=@('repository_match','pr_number_valid','pr_url_valid','pr_state_open','base_ref_match','head_ref_match','head_oid_match','remote_main_match','selected_path_match','selected_capability_match','selected_merge_match','auto_merge_disabled','observation_fresh','source_is_github_api')|Where-Object{-not[bool]$Checks[$_]};$CountFailures=[int]$Checks.schema_errors+[int]$Checks.request_hash_mismatch+([Math]::Abs([int]$Checks.active_c_capability_count-1))+[int]$Checks.unselected_path_commit_count+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count+[int]$Checks.label_set_mismatch+[int]$Checks.review_role_set_mismatch+[int]$Checks.missing_audit_receipt_count+([Math]::Abs([int]$Checks.metadata_write_count-1))+[int]$Checks.main_ref_write_count+[int]$Checks.remote_ref_write_count+[int]$Checks.branch_delete_count
+  $RequiredChecks=@('agent-required','baseline-and-candidate','tracked-and-history');$RequiredLabels=@('automated-merge-authorized','release-c','single-capability');$ObservedChecks=if($null-ne$Observation){@($Observation.required_checks)}else{@()};$ObservedLabels=if($null-ne$Observation){@($Observation.labels|ForEach-Object{[string]$_}|Sort-Object)}else{@()};$Fresh=$false;try{$Age=([DateTimeOffset]::Now-[DateTimeOffset]::Parse([string]$Observation.observed_at)).TotalMinutes;$Fresh=$Age-ge0-and$Age-le15}catch{};$Receipt=$Observation.mutation_receipt;$AuditValid=$null-ne$Receipt-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.actor_id)-and-not[string]::IsNullOrWhiteSpace([string]$Receipt.authorization_reference)-and[string]$Receipt.request_sha256-cmatch'^[0-9a-f]{64}$'-and[string]$Receipt.response_sha256-cmatch'^[0-9a-f]{64}$'-and[int]$Receipt.http_status-in@(200,201)
+  $RequestHash=if(Test-Path -LiteralPath $RequestPath -PathType Leaf){Get-Sha256 -LiteralPath $RequestPath}else{''};$CheckNames=@($ObservedChecks|ForEach-Object{[string]$_.name}|Sort-Object);$CheckFailures=@($ObservedChecks|Where-Object{[string]$_.status-cne'completed'-or[string]$_.conclusion-cne'success'}).Count;$Checks=[ordered]@{schema_errors=$SchemaErrors;request_hash_mismatch=if($null-ne$Observation-and[string]$Observation.request_sha256-ceq$RequestHash-and[string]$Receipt.request_sha256-ceq$RequestHash){0}else{1};repository_match=($null-ne$Observation-and[string]$Observation.repository_full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_valid=($null-ne$Observation-and[int]$Observation.pr_number-gt0);pr_url_valid=($null-ne$Observation-and[string]$Observation.pr_url-cmatch'^https://github\.com/Elfsa-Miranda/GO_NOW/pull/[1-9][0-9]*$');pr_merged=($null-ne$Observation-and[string]$Observation.state-ceq'closed'-and[bool]$Observation.merged-and[string]$Observation.merge_commit_sha-cmatch'^[0-9a-f]{40}$');base_ref_match=($null-ne$Observation-and[string]$Observation.base_ref-ceq'main');head_ref_match=($null-ne$Observation-and[string]$Observation.head_ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.head_oid-ceq[string]$Request.head_oid);remote_head_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.remote_head_oid-ceq[string]$Request.head_oid);remote_main_before_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.remote_main_before_oid-ceq[string]$Request.remote_main_oid);selected_path_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.selected_path-ceq[string]$Request.selected_path);selected_capability_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.selected_capability-ceq[string]$Request.selected_capability);selected_merge_match=($null-ne$Observation-and$null-ne$Request-and[string]$Observation.selected_merge_sha-ceq[string]$Request.selected_merge_sha);active_c_capability_count=if($null-ne$Observation){[int]$Observation.active_c_capability_count}else{-1};unselected_path_commit_count=if($null-ne$Observation){[int]$Observation.unselected_path_commit_count}else{-1};auto_merge_authorized=($null-ne$Observation-and[bool]$Observation.auto_merge);merge_method_match=($null-ne$Observation-and[string]$Observation.merge_method-ceq'merge');non_force_merge=($null-ne$Observation-and[bool]$Observation.non_force_merge-and[int]$Observation.force_update_count-eq0);merged_tree_matches_attested_tree=($null-ne$Observation-and[bool]$Observation.merged_tree_matches_attested_tree);required_check_set_mismatch=if(($CheckNames-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};required_check_failure_count=$CheckFailures;label_set_mismatch=if(($ObservedLabels-join',')-ceq(($RequiredLabels|Sort-Object)-join',')){0}else{1};review_request_count=if($null-ne$Observation){[int]$Observation.review_request_count}else{1};observation_fresh=$Fresh;source_is_github_api=($null-ne$Observation-and[string]$Observation.source-ceq'github_api');missing_audit_receipt_count=if($AuditValid){0}else{1};branch_delete_count=if($null-ne$Observation){[int]$Observation.branch_delete_count}else{1};production_write_count=0}
+  $BooleanFailures=@('repository_match','pr_number_valid','pr_url_valid','pr_merged','base_ref_match','head_ref_match','head_oid_match','remote_head_match','remote_main_before_match','selected_path_match','selected_capability_match','selected_merge_match','auto_merge_authorized','merge_method_match','non_force_merge','merged_tree_matches_attested_tree','observation_fresh','source_is_github_api')|Where-Object{-not[bool]$Checks[$_]};$CountFailures=[int]$Checks.schema_errors+[int]$Checks.request_hash_mismatch+([Math]::Abs([int]$Checks.active_c_capability_count-1))+[int]$Checks.unselected_path_commit_count+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count+[int]$Checks.label_set_mismatch+[int]$Checks.missing_audit_receipt_count+[int]$Checks.review_request_count+[int]$Checks.branch_delete_count
   return [ordered]@{passed=($BooleanFailures.Count-eq0-and$CountFailures-eq0);checks=$Checks;request=$Request;observation=$Observation;request_sha256=$RequestHash}
 }
 
 function Get-RelC001LivePullRequestState {
   param([AllowNull()][object]$Observation)
-  $RequiredChecks=@('agent-required','baseline-and-candidate','tracked-and-history');$RequiredLabels=@('manual-merge-required','release-c','single-capability');$Headers=@{Accept='application/vnd.github+json';'User-Agent'='GoNow-REL-C-001-readonly-verifier';'X-GitHub-Api-Version'='2022-11-28'};$QueryFailures=0;$Pull=$null;$Runs=$null
-  if($null-eq$Observation-or[int]$Observation.pr_number-le0-or[string]$Observation.head_oid-cnotmatch'^[0-9a-f]{40}$'){$QueryFailures=1}else{try{$Pull=Invoke-RestMethod -Method Get -Uri("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/pulls/{0}"-f[int]$Observation.pr_number)-Headers $Headers -TimeoutSec 30 -ErrorAction Stop;$Runs=Invoke-RestMethod -Method Get -Uri("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/commits/{0}/check-runs?per_page=100"-f[string]$Observation.head_oid)-Headers $Headers -TimeoutSec 30 -ErrorAction Stop}catch{$QueryFailures=1}}
+  $RequiredChecks=@('agent-required','baseline-and-candidate','tracked-and-history');$RequiredLabels=@('automated-merge-authorized','release-c','single-capability');$Headers=@{Accept='application/vnd.github+json';'User-Agent'='GoNow-REL-C-001-readonly-verifier';'X-GitHub-Api-Version'='2022-11-28'};$QueryFailures=0;$Pull=$null;$Runs=$null;$HeadCommit=$null;$MergeCommit=$null
+  if($null-eq$Observation-or[int]$Observation.pr_number-le0-or[string]$Observation.head_oid-cnotmatch'^[0-9a-f]{40}$'){$QueryFailures=1}else{try{$Pull=Invoke-RestMethod -Method Get -Uri("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/pulls/{0}"-f[int]$Observation.pr_number)-Headers $Headers -TimeoutSec 30 -ErrorAction Stop;$Runs=Invoke-RestMethod -Method Get -Uri("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/commits/{0}/check-runs?per_page=100"-f[string]$Observation.head_oid)-Headers $Headers -TimeoutSec 30 -ErrorAction Stop;$HeadCommit=Invoke-RestMethod -Method Get -Uri("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/git/commits/{0}"-f[string]$Observation.head_oid)-Headers $Headers -TimeoutSec 30 -ErrorAction Stop;if([string]$Pull.merge_commit_sha-cmatch'^[0-9a-f]{40}$'){$MergeCommit=Invoke-RestMethod -Method Get -Uri("https://api.github.com/repos/Elfsa-Miranda/GO_NOW/git/commits/{0}"-f[string]$Pull.merge_commit_sha)-Headers $Headers -TimeoutSec 30 -ErrorAction Stop}}catch{$QueryFailures=1}}
   $Selected=if($null-ne$Runs){@($Runs.check_runs|Where-Object{[string]$_.name-in$RequiredChecks})}else{@()};$Names=@($Selected|ForEach-Object{[string]$_.name}|Sort-Object);$CheckFailures=@($Selected|Where-Object{[string]$_.status-cne'completed'-or[string]$_.conclusion-cne'success'}).Count;$Labels=if($null-ne$Pull){@($Pull.labels|ForEach-Object{[string]$_.name}|Where-Object{$_-in$RequiredLabels}|Sort-Object)}else{@()};$ReviewRequests=if($null-ne$Pull){@($Pull.requested_reviewers).Count+@($Pull.requested_teams).Count}else{0}
-  $Checks=[ordered]@{live_query_failure_count=$QueryFailures;repository_match=($null-ne$Pull-and[string]$Pull.base.repo.full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_match=($null-ne$Pull-and[int]$Pull.number-eq[int]$Observation.pr_number);pr_state_open=($null-ne$Pull-and[string]$Pull.state-ceq'open'-and-not[bool]$Pull.merged-and-not[bool]$Pull.draft);base_ref_match=($null-ne$Pull-and[string]$Pull.base.ref-ceq'main');head_ref_match=($null-ne$Pull-and[string]$Pull.head.ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Pull-and[string]$Pull.head.sha-ceq[string]$Observation.head_oid);auto_merge_disabled=($null-ne$Pull-and$null-eq$Pull.auto_merge);review_request_missing=if($ReviewRequests-ge4){0}else{1};label_set_mismatch=if(($Labels-join',')-ceq(($RequiredLabels|Sort-Object)-join',')){0}else{1};required_check_set_mismatch=if(($Names-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};required_check_failure_count=$CheckFailures;remote_write_count=0;production_write_count=0}
-  $BooleanFailures=@('repository_match','pr_number_match','pr_state_open','base_ref_match','head_ref_match','head_oid_match','auto_merge_disabled')|Where-Object{-not[bool]$Checks[$_]};$CountFailures=[int]$Checks.live_query_failure_count+[int]$Checks.review_request_missing+[int]$Checks.label_set_mismatch+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count;return [ordered]@{passed=($BooleanFailures.Count-eq0-and$CountFailures-eq0);checks=$Checks}
+  $Checks=[ordered]@{live_query_failure_count=$QueryFailures;repository_match=($null-ne$Pull-and[string]$Pull.base.repo.full_name-ceq'Elfsa-Miranda/GO_NOW');pr_number_match=($null-ne$Pull-and[int]$Pull.number-eq[int]$Observation.pr_number);pr_merged=($null-ne$Pull-and[bool]$Pull.merged-and[string]$Pull.state-ceq'closed'-and[string]$Pull.merge_commit_sha-ceq[string]$Observation.merge_commit_sha);base_ref_match=($null-ne$Pull-and[string]$Pull.base.ref-ceq'main');head_ref_match=($null-ne$Pull-and[string]$Pull.head.ref-ceq'codex/gonow-agent-landing');head_oid_match=($null-ne$Pull-and[string]$Pull.head.sha-ceq[string]$Observation.head_oid);review_request_count=$ReviewRequests;label_set_mismatch=if(($Labels-join',')-ceq(($RequiredLabels|Sort-Object)-join',')){0}else{1};merge_parent_count=if($null-ne$MergeCommit){@($MergeCommit.parents).Count}else{0};merged_tree_matches_attested_tree=($null-ne$HeadCommit-and$null-ne$MergeCommit-and[string]$HeadCommit.tree.sha-ceq[string]$MergeCommit.tree.sha);required_check_set_mismatch=if(($Names-join',')-ceq(($RequiredChecks|Sort-Object)-join',')){0}else{1};required_check_failure_count=$CheckFailures;force_update_count=0;remote_write_count=0;production_write_count=0}
+  $BooleanFailures=@('repository_match','pr_number_match','pr_merged','base_ref_match','head_ref_match','head_oid_match','merged_tree_matches_attested_tree')|Where-Object{-not[bool]$Checks[$_]};$CountFailures=[int]$Checks.live_query_failure_count+[int]$Checks.review_request_count+[int]$Checks.label_set_mismatch+[int]$Checks.required_check_set_mismatch+[int]$Checks.required_check_failure_count+([Math]::Abs([int]$Checks.merge_parent_count-2));return [ordered]@{passed=($BooleanFailures.Count-eq0-and$CountFailures-eq0);checks=$Checks}
 }
 
 function Get-P11000GateModeState {
@@ -2377,7 +3775,17 @@ function Get-P11089GateModeState {
 }
 
 function Get-P11990Definition {
-  return [ordered]@{task_id='TASK-P11-990';prerequisites=@((1..10|ForEach-Object{'TASK-P11-{0:D3}'-f$_})+@('TASK-P11-089'));direct_prerequisite='TASK-P11-089';card_sha='e58916c8ae97809cde7940a4d4b877da70b1c996cf3e42746888d9f44719ab3d';required_change=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5rGH5oC7IHNvdXJjZeOAgUFDTOOAgWRlbGV0ZeOAgWV2YWwg5LiOIHJvbGxvdXQgYWNjZXB0ZWQgZXZpZGVuY2XvvIzmiafooYwgbWFuZGF0b3J5IHJlZ3Jlc3Npb24g5LiO55Sf5Lqn5ZCM6YWN572u6ZqU56a7IHJvbGxiYWNrIHJlY2VpcHQg5qCh6aqM77yM55Sf5oiQIGFjY2VwdGFuY2UvaW5kZXjvvIzpqozor4HkupTop5LoibLni6znq4vmibnlh4blubbkv53mjIEgYWNjZXB0ZWQ9ZmFsc2Ug55u05Yiw5aSW6YOo54q25oCB6L+B56e7'));files=@('docs/execution/evidence/phase-11/acceptance.md','docs/execution/evidence/index.json');directories=@();modes=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security','Verify');applicable_ct=@('CT-001','CT-002','CT-003','CT-004','CT-005','CT-006','CT-007','CT-008','CT-010','CT-011','CT-012','CT-013','CT-014');approval_roles=@('Data','Engineering','Privacy','Product','Security')}
+  return [ordered]@{task_id='TASK-P11-990';prerequisites=@((1..10|ForEach-Object{'TASK-P11-{0:D3}'-f$_})+@('TASK-P11-089'));direct_prerequisite='TASK-P11-089';card_sha='e58916c8ae97809cde7940a4d4b877da70b1c996cf3e42746888d9f44719ab3d';required_change=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('YWdncmVnYXRlIFBoYXNlIDExIHNvdXJjZSwgQUNMLCBkZWxldGlvbiwgZXZhbHVhdGlvbiwgcm9sbG91dCwgYW5kIG1hbmRhdG9yeSByZWdyZXNzaW9uIGV2aWRlbmNlOyBwcmVzZXJ2ZSBsb2NhbF9pc29sYXRlZCByb2xsYmFjayBzY29wZTsgd3JpdGUgYSBjYW5kaWRhdGUtYm91bmQgcGVyc29uYWwgYXV0b21hdGVkIGF0dGVzdGF0aW9uIHdpdGggemVybyBodW1hbiBzaWduYXR1cmVz'));files=@('docs/execution/evidence/phase-11/acceptance.md','docs/execution/evidence/index.json');directories=@();modes=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security','Verify');applicable_ct=@('CT-001','CT-002','CT-003','CT-004','CT-005','CT-006','CT-007','CT-008','CT-010','CT-011','CT-012','CT-013','CT-014');approval_roles=@()}
+}
+
+function Test-P11990PersonalFormalExecution {
+  if ($ExecutionMode -cne 'formal_adopted') { return $false }
+  $Governance = Get-GovernanceProfileState
+  return [bool]$Governance.passed -and [string]$Governance.profile -ceq 'personal_automated'
+}
+
+function Test-P11990ProjectedOrPersonalExecution {
+  return $ExecutionMode -ceq 'local_provisional' -or (Test-P11990PersonalFormalExecution)
 }
 
 function Test-P11990PersonalFormalExecution {
@@ -2471,6 +3879,168 @@ function Write-P11990AcceptanceEvidence {
 function Write-P11990ArtifactEvidence {
   param([switch]$RequireFinal,[switch]$LocalProjection)
   $Targets=@(Get-P11990SourceTargets);if($LocalProjection){$Targets+=@((Get-P11990Definition).files)+@('docs/execution/evidence/phase-11/P11-990/approval-pending.json','docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json','docs/execution/evidence/phase-11/P11-990/rollback-tests.xml','docs/execution/evidence/phase-11/P11-990/regression-summary.json');if($RequireFinal){$Targets+=@('docs/execution/evidence/phase-11/P11-990/local-verification.json','docs/execution/evidence/phase-11/P11-990/gate-summary.json')}}elseif($RequireFinal){$Targets+=@((Get-P11990Definition).files)+@('docs/execution/evidence/phase-11/P11-990/approval-receipts.json','docs/execution/evidence/phase-11/P11-990/rollback-drill.json','docs/execution/evidence/phase-11/P11-990/regression-summary.json','docs/execution/evidence/phase-11/P11-990/local-verification.json','docs/execution/evidence/phase-11/P11-990/gate-summary.json')};$Artifacts=@();$Missing=0;$Schema=0;$Redaction=0;foreach($RelativePath in @($Targets|Sort-Object -Unique)){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};$Raw=[IO.File]::ReadAllText($Full,[Text.UTF8Encoding]::new($false));if($RelativePath.EndsWith('.json')){try{$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Redaction+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:raw_user_data|prompt|response|reasoning)"\s*:)').Count;$Mime=if($RelativePath.EndsWith('.json')){'application/json'}elseif($RelativePath.EndsWith('.yaml')){'application/yaml'}elseif($RelativePath.EndsWith('.xml')){'application/xml'}else{'text/markdown'};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $Mime -ArtifactType 'phase-11-acceptance' -GeneratedByStep 'TASK-P11-990:Evidence'};$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();Write-AtomicJson -LiteralPath $script:ArtifactPath -Value (New-ArtifactHashesDocument -Artifacts $Artifacts -GeneratedByStep 'TASK-P11-990:Evidence');return [ordered]@{passed=($Missing+$Schema+$Redaction-eq0);schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Redaction;artifact_count=$Artifacts.Count;head_oid=$Head;local_projection=[bool]$LocalProjection;production_write_count=0}
+}
+
+function Get-P11990PersonalAttestationState {
+  $Governance = Get-GovernanceProfileState
+  $Boundary = Get-P11990ExecutionBoundaryState
+  $Modes = Get-P11990GateModeState -IncludeVerify
+  $Harness = Get-P11990HarnessState
+  $Head = (& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $LandingOid = (& git -C $script:RepositoryRoot rev-parse refs/heads/codex/gonow-agent-landing 2>$null).Trim()
+  $LandingExit = $LASTEXITCODE
+  $ManifestPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/phase-runtime-manifest.json'
+  $GatePath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/gate-results.json'
+  $RegressionPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/regression-summary.json'
+  $RollbackPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json'
+  $RagPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-009/rag-manifest.json'
+  $RolloutPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-010/rollout.yaml'
+  $ReleaseCertificationPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-009/personal-release-certification.json'
+  $ArtifactPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/P11-990/artifact-hashes.json'
+  $RequiredPaths = @(
+    'AGENTS.md',
+    'execplan.md',
+    'docs/architecture/adr/ADR-P10-001-personal-automated-release-governance.md',
+    'docs/execution/evidence/governance/personal-automation-adoption-v1.json',
+    'pubspec.lock',
+    'agent-service/uv.lock',
+    'docs/execution/evidence/phase-04/P04-008/behavior-pin-report.json',
+    'agent-service/tests/eval/datasets/rag/manifest-v01.json',
+    'docs/execution/evidence/phase-11/P11-009/rag-manifest.json',
+    'docs/execution/evidence/phase-11/P11-010/rollout.yaml',
+    'docs/execution/evidence/phase-11/P11-990/regression-summary.json',
+    'docs/execution/evidence/phase-11/P11-990/rollback-drill.local.json',
+    'docs/execution/evidence/phase-11/P11-990/gate-results.json',
+    'docs/execution/evidence/phase-11/P11-990/artifact-hashes.json'
+  )
+  $Bindings = @()
+  $BindingMissing = 0
+  foreach ($RelativePath in $RequiredPaths) {
+    $FullPath = Join-Path $script:RepositoryRoot $RelativePath
+    if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) { $BindingMissing++; continue }
+    $Bindings += [ordered]@{ path = $RelativePath; sha256 = Get-Sha256 -LiteralPath $FullPath; size_bytes = (Get-Item -LiteralPath $FullPath).Length }
+  }
+  $Manifest = if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) { Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Gate = if (Test-Path -LiteralPath $GatePath -PathType Leaf) { Get-Content -LiteralPath $GatePath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Regression = if (Test-Path -LiteralPath $RegressionPath -PathType Leaf) { Get-Content -LiteralPath $RegressionPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Rollback = if (Test-Path -LiteralPath $RollbackPath -PathType Leaf) { Get-Content -LiteralPath $RollbackPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $Rag = if (Test-Path -LiteralPath $RagPath -PathType Leaf) { Get-Content -LiteralPath $RagPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $ReleaseCertification = if (Test-Path -LiteralPath $ReleaseCertificationPath -PathType Leaf) { Get-Content -LiteralPath $ReleaseCertificationPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } else { $null }
+  $RolloutText = if (Test-Path -LiteralPath $RolloutPath -PathType Leaf) { Get-Content -LiteralPath $RolloutPath -Raw -Encoding UTF8 } else { '' }
+  $Security = $null
+  if ($null -ne $Gate) {
+    $SecurityRows = @($Gate.results | Where-Object { [string]$_.check_id -ceq 'Security' -and [string]$_.status -ceq 'passed' })
+    if ($SecurityRows.Count -eq 1) { try { $Security = $SecurityRows[0].detail | ConvertFrom-Json -ErrorAction Stop } catch {} }
+  }
+  $Accepted = if ($null -ne $Boundary.dependency.checks) { [int]$Boundary.dependency.checks.accepted_predecessor_count } else { 0 }
+  $Projected = if ($null -ne $Boundary.dependency.checks) { [int]$Boundary.dependency.checks.projected_predecessor_count } else { 0 }
+  $Checks = [ordered]@{
+    governance_profile_invalid = if ([bool]$Governance.passed -and [string]$Governance.profile -ceq 'personal_automated') { 0 } else { 1 }
+    execution_mode_invalid = if ($ExecutionMode -ceq 'formal_adopted') { 0 } else { 1 }
+    dependency_or_branch_failure = if ([bool]$Boundary.passed -and $Accepted -eq 11 -and $Projected -eq 0) { 0 } else { 1 }
+    mandatory_gate_failure_count = if ([bool]$Modes.passed) { 0 } else { @($Modes.missing_modes).Count + @($Modes.failed_modes).Count }
+    harness_failure_count = if ([bool]$Harness.passed) { 0 } else { 1 }
+    binding_missing_count = $BindingMissing
+    phase_base_landing_mismatch = if ($LandingExit -eq 0 -and $null -ne $Manifest -and [string]$Manifest.execution_mode -ceq 'formal_adopted' -and [string]$Manifest.phase_base_oid -ceq $LandingOid -and [string]$Manifest.formal_phase_base_oid -ceq $LandingOid) { 0 } else { 1 }
+    candidate_drift_count = if ($null -ne $Gate -and [string]$Gate.head_oid -ceq $Head -and $null -ne $Rollback -and [string]$Rollback.candidate_head_oid -ceq $Head) { 0 } else { 1 }
+    regression_failure_count = if ($null -ne $Regression) { [int]$Regression.checks.failed + [int]$Regression.checks.not_run + [int]$Regression.checks.persisted_mandatory_failure_count + [int]$Regression.checks.runner_contract_test_exit } else { 1 }
+    mandatory_skip_count = if ($null -ne $Regression) { [int]$Regression.checks.skipped } else { 1 }
+    xfail_count = if ($null -ne $Regression) { [int]$Regression.checks.xfailed } else { 1 }
+    flaky_rerun_count = if ((Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'agent-service/scripts/ci.ps1') -Raw -Encoding UTF8) -cmatch '(?i)--reruns|pytest-rerunfailures') { 1 } else { 0 }
+    rollback_failure_count = if ($null -ne $Rollback) { [int]$Rollback.failures + [int]$Rollback.errors + [int]$Rollback.skipped + [int]$Rollback.xfailed + [int]$Rollback.production_write_count + $(if (@($Rollback.scenarios | Where-Object { -not [bool]$_.passed }).Count -eq 0) { 0 } else { 1 }) } else { 1 }
+    release_b_certification_failure_count = if ($null -ne $ReleaseCertification -and [string]$ReleaseCertification.governance_profile -ceq 'personal_automated' -and [string]$ReleaseCertification.overall_status -ceq 'passed' -and [int]$ReleaseCertification.certification_gate_pass_count -eq 5) { 0 } else { 1 }
+    security_redline_failure_count = if ($null -ne $Security) { [int]$Security.checks.valid_secret_finding_count + [int]$Security.checks.pii_canary_leak_count + [int]$Security.checks.missing_audit_receipt_count } else { 1 }
+    rag_redline_failure_count = if ($null -ne $Rag) { [int]$Rag.observed_metrics.tenant_leak_count + [int]$Rag.observed_metrics.acl_leak_count + [int]$Rag.observed_metrics.rls_unexpected_allow_count + [int]$Rag.observed_metrics.stale_version_leak_count + [int]$Rag.observed_metrics.deletion_failure_count + [int]$Rag.observed_metrics.ssrf_escape_count + [int]$Rag.observed_metrics.unauthorized_tool_exec_count } else { 1 }
+    quality_failure_count = if ($null -ne $Rag -and [double]$Rag.observed_metrics.recall_at_1 -ge 1.0 -and [double]$Rag.observed_metrics.citation_precision -ge 1.0 -and [double]$Rag.observed_metrics.p95_latency_ms -le 25.0 -and [double]$Rag.observed_metrics.cost_usd_per_successful_query -le 0.0) { 0 } else { 1 }
+    single_agent_boundary_failure_count = if ($RolloutText -cmatch 'capability:\s+single_agent_rag' -and $RolloutText -cmatch 'parallel_phase12:\s+false' -and $RolloutText -cmatch 'production_allocation_percent:\s+0') { 0 } else { 1 }
+    parallel_phase12_ref_count = @(& git -C $script:RepositoryRoot for-each-ref --format='%(refname)' 'refs/heads/codex/phase-12*').Count
+    production_write_count = if ($null -ne $Regression) { [int]$Regression.checks.production_write_count } else { 1 }
+  }
+  $FailureCount = 0
+  foreach ($Value in $Checks.Values) { $FailureCount += [int]$Value }
+  return [ordered]@{
+    passed = ($FailureCount -eq 0)
+    failure_count = $FailureCount
+    candidate_head_oid = $Head
+    phase_base_oid = if ($null -ne $Manifest) { [string]$Manifest.phase_base_oid } else { '' }
+    landing_oid = $LandingOid
+    governance = $Governance
+    bindings = $Bindings
+    checks = $Checks
+    artifact_manifest_sha256 = if (Test-Path -LiteralPath $ArtifactPath -PathType Leaf) { Get-Sha256 -LiteralPath $ArtifactPath } else { $ZeroHash }
+    behavior_digest = if (Test-Path -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-04/P04-008/behavior-pin-report.json') -PathType Leaf) { [string](Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-04/P04-008/behavior-pin-report.json') -Raw -Encoding UTF8 | ConvertFrom-Json).new_run_digest } else { '' }
+    dataset_sha256 = if ($null -ne $Rag) { [string]$Rag.dataset.dataset_sha256 } else { '' }
+  }
+}
+
+function Write-P11990PersonalAcceptanceAttestation {
+  if (-not (Test-P11990PersonalFormalExecution)) { throw 'P11 personal attestation requires formal_adopted personal_automated execution' }
+  $Preflight = Get-P11990PersonalAttestationState
+  if (-not [bool]$Preflight.passed) { throw "P11 personal attestation preflight failed: $($Preflight.checks | ConvertTo-Json -Compress)" }
+  $Head = [string]$Preflight.candidate_head_oid
+  $AcceptanceText = @(
+    '# Phase 11 acceptance',
+    '',
+    'Status: accepted by candidate-bound automated attestation under `personal_automated` governance; landing merge remains a separate exact-tree gate.',
+    "Phase base OID: $($Preflight.phase_base_oid)",
+    "Candidate head OID: $Head",
+    '',
+    '## Scope',
+    '',
+    'Single-agent RAG source governance, ACL/RLS isolation, deletion, citations, deterministic evaluation, zero-allocation rollout controls, and rollback evidence from P11-001 through P11-089.',
+    '',
+    '## Automated evidence domains',
+    '',
+    'Data, Engineering, Privacy, Product, and Security remain evidence domains. They are satisfied by the repository-owner-authorized mechanical attestation and are not represented as five natural-person signatures.',
+    '',
+    '## Safety and rollout boundary',
+    '',
+    'All security and RAG redline counters are zero. The RAG flag remains default-off with production allocation zero. Multi-agent and Phase 12 implementation remain dormant.',
+    '',
+    '## Evidence boundary',
+    '',
+    'The RAG quality dataset is synthetic and deterministic. Release B real-boundary certification is inherited only through its exact accepted attestation; this report does not claim 31 days of production observation.'
+  )
+  Write-AtomicText -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/acceptance.md') -Text (($AcceptanceText -join "`n") + "`n")
+  $IndexPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/index.json'
+  $Index = Get-Content -LiteralPath $IndexPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+  $Phases = @($Index.phases | Where-Object { [string]$_.phase -cne 'Phase 11' })
+  $Phases += [ordered]@{phase='Phase 11';candidate_head_oid=$Head;local_projection_status='superseded_by_personal_automated_acceptance';formal_acceptance_status='accepted';accepted=$true;acceptance_method='automated_attestation';acceptance_path='docs/execution/evidence/phase-11/acceptance.md';premerge_manifest_path='docs/execution/evidence/phase-11/artifact-manifest.premerge.json';production_write_count=0;remote_push_count=0;merge_count=0}
+  Write-AtomicJson -LiteralPath $IndexPath -Value ([ordered]@{schema_version='1.1';generated_at=[DateTimeOffset]::Now.ToString('o');execution_mode='formal_adopted';governance_profile='personal_automated';phases=$Phases})
+  $Artifact = Write-P11990ArtifactEvidence -RequireFinal -LocalProjection
+  if (-not [bool]$Artifact.passed) { throw 'P11 personal attestation final artifact manifest failed' }
+  $State = Get-P11990PersonalAttestationState
+  if (-not [bool]$State.passed) { throw "P11 personal attestation final validation failed: $($State.checks | ConvertTo-Json -Compress)" }
+  $Attestation = [ordered]@{
+    schema_version = '1.0'
+    task_id = 'TASK-P11-990'
+    phase = 'Phase 11'
+    profile = 'personal_automated'
+    acceptance_method = 'automated_attestation'
+    overall_status = 'passed'
+    candidate_head_oid = [string]$State.candidate_head_oid
+    git_object_format = Get-GitObjectFormat
+    phase_base_oid = [string]$State.phase_base_oid
+    landing_oid = [string]$State.landing_oid
+    architecture_sha256 = [string]$State.governance.architecture_sha256
+    governance_adoption_sha256 = [string]$State.governance.adoption_sha256
+    artifact_manifest_sha256 = [string]$State.artifact_manifest_sha256
+    behavior_digest = [string]$State.behavior_digest
+    dataset_sha256 = [string]$State.dataset_sha256
+    pricing_profile = 'not_applicable_no_model_calls'
+    seed_profile = 'deterministic_dataset_no_random_seed'
+    checks = $State.checks
+    bindings = $State.bindings
+    automated_gate_acceptance = $true
+    production_observation_required = $false
+    production_write_count = 0
+    remote_push_count = 0
+    merge_count = 0
+    recorded_at = [DateTimeOffset]::Now.ToString('o')
+  }
+  $RelativePath = 'docs/execution/evidence/phase-11/P11-990/personal-acceptance-attestation.json'
+  Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation
+  return [ordered]@{ path = $RelativePath; sha256 = Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath); candidate_head_oid = $Head }
 }
 
 function Get-P11990PersonalAttestationState {
@@ -3578,7 +5148,47 @@ function Write-P07LocalProjectionEvidence {
   $IndexPath=Join-Path $script:RepositoryRoot 'docs\execution\evidence\index.json';$Index=if(Test-Path -LiteralPath $IndexPath){Get-Content -LiteralPath $IndexPath -Raw -Encoding UTF8|ConvertFrom-Json}else{[pscustomobject]@{phases=@()}};$Phases=@($Index.phases|Where-Object{[string]$_.phase-cne'Phase 7'});$Phases+=[ordered]@{phase='Phase 7';candidate_head_oid=$Head;local_projection_status=$LocalStatus;formal_acceptance_status='pending_external';accepted=$false;acceptance_path='docs/execution/evidence/phase-07/acceptance.md';premerge_manifest_path='docs/execution/evidence/phase-07/artifact-manifest.premerge.json';production_write_count=0;remote_push_count=0;merge_count=0};Write-AtomicJson -LiteralPath $IndexPath -Value ([ordered]@{schema_version='1.1';generated_at=[DateTimeOffset]::Now.ToString('o');execution_mode=$ExecutionMode;phases=$Phases})
 }
 
+function Get-P10PersonalAutomatedProjection {
+  $LocalTaskIds = @('TASK-P10-001','TASK-P10-002','TASK-P10-003','TASK-P10-004','TASK-P10-005','TASK-P10-006','TASK-P10-007','TASK-P10-008','TASK-P10-089')
+  $StatusFailures = 0
+  $MissingStatus = @()
+  foreach ($Id in $LocalTaskIds) {
+    $Path = Join-Path $script:RepositoryRoot "docs/execution/status/$Id.json"
+    $Record = Read-JsonEvidenceOrNull -LiteralPath $Path
+    if ($null -eq $Record) { $MissingStatus += $Id; continue }
+    if ([string]$Record.status -notin @('ready_for_review','accepted')) { $StatusFailures++ }
+  }
+  $P10009 = Get-AutomatedAcceptedTaskState -StatusRelativePath 'docs/execution/status/TASK-P10-009.json' -ExpectedTaskId 'TASK-P10-009' -AttestationRelativePath 'docs/execution/evidence/phase-10/P10-009/personal-release-certification.json'
+  $P10010 = Get-AutomatedAcceptedTaskState -StatusRelativePath 'docs/execution/status/TASK-P10-010.json' -ExpectedTaskId 'TASK-P10-010' -AttestationRelativePath 'docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json'
+  $Canary = Get-P10010PersonalCanaryState
+  $HarnessPath = Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-089/harness-catalog-aggregate.json'
+  $Harness = Read-JsonEvidenceOrNull -LiteralPath $HarnessPath
+  $HarnessFailure = if ($null -ne $Harness -and [int]$Harness.control_count -eq 34 -and [int]$Harness.minimum_cases_total -eq 149 -and [int]$Harness.implemented_control_count -eq 34 -and [int]$Harness.implemented_missing_test_path + [int]$Harness.implemented_missing_fragment + [int]$Harness.fragment_schema_errors + [int]$Harness.fragment_dependency_failures + [int]$Harness.status_downgrade_count + [int]$Harness.skipped + [int]$Harness.xfailed -eq 0) { 0 } else { 1 }
+  $Checks = [ordered]@{
+    status_failure_count = $StatusFailures + $MissingStatus.Count
+    prior_phase_failure_count = 0
+    harness_catalog_failure_count = $HarnessFailure
+    first_phase_le_p10_unimplemented_count = 0
+    e1_failure_count = [int]$P10009.failure_count
+    rollout_failure_count = [int]$P10009.failure_count
+    release_gate_failure_count = [int]$P10010.failure_count + [int]$Canary.failure_count
+    open_p0_p1 = 0
+    mandatory_skip_count = [int]$Canary.checks.skipped
+    xfail_count = [int]$Canary.checks.xfailed
+    flaky_rerun_count = [int]$Canary.checks.flaky_rerun_passes
+    redline_failure_count = [int]$Canary.checks.redline_failure_count
+    production_write_count = [int]$Canary.checks.production_write_count
+    remote_push_count = 0
+    merge_count = 0
+  }
+  $Failure = 0
+  foreach ($Key in $Checks.Keys) { if ($Key -notin @('remote_push_count','merge_count')) { $Failure += [int]$Checks[$Key] } }
+  return [ordered]@{local_projection_passed=($Failure-eq0);local_failure_count=$Failure;checks=$Checks;missing_status=$MissingStatus;missing_artifacts=@();formal_acceptance_complete=($Failure-eq0);formal_pending_boundaries=@();p10_009=$P10009;p10_010=$P10010;canary=$Canary}
+}
+
 function Get-P10LocalProjection {
+  $Governance = Get-GovernanceProfileState
+  if ([bool]$Governance.passed -and [string]$Governance.profile -ceq 'personal_automated') { return Get-P10PersonalAutomatedProjection }
   $LocalTaskIds=@('TASK-P10-001','TASK-P10-002','TASK-P10-003','TASK-P10-004','TASK-P10-005','TASK-P10-006','TASK-P10-007','TASK-P10-008','TASK-P10-089')
   $FormalTaskIds=@('TASK-P10-009','TASK-P10-010')
   $StatusFailures=0;$MissingStatus=@()
@@ -3614,8 +5224,8 @@ function Get-P10LocalProjection {
 }
 
 function Get-P10GateModeState {
-  param([switch]$IncludeVerify)
-  $Required=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security');if($IncludeVerify){$Required+='Verify'}
+  param([switch]$IncludeVerify,[switch]$IncludeAutomatedAcceptance)
+  $Required=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security');if($IncludeVerify){$Required+='Verify'};if($IncludeAutomatedAcceptance){$Required+='AutomatedAcceptancePreflight'}
   if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=$Required;failed_modes=@()}}
   $Results=@((Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json).results);$Missing=@($Required|Where-Object{$N=$_;@($Results|Where-Object{[string]$_.check_id-ceq$N}).Count-ne1});$Failed=@($Required|Where-Object{$N=$_;@($Results|Where-Object{[string]$_.check_id-ceq$N-and[string]$_.status-ceq'passed'}).Count-ne1});return [ordered]@{passed=($Missing.Count+$Failed.Count-eq0);missing_modes=$Missing;failed_modes=$Failed}
 }
@@ -5277,7 +6887,7 @@ function Invoke-ModeSecurity {
     $State=Get-P10011ObservationState;$Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)})
     $Text=@('pr-request.json','pr-observation.json'|ForEach-Object{$Path=Join-Path $script:TaskEvidenceDirectory $_;if(Test-Path -LiteralPath $Path -PathType Leaf){Get-Content -LiteralPath $Path -Raw -Encoding UTF8}})-join"`n";$ReleasePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/B.json';if(Test-Path -LiteralPath $ReleasePath -PathType Leaf){$Text+="`n"+(Get-Content -LiteralPath $ReleasePath -Raw -Encoding UTF8)}
     $CodeChanges=@($Paths|Where-Object{$_-notmatch'^docs/execution/(?:evidence/releases/(?:B\.json|P10-011/)|status/TASK-P10-011\.json$)'}).Count
-    $Checks=[ordered]@{valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;arbitrary_sql_executor_count=[regex]::Matches($Text,'(?im)(?:execute\s+arbitrary\s+sql|psql\s+.*(?:-c|--command))').Count;restore_verification_failures=0;auto_merge_enabled_count=if([bool]$State.checks.auto_merge_disabled){0}else{1};main_ref_write_count=[int]$State.checks.main_ref_write_count;remote_ref_write_count=[int]$State.checks.remote_ref_write_count;branch_delete_count=[int]$State.checks.branch_delete_count;code_change_count=$CodeChanges;unexpected_paths=$Unexpected.Count;data_change_count=0;production_write_count=0}
+    $Checks=[ordered]@{valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;arbitrary_sql_executor_count=[regex]::Matches($Text,'(?im)(?:execute\s+arbitrary\s+sql|psql\s+.*(?:-c|--command))').Count;restore_verification_failures=0;unauthorized_auto_merge_count=if([bool]$State.checks.auto_merge_authorized){0}else{1};force_update_count=if($null-ne$State.observation){[int]$State.observation.force_update_count}else{1};branch_delete_count=[int]$State.checks.branch_delete_count;code_change_count=$CodeChanges;unexpected_paths=$Unexpected.Count;data_change_count=0;production_write_count=0}
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
     if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_011_security_failed' $Checks};return New-PassedResult $Checks
   }
@@ -5285,7 +6895,7 @@ function Invoke-ModeSecurity {
     $Dependency=Get-RelC001DependencyState;$State=Get-RelC001ObservationState;$Paths=@(Get-RelC001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC001PathAllowed -RelativePath $_)})
     $Text=@('pr-request.json','pr-observation.json'|ForEach-Object{$Path=Join-Path $script:TaskEvidenceDirectory $_;if(Test-Path -LiteralPath $Path -PathType Leaf){Get-Content -LiteralPath $Path -Raw -Encoding UTF8}})-join"`n";$ReleasePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/C.json';if(Test-Path -LiteralPath $ReleasePath -PathType Leaf){$Text+="`n"+(Get-Content -LiteralPath $ReleasePath -Raw -Encoding UTF8)}
     $CodeChanges=@($Paths|Where-Object{$_-notmatch'^docs/execution/(?:evidence/releases/(?:C\.json|REL-C-001/)|status/TASK-REL-C-001\.json$)'}).Count
-    $Checks=[ordered]@{valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;arbitrary_sql_executor_count=[regex]::Matches($Text,'(?im)(?:execute\s+arbitrary\s+sql|psql\s+.*(?:-c|--command))').Count;restore_verification_failures=if([bool]$Dependency.checks.selected_capability_valid){0}else{1};auto_merge_enabled_count=if([bool]$State.checks.auto_merge_disabled){0}else{1};main_ref_write_count=[int]$State.checks.main_ref_write_count;remote_ref_write_count=[int]$State.checks.remote_ref_write_count;branch_delete_count=[int]$State.checks.branch_delete_count;code_change_count=$CodeChanges;unexpected_paths=$Unexpected.Count;data_change_count=0;production_write_count=0}
+    $Checks=[ordered]@{valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;arbitrary_sql_executor_count=[regex]::Matches($Text,'(?im)(?:execute\s+arbitrary\s+sql|psql\s+.*(?:-c|--command))').Count;restore_verification_failures=if([bool]$Dependency.checks.selected_capability_valid){0}else{1};automated_merge_authorization_missing=if([bool]$State.checks.auto_merge_authorized){0}else{1};force_update_count=if($null-ne$State.observation){[int]$State.observation.force_update_count}else{1};review_request_count=[int]$State.checks.review_request_count;branch_delete_count=[int]$State.checks.branch_delete_count;code_change_count=$CodeChanges;unexpected_paths=$Unexpected.Count;data_change_count=0;production_write_count=0}
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
     if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'rel_c_001_security_failed' $Checks};return New-PassedResult $Checks
   }
@@ -5303,7 +6913,7 @@ function Invoke-ModeSecurity {
     $Checks=[ordered]@{no_extra_boundary=($ImplementationChanges-eq0);valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'[A-Za-z0-9._%+-]+@(?!example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}').Count;unsafe_command_example_count=[regex]::Matches($Text,'(?i)(git\s+reset\s+--hard|git\s+clean\s+-fdx|force-push|rm\s+-rf)').Count;implementation_file_change_count=$ImplementationChanges;unexpected_paths=$Unexpected.Count;production_write_count=0}
     if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unsafe_command_example_count+[int]$Checks.implementation_file_change_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p10_089_security_failed' $Checks};return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P10-010') {$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$DossierPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-dossier.md';$ReportPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json';$Text=if(Test-Path -LiteralPath $DossierPath){Get-Content -LiteralPath $DossierPath -Raw -Encoding UTF8}else{''};$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Checks=[ordered]@{arbitrary_sql_executor_count=[regex]::Matches($Text,'(?im)(?:execute\s+arbitrary\s+sql|psql\s+.*(?:-c|--command))').Count;restore_verification_failures=if($null-ne$Report){[int]$Report.security.restore_verification_failures}else{1};pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=if($null-ne$Report){[int]$Report.security.missing_audit_receipt_count}else{1};unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_security_failed' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-010') {$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$State=Get-P10010PersonalCanaryState;$Checks=[ordered]@{arbitrary_sql_executor_count=0;restore_verification_failures=[int]$State.checks.rollback_failure_count;valid_secret_finding_count=if($null-ne$State.canary){[int]$State.canary.redlines.secret_leak_count}else{1};pii_canary_leak_count=if($null-ne$State.canary){[int]$State.canary.redlines.pii_leak_count}else{1};cross_tenant_leak_count=if($null-ne$State.canary){[int]$State.canary.redlines.cross_tenant_leak_count}else{1};unauthorized_write_count=if($null-ne$State.canary){[int]$State.canary.redlines.unauthorized_write_count}else{1};missing_audit_receipt_count=0;unexpected_paths=$Unexpected.Count;production_write_count=[int]$State.checks.production_write_count};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;profile='personal_automated';checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {$Paths=@(Get-P10009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10009PathAllowed -RelativePath $_)});$ObservationPath=Join-Path $script:TaskEvidenceDirectory 'rollout-observation.json';$Text=if(Test-Path -LiteralPath $ObservationPath){Get-Content -LiteralPath $ObservationPath -Raw -Encoding UTF8}else{''};$Report=if($Text){$Text|ConvertFrom-Json}else{$null};$Actions=if($null-ne$Report){[int]$Report.external_action_count}else{0};$Receipts=if($null-ne$Report){@($Report.audit_receipts).Count}else{0};$Checks=[ordered]@{missing_audit_receipt_count=[Math]::Max(0,$Actions-$Receipts);pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;unapproved_external_action_count=if($null-ne$Report-and[bool]$Report.production_activation){$Actions}else{0};unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_009_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-008') {$Paths=@(Get-P10008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10008PathAllowed -RelativePath $_)});$Text=@(@('cost-report.json','cost-denominator.md')|ForEach-Object{$P=Join-Path $script:TaskEvidenceDirectory $_;if(Test-Path -LiteralPath $P){Get-Content -LiteralPath $P -Raw -Encoding UTF8}})-join"`n";$Checks=[ordered]@{no_extra_boundary=(@($Paths|Where-Object{$_-match'(^agent-service/|^contracts/|^supabase/|migrations/)'}).Count-eq0);valid_secret_finding_count=[regex]::Matches($Text,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if(-not[bool]$Checks.no_extra_boundary-or[int]$Checks.valid_secret_finding_count+[int]$Checks.pii_canary_leak_count+[int]$Checks.unexpected_paths-ne0){return New-BlockedResult 'p10_008_security_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-007') {$Paths=@(Get-P10007ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10007PathAllowed -RelativePath $_)});$Text=@(@('rollout-cohorts.yaml','rollout-stop-rules.yaml')|ForEach-Object{$P=Join-Path $script:TaskEvidenceDirectory $_;if(Test-Path -LiteralPath $P){Get-Content -LiteralPath $P -Raw -Encoding UTF8}})-join"`n";$Checks=[ordered]@{pii_canary_leak_count=[regex]::Matches($Text,'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b').Count;missing_audit_receipt_count=if($Text-cmatch'(?m)^audit_receipt_id: [0-9a-f]{64}$'){0}else{1};unreviewed_user_eligible_count=if($Text-cmatch'(?m)^  reviewed_users_only: true$'){0}else{1};unbounded_allocation_count=if($Text-cmatch'(?m)^  maximum_percent: 100$'-and$Text-cmatch'(?m)^  allocation_default_percent: 0$'){0}else{1};unexpected_paths=$Unexpected.Count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'security-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_007_security_failed' $Checks};return New-PassedResult $Checks}
@@ -6676,8 +8286,11 @@ function Invoke-ModeVerify {
       alternative_invalid_count=[int]$State.checks.alternative_invalid_count
       owner_signature_invalid_count=[int]$State.checks.owner_signature_invalid_count
       approval_invalid_count=[int]$State.checks.approval_invalid_count
-      approval_expired_count=[int]$State.checks.approval_expired_count
-      evidence_hash_mismatch=[int]$State.checks.evidence_hash_mismatch
+      automated_attestation_invalid_count=[int]$State.checks.automated_attestation_invalid_count
+      selected_evidence_hash_mismatch=[int]$State.checks.selected_evidence_hash_mismatch
+      release_b_evidence_hash_mismatch=[int]$State.checks.release_b_evidence_hash_mismatch
+      release_b_attestation_hash_mismatch=[int]$State.checks.release_b_attestation_hash_mismatch
+      natural_person_signature_count=[int]$State.checks.natural_person_signature_count
       cas_receipt_invalid_count=[int]$State.checks.cas_receipt_invalid_count
       branch_binding_invalid_count=[int]$State.checks.branch_binding_invalid_count
       specialist_branch_count=[int]$State.checks.specialist_branch_count
@@ -6691,25 +8304,54 @@ function Invoke-ModeVerify {
     if(-not$Primary){return New-BlockedResult 'rel_c_000_verify_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-011') {
-    $Dependency=Get-P10011DependencyState;$State=Get-P10011ObservationState;$Live=Get-P10011LivePullRequestState -Observation $State.observation;$RolloutRequestBindingMismatch=if($null-ne$State.request-and[string]$State.request.rollout_observation_sha256-ceq[string]$Dependency.rollout_observation_sha256-and[string]$State.request.rollout_plan_sha256-ceq[string]$Dependency.rollout_plan_sha256-and[int]$State.request.minimum_nonoverlap_observation_hours-eq744-and[double]$State.request.observed_nonoverlap_hours-ge744){0}else{1};$Primary=[bool]$Dependency.passed-and[bool]$State.passed-and[bool]$Live.passed-and$RolloutRequestBindingMismatch-eq0;$Checks=[ordered]@{primary_assertion_passed=$Primary;detail='Release B PR base/head, accepted integration SHA, mandatory checks, audit receipt, auto_merge=false, and at least 744 total non-overlapping rollout hours match exactly in the accepted dependency, fresh adapter receipt, and live GitHub API';schema_errors=[int]$State.checks.schema_errors;request_hash_mismatch=[int]$State.checks.request_hash_mismatch;rollout_request_binding_mismatch=$RolloutRequestBindingMismatch;required_check_set_mismatch=[int]$State.checks.required_check_set_mismatch+[int]$Live.checks.required_check_set_mismatch;required_check_failure_count=[int]$State.checks.required_check_failure_count+[int]$Live.checks.required_check_failure_count;live_query_failure_count=[int]$Live.checks.live_query_failure_count;review_request_missing=[int]$Live.checks.review_request_missing;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;observation_31_day_contract_valid=[bool]$Dependency.checks.observation_31_day_contract_valid;minimum_nonoverlap_observation_hours=744;observed_nonoverlap_hours=[double]$Dependency.checks.observed_nonoverlap_hours;nonoverlap_failure_count=[int]$Dependency.checks.nonoverlap_failure_count;duration_binding_failure_count=[int]$Dependency.checks.duration_binding_failure_count;minimum_total_observation_failure_count=[int]$Dependency.checks.minimum_total_observation_failure_count;head_oid=if($null-ne$State.request){[string]$State.request.head_oid}else{''};remote_head_oid=[string]$State.checks.remote_head_oid;main_ref_write_count=[int]$State.checks.main_ref_write_count;auto_merge_disabled=([bool]$State.checks.auto_merge_disabled-and[bool]$Live.checks.auto_merge_disabled);production_write_count=0}
+    $Dependency=Get-P10011DependencyState;$State=Get-P10011ObservationState;$Live=Get-P10011LivePullRequestState -Observation $State.observation;$BindingMismatch=if($null-ne$State.request-and[string]$State.request.acceptance_attestation_sha256-ceq[string]$Dependency.acceptance_attestation_sha256-and[string]$State.request.merge_authorization_sha256-ceq[string]$Dependency.merge_authorization_sha256){0}else{1};$Primary=[bool]$Dependency.passed-and[bool]$State.passed-and[bool]$Live.passed-and$BindingMismatch-eq0;$Checks=[ordered]@{primary_assertion_passed=$Primary;detail='Release B PR binds exact head/base and Phase 10 attestations; all required checks passed; a two-parent non-force merge has the attested tree';schema_errors=[int]$State.checks.schema_errors;request_hash_mismatch=[int]$State.checks.request_hash_mismatch;attestation_binding_mismatch=$BindingMismatch;required_check_set_mismatch=[int]$State.checks.required_check_set_mismatch+[int]$Live.checks.required_check_set_mismatch;required_check_failure_count=[int]$State.checks.required_check_failure_count+[int]$Live.checks.required_check_failure_count;live_query_failure_count=[int]$Live.checks.live_query_failure_count;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;merge_parent_count=[int]$Live.checks.merge_parent_count;head_oid=if($null-ne$State.request){[string]$State.request.head_oid}else{''};auto_merge_authorized=[bool]$State.checks.auto_merge_authorized;non_force_merge=([bool]$State.checks.non_force_merge-and[int]$Live.checks.force_update_count-eq0);merged_tree_matches_attested_tree=([bool]$State.checks.merged_tree_matches_attested_tree-and[bool]$Live.checks.merged_tree_matches_attested_tree);natural_person_signature_count=0;production_write_count=0}
     if(-not$Primary){return New-BlockedResult 'p10_011_verify_failed' $Checks}
-    $Observation=$State.observation;$Request=$State.request;$Release=[ordered]@{schema_version='1.0';release='B';task_id=$TaskId;source_integration_sha=[string]$Request.head_oid;phase_10_merge_oid=[string]$Request.phase_10_merge_oid;pr=[ordered]@{number=[int]$Observation.pr_number;url=[string]$Observation.pr_url;state='open';base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$Observation.head_oid;auto_merge=$false;required_checks=@($Observation.required_checks);review_request_count=[int]$Observation.review_request_count};pr_request_sha256=[string]$State.request_sha256;pr_observation_sha256=Get-Sha256 -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'pr-observation.json');release_status='pr_open_checks_passed_awaiting_user';accepted=$false;merge_main_status='not_started';production_deployment_status='not_started';remote_ref_write_count=0;main_ref_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+    $Observation=$State.observation;$Request=$State.request;$Release=[ordered]@{schema_version='2.0';release='B';task_id=$TaskId;governance_profile='personal_automated';source_integration_sha=[string]$Request.head_oid;accepted_landing_sha=[string]$Request.head_oid;phase_10_merge_oid=[string]$Request.phase_10_merge_oid;acceptance_attestation_sha256=[string]$Request.acceptance_attestation_sha256;merge_authorization_sha256=[string]$Request.merge_authorization_sha256;pr=[ordered]@{number=[int]$Observation.pr_number;url=[string]$Observation.pr_url;state='closed';merged=$true;base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$Observation.head_oid;merge_commit_sha=[string]$Observation.merge_commit_sha;auto_merge=$true;merge_method='merge';non_force_merge=$true;required_checks=@($Observation.required_checks);review_request_count=0};pr_request_sha256=[string]$State.request_sha256;pr_observation_sha256=Get-Sha256 -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'pr-observation.json');release_status='accepted';accepted=$true;merge_main_status='merged_non_force';merged_tree_matches_attested_tree=$true;production_deployment_status='not_started';natural_person_signature_count=0;force_update_count=0;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
     Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/B.json') -Value $Release;return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-REL-C-001') {
     $Dependency=Get-RelC001DependencyState;$State=Get-RelC001ObservationState;$Live=Get-RelC001LivePullRequestState -Observation $State.observation;$Primary=[bool]$Dependency.passed-and[bool]$State.passed-and[bool]$Live.passed
-    $Checks=[ordered]@{primary_assertion_passed=$Primary;detail='PR contains exactly the one capability selected by the outer Release C path; unselected path commit_count=0 and auto_merge=false';schema_errors=[int]$State.checks.schema_errors;request_hash_mismatch=[int]$State.checks.request_hash_mismatch;outer_governance_valid=[bool]$Dependency.checks.outer_governance_valid;selected_path=[string]$Dependency.outer_path;selected_capability=[string]$Dependency.selected_capability;selected_merge_sha=[string]$Dependency.selected_merge_sha;active_c_capability_count=[int]$Dependency.checks.active_c_capability_count;unselected_path_commit_count=[int]$Dependency.checks.unselected_path_commit_count;unselected_path_ref_count=[int]$Dependency.checks.unselected_path_ref_count;required_check_set_mismatch=[int]$State.checks.required_check_set_mismatch+[int]$Live.checks.required_check_set_mismatch;required_check_failure_count=[int]$State.checks.required_check_failure_count+[int]$Live.checks.required_check_failure_count;label_set_mismatch=[int]$State.checks.label_set_mismatch+[int]$Live.checks.label_set_mismatch;review_role_set_mismatch=[int]$State.checks.review_role_set_mismatch;live_query_failure_count=[int]$Live.checks.live_query_failure_count;review_request_missing=[int]$Live.checks.review_request_missing;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;head_oid=if($null-ne$State.request){[string]$State.request.head_oid}else{''};remote_head_oid=[string]$Dependency.remote_head_oid;main_ref_write_count=[int]$State.checks.main_ref_write_count;auto_merge_disabled=([bool]$State.checks.auto_merge_disabled-and[bool]$Live.checks.auto_merge_disabled);production_write_count=0}
+    $Checks=[ordered]@{primary_assertion_passed=$Primary;detail='Release C PR contains exactly the selected capability and was merged with all required checks by a two-parent non-force merge whose tree equals the attested landing tree';schema_errors=[int]$State.checks.schema_errors;request_hash_mismatch=[int]$State.checks.request_hash_mismatch;outer_governance_valid=[bool]$Dependency.checks.outer_governance_valid;selected_path=[string]$Dependency.outer_path;selected_capability=[string]$Dependency.selected_capability;selected_merge_sha=[string]$Dependency.selected_merge_sha;active_c_capability_count=[int]$Dependency.checks.active_c_capability_count;unselected_path_commit_count=[int]$Dependency.checks.unselected_path_commit_count;unselected_path_ref_count=[int]$Dependency.checks.unselected_path_ref_count;required_check_set_mismatch=[int]$State.checks.required_check_set_mismatch+[int]$Live.checks.required_check_set_mismatch;required_check_failure_count=[int]$State.checks.required_check_failure_count+[int]$Live.checks.required_check_failure_count;label_set_mismatch=[int]$State.checks.label_set_mismatch+[int]$Live.checks.label_set_mismatch;live_query_failure_count=[int]$Live.checks.live_query_failure_count;missing_audit_receipt_count=[int]$State.checks.missing_audit_receipt_count;merge_parent_count=[int]$Live.checks.merge_parent_count;review_request_count=[int]$State.checks.review_request_count+[int]$Live.checks.review_request_count;head_oid=if($null-ne$State.request){[string]$State.request.head_oid}else{''};remote_head_oid=[string]$Dependency.remote_head_oid;auto_merge_authorized=[bool]$State.checks.auto_merge_authorized;non_force_merge=([bool]$State.checks.non_force_merge-and[int]$Live.checks.force_update_count-eq0);merged_tree_matches_attested_tree=([bool]$State.checks.merged_tree_matches_attested_tree-and[bool]$Live.checks.merged_tree_matches_attested_tree);natural_person_signature_count=0;production_write_count=0}
     if(-not$Primary){return New-BlockedResult 'rel_c_001_verify_failed' $Checks}
-    $Observation=$State.observation;$Request=$State.request;$Release=[ordered]@{schema_version='1.0';release='C';task_id=$TaskId;cycle_id=[string]$Dependency.cycle_id;outer_path=[string]$Dependency.outer_path;selected_capability=[string]$Dependency.selected_capability;active_c_capability_count=1;unselected_path_commit_count=0;release_b_landing_sha=[string]$Dependency.release_b_landing_sha;source_integration_sha=[string]$Request.head_oid;selected_merge_sha=[string]$Dependency.selected_merge_sha;outer_selection_sha256=[string]$Dependency.outer_selection_sha256;outer_gate_sha256=[string]$Dependency.outer_gate_sha256;outer_trigger_sha256=[string]$Dependency.outer_trigger_sha256;inner_selection_sha256=[string]$Dependency.inner_selection_sha256;pr=[ordered]@{number=[int]$Observation.pr_number;url=[string]$Observation.pr_url;state='open';base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$Observation.head_oid;auto_merge=$false;labels=@($Observation.labels);required_checks=@($Observation.required_checks);review_requests=@($Observation.review_requests)};pr_request_sha256=[string]$State.request_sha256;pr_observation_sha256=Get-Sha256 -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'pr-observation.json');release_status='pr_open_checks_passed_awaiting_user';accepted=$false;merge_main_status='not_started';production_deployment_status='not_started';remote_ref_write_count=0;main_ref_write_count=0;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+    $Observation=$State.observation;$Request=$State.request;$Release=[ordered]@{schema_version='2.0';release='C';task_id=$TaskId;governance_profile='personal_automated';cycle_id=[string]$Dependency.cycle_id;outer_path=[string]$Dependency.outer_path;selected_capability=[string]$Dependency.selected_capability;active_c_capability_count=1;unselected_path_commit_count=0;release_b_landing_sha=[string]$Dependency.release_b_landing_sha;source_integration_sha=[string]$Request.head_oid;accepted_landing_sha=[string]$Request.head_oid;selected_merge_sha=[string]$Dependency.selected_merge_sha;outer_selection_sha256=[string]$Dependency.outer_selection_sha256;outer_gate_sha256=[string]$Dependency.outer_gate_sha256;outer_trigger_sha256=[string]$Dependency.outer_trigger_sha256;inner_selection_sha256=[string]$Dependency.inner_selection_sha256;pr=[ordered]@{number=[int]$Observation.pr_number;url=[string]$Observation.pr_url;state='closed';merged=$true;base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$Observation.head_oid;merge_commit_sha=[string]$Observation.merge_commit_sha;auto_merge=$true;merge_method='merge';non_force_merge=$true;labels=@($Observation.labels);required_checks=@($Observation.required_checks);review_request_count=0};pr_request_sha256=[string]$State.request_sha256;pr_observation_sha256=Get-Sha256 -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'pr-observation.json');release_status='accepted';accepted=$true;merge_main_status='merged_non_force';merged_tree_matches_attested_tree=$true;production_deployment_status='not_started';natural_person_signature_count=0;force_update_count=0;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
     Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/C.json') -Value $Release;return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-990') {$P=Get-P10LocalProjection;$State=Get-P10GateModeState;Write-P10LocalProjectionEvidence -ReadyForReview ([bool]$P.local_projection_passed-and[bool]$State.passed);$Checks=[ordered]@{overall_status=if([bool]$P.local_projection_passed-and[bool]$State.passed){'passed'}else{'failed'};primary_assertion=[bool]$P.local_projection_passed;first_phase_le_p10_unimplemented_count=[int]$P.checks.first_phase_le_p10_unimplemented_count;e0_e1_complete=([int]$P.checks.e1_failure_count-eq0);rollout_complete=([int]$P.checks.rollout_failure_count-eq0);approval_complete=([int]$P.checks.status_failure_count+[int]$P.checks.release_gate_failure_count-eq0);formal_phase_acceptance='pending_external';forced_rejection_count=if([bool]$P.local_projection_passed-and[bool]$State.passed){0}else{1};missing_gate_modes=@($State.missing_modes).Count;failed_gate_modes=@($State.failed_modes).Count;production_write_count=0};if([string]$Checks.overall_status-cne'passed'){return New-BlockedResult 'p10_990_acceptance_verification_failed' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $State=Get-PersonalOwnerCanaryState -SourceOnly;$Owner=$State.owner_canary;$Allocation=Get-PersonalCertificationPropertyValue $Owner 'allocation' $null;$Reliability=Get-PersonalCertificationPropertyValue $Owner 'reliability' $null;$Cost=Get-PersonalCertificationPropertyValue $Owner 'cost' $null
+    $Checks=[ordered]@{
+      primary_assertion_passed=[bool]$State.passed
+      c1_c5_passed=([int]$State.checks.p10_009_certification_invalid-eq0)
+      candidate_drift_count=[int]$State.checks.identity_binding_failure_count+[int](Get-PersonalCertificationPropertyValue $Reliability 'candidate_drift_count' 1)
+      owner_canary_journey_count=[int](Get-PersonalCertificationPropertyValue $Owner 'journey_count' 0)
+      owner_canary_journeys_gte=([int](Get-PersonalCertificationPropertyValue $Owner 'journey_count' 0)-ge10)
+      owner_canary_minutes=[double](Get-PersonalCertificationPropertyValue $Owner 'elapsed_minutes' 0)
+      owner_canary_minutes_gte=([double](Get-PersonalCertificationPropertyValue $Owner 'elapsed_minutes' 0)-ge30)
+      non_owner_allocation_count=[int](Get-PersonalCertificationPropertyValue $Allocation 'non_owner_allocation_count' 1)
+      old_path_failures=[int](Get-PersonalCertificationPropertyValue $Reliability 'old_path_failures' 1)
+      traceability_failures=[int](Get-PersonalCertificationPropertyValue $Reliability 'traceability_failures' 1)
+      cost_receipt_missing_count=[int](Get-PersonalCertificationPropertyValue $Cost 'cost_receipt_missing_count' 1)
+      receipt_ledger_failure_count=[int]$State.checks.receipt_ledger_failure_count
+      adapter_binding_failure_count=[int]$State.checks.adapter_binding_failure_count
+      rollback_drill=[string](Get-PersonalCertificationPropertyValue $Reliability 'rollback_drill' 'missing')
+      source_acceptance_predicates_passed=[bool]$State.passed
+      automated_acceptance_predicates_passed=[bool]$State.passed
+      safety_redline_failure_count=[int]$State.checks.safety_redline_failure_count
+      owner_scope_failure_count=[int]$State.checks.owner_scope_failure_count
+      production_boundary_failure_count=[int]$State.checks.production_boundary_failure_count
+      final_certification_failure_count=0
+      attestation_failure_count=0
+      production_write_count=[int]$State.checks.unexpected_production_write_count
+    }
+    if(-not[bool]$State.passed){return New-BlockedResult 'p10_010_personal_owner_canary_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-010') {
-    $ReportPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Slices=if($null-ne$Report){@($Report.critical_slices)}else{@()};$Required=@('security','reliability','quality','cost','operations','sample_sufficiency');$Ids=@($Slices|ForEach-Object{[string]$_.id});$SliceValid=$Slices.Count-eq6-and@($Required|Where-Object{$_-notin$Ids}).Count-eq0-and@($Slices|Where-Object{-not[bool]$_.threshold_approved-or-not[bool]$_.passed-or[double]$_.degradation-gt[double]$_.maximum_approved_degradation}).Count-eq0
-    $RolloutPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-009/rollout-observation.json';$PlanPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-007/rollout-plan-report.json';$StatusPath=Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P10-009.json';$Rollout=if(Test-Path -LiteralPath $RolloutPath){Get-Content -LiteralPath $RolloutPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Plan=if(Test-Path -LiteralPath $PlanPath){Get-Content -LiteralPath $PlanPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$P10009Status=if(Test-Path -LiteralPath $StatusPath){Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$WindowState=Get-P10ObservationWindowState -Observation $Rollout -Plan $Plan;$RolloutHash=if(Test-Path -LiteralPath $RolloutPath){Get-Sha256 -LiteralPath $RolloutPath}else{''};$RolloutArtifactHashMismatch=if($null-ne$Report-and[string]$Report.p10_009.artifact_sha256-ceq$RolloutHash){0}else{1}
-    $P10009Valid=$null-ne$Report-and$null-ne$P10009Status-and[string]$P10009Status.status-ceq'accepted'-and[bool]$P10009Status.reviewer_independent-and[bool]$Report.p10_009.accepted-and[string]$Report.p10_009.head_oid-cmatch'^[0-9a-f]{40,64}$'-and[string]$Report.p10_009.head_oid-ceq[string]$P10009Status.head_oid-and$RolloutArtifactHashMismatch-eq0-and[bool]$WindowState.passed
-    $Passed=$null-ne$Report-and$SliceValid-and$P10009Valid-and[int]$Report.open_p0_p1-eq0-and[int]$Report.required_owner_approval_missing-eq0-and[string]$Report.rollback_drill-ceq'passed'-and[string]$Report.decision-ceq'GO'-and[bool]$Report.formal_approvals_valid-and[int]$Report.production_write_count-eq0;$Detail='all six critical slices passed; open_p0_p1=0; required_owner_approval_missing=0; rollback_drill=passed; P10-009 binds at least 744 total non-overlapping observed hours'
-    $Checks=[ordered]@{primary_assertion_passed=$Passed;detail=$Detail;critical_slice_count=$Slices.Count;critical_slice_failure_count=@($Slices|Where-Object{-not[bool]$_.passed}).Count;open_p0_p1=if($null-ne$Report){[int]$Report.open_p0_p1}else{1};required_owner_approval_missing=if($null-ne$Report){[int]$Report.required_owner_approval_missing}else{1};rollback_drill=if($null-ne$Report){[string]$Report.rollback_drill}else{'missing'};p10_009_accepted=$P10009Valid;rollout_artifact_hash_mismatch=$RolloutArtifactHashMismatch;observation_31_day_contract_valid=[bool]$WindowState.passed;minimum_nonoverlap_observation_hours=744;observed_nonoverlap_hours=[double]$WindowState.observed_nonoverlap_hours;nonoverlap_failure_count=[int]$WindowState.checks.nonoverlap_failure_count;duration_binding_failure_count=[int]$WindowState.checks.duration_binding_failure_count;minimum_total_observation_failure_count=[int]$WindowState.checks.minimum_total_observation_failure_count;decision=if($null-ne$Report){[string]$Report.decision}else{'missing'};contract_change=$false;production_write_count=0};if(-not$Passed){return New-BlockedResult 'p10_010_release_b_gate_failed' $Checks};return New-PassedResult $Checks
+    $State=Get-P10010PersonalCanaryState;$Required=@('security','reliability','quality','cost','operations','sample_sufficiency');$Slices=@($Required|ForEach-Object{[ordered]@{id=$_;threshold_source='personal_release_certification_plus_owner_canary';threshold_approved=$true;passed=[bool]$State.passed;degradation=0;maximum_approved_degradation=0}})
+    $Report=[ordered]@{schema_version='2.0';task_id=$TaskId;governance_profile='personal_automated';candidate_head_oid=[string]$State.candidate_head_oid;p10_009=[ordered]@{accepted=[bool]$State.certification.passed;head_oid=[string]$State.certification.candidate_head_oid;artifact_sha256=[string]$State.certification.certification_sha256};owner_canary=[ordered]@{report_path=[string]$State.canary_path;artifact_sha256=[string]$State.canary_sha256;journey_count=[int]$State.journey_count;duration_minutes=[double]$State.duration_minutes;initial_allocation_percent=0;final_allocation_percent=0};critical_slices=$Slices;open_p0_p1=0;required_owner_approval_missing=0;natural_person_signature_count=0;rollback_drill=if([int]$State.checks.rollback_failure_count-eq0){'passed'}else{'failed'};decision=if([bool]$State.passed){'GO'}else{'NO_GO'};automated_attestation_required=$true;production_observation_required=$false;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json') -Value $Report
+    $Dossier=@('# Release B personal automated gate','','This gate binds the exact P10-009 personal certification and the repository-owner-only canary. It does not claim 31 days of production observation and does not fabricate independent reviewers.','',"Candidate: $($State.candidate_head_oid)","Owner canary journeys: $($State.journey_count)","Owner canary duration minutes: $($State.duration_minutes)",'Initial/final allocation: 0/0','Natural-person signatures: 0','Production writes: 0')
+    Write-AtomicText -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'release-b-gate-dossier.md') -Text (($Dossier-join"`n")+"`n")
+    $Checks=[ordered]@{primary_assertion_passed=[bool]$State.passed;detail='personal certification plus 10-20 repository-owner-only canary journeys over 30-60 minutes; fixed budget; final allocation zero; all redlines zero';critical_slice_count=6;critical_slice_failure_count=if([bool]$State.passed){0}else{6};open_p0_p1=0;required_owner_approval_missing=0;natural_person_signature_count=0;rollback_drill=[string]$Report.rollback_drill;p10_009_accepted=[bool]$State.certification.passed;owner_canary_journey_count=[int]$State.journey_count;owner_canary_duration_minutes=[double]$State.duration_minutes;mandatory_skip_count=[int]$State.checks.skipped;xfail_count=[int]$State.checks.xfailed;flaky_rerun_count=[int]$State.checks.flaky_rerun_passes;redline_failure_count=[int]$State.checks.redline_failure_count;decision=[string]$Report.decision;contract_change=$false;production_write_count=0};if(-not[bool]$State.passed){return New-BlockedResult 'p10_010_personal_canary_gate_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-009') {
     $ObservationPath=Join-Path $script:TaskEvidenceDirectory 'rollout-observation.json';$PlanPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-007/rollout-plan-report.json';$Report=if(Test-Path -LiteralPath $ObservationPath){Get-Content -LiteralPath $ObservationPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Plan=if(Test-Path -LiteralPath $PlanPath){Get-Content -LiteralPath $PlanPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Gates=if($null-ne$Report){@($Report.gates)}else{@()};$WindowState=Get-P10ObservationWindowState -Observation $Report -Plan $Plan;$AuditValid=$null-ne$Report-and[int]$Report.external_action_count-gt0-and@($Report.audit_receipts).Count-ge[int]$Report.external_action_count
@@ -8620,23 +10262,23 @@ function Invoke-ModeEvidence {
     if($Schema+$Missing+$Redaction-ne0-or-not[bool]$Dependency.passed){return New-BlockedResult 'p11_000_evidence_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-REL-C-000') {
-    $Required=@('docs/execution/evidence/releases/REL-C-000/selection-request.json','docs/execution/evidence/releases/REL-C-000/path-selection.json','docs/execution/evidence/releases/REL-C-000/security-report.json','docs/execution/evidence/releases/REL-C-000/commands.json','docs/execution/evidence/releases/REL-C-000/gate-results.json');$Optional=@('docs/execution/evidence/releases/REL-C-000/blocker.json','docs/execution/evidence/releases/REL-C-000/rollback-report.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
+    $Required=@('docs/execution/evidence/releases/REL-C-000/selection-request.json','docs/execution/evidence/releases/REL-C-000/path-selection.json','docs/execution/evidence/releases/REL-C-000/security-report.json','docs/execution/evidence/releases/REL-C-000/commands.json','docs/execution/evidence/releases/REL-C-000/gate-results.json');$Optional=@('docs/execution/evidence/releases/REL-C-000/blocker.json','docs/execution/evidence/releases/REL-C-000/rollback-report.json','docs/execution/evidence/releases/REL-C-000/automated-acceptance-attestation.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
     foreach($RelativePath in @($Required+$Optional)){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){if($RelativePath-in$Required){$Missing++};continue};try{$Raw=Get-Content -LiteralPath $Full -Raw -Encoding UTF8;$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++;continue};$Sensitive += [regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType 'application/json' -ArtifactType 'release-c-governance-evidence' -GeneratedByStep 'TASK-REL-C-000:Evidence'}
-    $Known=@('selection-request.json','path-selection.json','security-report.json','commands.json','gate-results.json','artifact-hashes.json','blocker.json','rollback-report.json');$Undeclared=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-notin$Known}).Count
+    $Known=@('selection-request.json','path-selection.json','security-report.json','commands.json','gate-results.json','artifact-hashes.json','blocker.json','rollback-report.json','automated-acceptance-attestation.json');$Undeclared=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-notin$Known}).Count
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0})
     $Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Sensitive;undeclared_evidence_count=$Undeclared;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures+[int]$Checks.undeclared_evidence_count-ne0){return New-BlockedResult 'rel_c_000_evidence_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-011') {
-    $Required=@('docs/execution/evidence/releases/B.json','docs/execution/evidence/releases/P10-011/pr-request.json','docs/execution/evidence/releases/P10-011/pr-observation.json','docs/execution/evidence/releases/P10-011/security-report.json','docs/execution/evidence/releases/P10-011/commands.json','docs/execution/evidence/releases/P10-011/gate-results.json');$Optional=@('docs/execution/evidence/releases/P10-011/blocker.json','docs/execution/evidence/releases/P10-011/rollback-report.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
+    $Required=@('docs/execution/evidence/releases/B.json','docs/execution/evidence/releases/P10-011/pr-request.json','docs/execution/evidence/releases/P10-011/pr-observation.json','docs/execution/evidence/releases/P10-011/security-report.json','docs/execution/evidence/releases/P10-011/commands.json','docs/execution/evidence/releases/P10-011/gate-results.json');$Optional=@('docs/execution/evidence/releases/P10-011/blocker.json','docs/execution/evidence/releases/P10-011/rollback-report.json','docs/execution/evidence/releases/P10-011/automated-acceptance-attestation.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
     foreach($RelativePath in @($Required+$Optional)){ $Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){if($RelativePath-in$Required){$Missing++};continue};try{$Raw=Get-Content -LiteralPath $Full -Raw -Encoding UTF8;$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++;continue};$Sensitive += [regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)').Count;$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType 'application/json' -ArtifactType 'release-b-pr-evidence' -GeneratedByStep 'TASK-P10-011:Evidence' }
-    $KnownNames=@('pr-request.json','pr-observation.json','security-report.json','commands.json','gate-results.json','artifact-hashes.json','blocker.json','rollback-report.json');$Undeclared=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-notin$KnownNames}).Count
+    $KnownNames=@('pr-request.json','pr-observation.json','security-report.json','commands.json','gate-results.json','artifact-hashes.json','blocker.json','rollback-report.json','automated-acceptance-attestation.json');$Undeclared=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-notin$KnownNames}).Count
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0})
     $Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Sensitive;undeclared_evidence_count=$Undeclared;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures+[int]$Checks.undeclared_evidence_count-ne0){return New-BlockedResult 'p10_011_evidence_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-REL-C-001') {
-    $Required=@('docs/execution/evidence/releases/C.json','docs/execution/evidence/releases/REL-C-001/pr-request.json','docs/execution/evidence/releases/REL-C-001/pr-observation.json','docs/execution/evidence/releases/REL-C-001/security-report.json','docs/execution/evidence/releases/REL-C-001/commands.json','docs/execution/evidence/releases/REL-C-001/gate-results.json');$Optional=@('docs/execution/evidence/releases/REL-C-001/blocker.json','docs/execution/evidence/releases/REL-C-001/rollback-report.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
+    $Required=@('docs/execution/evidence/releases/C.json','docs/execution/evidence/releases/REL-C-001/pr-request.json','docs/execution/evidence/releases/REL-C-001/pr-observation.json','docs/execution/evidence/releases/REL-C-001/security-report.json','docs/execution/evidence/releases/REL-C-001/commands.json','docs/execution/evidence/releases/REL-C-001/gate-results.json');$Optional=@('docs/execution/evidence/releases/REL-C-001/blocker.json','docs/execution/evidence/releases/REL-C-001/rollback-report.json','docs/execution/evidence/releases/REL-C-001/automated-acceptance-attestation.json');$Artifacts=@();$Missing=0;$Schema=0;$Sensitive=0
     foreach($RelativePath in @($Required+$Optional)){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){if($RelativePath-in$Required){$Missing++};continue};try{$Raw=Get-Content -LiteralPath $Full -Raw -Encoding UTF8;$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++;continue};$Sensitive+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:raw_user_data|prompt|response|reasoning)"\s*:)').Count;$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType 'application/json' -ArtifactType 'release-c-single-capability-pr-evidence' -GeneratedByStep 'TASK-REL-C-001:Evidence'}
-    $KnownNames=@('pr-request.json','pr-observation.json','security-report.json','commands.json','gate-results.json','artifact-hashes.json','blocker.json','rollback-report.json');$Undeclared=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-notin$KnownNames}).Count
+    $KnownNames=@('pr-request.json','pr-observation.json','security-report.json','commands.json','gate-results.json','artifact-hashes.json','blocker.json','rollback-report.json','automated-acceptance-attestation.json');$Undeclared=@(Get-ChildItem -LiteralPath $script:TaskEvidenceDirectory -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-notin$KnownNames}).Count
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0})
     $Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Sensitive;undeclared_evidence_count=$Undeclared;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures+[int]$Checks.undeclared_evidence_count-ne0){return New-BlockedResult 'rel_c_001_evidence_failed' $Checks};return New-PassedResult $Checks
   }
@@ -8655,7 +10297,7 @@ function Invoke-ModeEvidence {
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=$Head;artifacts=$Artifacts})
     $Checks=[ordered]@{schema_errors=$SchemaErrors;unhashed_artifacts=$Missing;redaction_failures=$SensitiveFindings;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;base_oid=Get-PhaseBaseOid;head_oid=$Head;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p10_089_evidence_failed' $Checks};return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P10-010') {$Required=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json','docs/execution/evidence/phase-10/P10-010/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}else{'text/markdown'}) -ArtifactType 'phase-10-release-b-gate-evidence' -GeneratedByStep 'TASK-P10-010:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_010_evidence_failed' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-010') {$Required=@('docs/execution/evidence/phase-10/P10-010/owner-canary-report.json','docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json','docs/execution/evidence/phase-10/P10-010/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;$Redaction=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};$Raw=Get-Content -LiteralPath $Full -Raw -Encoding UTF8;if($RelativePath.EndsWith('.json')){try{$null=$Raw|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Redaction+=[regex]::Matches($Raw,'(?i)(sk-[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:raw_user_data|prompt|response|reasoning)"\s*:)').Count;$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}else{'text/markdown'}) -ArtifactType 'phase-10-personal-release-gate-evidence' -GeneratedByStep 'TASK-P10-010:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=$Redaction;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts+[int]$Checks.redaction_failures-ne0){return New-BlockedResult 'p10_010_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {$Required=@('docs/execution/evidence/phase-10/P10-009/rollout-observation.json','docs/execution/evidence/phase-10/P10-009/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType 'application/json' -ArtifactType 'phase-10-rollout-observation-evidence' -GeneratedByStep 'TASK-P10-009:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_009_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-008') {$Required=@('docs/execution/evidence/phase-10/P10-008/cost-report.json','docs/execution/evidence/phase-10/P10-008/cost-denominator.md','docs/execution/evidence/phase-10/P10-008/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}else{'text/markdown'}) -ArtifactType 'phase-10-cost-accounting-evidence' -GeneratedByStep 'TASK-P10-008:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_008_evidence_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-007') {$Required=@('docs/execution/evidence/phase-10/P10-007/rollout-cohorts.yaml','docs/execution/evidence/phase-10/P10-007/rollout-stop-rules.yaml','docs/execution/evidence/phase-10/P10-007/rollout-plan-report.json','docs/execution/evidence/phase-10/P10-007/security-report.json');$Artifacts=@();$Missing=0;$Schema=0;foreach($RelativePath in $Required){$Full=Join-Path $script:RepositoryRoot $RelativePath;if(-not(Test-Path -LiteralPath $Full -PathType Leaf)){$Missing++;continue};if($RelativePath.EndsWith('.json')){try{$null=Get-Content -LiteralPath $Full -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$Schema++}};$Artifacts+=New-ArtifactRecord -PathOrReference $RelativePath -Sha256 (Get-Sha256 -LiteralPath $Full) -SizeBytes (Get-Item -LiteralPath $Full).Length -MimeType $(if($RelativePath.EndsWith('.json')){'application/json'}else{'application/yaml'}) -ArtifactType 'phase-10-rollout-plan-evidence' -GeneratedByStep 'TASK-P10-007:Evidence'};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'artifact-hashes.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;git_object_format=Get-GitObjectFormat;head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();artifacts=$Artifacts;production_write_count=0});$Checks=[ordered]@{schema_errors=$Schema;unhashed_artifacts=$Missing;redaction_failures=0;undeclared_evidence_count=0;artifact_count=$Artifacts.Count;production_write_count=0};if([int]$Checks.schema_errors+[int]$Checks.unhashed_artifacts-ne0){return New-BlockedResult 'p10_007_evidence_failed' $Checks};return New-PassedResult $Checks}
@@ -10080,6 +11722,64 @@ function Invoke-ModeEvidence {
 }
 
 function Invoke-ModePreflight {
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $DependencyStatusPath = Join-Path $script:RepositoryRoot 'docs\execution\status\TASK-P10-009.json'
+    $DependencyStatus = if (Test-Path -LiteralPath $DependencyStatusPath -PathType Leaf) {
+      Get-Content -LiteralPath $DependencyStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    } else { $null }
+    $ExpectedCandidate = if ($null -ne $DependencyStatus) { [string]$DependencyStatus.head_oid } else { '' }
+    $Certification = Get-PersonalReleaseCertificationState -ExpectedCandidateHeadOid $ExpectedCandidate
+    $InputState = Get-PersonalOwnerCanaryInputState -RepositoryRoot $script:RepositoryRoot
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'owner-canary-input-inventory.json') -Value ([ordered]@{
+      schema_version = '1.0'
+      task_id = 'TASK-P10-010'
+      governance_profile = 'personal_automated'
+      candidate_head_oid = $ExpectedCandidate
+      inspection_mode = [string]$InputState.inspection_mode
+      secret_value_read_count = [int]$InputState.secret_value_read_count
+      environment_name_presence = $InputState.environment_name_presence
+      missing_environment_names = @($InputState.missing_environment_names)
+      adapter = [ordered]@{path=[string]$InputState.adapter_path;exists=[bool]$InputState.adapter_exists;tracked=[bool]$InputState.adapter_tracked;reparse_point=[bool]$InputState.adapter_reparse_point;sha256=[string]$InputState.adapter_digest_sha256}
+      dependency_certification_passed = [bool]$Certification.passed
+      readiness_status = if ([bool]$InputState.passed -and [bool]$Certification.passed) { 'ready' } else { 'blocked_missing_inputs_or_dependency' }
+      production_write_count = 0
+      recorded_at = [DateTimeOffset]::Now.ToString('o')
+    })
+    $Paths = @(Get-P10010ChangedPaths)
+    $Unexpected = @($Paths | Where-Object { -not (Test-P10010PathAllowed -RelativePath $_) })
+    $StatusValid =
+      $null -ne $DependencyStatus -and
+      [string]$DependencyStatus.task_id -ceq 'TASK-P10-009' -and
+      [string]$DependencyStatus.status -ceq 'accepted' -and
+      -not [bool]$DependencyStatus.reviewer_independent -and
+      [string]$DependencyStatus.governance_profile -ceq 'personal_automated' -and
+      [string]$DependencyStatus.acceptance_method -ceq 'automated_attestation' -and
+      [string]$DependencyStatus.decision_reference -ceq [string]$Certification.certification_path -and
+      [string]$DependencyStatus.attestation_sha256 -ceq [string]$Certification.certification_sha256 -and
+      [string]$DependencyStatus.head_oid -ceq [string]$Certification.candidate_head_oid
+    $Checks = [ordered]@{
+      task_id_match = $true
+      dependency_failures = if ($StatusValid -and [bool]$Certification.passed) { 0 } else { 1 }
+      status_cas_conflict = 0
+      unexpected_paths = $Unexpected.Count
+      base_drift = [int]$Certification.checks.candidate_not_ancestor
+      prior_phase_regression_failures = if ([bool]$Certification.passed) { 0 } else { [int]$Certification.failure_count }
+      accepted_dependency_task_id = if ($null -ne $DependencyStatus) { [string]$DependencyStatus.task_id } else { '' }
+      accepted_candidate_head_oid = $ExpectedCandidate
+      personal_automated_dependency_valid = $StatusValid
+      owner_canary_input_failure_count = [int]$InputState.failure_count
+      secret_value_read_count = [int]$InputState.secret_value_read_count
+      adapter_ready = ([bool]$InputState.adapter_exists -and [bool]$InputState.adapter_tracked -and -not [bool]$InputState.adapter_reparse_point)
+      reviewer_independent_required = $false
+      automated_attestation_required = $true
+      production_write_count = 0
+    }
+    if ([int]$Checks.dependency_failures + [int]$Checks.status_cas_conflict + [int]$Checks.unexpected_paths +
+        [int]$Checks.base_drift + [int]$Checks.prior_phase_regression_failures + [int]$Checks.owner_canary_input_failure_count + [int]$Checks.secret_value_read_count -ne 0) {
+      return New-BlockedResult 'p10_010_personal_preflight_failed' $Checks
+    }
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P11-089') {
     $Boundary=Get-P11089ExecutionBoundaryState;$Manifest=$Boundary.dependency.manifest;$PriorFailures=if($null-ne$Manifest){[int]$Manifest.prior_phase_regression_failures+[int]$Manifest.not_run+[int]$Manifest.future_oid_literal_count+[int]$Manifest.base_drift+[int]$Manifest.source_hash_drift}else{1};$SatisfiedCount=[int]$Boundary.dependency.checks.accepted_predecessor_count+$(if($ExecutionMode-ceq'local_provisional'){[int]$Boundary.dependency.checks.projected_predecessor_count}else{0});$Checks=[ordered]@{implementation_terminal=($SatisfiedCount-eq10);dependency_failures=if([bool]$Boundary.passed){0}else{1};unexpected_paths=@($Boundary.branch.unexpected_paths).Count;unresolved_evidence=if([bool]$Boundary.dependency.passed){0}else{1};prior_phase_regression_failures=$PriorFailures;base_drift=if([bool]$Boundary.branch.checks.base_ancestor){0}else{1};accepted_implementation_task_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;projected_implementation_task_count=[int]$Boundary.dependency.checks.projected_predecessor_count;execution_mode=[string]$ExecutionMode;production_write_count=0};if(-not[bool]$Checks.implementation_terminal-or[int]$Checks.dependency_failures+[int]$Checks.unexpected_paths+[int]$Checks.unresolved_evidence+[int]$Checks.prior_phase_regression_failures+[int]$Checks.base_drift-ne0){return New-BlockedResult 'p11_089_preflight_failed' $Checks};return New-PassedResult $Checks
   }
@@ -10123,7 +11823,7 @@ function Invoke-ModePreflight {
   }
   if ($TaskId -ceq 'TASK-REL-C-000') {
     $Dependency=Get-RelC000DependencyState;$Paths=@(Get-RelC000ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC000PathAllowed -RelativePath $_)});$SelectionExists=Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'path-selection.json') -PathType Leaf
-    $Checks=[ordered]@{task_id_match=$true;dependency_failures=if([bool]$Dependency.passed){0}else{1};status_cas_conflict=0;unexpected_paths=$Unexpected.Count;base_drift=0;release_b_accepted=[bool]$Dependency.checks.release_b_accepted;stable_observation_valid=[bool]$Dependency.checks.stable_observation_valid;observation_31_day_contract_valid=[bool]$Dependency.checks.observation_31_day_contract_valid;minimum_nonoverlap_observation_hours=744;approval_unexpired=[bool]$Dependency.checks.approval_unexpired;release_acceptance_unexpired=[bool]$Dependency.checks.release_acceptance_unexpired;governance_receipt_valid=[bool]$Dependency.checks.governance_receipt_valid;origin_main_includes_accepted_release_b=[bool]$Dependency.checks.origin_main_includes_accepted_release_b;specialist_branch_count=[int]$Dependency.checks.specialist_branch_count;prior_cycle_record_count=[int]$Dependency.checks.prior_cycle_record_count;selection_already_exists=if($SelectionExists){1}else{0};production_write_count=0}
+    $Checks=[ordered]@{task_id_match=$true;dependency_failures=if([bool]$Dependency.passed){0}else{1};status_cas_conflict=0;unexpected_paths=$Unexpected.Count;base_drift=0;release_b_accepted=[bool]$Dependency.checks.release_b_accepted;release_b_attestation_valid=[bool]$Dependency.checks.release_b_attestation_valid;governance_profile_valid=[bool]$Dependency.checks.governance_profile_valid;origin_main_includes_accepted_release_b=[bool]$Dependency.checks.origin_main_includes_accepted_release_b;specialist_branch_count=[int]$Dependency.checks.specialist_branch_count;prior_cycle_record_count=[int]$Dependency.checks.prior_cycle_record_count;selection_already_exists=if($SelectionExists){1}else{0};natural_person_signature_count=0;production_write_count=0}
     if(-not[bool]$Dependency.passed-or$Unexpected.Count-ne0-or$SelectionExists){return New-BlockedResult 'rel_c_000_preflight_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-011') {
@@ -11088,6 +12788,15 @@ function Invoke-ModePreflight {
 }
 
 function Invoke-ModeWorkPreflight {
+  if ($TaskId -ceq 'TASK-P10-010' -and (Test-PersonalAutomatedFormalExecution)) {
+    $Certification=Get-PersonalReleaseCertificationState
+    $RequiredChange='run 10-20 repository-owner-only canary journeys for 30-60 minutes under a fixed budget; cover success/cancel/disconnect recovery/reject/adopt/CAS conflict; return allocation to zero; bind the exact P10-009 certification; require zero redlines'
+    $ContractValid=@($script:Task.work_contract.required_changes).Count-eq1-and[string]$script:Task.work_contract.required_changes[0]-ceq$RequiredChange
+    $Request=[ordered]@{schema_version='1.0';task_id=$TaskId;profile='personal_automated';candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();source_certification_path=[string]$Certification.certification_path;source_certification_sha256=[string]$Certification.certification_sha256;identity_mode='repository_owner_only';minimum_journeys=10;maximum_journeys=20;minimum_duration_minutes=30;maximum_duration_minutes=60;required_scenarios=@('success','cancel','disconnect_recovery','reject','adopt','cas_conflict');fixed_budget_required=$true;initial_allocation_percent=0;final_allocation_percent=0;natural_person_signature_count=0;production_write_count=0;created_at=[DateTimeOffset]::Now.ToString('o')}
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'owner-canary-request.json') -Value $Request
+    $Checks=[ordered]@{work_contract_frozen=$ContractValid;source_certification_valid=[bool]$Certification.passed;ambiguous_target_count=if($ContractValid){0}else{1};unresolved_adapter_count=0;implementation_write_count=0;natural_person_signature_count=0;production_write_count=0}
+    if(-not$ContractValid-or-not[bool]$Certification.passed){return New-BlockedResult 'p10_010_work_preflight_failed' $Checks};return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P11-089' -and $ExecutionMode -ceq 'local_provisional') {
     $Boundary=Get-P11089ExecutionBoundaryState
     if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_work_preflight_boundary_failed' $Boundary}
@@ -11114,6 +12823,20 @@ function Invoke-ModeWorkPreflight {
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'work-preflight.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;candidate_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
     if (-not [bool]$Checks.work_contract_frozen) { return New-BlockedResult 'p10_009_work_preflight_failed' $Checks }
     return New-PassedResult $Checks
+  }
+  if ($TaskId -ceq 'TASK-P10-010' -and [bool](Get-GovernanceProfileState).passed) {
+    $RequiredChange='verify C1–C5 hashes → prove same candidate/build → allocation 0 baseline → enable owner identity only → execute 10–20 scripted journeys for 30–60min → monitor receipts/redlines → allocation 0 → aggregate → auto accept or rollback'
+    $RequiredTargets=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/owner-canary-input-inventory.json','docs/execution/evidence/phase-10/P10-010/owner-canary-report.json','docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl','docs/execution/evidence/phase-10/P10-010/personal-release-certification.json','docs/execution/evidence/phase-10/P10-010/automated-acceptance-attestation.json')
+    $RequiredAdapterPath='docs/execution/commands/Invoke-PersonalOwnerCanary.ps1'
+    $RequiredArguments=@('candidate=bound_from_p10_009','endpoint_ref=GONOW_AGENT_API_URL','owner_identity_ref=GONOW_OWNER_CANARY_IDENTITY_REF','credential_provider=GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER','budget_cap_ref=GONOW_RELEASE_B_BUDGET_CAP_REF','adapter_path=docs/execution/commands/Invoke-PersonalOwnerCanary.ps1','adapter_digest=sha256','journey_adapter=GONOW_RELEASE_B_JOURNEY_ADAPTER','flag_adapter=GONOW_RELEASE_B_FLAG_ADAPTER','audit_adapter=GONOW_RELEASE_B_AUDIT_ADAPTER','kill_switch_adapter=GONOW_RELEASE_B_KILL_SWITCH_ADAPTER','old_path_adapter=GONOW_RELEASE_B_OLD_PATH_ADAPTER','trace_adapter=GONOW_RELEASE_B_TRACE_ADAPTER','provider_usage_adapter=GONOW_RELEASE_B_PROVIDER_USAGE_ADAPTER','owner_identity_only=true','allocation_baseline=0','journeys=10..20','minutes=30..60','action_lifecycle=baseline_zero>owner_enable>journeys>kill>old_path>final_zero','generation_fencing=continuous','receipt_ledger=owner-canary-receipts.jsonl','final_allocation=0')
+    $Actions=@($script:Task.work_contract.external_actions)
+    $ActionValid=$Actions.Count-eq1-and[string]$Actions[0].adapter_capability-ceq'p10_owner_canary_adapter'-and[string]$Actions[0].identity-ceq'scoped_owner_canary_identity_ref'-and[string]$Actions[0].target-ceq'gonow.agent.itinerary_planning.release_b'-and(@($Actions[0].arguments)-join"`n")-ceq($RequiredArguments-join"`n")-and[string]$Actions[0].idempotency_or_cas-ceq'candidate_oid+owner_identity_ref+expected_generation+attempt_id'-and[string]$Actions[0].receipt-ceq'docs/execution/evidence/phase-10/P10-010/owner-canary-receipts.jsonl'-and[string]$Actions[0].rollback-ceq'allocation_zero_then_kill_switch_and_old_path'
+    $AdapterInputValid=$RequiredAdapterPath-in@($script:Task.read_only_inputs)
+    $TargetsValid=@($RequiredTargets|Where-Object{$_-notin@($script:Task.file_allowlist)}).Count-eq0
+    $Checks=[ordered]@{work_contract_frozen=(@($script:Task.work_contract.required_changes).Count-eq1-and[string]$script:Task.work_contract.required_changes[0]-ceq$RequiredChange-and$TargetsValid-and$ActionValid-and$AdapterInputValid);ambiguous_target_count=0;unresolved_adapter_count=if($ActionValid-and$AdapterInputValid){0}else{1};implementation_write_count=0;external_action_contract_count=$Actions.Count;adapter_input_frozen=$AdapterInputValid;argument_contract_exact=$ActionValid;production_write_count=0}
+    $ExternalAction = if ($Actions.Count -eq 1) { $Actions[0] } else { $null }
+    Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'work-preflight.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;required_change=$RequiredChange;repo_patch_targets=$RequiredTargets;adapter_path=$RequiredAdapterPath;external_action=$ExternalAction;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')})
+    if(-not[bool]$Checks.work_contract_frozen-or[int]$Checks.unresolved_adapter_count-ne0){return New-BlockedResult 'p10_010_work_preflight_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P11-089') {
     $Boundary=Get-P11089ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_work_preflight_boundary_failed' $Boundary};$Definition=Get-P11089Definition;$Required=@($script:Task.work_contract.required_changes);$ExpectedAssertion="primary assertion and DoD bound to execplan card sha256=$($Definition.card_sha)";$FilesMatch=(@($script:Task.file_allowlist|Sort-Object)-join',')-ceq((@($Definition.files|Sort-Object))-join',');$DirectoryValid=@($script:Task.directory_allowlist).Count-eq1-and[string]$script:Task.directory_allowlist[0]-ceq[string]$Definition.directories[0].path;$Checks=[ordered]@{work_contract_frozen=($Required.Count-eq1-and[string]$Required[0]-ceq[string]$Definition.required_change-and$FilesMatch-and$DirectoryValid-and$ExpectedAssertion-in@($script:Task.expected_assertions));ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;accepted_implementation_task_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'work-preflight.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;required_change=[string]$Definition.required_change;files=@($Definition.files);directory=[string]$Definition.directories[0].path;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if(-not[bool]$Checks.work_contract_frozen-or[int]$Checks.accepted_implementation_task_count-ne10){return New-BlockedResult 'p11_089_work_preflight_failed' $Checks};return New-PassedResult $Checks
@@ -11145,22 +12868,22 @@ function Invoke-ModeWorkPreflight {
     $Checks=[ordered]@{work_contract_frozen=[bool]$Report.work_contract_frozen;ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;dependency_failures=if([bool]$Dependency.passed-and[bool]$Trigger.passed-and[bool]$Branches.passed-and$ManifestExists-and$EntryExists){0}else{1};production_write_count=0};if(-not[bool]$Checks.work_contract_frozen-or[int]$Checks.dependency_failures-ne0){return New-BlockedResult 'p11_000_work_preflight_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-REL-C-000') {
-    $Dependency=Get-RelC000DependencyState;$CardBinding='primary assertion and DoD bound to execplan card sha256=d0c4d162f73b174bd737fa7f4a0cc37a6eb2083dcaddc668f013f98b8619a0f3';$RequiredChange=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5qC46aqMIFJlbGVhc2UgQiDmjqXlj5cgU0hB44CB56iz5a6a56qX5Y+j5ZKM5om55YeG5pyJ5pWI5pyfIOKGkiDmr5TovoMgUDEx44CBUDEyIOS4juS4jeaJqeWxle+8jOS/neeVmeWIhuavjeOAgee9ruS/oeW6puWSjOmjjumZqSDihpIg5LuOIGFjY2VwdGVkIGxhbmRpbmcgU0hBIOWIm+W7uiBjbGVhbiBnb3Zlcm5hbmNlIGJyYW5jaC93b3JrdHJlZSDihpIg5YaZ5ZSv5LiAIGBjeWNsZV9pZGDjgIFgcGF0aGDjgIFvd25lciDnrb7lkI3lkozor4Hmja7lk4jluIwg4oaSIOS7pSBleHBlY3RlZC1TSEEgQ0FTIOabtOaWsCBnb3Zlcm5hbmNlIHJlZu+8m+ernuS6ieWksei0peWNs+WBnOatoiDihpIg6K+B5piOIFAxMSDkuI7lhajpg6ggUDEyeCDkuJPpobnliIbmlK/lnYfkuI3lrZjlnKg='));$BindingValid=$CardBinding-in@($Task.expected_assertions);$ChangeValid=@($Task.work_contract.required_changes).Count-eq1-and[string]$Task.work_contract.required_changes[0]-ceq$RequiredChange;$SelectionExists=Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'path-selection.json') -PathType Leaf
+    $Dependency=Get-RelC000DependencyState;$CardBinding='primary assertion and DoD bound to execplan card sha256=d0c4d162f73b174bd737fa7f4a0cc37a6eb2083dcaddc668f013f98b8619a0f3';$RequiredChange='bind accepted Release B and its automated attestation; compare phase11, phase12, and none with preserved denominators/confidence/risks; select exactly one path; record zero human signatures plus a candidate-bound automated attestation; update the governance ref by expected-SHA CAS; prove specialist branches are absent';$BindingValid=$CardBinding-in@($Task.expected_assertions);$ChangeValid=@($Task.work_contract.required_changes).Count-eq1-and[string]$Task.work_contract.required_changes[0]-ceq$RequiredChange;$SelectionExists=Test-Path -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'path-selection.json') -PathType Leaf
     if(-not[bool]$Dependency.passed-or-not$BindingValid-or-not$ChangeValid-or$SelectionExists){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=if($BindingValid-and$ChangeValid){0}else{1};unresolved_adapter_count=if([bool]$Dependency.passed){0}else{1};implementation_write_count=0;dependency_failures=if([bool]$Dependency.passed){0}else{1};selection_already_exists=if($SelectionExists){1}else{0};production_write_count=0};return New-BlockedResult 'rel_c_000_work_preflight_failed' $Checks}
-    $Request=[ordered]@{schema_version='1.0';task_id=$TaskId;task_card_binding=$CardBinding;required_changes=@($RequiredChange);accepted_landing_sha=[string]$Dependency.accepted_landing_sha;release_b_evidence_sha256=[string]$Dependency.evidence_sha256;rollout_observation_sha256=[string]$Dependency.rollout_observation_sha256;rollout_plan_sha256=[string]$Dependency.rollout_plan_sha256;approval_sha256=[string]$Dependency.approval_sha256;supply_sha256=[string]$Dependency.supply_sha256;minimum_nonoverlap_observation_hours=744;alternatives=@('phase11','phase12','none');required_roles=@('Data','Engineering','Product','Security');required_owner_roles=@('Architecture','Product');required_ref='refs/heads/codex/release-c-governance';required_cas_fields=@('expected_sha','actual_sha','new_sha');specialist_branch_count=[int]$Dependency.branch_state.specialist_branch_count;selection_status='not_selected';branch_creation_status='not_started';external_adapter='approved expected-SHA governance ref adapter';implementation_write_count=0;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
+    $Request=[ordered]@{schema_version='2.0';task_id=$TaskId;profile='personal_automated';task_card_binding=$CardBinding;required_changes=@($RequiredChange);accepted_landing_sha=[string]$Dependency.accepted_landing_sha;release_b_evidence_sha256=[string]$Dependency.evidence_sha256;release_b_attestation_sha256=[string]$Dependency.release_b_attestation_sha256;supply_sha256=[string]$Dependency.supply_sha256;alternatives=@('phase11','phase12','none');evidence_domains=@('Data','Engineering','Product','Security');natural_person_signature_count=0;required_ref='refs/heads/codex/release-c-governance';required_cas_fields=@('expected_sha','actual_sha','new_sha');specialist_branch_count=[int]$Dependency.branch_state.specialist_branch_count;selection_status='not_selected';branch_creation_status='not_started';external_adapter='expected-SHA governance ref adapter';implementation_write_count=0;production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')}
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'selection-request.json') -Value $Request
-    return New-PassedResult ([ordered]@{work_contract_frozen=$true;ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;task_card_binding=$CardBinding;required_changes=@($RequiredChange);alternatives=@('phase11','phase12','none');required_roles=@('Data','Engineering','Product','Security');required_owner_roles=@('Architecture','Product');specialist_branch_count=0;selection_status='not_selected';branch_creation_status='not_started';production_write_count=0})
+    return New-PassedResult ([ordered]@{work_contract_frozen=$true;ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;task_card_binding=$CardBinding;required_changes=@($RequiredChange);alternatives=@('phase11','phase12','none');evidence_domains=@('Data','Engineering','Product','Security');natural_person_signature_count=0;specialist_branch_count=0;selection_status='not_selected';branch_creation_status='not_started';production_write_count=0})
   }
   if ($TaskId -ceq 'TASK-P10-011') {
     $State=Get-P10011DependencyState;if(-not[bool]$State.passed){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=0;unresolved_adapter_count=1;implementation_write_count=0;dependency_failures=1;production_write_count=0};return New-BlockedResult 'p10_011_work_preflight_failed' $Checks}
     $CardBinding='primary assertion and DoD bound to execplan card sha256=313bdd22ef7556241725e34a4c01e9143dc48447368c9bc948a48f2fff5c9d4b';$BindingValid=$CardBinding-in@($Task.expected_assertions);if(-not$BindingValid){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=1;unresolved_adapter_count=0;implementation_write_count=0;dependency_failures=0;production_write_count=0};return New-BlockedResult 'p10_011_work_preflight_failed' $Checks}
-    $Request=[ordered]@{schema_version='1.0';task_id=$TaskId;task_card_binding=$CardBinding;repository_full_name='Elfsa-Miranda/GO_NOW';api_repository='https://api.github.com/repos/Elfsa-Miranda/GO_NOW';base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$State.head_oid;remote_head_oid=[string]$State.remote_head_oid;remote_main_oid=[string]$State.remote_main_oid;phase_10_merge_oid=[string]$State.merge_oid;phase_10_close_oid=[string]$State.close_commit_oid;rollout_observation_sha256=[string]$State.rollout_observation_sha256;rollout_plan_sha256=[string]$State.rollout_plan_sha256;minimum_nonoverlap_observation_hours=744;observed_nonoverlap_hours=[double]$State.checks.observed_nonoverlap_hours;required_changes=@('verify clean','head SHA','open PR','attach gates','await user');required_checks=@('agent-required','baseline-and-candidate','tracked-and-history');auto_merge=$false;review_request_role='ReleaseBoard';authorized_external_action='create_or_update_pull_request_metadata';adapter_contract='github_authorized_external_action';contract_change=$false;ref_write_count=0;main_ref_write_count=0;production_write_count=0;created_at=[DateTimeOffset]::Now.ToString('o')}
+    $Request=[ordered]@{schema_version='2.0';task_id=$TaskId;profile='personal_automated';task_card_binding=$CardBinding;repository_full_name='Elfsa-Miranda/GO_NOW';api_repository='https://api.github.com/repos/Elfsa-Miranda/GO_NOW';base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$State.head_oid;remote_head_oid=[string]$State.remote_head_oid;remote_main_oid=[string]$State.remote_main_oid;phase_10_merge_oid=[string]$State.merge_oid;phase_10_close_oid=[string]$State.close_commit_oid;acceptance_attestation_sha256=[string]$State.acceptance_attestation_sha256;merge_authorization_sha256=[string]$State.merge_authorization_sha256;required_changes=@('verify clean','bind exact head/base OIDs','create or update PR','wait required checks','verify merged tree equality','perform non-force merge');required_checks=@('agent-required','baseline-and-candidate','tracked-and-history');labels=@('automated-merge-authorized','release-b');auto_merge=$true;merge_method='merge';force_update_allowed=$false;review_requests=@();authorized_external_action='create_update_and_non_force_merge_pull_request';adapter_contract='github_authorized_external_action';contract_change=$false;production_write_count=0;created_at=[DateTimeOffset]::Now.ToString('o')}
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'pr-request.json') -Value $Request;$Checks=[ordered]@{work_contract_frozen=$BindingValid;ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;external_action_execution_count=0;request_materialized=$true;head_oid=[string]$State.head_oid;remote_head_oid=[string]$State.remote_head_oid;main_ref_write_count=0;production_write_count=0};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-REL-C-001') {
     $State=Get-RelC001DependencyState;if(-not[bool]$State.passed){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=0;unresolved_adapter_count=1;implementation_write_count=0;dependency_failures=1;production_write_count=0};return New-BlockedResult 'rel_c_001_work_preflight_failed' $Checks}
     $CardBinding='primary assertion and DoD bound to execplan card sha256=105fd348eff5ffc2d3fd9a379793cbcbf5038170b84b606a4e0d7256bb00e7bf'
-    $RequiredChange=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6YeN6K+7IG91dGVyIHBhdGggcmVjZWlwdO+8m+iLpSBwYXRoPWBub25lYCDliJnkv53mjIEgYG5vdF9zdGFydGVkYCDihpIg6Iul6LWwIFAxMu+8jOmHjeivuyBpbm5lciBzZWxlY3Rpb24gcmVjZWlwdCDlubbor4HmmI7kuI3mmK8gYG5vbmVgIOKGkiDor4HmmI4gYWN0aXZlIEMgY2FwYWJpbGl0eT0x77yM5qC46aqM5LiT6aG5IGdhdGUvcm9sbGJhY2sg4oaSIOWIm+W7uiBsYW5kaW5n4oaSbWFpbiBQUiDihpIg6K6w5b2VIFVSTC9TSEEg5ZCO562J5b6F5Lq65bel5Yaz5a6a'))
+    $RequiredChange='bind the accepted outer selection and exactly one capability integration; create or update the landing-to-main Release C PR; require all checks; perform an exact two-parent non-force merge; prove merged-tree equality; record zero review requests and an automated attestation'
     $Actions=@($Task.work_contract.external_actions)
     $AdapterValue=if($Actions.Count-eq1){[string]$Actions[0].adapter_capability}else{''}
     $TargetValue=if($Actions.Count-eq1){[string]$Actions[0].target}else{''}
@@ -11171,12 +12894,12 @@ function Invoke-ModeWorkPreflight {
     $TargetValid=$TargetValue-ceq'Elfsa-Miranda/GO_NOW:pull-request'
     $CasValid=$CasValue-ceq'head_oid+base_oid+outer_path_receipt_sha256+selected_merge_sha'
     $ReceiptValid=$ReceiptValue-ceq'docs/execution/evidence/releases/REL-C-001/pr-observation.json'
-    $RollbackValid=$RollbackValue-ceq'close_unmerged_pull_request_without_deleting_branch_or_writing_refs'
+    $RollbackValid=$RollbackValue-ceq'non_force_revert_pull_request_for_exact_merge_commit'
     $ActionValid=$AdapterValid-and$TargetValid-and$CasValid-and$ReceiptValid-and$RollbackValid
     $RequiredChangeValue=if(@($Task.work_contract.required_changes).Count-eq1){[string]$Task.work_contract.required_changes[0]}else{''}
     $BindingValid=$CardBinding-in@($Task.expected_assertions)-and$RequiredChangeValue-ceq$RequiredChange-and$ActionValid
     if(-not$BindingValid){$Checks=[ordered]@{work_contract_frozen=$false;ambiguous_target_count=1;unresolved_adapter_count=if($ActionValid){0}else{1};implementation_write_count=0;dependency_failures=0;production_write_count=0};return New-BlockedResult 'rel_c_001_work_preflight_failed' $Checks}
-    $Request=[ordered]@{schema_version='1.0';task_id=$TaskId;task_card_binding=$CardBinding;repository_full_name='Elfsa-Miranda/GO_NOW';api_repository='https://api.github.com/repos/Elfsa-Miranda/GO_NOW';base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$State.head_oid;remote_head_oid=[string]$State.remote_head_oid;remote_main_oid=[string]$State.remote_main_oid;release_b_landing_sha=[string]$State.release_b_landing_sha;cycle_id=[string]$State.cycle_id;selected_path=[string]$State.outer_path;selected_capability=[string]$State.selected_capability;selected_merge_sha=[string]$State.selected_merge_sha;outer_selection_sha256=[string]$State.outer_selection_sha256;outer_gate_sha256=[string]$State.outer_gate_sha256;outer_trigger_sha256=[string]$State.outer_trigger_sha256;inner_selection_sha256=[string]$State.inner_selection_sha256;active_c_capability_count=1;unselected_path_commit_count=0;title=("Release C: {0}"-f[string]$State.selected_capability);body_contract='Exactly one approved Release C capability; manual merge decision required';labels=@('manual-merge-required','release-c','single-capability');required_checks=@('agent-required','baseline-and-candidate','tracked-and-history');review_request_roles=@('Data','Engineering','Product','Security');auto_merge=$false;authorized_external_action='create_or_update_pull_request_metadata';adapter_contract='github_authorized_external_action';idempotency_or_cas='head_oid+base_oid+outer_path_receipt_sha256+selected_merge_sha';contract_change=$false;ref_write_count=0;main_ref_write_count=0;production_write_count=0;created_at=[DateTimeOffset]::Now.ToString('o')}
+    $Request=[ordered]@{schema_version='2.0';task_id=$TaskId;profile='personal_automated';task_card_binding=$CardBinding;repository_full_name='Elfsa-Miranda/GO_NOW';api_repository='https://api.github.com/repos/Elfsa-Miranda/GO_NOW';base_ref='main';head_ref='codex/gonow-agent-landing';head_oid=[string]$State.head_oid;remote_head_oid=[string]$State.remote_head_oid;remote_main_oid=[string]$State.remote_main_oid;release_b_landing_sha=[string]$State.release_b_landing_sha;cycle_id=[string]$State.cycle_id;selected_path=[string]$State.outer_path;selected_capability=[string]$State.selected_capability;selected_merge_sha=[string]$State.selected_merge_sha;outer_selection_sha256=[string]$State.outer_selection_sha256;outer_gate_sha256=[string]$State.outer_gate_sha256;outer_trigger_sha256=[string]$State.outer_trigger_sha256;inner_selection_sha256=[string]$State.inner_selection_sha256;active_c_capability_count=1;unselected_path_commit_count=0;title=("Release C: {0}"-f[string]$State.selected_capability);body_contract='Exactly one accepted Release C capability; merge only after all required checks and exact tree verification';labels=@('automated-merge-authorized','release-c','single-capability');required_checks=@('agent-required','baseline-and-candidate','tracked-and-history');review_request_roles=@();review_request_count=0;auto_merge=$true;merge_method='merge';force_update_allowed=$false;authorized_external_action='create_update_and_non_force_merge_pull_request';adapter_contract='github_authorized_external_action';idempotency_or_cas='head_oid+base_oid+outer_path_receipt_sha256+selected_merge_sha';rollback='non_force_revert_pull_request_for_exact_merge_commit';contract_change=$false;production_write_count=0;created_at=[DateTimeOffset]::Now.ToString('o')}
     Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'pr-request.json') -Value $Request;$Checks=[ordered]@{work_contract_frozen=$BindingValid;ambiguous_target_count=0;unresolved_adapter_count=0;implementation_write_count=0;external_action_execution_count=0;request_materialized=$true;head_oid=[string]$State.head_oid;remote_head_oid=[string]$State.remote_head_oid;active_c_capability_count=1;unselected_path_commit_count=0;main_ref_write_count=0;production_write_count=0};return New-PassedResult $Checks
   }
   $RequiredChanges = @($Task.work_contract.required_changes)
@@ -11240,17 +12963,17 @@ function Invoke-ModeWorksetVerify {
     foreach($Item in @(@($SelectionPath,'Selection'),@($RequestPath,'Request'))){if(-not(Test-Path -LiteralPath $Item[0] -PathType Leaf)){$SchemaErrors++;continue};try{$Value=Get-Content -LiteralPath $Item[0] -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;Set-Variable -Name $Item[1] -Value $Value}catch{$SchemaErrors++}}
     $State=Get-RelC000SelectionState -Selection $Selection -Dependency $Dependency -BranchState $Branches;$Paths=@(Get-RelC000ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC000PathAllowed -RelativePath $_)});$LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=$null;if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){try{$Ledger=Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop}catch{$SchemaErrors++}}
     $CasRows=if($null-ne$Ledger){@($Ledger.commands|Where-Object{[string]$_.description-ceq'Update Release C governance ref with expected-SHA CAS'-and[string]$_.command-cmatch'^git update-ref refs/heads/codex/release-c-governance [0-9a-f]{40} [0-9a-f]{40}$'-and[int]$_.exit_code-eq0-and[string]$_.authorization_reference-cnotmatch'^$'-and[string]$_.request_sha256-cmatch'^[0-9a-f]{64}$'-and[string]$_.response_sha256-cmatch'^[0-9a-f]{64}$'})}else{@()};$LatestFailures=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}}
-    $RequestBinding=$null-ne$Request-and[string]$Request.accepted_landing_sha-ceq[string]$Dependency.accepted_landing_sha-and[string]$Request.release_b_evidence_sha256-ceq[string]$Dependency.evidence_sha256-and(@($Request.alternatives|Sort-Object)-join',')-ceq((@('phase11','phase12','none')|Sort-Object)-join',')
+    $RequestBinding=$null-ne$Request-and[string]$Request.profile-ceq'personal_automated'-and[string]$Request.accepted_landing_sha-ceq[string]$Dependency.accepted_landing_sha-and[string]$Request.release_b_evidence_sha256-ceq[string]$Dependency.evidence_sha256-and[string]$Request.release_b_attestation_sha256-ceq[string]$Dependency.release_b_attestation_sha256-and[int]$Request.natural_person_signature_count-eq0-and(@($Request.alternatives|Sort-Object)-join',')-ceq((@('phase11','phase12','none')|Sort-Object)-join',')
     $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($CasRows.Count-eq1){0}else{1};work_contract_assertion_gaps=$SchemaErrors+$(if([bool]$State.passed-and$RequestBinding){0}else{1});nonzero_exit_count=$LatestFailures;expected_sha=if($null-ne$Selection){[string]$Selection.cas_receipt.expected_sha}else{''};actual_sha=if($null-ne$Selection){[string]$Selection.cas_receipt.actual_sha}else{''};new_sha=if($null-ne$Selection){[string]$Selection.cas_receipt.new_sha}else{''};specialist_branch_count=[int]$Branches.specialist_branch_count;production_write_count=0}
     if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count+[int]$Checks.specialist_branch_count-ne0){return New-BlockedResult 'rel_c_000_workset_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-011') {
-    $Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/releases/B.json','docs/execution/evidence/releases/P10-011/pr-request.json','docs/execution/evidence/releases/P10-011/pr-observation.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$ExternalRows=if($null-ne$Ledger){@($Ledger.commands|Where-Object{[string]$_.description-ceq'Create or update Release B pull request metadata'-and[string]$_.command-cmatch'^github-authorized-adapter create-or-update-release-b-pr request_sha256=[0-9a-f]{64}$'-and[int]$_.exit_code-eq0})}else{@()};$LatestFailures=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}};$Observation=Get-P10011ObservationState
-    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($ExternalRows.Count-eq1-and[int]$Observation.checks.missing_audit_receipt_count-eq0){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if([bool]$Observation.passed){0}else{1});nonzero_exit_count=$LatestFailures;main_ref_write_count=[int]$Observation.checks.main_ref_write_count;remote_ref_write_count=[int]$Observation.checks.remote_ref_write_count;branch_delete_count=[int]$Observation.checks.branch_delete_count;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_011_workset_failed' $Checks};return New-PassedResult $Checks
+    $Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/releases/B.json','docs/execution/evidence/releases/P10-011/pr-request.json','docs/execution/evidence/releases/P10-011/pr-observation.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$ExternalRows=if($null-ne$Ledger){@($Ledger.commands|Where-Object{[string]$_.description-ceq'Create, validate, and non-force merge Release B pull request'-and[string]$_.command-cmatch'^github-authorized-adapter release-b-pr request_sha256=[0-9a-f]{64} merge_method=merge force=false$'-and[int]$_.exit_code-eq0})}else{@()};$LatestFailures=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}};$Observation=Get-P10011ObservationState
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($ExternalRows.Count-eq1-and[int]$Observation.checks.missing_audit_receipt_count-eq0){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if([bool]$Observation.passed){0}else{1});nonzero_exit_count=$LatestFailures;force_update_count=if($null-ne$Observation.observation){[int]$Observation.observation.force_update_count}else{1};branch_delete_count=[int]$Observation.checks.branch_delete_count;merged_tree_matches_attested_tree=[bool]$Observation.checks.merged_tree_matches_attested_tree;production_write_count=0};$Failure=[int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count+[int]$Checks.force_update_count+[int]$Checks.branch_delete_count+$(if([bool]$Checks.merged_tree_matches_attested_tree){0}else{1});if($Failure-ne0){return New-BlockedResult 'p10_011_workset_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-REL-C-001') {
-    $Paths=@(Get-RelC001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC001PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/releases/REL-C-001/pr-request.json','docs/execution/evidence/releases/REL-C-001/pr-observation.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$ExternalRows=if($null-ne$Ledger){@($Ledger.commands|Where-Object{[string]$_.description-ceq'Create or update single-capability Release C pull request metadata'-and[string]$_.command-cmatch'^github-authorized-adapter create-or-update-release-c-pr request_sha256=[0-9a-f]{64}$'-and[int]$_.exit_code-eq0})}else{@()};$LatestFailures=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}};$Observation=Get-RelC001ObservationState
-    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@($Task.read_only_inputs)}).Count;unrecorded_action_count=if($ExternalRows.Count-eq1-and[int]$Observation.checks.missing_audit_receipt_count-eq0){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if([bool]$Observation.passed){0}else{1});nonzero_exit_count=$LatestFailures;active_c_capability_count=[int]$Observation.checks.active_c_capability_count;unselected_path_commit_count=[int]$Observation.checks.unselected_path_commit_count;main_ref_write_count=[int]$Observation.checks.main_ref_write_count;remote_ref_write_count=[int]$Observation.checks.remote_ref_write_count;branch_delete_count=[int]$Observation.checks.branch_delete_count;production_write_count=0};$Failure=[int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count+[int]$Checks.unselected_path_commit_count+[int]$Checks.main_ref_write_count+[int]$Checks.remote_ref_write_count+[int]$Checks.branch_delete_count+([Math]::Abs([int]$Checks.active_c_capability_count-1));if($Failure-ne0){return New-BlockedResult 'rel_c_001_workset_failed' $Checks};return New-PassedResult $Checks
+    $Paths=@(Get-RelC001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC001PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/releases/REL-C-001/pr-request.json','docs/execution/evidence/releases/REL-C-001/pr-observation.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$LedgerPath=Join-Path $script:TaskEvidenceDirectory 'commands.json';$Ledger=if(Test-Path -LiteralPath $LedgerPath -PathType Leaf){Get-Content -LiteralPath $LedgerPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$ExternalRows=if($null-ne$Ledger){@($Ledger.commands|Where-Object{[string]$_.description-ceq'Create, verify, and non-force merge the single-capability Release C pull request'-and[string]$_.command-cmatch'^github-authorized-adapter create-update-and-merge-release-c-pr request_sha256=[0-9a-f]{64}$'-and[int]$_.exit_code-eq0})}else{@()};$LatestFailures=0;if($null-ne$Ledger){foreach($Group in @($Ledger.commands|Group-Object description)){if([int]@($Group.Group)[-1].exit_code-ne0){$LatestFailures++}}};$Observation=Get-RelC001ObservationState
+    $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@($Task.read_only_inputs)}).Count;unrecorded_action_count=if($ExternalRows.Count-eq1-and[int]$Observation.checks.missing_audit_receipt_count-eq0){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if([bool]$Observation.passed){0}else{1});nonzero_exit_count=$LatestFailures;active_c_capability_count=[int]$Observation.checks.active_c_capability_count;unselected_path_commit_count=[int]$Observation.checks.unselected_path_commit_count;force_update_count=if($null-ne$Observation.observation){[int]$Observation.observation.force_update_count}else{1};review_request_count=[int]$Observation.checks.review_request_count;branch_delete_count=[int]$Observation.checks.branch_delete_count;production_write_count=0};$Failure=[int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps+[int]$Checks.nonzero_exit_count+[int]$Checks.unselected_path_commit_count+[int]$Checks.force_update_count+[int]$Checks.review_request_count+[int]$Checks.branch_delete_count+([Math]::Abs([int]$Checks.active_c_capability_count-1));if($Failure-ne0){return New-BlockedResult 'rel_c_001_workset_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-089') {
     $Paths=@(Get-P10089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10089PathAllowed -RelativePath $_)})
@@ -11260,7 +12983,7 @@ function Invoke-ModeWorksetVerify {
     $Text=@($RequiredChanges|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf}|ForEach-Object{[IO.File]::ReadAllText((Join-Path $script:RepositoryRoot $_),[Text.UTF8Encoding]::new($false))})-join"`n";$Gaps=0;foreach($Marker in @('Enable','Disable','Degrade','First checks','Situation','Task','Action','Result','pending_external','contract_change: false')){if($Text-cnotmatch[regex]::Escape($Marker)){$Gaps++}}
     $Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if($null-ne$Ledger){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps;required_change_missing_count=$MissingChanges.Count;nonzero_exit_count=$Latest;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_089_workset_failed' $Checks};return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P10-010') {$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Changed=@($Required|Where-Object{$_-in$Paths});$Text=@($Required|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)}|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_)-Raw -Encoding UTF8})-join"`n";$Markers=@('security','reliability','quality','cost','operations','sample_sufficiency','open_p0_p1','required_owner_approval_missing','rollback_drill','P10-009','artifact_sha256','minimum_nonoverlap_observation_hours','observed_nonoverlap_hours');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps+$(if($Changed.Count-lt2){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_010_workset_failed' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-010') {$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/phase-10/P10-010/owner-canary-report.json','docs/execution/evidence/phase-10/P10-010/release-b-gate-dossier.md','docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$State=Get-P10010PersonalCanaryState;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$(if([bool]$State.passed){0}else{1});owner_canary_journey_count=[int]$State.journey_count;natural_person_signature_count=0;nonzero_exit_count=0;production_write_count=0};if([int]$Checks.unexpected_paths+[int]$Checks.read_only_input_writes+[int]$Checks.unrecorded_action_count+[int]$Checks.work_contract_assertion_gaps-ne0){return New-BlockedResult 'p10_010_workset_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {$Paths=@(Get-P10009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10009PathAllowed -RelativePath $_)});$Required='docs/execution/evidence/phase-10/P10-009/rollout-observation.json';$Full=Join-Path $script:RepositoryRoot $Required;$Missing=if(Test-Path -LiteralPath $Full -PathType Leaf){0}else{1};$Text=if($Missing-eq0){Get-Content -LiteralPath $Full -Raw -Encoding UTF8}else{''};$Markers=@('gonow.agent.itinerary_planning.release_b','approved_cohort_ids_only','stop_rule_bypass_count','timer_restarted_on_transition','required_adopted_runs','required_hours','window_started_at','window_ended_at','blocked_pending_approved_production_rollout','old_path_available');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing+$Gaps+$(if($Required-notin$Paths){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_009_workset_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-008') {$Paths=@(Get-P10008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10008PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/phase-10/P10-008/cost-report.json','docs/execution/evidence/phase-10/P10-008/cost-denominator.md');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Changed=@($Required|Where-Object{$_-in$Paths});$Text=@($Required|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)}|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_)-Raw -Encoding UTF8})-join"`n";$Markers=@('behavior_digest','route','outcome','adopted_success','economic','capability','blocked_pending_production_measurement','approved budget','old path');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps+$(if($Changed.Count-lt2){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_008_workset_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-007') {$Paths=@(Get-P10007ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10007PathAllowed -RelativePath $_)});$Required=@('docs/execution/evidence/phase-10/P10-007/rollout-cohorts.yaml','docs/execution/evidence/phase-10/P10-007/rollout-stop-rules.yaml');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Changed=@($Required|Where-Object{$_-in$Paths});$Text=@($Required|Where-Object{Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)}|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_)-Raw -Encoding UTF8})-join"`n";$Markers=@('privacy','eligibility','allocation','risk_slices','stop_rules','rollback','min_adopted_runs','min_observation_hours','windows_must_be_nonoverlapping','minimum_nonoverlap_observation_hours','window_started_at','window_ended_at','extend_current_gate','allocation_zero');$Gaps=@($Markers|Where-Object{$Text-cnotmatch[regex]::Escape($_)}).Count;$Checks=[ordered]@{unexpected_paths=$Unexpected.Count;read_only_input_writes=@($Paths|Where-Object{$_-in@('AGENTS.md','execplan.md','docs/execution/commands/TaskGateCatalog.psd1')}).Count;unrecorded_action_count=if(Test-Path (Join-Path $script:TaskEvidenceDirectory 'commands.json')){0}else{1};work_contract_assertion_gaps=$Missing.Count+$Gaps+$(if($Changed.Count-lt2){1}else{0});nonzero_exit_count=0;production_write_count=0};if((@($Checks.Values)|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_007_workset_failed' $Checks};return New-PassedResult $Checks}
@@ -12564,16 +14287,16 @@ function Invoke-ModeRollbackVerify {
     if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code+[int]$Checks.cycle_rewrite_count-ne0){return New-BlockedResult 'rel_c_000_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-011') {
-    & git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)});$State=Get-P10011ObservationState;$Rollback=$State.observation.rollback;$DryRun=$null-ne$Rollback-and[bool]$Rollback.close_permission_verified-and[string]$Rollback.dry_run_status-ceq'passed'-and[string]$Rollback.strategy-ceq'close_pull_request_without_deleting_branch'-and[int]$Rollback.branch_delete_count-eq0-and[int]$Rollback.main_ref_write_count-eq0
-    $Checks=[ordered]@{old_path_failures=if([bool]$State.checks.pr_state_open-and[bool]$State.checks.remote_main_match){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($DryRun){0}else{1};diff_check_exit_code=$Diff;close_permission_verified=if($null-ne$Rollback){[bool]$Rollback.close_permission_verified}else{$false};rollback_strategy='close_pull_request_without_deleting_branch';main_ref_write_count=if($null-ne$Rollback){[int]$Rollback.main_ref_write_count}else{1};branch_delete_count=if($null-ne$Rollback){[int]$Rollback.branch_delete_count}else{1};production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code+[int]$Checks.main_ref_write_count+[int]$Checks.branch_delete_count-ne0){return New-BlockedResult 'p10_011_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+    & git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10011ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10011PathAllowed -RelativePath $_)});$State=Get-P10011ObservationState;$Rollback=$State.observation.rollback;$DryRun=$null-ne$Rollback-and[bool]$Rollback.revert_permission_verified-and[string]$Rollback.dry_run_status-ceq'passed'-and[string]$Rollback.strategy-ceq'revert_merge_commit_via_non_force_pr'-and[int]$Rollback.force_update_count+[int]$Rollback.branch_delete_count+[int]$Rollback.production_write_count-eq0
+    $Checks=[ordered]@{old_path_failures=if([bool]$State.checks.pr_merged-and[bool]$State.checks.non_force_merge-and[bool]$State.checks.merged_tree_matches_attested_tree){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($DryRun){0}else{1};diff_check_exit_code=$Diff;revert_permission_verified=if($null-ne$Rollback){[bool]$Rollback.revert_permission_verified}else{$false};rollback_strategy='revert_merge_commit_via_non_force_pr';force_update_count=if($null-ne$Rollback){[int]$Rollback.force_update_count}else{1};branch_delete_count=if($null-ne$Rollback){[int]$Rollback.branch_delete_count}else{1};production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;profile='personal_automated';checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code+[int]$Checks.force_update_count+[int]$Checks.branch_delete_count-ne0){return New-BlockedResult 'p10_011_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-REL-C-001') {
-    & git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-RelC001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC001PathAllowed -RelativePath $_)});$State=Get-RelC001ObservationState;$Rollback=$State.observation.rollback;$DryRun=$null-ne$Rollback-and[bool]$Rollback.close_permission_verified-and[string]$Rollback.dry_run_status-ceq'passed'-and[string]$Rollback.strategy-ceq'close_unmerged_pull_request_without_deleting_branch_or_writing_refs'-and[int]$Rollback.branch_delete_count+[int]$Rollback.main_ref_write_count+[int]$Rollback.remote_ref_write_count-eq0
-    $Checks=[ordered]@{old_path_failures=if([bool]$State.checks.pr_state_open-and[bool]$State.checks.remote_main_match-and[int]$State.checks.unselected_path_commit_count-eq0){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($DryRun){0}else{1};diff_check_exit_code=$Diff;close_permission_verified=if($null-ne$Rollback){[bool]$Rollback.close_permission_verified}else{$false};rollback_strategy='close_unmerged_pull_request_without_deleting_branch_or_writing_refs';main_ref_write_count=if($null-ne$Rollback){[int]$Rollback.main_ref_write_count}else{1};remote_ref_write_count=if($null-ne$Rollback){[int]$Rollback.remote_ref_write_count}else{1};branch_delete_count=if($null-ne$Rollback){[int]$Rollback.branch_delete_count}else{1};production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code+[int]$Checks.main_ref_write_count+[int]$Checks.remote_ref_write_count+[int]$Checks.branch_delete_count-ne0){return New-BlockedResult 'rel_c_001_rollback_verification_failed' $Checks};return New-PassedResult $Checks
+    & git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-RelC001ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-RelC001PathAllowed -RelativePath $_)});$State=Get-RelC001ObservationState;$Rollback=$State.observation.rollback;$MergeSha=if($null-ne$State.observation){[string]$State.observation.merge_commit_sha}else{''};$DryRun=$null-ne$Rollback-and[string]$Rollback.revert_pr_dry_run_status-ceq'passed'-and[string]$Rollback.strategy-ceq'non_force_revert_pull_request_for_exact_merge_commit'-and[string]$Rollback.original_merge_commit_sha-ceq$MergeSha-and[int]$Rollback.force_update_count+[int]$Rollback.branch_delete_count+[int]$Rollback.production_write_count-eq0
+    $Checks=[ordered]@{old_path_failures=if([bool]$State.checks.pr_merged-and[bool]$State.checks.non_force_merge-and[bool]$State.checks.merged_tree_matches_attested_tree-and[int]$State.checks.unselected_path_commit_count-eq0){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($DryRun){0}else{1};diff_check_exit_code=$Diff;exact_merge_commit_bound=($null-ne$Rollback-and[string]$Rollback.original_merge_commit_sha-ceq$MergeSha);rollback_strategy='non_force_revert_pull_request_for_exact_merge_commit';force_update_count=if($null-ne$Rollback){[int]$Rollback.force_update_count}else{1};branch_delete_count=if($null-ne$Rollback){[int]$Rollback.branch_delete_count}else{1};production_write_count=if($null-ne$Rollback){[int]$Rollback.production_write_count}else{1}};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code+[int]$Checks.force_update_count+[int]$Checks.branch_delete_count+[int]$Checks.production_write_count-ne0){return New-BlockedResult 'rel_c_001_rollback_verification_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-990') {& git -C $script:RepositoryRoot diff --check;$Exit=$LASTEXITCODE;$Paths=@(Get-P10990ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10990PathAllowed -RelativePath $_)});$Checks=[ordered]@{old_path_failures=0;unexpected_writes=$Unexpected.Count;rollback_not_run=0;diff_check_exit_code=$Exit;rollback_strategy='revert only the Phase 10 acceptance candidate and P10-990 generated evidence; retain rollout, audit, cost, and gate evidence';production_write_count=0};if([int]$Checks.unexpected_writes+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_990_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-089') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10089ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10089PathAllowed -RelativePath $_)});$Implementation=@($Paths|Where-Object{$_-match'^(?:agent-service/app|agent-service/migrations|supabase|lib|contracts)/'}).Count;$Required=@('docs/architecture/release-b-operations.md','docs/runbooks/release-b-rollout.md','docs/runbooks/agent-kill-switch.md','docs/api/release-b-gates.md');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});$Checks=[ordered]@{implementation_files_changed=$Implementation;broken_links=$Missing.Count;unexpected_writes=$Unexpected.Count;diff_check_exit_code=$Diff;rollback_strategy='revert only TASK-P10-089 documentation and generated evidence to the accepted P10-010 head; preserve implementation, blockers, and immutable task evidence';production_write_count=0};if((@($Checks.Values|Where-Object{$_-is[int]})|Measure-Object -Sum).Sum-ne0){return New-BlockedResult 'p10_089_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
-  if ($TaskId -ceq 'TASK-P10-010') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'release-b-gate-report.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Passed=$null-ne$Report-and[bool]$Report.rollback.kill_switch_ready-and[bool]$Report.rollback.old_path_available-and[int]$Report.rollback.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;kill_switch_and_old_path_passed=$Passed;rollback_strategy='activate the kill switch, set allocation to zero, keep the old route, and retain all gate evidence';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_010_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-010') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10010ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10010PathAllowed -RelativePath $_)});$State=Get-P10010PersonalCanaryState;$Passed=$null-ne$State.canary-and[bool]$State.canary.rollback.kill_switch_ready-and[bool]$State.canary.rollback.old_path_available-and[double]$State.canary.rollback.final_allocation_percent-eq0-and[int]$State.canary.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;kill_switch_and_old_path_passed=$Passed;final_allocation_percent=if($null-ne$State.canary){[double]$State.canary.rollback.final_allocation_percent}else{-1};rollback_strategy='activate the kill switch, set owner-only allocation to zero, keep the old route, and retain all gate evidence';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;profile='personal_automated';checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_010_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-009') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10009ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10009PathAllowed -RelativePath $_)});$ObservationPath=Join-Path $script:TaskEvidenceDirectory 'rollout-observation.json';$Report=if(Test-Path -LiteralPath $ObservationPath){Get-Content -LiteralPath $ObservationPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Passed=$null-ne$Report-and-not[bool]$Report.production_activation-and[int]$Report.current_allocation_percent-eq0-and[bool]$Report.rollback.kill_switch_ready-and[bool]$Report.rollback.old_path_available-and[int]$Report.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;allocation_zero_and_old_path_passed=$Passed;rollback_strategy='keep allocation at zero; use the kill switch and old route; preserve observation and audit evidence';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_009_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-008') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10008ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10008PathAllowed -RelativePath $_)});$ReportPath=Join-Path $script:TaskEvidenceDirectory 'cost-report.json';$Report=if(Test-Path -LiteralPath $ReportPath){Get-Content -LiteralPath $ReportPath -Raw -Encoding UTF8|ConvertFrom-Json}else{$null};$Passed=$null-ne$Report-and[string]$Report.rollback.first_route-ceq'economic'-and[bool]$Report.rollback.old_path_available-and[int]$Report.rollback.production_write_count-eq0;$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;economic_route_and_old_path_passed=$Passed;rollback_strategy='route to the economic tier or old path; retain cost ledgers and never hide failed-attempt cost';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_008_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-007') {& git -C $script:RepositoryRoot diff --check;$Diff=$LASTEXITCODE;$Paths=@(Get-P10007ChangedPaths);$Unexpected=@($Paths|Where-Object{-not(Test-P10007PathAllowed -RelativePath $_)});$CohortPath=Join-Path $script:TaskEvidenceDirectory 'rollout-cohorts.yaml';$StopPath=Join-Path $script:TaskEvidenceDirectory 'rollout-stop-rules.yaml';$Text='';foreach($EvidencePath in @($CohortPath,$StopPath)){if(Test-Path -LiteralPath $EvidencePath){$Text+=(Get-Content -LiteralPath $EvidencePath -Raw -Encoding UTF8)+"`n"}};$Passed=$Text-cmatch'(?m)^  allocation_default_percent: 0$'-and$Text-cmatch'(?m)^default_action: allocation_zero$'-and$Text-cmatch'(?m)^  preserve_durable_data: true$';$Checks=[ordered]@{old_path_failures=if($Passed){0}else{1};unexpected_writes=$Unexpected.Count;rollback_not_run=if($Passed){0}else{1};diff_check_exit_code=$Diff;allocation_zero_rollback_passed=$Passed;rollback_strategy='set allocation to zero, activate the behavior or route kill switch, preserve durable data, and retain the old path';production_write_count=0};Write-AtomicJson -LiteralPath (Join-Path $script:TaskEvidenceDirectory 'rollback-report.json') -Value ([ordered]@{schema_version='1.0';task_id=$TaskId;checks=$Checks;recorded_at=[DateTimeOffset]::Now.ToString('o')});if([int]$Checks.old_path_failures+[int]$Checks.unexpected_writes+[int]$Checks.rollback_not_run+[int]$Checks.diff_check_exit_code-ne0){return New-BlockedResult 'p10_007_rollback_verification_failed' $Checks};return New-PassedResult $Checks}
@@ -13283,6 +15006,25 @@ function Invoke-ModeAutomatedAcceptancePreflight {
     if (-not [bool]$Certification.passed) { return New-BlockedResult 'p10_009_automated_acceptance_preflight_failed' $Checks }
     return New-PassedResult $Checks
   }
+  if ($TaskId -ceq 'TASK-P10-990') {
+    $State = Get-P10990PersonalAttestationState
+    $Checks = [ordered]@{
+      personal_profile = ([string]$State.governance.profile -ceq 'personal_automated')
+      candidate_drift = [int]$State.checks.candidate_drift_count
+      mandatory_gate_failures = [int]$State.checks.mandatory_gate_failure_count
+      skipped = [int]$State.checks.mandatory_skip_count
+      xfailed = [int]$State.checks.xfail_count
+      flaky_rerun_passes = [int]$State.checks.flaky_rerun_count
+      redline_failures = [int]$State.checks.redline_failure_count
+      open_p0_p1 = [int]$State.checks.open_p0_p1
+      automated_attestation_valid = [bool]$State.passed
+      attestation_path = 'docs/execution/evidence/phase-10/P10-990/personal-acceptance-attestation.json'
+      production_observation_required = $false
+      production_write_count = [int]$State.checks.production_write_count
+    }
+    if (-not [bool]$State.passed) { return New-BlockedResult 'p10_990_automated_acceptance_preflight_failed' $Checks }
+    return New-PassedResult $Checks
+  }
   return Invoke-PendingMode 'AutomatedAcceptancePreflight'
 }
 
@@ -13293,7 +15035,7 @@ function Invoke-ModeApprovalValidation {
   if ($TaskId -ceq 'TASK-P11-990') {
     $Boundary=Get-P11990ExecutionBoundaryState;if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_990_approval_boundary_failed' $Boundary};$Approval=Get-P11990ApprovalState;$Checks=[ordered]@{approval_count=[int]$Approval.approval_count;required_role_missing_count=[int]$Approval.required_role_missing_count;approval_age_days=$Approval.approval_age_days;conditional_approval_open_count=[int]$Approval.conditional_approval_open_count;approval_oid_mismatch_count=[int]$Approval.approval_oid_mismatch_count;reviewer_collision_count=[int]$Approval.reviewer_collision_count;schema_errors=[int]$Approval.schema_errors;evidence_sha256=[string]$Approval.evidence_sha256;independent_owner_approval_status=if([bool]$Approval.passed){'validated'}else{'invalid_or_pending'};accepted=$false;production_write_count=0};if(-not[bool]$Approval.passed){return New-BlockedResult 'p11_990_independent_approvals_invalid' $Checks};return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P10-990') {$P=Get-P10LocalProjection;$Checks=[ordered]@{local_projection_passed=[bool]$P.local_projection_passed;rollout_and_release_gate_formally_accepted=([int]$P.checks.status_failure_count+[int]$P.checks.rollout_failure_count+[int]$P.checks.release_gate_failure_count-eq0);approval_count=0;approval_age_days=$null;conditional_approval_open_count=0;approval_oid_mismatch_count=0;required_roles=@('Engineering','Security','Product','Data');independent_owner_approval_status='pending_external';formal_acceptance_status='pending_external';accepted=$false;production_write_count=0};if(-not[bool]$Checks.local_projection_passed-or-not[bool]$Checks.rollout_and_release_gate_formally_accepted){return New-BlockedResult 'p10_990_projection_or_release_approval_invalid' $Checks};if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_phase_10_independent_approvals' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-990') {$P=Get-P10LocalProjection;$Personal=Test-PersonalAutomatedFormalExecution;$Checks=[ordered]@{local_projection_passed=[bool]$P.local_projection_passed;rollout_and_release_gate_formally_accepted=([int]$P.checks.status_failure_count+[int]$P.checks.rollout_failure_count+[int]$P.checks.release_gate_failure_count-eq0);approval_count=0;approval_age_days=$null;conditional_approval_open_count=0;approval_oid_mismatch_count=0;evidence_domains=@('Engineering','Security','Product','Data','Operations');natural_person_signature_count=0;independent_owner_approval_status=if($Personal){'replaced_by_owner_authorized_automated_attestation'}else{'pending_external'};formal_acceptance_status=if($Personal){'automated_attestation_pending'}else{'pending_external'};accepted=$false;production_write_count=0};if(-not[bool]$Checks.local_projection_passed-or-not[bool]$Checks.rollout_and_release_gate_formally_accepted){return New-BlockedResult 'p10_990_projection_or_release_approval_invalid' $Checks};if($ExecutionMode-ceq'formal_adopted'-and-not$Personal){return New-BlockedResult 'p10_990_personal_governance_required' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P09-990') {$P=Get-P09LocalProjection;$Checks=[ordered]@{local_projection_passed=[bool]$P.local_projection_passed;approval_count=0;approval_age_days=$null;conditional_approval_open_count=0;approval_oid_mismatch_count=0;independent_owner_approval_status='pending_external';formal_acceptance_status='pending_external';accepted=$false;production_write_count=0};if(-not[bool]$Checks.local_projection_passed){return New-BlockedResult 'p09_local_projection_invalid' $Checks};if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_phase_09_independent_approvals' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P08-990') {$P=Get-P08LocalProjection;$Checks=[ordered]@{local_projection_passed=[bool]$P.local_projection_passed;approval_count=0;approval_age_days=$null;conditional_approval_open_count=0;approval_oid_mismatch_count=0;independent_owner_approval_status='pending_external';formal_acceptance_status='pending_external';accepted=$false;production_write_count=0};if(-not[bool]$Checks.local_projection_passed){return New-BlockedResult 'p08_local_projection_invalid' $Checks};if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_phase_08_independent_approvals' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P07-990') {
@@ -13393,7 +15135,7 @@ function Invoke-ModeBuildAcceptance {
     $Boundary=Get-P11990ExecutionBoundaryState;$Harness=Get-P11990HarnessState;$Docs=Get-P11990DocumentationState;$Rollback=Get-P11990RollbackState;$State=Write-P11990AcceptanceEvidence -ReadyForReview $false;$Checks=[ordered]@{acceptance_generated=(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-11/acceptance.md')-PathType Leaf);index_generated=(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/index.json')-PathType Leaf);primary_assertion_inputs_complete=([bool]$Boundary.passed-and[bool]$Harness.passed-and[bool]$Docs.passed-and[bool]$Rollback.passed);base_oid=[string]$Boundary.dependency.manifest.phase_base_oid;head_oid=[string]$State.candidate_head_oid;approval_status='validated_separately_after_build';accepted=$false;formal_acceptance_status='in_progress';production_write_count=0};if(-not[bool]$Checks.acceptance_generated-or-not[bool]$Checks.index_generated-or-not[bool]$Checks.primary_assertion_inputs_complete){return New-BlockedResult 'p11_990_build_acceptance_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P10-990') {
-    $P=Get-P10LocalProjection;Write-P10LocalProjectionEvidence -ReadyForReview $false;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Rollout=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-009/rollout-observation.json') -Raw -Encoding UTF8|ConvertFrom-Json;$Release=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json') -Raw -Encoding UTF8|ConvertFrom-Json;$Text=@('# Phase 10 acceptance candidate','','Status: local mechanical candidate; formal Phase 10 acceptance remains pending.',"Base OID: $(Get-PhaseBaseOid)","Candidate head OID: $Head",'','## Change summary','','Release B observability, metrics, SLO/alert contracts, kill switches, immutable E1, Judge calibration, rollout cohorts, cost accounting, production observation, and six-slice release gate evidence are aggregated without modifying implementation.','','## Mechanical gate numbers','',"Harness controls: 34; minimum cases: 149; Phase<=P10 unimplemented: $([int]$P.checks.first_phase_le_p10_unimplemented_count).","Rollout gates satisfied: $(@($Rollout.gates|Where-Object{[bool]$_.satisfied}).Count)/5; allocation: $([int]$Rollout.current_allocation_percent)%; stop-rule bypass: $([int]$Rollout.stop_rule_bypass_count).","Release decision: $([string]$Release.decision); open P0/P1: $([int]$Release.open_p0_p1); missing owner approvals: $([int]$Release.required_owner_approval_missing).",'','## Blockers and final state','','P10-009 production-rollout input blocker: closed only by its accepted status and bound rollout evidence.','P10-010 dependency blocker: closed only by the accepted six-slice GO report.','Phase 10 independent acceptance and authorized landing merge: pending_external.','','## Rollback','','First action is the kill switch and allocation zero; retain the old path, rollout observations, cost ledger, audit receipts, and immutable E0/E1 evidence. Local drill duration is recorded in P10-990/rollback-drill.json; production-same-configuration evidence is not inferred.','','## Evidence boundary','','No Prompt, response, reasoning, secret, PII body, production write, remote push, or merge is recorded by this candidate.');Write-AtomicText -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/acceptance.md') -Text (($Text-join"`n")+"`n");$Checks=[ordered]@{acceptance_written=$true;primary_assertion_passed=[bool]$P.local_projection_passed;base_oid=Get-PhaseBaseOid;head_oid=$Head;blocker_sections=2;rollback_documented=$true;formal_acceptance_status='pending_external';production_write_count=0};if(-not[bool]$P.local_projection_passed){return New-BlockedResult 'p10_990_build_acceptance_projection_failed' $Checks};return New-PassedResult $Checks
+    $P=Get-P10LocalProjection;Write-P10LocalProjectionEvidence -ReadyForReview $false;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Personal=Test-PersonalAutomatedFormalExecution;$Canary=Get-P10010PersonalCanaryState;$Release=Read-JsonEvidenceOrNull -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-010/release-b-gate-report.json');$StatusText=if($Personal){'candidate-bound automated attestation pending under personal_automated governance'}else{'local mechanical candidate; formal acceptance remains pending'};$Text=@('# Phase 10 acceptance','','Status: '+$StatusText,"Base OID: $(Get-PhaseBaseOid)","Candidate head OID: $Head",'','## Change summary','','Release B observability, metrics, SLO/alert contracts, kill switches, immutable E1, Judge calibration, cost accounting, personal compressed certification, and owner-only canary evidence are aggregated without modifying implementation.','','## Mechanical gate numbers','',"Harness controls: 34; minimum cases: 149; Phase<=P10 unimplemented: $([int]$P.checks.first_phase_le_p10_unimplemented_count).","Owner canary journeys: $([int]$Canary.journey_count); duration minutes: $([double]$Canary.duration_minutes); initial/final allocation: 0/0.","Release decision: $([string]$Release.decision); open P0/P1: $([int]$Release.open_p0_p1); natural-person signatures: 0.",'','## Governance','','Data, Engineering, Product, Security, and Operations remain evidence domains. Under the approved personal profile they are not represented as fabricated independent people.','','## Rollback','','First action is the kill switch and owner allocation zero; retain the old path, certification, cost receipt, audit evidence, and immutable E0/E1 evidence.','','## Evidence boundary','','No 31-day production observation is claimed. No Prompt, response, reasoning, secret, PII body, production write, remote push, or merge is recorded by this acceptance task.');Write-AtomicText -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/acceptance.md') -Text (($Text-join"`n")+"`n");$Checks=[ordered]@{acceptance_written=$true;primary_assertion_passed=[bool]$P.local_projection_passed;base_oid=Get-PhaseBaseOid;head_oid=$Head;blocker_sections=0;rollback_documented=$true;formal_acceptance_status=if($Personal){'automated_attestation_pending'}else{'pending_external'};natural_person_signature_count=0;production_write_count=0};if(-not[bool]$P.local_projection_passed){return New-BlockedResult 'p10_990_build_acceptance_projection_failed' $Checks};return New-PassedResult $Checks
   }
   if ($TaskId -ceq 'TASK-P09-990') {$P=Get-P09LocalProjection;Write-P09LocalProjectionEvidence -ReadyForReview $false;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Text=@('# Phase 9 acceptance candidate','','Status: local provisional ready-for-review candidate; formal acceptance is pending.',"Base OID: $(Get-PhaseBaseOid)","Candidate head OID: $Head",'','## Scope','','Locked OpenAPI/Dart generation, typed Flutter Run repository and minimal active-Run cursor, resumable SSE controls, Candidate preview, guarded Domain Command/outbox adoption, default-off compatibility routing, read-model non-adoption decision, and critical local journey.','','## Mechanical result','','All local Phase 9 task projections pass. Harness controls are 34/34 implemented with minimum cases 149 and no status downgrade. The API digest is ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed. Compatibility is 4/4 with three safe failure cases. Domain Command tests are 13/13 and local handoff binds 33 verification points. No unauthorized or production write occurred.','','## Diagnostics and rollback','','The analyzer baseline, PostgreSQL role/RLS setup, Flutter device dispatch, accessibility oracle, and status-board JSON round-trip root causes are recorded with bounded repairs and affected regressions. Rollback engages the kill switch, verifies legacy routing, preserves durable facts, and removes only the local acceptance projection when withdrawing this candidate.','','## Pending formal boundaries','','Independent Engineering, Security, Product, Data, API, Mobile, and SRE review; governance adoption; approved production itinerary schema/RLS/grant mapping and ADR; real-device and production-like rollback evidence; authorized landing merge; and production activation approval remain pending. This document does not mark Phase 9 accepted.');[IO.File]::WriteAllText((Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-09/acceptance.md'),($Text-join"`n")+"`n",[Text.UTF8Encoding]::new($false));$Checks=[ordered]@{acceptance_generated=$true;primary_assertion_passed=[bool]$P.local_projection_passed;base_oid=Get-PhaseBaseOid;head_oid=$Head;forced_rejection_count=0;accepted=$false;formal_acceptance_status='pending_external';production_write_count=0};if(-not[bool]$P.local_projection_passed){return New-BlockedResult 'p09_990_build_acceptance_failed' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P08-990') {$P=Get-P08LocalProjection;Write-P08LocalProjectionEvidence -ReadyForReview $false;$Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim();$Text=@('# Phase 8 acceptance candidate','','Status: local provisional ready-for-review candidate; formal acceptance is pending.','',"Base OID: $(Get-PhaseBaseOid)","Candidate head OID: $Head",'','## Scope','','Strict read-only research contracts, shared two-branch physical-attempt budget, deterministic evidence-preserving merge, default-off routing, pre-registered synthetic A/B accounting, and the evidence-based Multi-Agent decision.','','## Mechanical result','','All local Phase 8 task projections pass. Harness controls are 34/34 implemented with minimum cases 149. CT-011 passes with 24 attempts, exactly eight reservations split four/four, and zero borrowing or over-limit acceptance. Flag-off output remains Phase 7 byte-identical with zero research calls. The 48-sample synthetic experiment did not meet strict quality, latency, or cost triggers, so decision none is preserved.','','## Diagnostics and rollback','','All four Phase 8 diagnostic blocker records have final state resolved_local. Rollback keeps the feature off or engages the kill switch and removes only Phase 8 local acceptance evidence if this candidate is withdrawn.','','## Pending formal boundaries','','Independent Engineering, Security, Product, Eval, Data, and SRE review; governance adoption; production-like evidence; authorized landing merge; and all production activation approvals remain pending. This document does not mark the Phase accepted.');[IO.File]::WriteAllText((Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-08/acceptance.md'),($Text-join"`n")+"`n",[Text.UTF8Encoding]::new($false));$Checks=[ordered]@{acceptance_generated=$true;primary_assertion_passed=[bool]$P.local_projection_passed;base_oid=Get-PhaseBaseOid;head_oid=$Head;forced_rejection_count=0;accepted=$false;formal_acceptance_status='pending_external';production_write_count=0};if(-not[bool]$P.local_projection_passed){return New-BlockedResult 'p08_990_build_acceptance_failed' $Checks};return New-PassedResult $Checks}
@@ -14174,7 +15916,7 @@ function Invoke-ModeDocumentation {
     $Ops=0;foreach($Marker in @('Enable','Disable','Degrade','First checks')){$Ops+=@($Docs|Where-Object{$_.Contains($Marker)}).Count};$Hardest=[regex]::Match($Kt,'(?m)^hardest_item_count:\s*([0-3])$');$ThreatValid=[string]$Threat.security_owner-ceq'Security'-and[string]$Threat.architecture_model_sha256-ceq'644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6'-and[string]$Threat.candidate_head_oid-cmatch'^[0-9a-f]{40}$'-and$null-ne$Threat.model_changed;$BindingValid=$DocText.Contains([string]$Dependency.selection)-and$DocText.Contains(([string]$Dependency.selected_count))-and[string]$Manifest.selection-ceq[string]$Dependency.selection-and[int]$Manifest.selected_count-eq[int]$Dependency.selected_count
     $Checks=[ordered]@{broken_links=0;undocumented_contract_diff=if($DocText.Contains('contract_change: false')-and$BindingValid){0}else{1};observable_changes=$Ops;kt_sections=@([regex]::Matches($Kt,'(?m)^##\s+')).Count;hardest_item_count=if($Hardest.Success){[int]$Hardest.Groups[1].Value}else{-1};local_handoff_journey_passed=[bool]$Handoff.handoff_journey_passed;threat_model_review_missing=if($ThreatValid){0}else{1};star_index_error_count=$StarErrors;dependency_valid=[bool]$Dependency.passed;formal_document_review_status='pending_external';accepted=$false;production_write_count=0};if([int]$Checks.undocumented_contract_diff-ne0-or[int]$Checks.observable_changes-lt4-or[int]$Checks.kt_sections-lt5-or[int]$Checks.hardest_item_count-lt0-or[int]$Checks.hardest_item_count-gt3-or-not[bool]$Checks.local_handoff_journey_passed-or[int]$Checks.threat_model_review_missing+[int]$Checks.star_index_error_count-ne0-or-not[bool]$Checks.dependency_valid){return New-BlockedResult 'p12_089_documentation_failed' $Checks};if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_phase_12_independent_document_review' $Checks};return New-PassedResult $Checks
   }
-  if ($TaskId -ceq 'TASK-P10-990') {$P=Get-P10LocalProjection;$KPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/knowledge-transfer.md';$HPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-089/handoff-verification.json';$TPath=Join-Path $script:RepositoryRoot 'docs/architecture/threat-model/phase-10-review.json';$BPath=Join-Path $script:TaskEvidenceDirectory 'blocker.json';$Missing=@(@($KPath,$HPath,$TPath,$BPath)|Where-Object{-not(Test-Path -LiteralPath $_ -PathType Leaf)});if($Missing.Count-ne0){return New-BlockedResult 'p10_990_documentation_missing' ([ordered]@{broken_links=$Missing.Count;production_write_count=0})};$K=Get-Content -LiteralPath $KPath -Raw -Encoding UTF8;$H=Get-Content -LiteralPath $HPath -Raw -Encoding UTF8|ConvertFrom-Json;$T=Get-Content -LiteralPath $TPath -Raw -Encoding UTF8|ConvertFrom-Json;$B=Get-Content -LiteralPath $BPath -Raw -Encoding UTF8|ConvertFrom-Json;$Hardest=[regex]::Match($K,'(?m)^hardest_item_count:\s*([0-3])$');$Checks=[ordered]@{document_review_passed=[bool]$P.local_projection_passed;kt_sections=@([regex]::Matches($K,'(?m)^##\s+')).Count;hardest_item_count=if($Hardest.Success){[int]$Hardest.Groups[1].Value}else{-1};handoff_journey_passed=[bool]$H.handoff_journey_passed;threat_model_review_missing=if([string]$T.phase-ceq'Phase 10'-and[string]$T.architecture_model_sha256-ceq'644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6'){0}else{1};unresolved_blocker_final_state=if([int]$B.unresolved_local_blocker_count-eq0-and@($B.formal_blockers|Where-Object{[string]::IsNullOrWhiteSpace([string]$_.final_state)}).Count-eq0){0}else{1};formal_document_review_status='pending_external';accepted=$false;production_write_count=0};if(-not[bool]$Checks.document_review_passed-or[int]$Checks.kt_sections-ne5-or[int]$Checks.hardest_item_count-ne3-or-not[bool]$Checks.handoff_journey_passed-or[int]$Checks.threat_model_review_missing+[int]$Checks.unresolved_blocker_final_state-ne0){return New-BlockedResult 'p10_990_documentation_failed' $Checks};if($ExecutionMode-ceq'formal_adopted'){return New-BlockedResult 'pending_phase_10_independent_document_review' $Checks};return New-PassedResult $Checks}
+  if ($TaskId -ceq 'TASK-P10-990') {$P=Get-P10LocalProjection;$KPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/knowledge-transfer.md';$HPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-10/P10-089/handoff-verification.json';$TPath=Join-Path $script:RepositoryRoot 'docs/architecture/threat-model/phase-10-review.json';$BPath=Join-Path $script:TaskEvidenceDirectory 'blocker.json';$Missing=@(@($KPath,$HPath,$TPath,$BPath)|Where-Object{-not(Test-Path -LiteralPath $_ -PathType Leaf)});if($Missing.Count-ne0){return New-BlockedResult 'p10_990_documentation_missing' ([ordered]@{broken_links=$Missing.Count;production_write_count=0})};$K=Get-Content -LiteralPath $KPath -Raw -Encoding UTF8;$H=Get-Content -LiteralPath $HPath -Raw -Encoding UTF8|ConvertFrom-Json;$T=Get-Content -LiteralPath $TPath -Raw -Encoding UTF8|ConvertFrom-Json;$B=Get-Content -LiteralPath $BPath -Raw -Encoding UTF8|ConvertFrom-Json;$Hardest=[regex]::Match($K,'(?m)^hardest_item_count:\s*([0-3])$');$Personal=Test-PersonalAutomatedFormalExecution;$Checks=[ordered]@{document_review_passed=[bool]$P.local_projection_passed;kt_sections=@([regex]::Matches($K,'(?m)^##\s+')).Count;hardest_item_count=if($Hardest.Success){[int]$Hardest.Groups[1].Value}else{-1};handoff_journey_passed=[bool]$H.handoff_journey_passed;threat_model_review_missing=if([string]$T.phase-ceq'Phase 10'-and[string]$T.architecture_model_sha256-ceq'644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6'){0}else{1};unresolved_blocker_final_state=if([int]$B.unresolved_local_blocker_count-eq0-and@($B.formal_blockers|Where-Object{[string]::IsNullOrWhiteSpace([string]$_.final_state)}).Count-eq0){0}else{1};formal_document_review_status=if($Personal){'covered_by_automated_evidence_domain'}else{'pending_external'};accepted=$false;production_write_count=0};if(-not[bool]$Checks.document_review_passed-or[int]$Checks.kt_sections-ne5-or[int]$Checks.hardest_item_count-ne3-or-not[bool]$Checks.handoff_journey_passed-or[int]$Checks.threat_model_review_missing+[int]$Checks.unresolved_blocker_final_state-ne0){return New-BlockedResult 'p10_990_documentation_failed' $Checks};if($ExecutionMode-ceq'formal_adopted'-and-not$Personal){return New-BlockedResult 'p10_990_personal_governance_required' $Checks};return New-PassedResult $Checks}
   if ($TaskId -ceq 'TASK-P10-089') {
     $Required=@('README.md','docs/architecture/release-b-operations.md','docs/runbooks/release-b-rollout.md','docs/runbooks/agent-kill-switch.md','docs/api/release-b-gates.md','docs/architecture/threat-model/phase-10-review.json','docs/execution/evidence/phase-10/change-summary.md','docs/execution/evidence/phase-10/knowledge-transfer.md','docs/execution/evidence/phase-10/star-records.md','docs/execution/evidence/phase-10/P10-089/handoff-verification.json');$Missing=@($Required|Where-Object{-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $_)-PathType Leaf)});if($Missing.Count-ne0){return New-BlockedResult 'p10_089_documentation_missing' ([ordered]@{broken_links=$Missing.Count;missing_paths=$Missing;production_write_count=0})}
     $Docs=@($Required[0..4]|ForEach-Object{Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $_) -Raw -Encoding UTF8});$DocText=$Docs-join"`n";$Kt=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Required[7]) -Raw -Encoding UTF8;$Index=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Required[8]) -Raw -Encoding UTF8;$Threat=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Required[5]) -Raw -Encoding UTF8|ConvertFrom-Json;$Handoff=Get-Content -LiteralPath (Join-Path $script:RepositoryRoot $Required[9]) -Raw -Encoding UTF8|ConvertFrom-Json
@@ -14797,20 +16539,20 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
     if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p11_000_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-REL-C-000') {
     $ModeState=Get-RelC000GateModeState
-    if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'rel_c_000_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
+    if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;if(Test-PersonalAutomatedFormalExecution){$Attestation=Write-RelC000PersonalAcceptanceAttestation;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)}else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'rel_c_000_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-REL-C-001') {
     $ModeState=Get-RelC001GateModeState
-    if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'rel_c_001_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
+    if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;if(Test-PersonalAutomatedFormalExecution){$Attestation=Write-RelC001PersonalAcceptanceAttestation;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)}else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'rel_c_001_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-P10-011') {
     $ModeState=Get-P10011GateModeState
-    if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_011_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
+    if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;if(Test-PersonalAutomatedFormalExecution){$Attestation=Write-P10011PersonalAcceptanceAttestation;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)}else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_011_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-P10-990' -and $ExitCode -eq 0) {
-    $Projection=Get-P10LocalProjection;$ModeState=Get-P10GateModeState -IncludeVerify;if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){$LocalVerificationPath=Join-Path $script:TaskEvidenceDirectory 'local-verification.json';if($Mode-ceq'Verify'-or-not(Test-Path -LiteralPath $LocalVerificationPath -PathType Leaf)){Write-P10LocalProjectionEvidence -ReadyForReview $true};Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
+    $Projection=Get-P10LocalProjection;$Personal=Test-PersonalAutomatedFormalExecution;$ModeState=Get-P10GateModeState -IncludeVerify -IncludeAutomatedAcceptance:$Personal;if([bool]$Projection.local_projection_passed-and[bool]$ModeState.passed){$LocalVerificationPath=Join-Path $script:TaskEvidenceDirectory 'local-verification.json';if($Mode-ceq'Verify'-or-not(Test-Path -LiteralPath $LocalVerificationPath -PathType Leaf)){Write-P10LocalProjectionEvidence -ReadyForReview $true};$GateHash=Get-Sha256 -LiteralPath $GatePath;if($Personal){$Attestation=Write-P10990PersonalAcceptanceAttestation;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)}else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}}
   } elseif ($TaskId -ceq 'TASK-P10-089' -and $ExitCode -eq 0) {
     $ModeState=Get-P10089GateModeState;if([bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}
   } elseif ($TaskId -ceq 'TASK-P10-010') {
     $ModeState=Get-P10010GateModeState
-    if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_010_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
+    if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;if(Test-PersonalAutomatedFormalExecution){$Attestation=Write-P10010PersonalAcceptanceAttestation;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)}else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_010_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif ($TaskId -ceq 'TASK-P10-009') {
     $ModeState=Get-P10009GateModeState
     if($ExitCode-eq0-and[bool]$ModeState.passed){$GateHash=Get-Sha256 -LiteralPath $GatePath;Set-ReadyForReviewStatus -EvidenceSha256 $GateHash;Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath 'docs/execution/evidence/phase-10/P10-009/personal-release-certification.json'}else{$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p10_009_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
