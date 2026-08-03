@@ -2,7 +2,7 @@
 
 Local status: ready_for_review. Formal acceptance, landing merge, remote push, and production enablement remain pending external owner actions.
 Base OID: 7b5913d53a65316b2c22a17cd52b8ee45562fae1
-Candidate head OID: f076d1fd14040846830f3cd2b3c86dac70ea6176
+Candidate head OID: 4789a55f4600c522442f7611aee9138245bdef6c
 
 ## Scope
 
