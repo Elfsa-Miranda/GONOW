@@ -14252,7 +14252,7 @@ function Invoke-ModeHarnessCatalogAggregate {
     if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_harness_boundary_failed' $Boundary}
     $Path=Join-Path $script:RepositoryRoot 'docs/execution/schemas/harness-test-catalog.yaml';$Text=Get-Content -LiteralPath $Path -Raw -Encoding UTF8;$Hash=Get-Sha256 -LiteralPath $Path
     $Controls=@([regex]::Matches($Text,'(?m)^  - \{id: (\d+), name: ([^,]+), status: ([^,]+), first_phase: ([^,]+), test_file: ([^,]+), minimum_cases: (\d+)\}'));$Ids=@($Controls|ForEach-Object{[int]$_.Groups[1].Value});$Minimum=0;foreach($Control in $Controls){$Minimum+=[int]$Control.Groups[6].Value};$Implemented=@($Controls|Where-Object{$_.Groups[3].Value-ceq'implemented'});$MissingTests=0;foreach($Control in $Implemented){if(-not(Test-Path -LiteralPath (Join-Path $script:RepositoryRoot $Control.Groups[5].Value)-PathType Leaf)){$MissingTests++}}
-    $FragmentRecord=Get-P11000GitJsonRecord -Ref HEAD -RelativePath 'docs/execution/evidence/phase-11/P11-006/harness-status-fragment.json';$Fragment=$FragmentRecord.value;$Rows=if($null-ne$Fragment){@($Fragment.controls|Where-Object{[int]$_.id-eq23})}else{@()};$Control=if($Rows.Count-eq1){$Rows[0]}else{$null}
+    $FragmentRecord=Get-P11000GitJsonRecord -Ref HEAD -RelativePath 'docs/execution/evidence/phase-11/P11-006/harness-status-fragment.json';$Fragment=$FragmentRecord.value;$Rows=@(if($null-ne$Fragment){$Fragment.controls|Where-Object{[int]$_.id-eq23}});$Control=if($Rows.Count-eq1){$Rows[0]}else{$null}
     $FragmentChecks=[ordered]@{
       record_read=[bool]$FragmentRecord.passed
       task_id_match=([string]$Fragment.task_id-ceq'TASK-P11-006')
