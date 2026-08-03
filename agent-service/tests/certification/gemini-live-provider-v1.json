@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "provider_id": "google-gemini-developer-api",
   "api_origin": "https://generativelanguage.googleapis.com",
   "api_version": "v1beta",
@@ -7,7 +7,6 @@
   "calls_per_route": 200,
   "requests_per_minute": 20,
   "maximum_input_tokens_per_call": 64,
-  "maximum_output_tokens_per_call": 64,
   "budget_cap_usd": 0.25,
   "pricing_source_url": "https://ai.google.dev/gemini-api/docs/pricing",
   "pricing_retrieved_on": "2026-08-02",
@@ -15,12 +14,14 @@
     {
       "route_id": "economic",
       "model_id": "gemini-3.1-flash-lite",
+      "maximum_output_tokens_per_call": 384,
       "input_usd_per_million_tokens": 0.25,
       "output_usd_per_million_tokens": 1.5
     },
     {
       "route_id": "capability",
       "model_id": "gemini-3.6-flash",
+      "maximum_output_tokens_per_call": 64,
       "input_usd_per_million_tokens": 1.5,
       "output_usd_per_million_tokens": 7.5
     }

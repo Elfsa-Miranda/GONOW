@@ -253,6 +253,16 @@ def test_c2_live_gemini_executor_emits_only_content_free_receipts(
             return httpx.Response(200, content=b"official-pricing-snapshot")
         assert request.headers["x-goog-api-key"] == secret
         assert request.url.host == "generativelanguage.googleapis.com"
+        request_body = json.loads(request.content)
+        assert request_body["generationConfig"]["thinkingConfig"] == {
+            "thinkingLevel": "low"
+        }
+        model_id = request.url.path.split("/")[-1].split(":")[0]
+        expected_output_limit = {
+            "gemini-3.1-flash-lite": 384,
+            "gemini-3.6-flash": 64,
+        }[model_id]
+        assert request_body["generationConfig"]["maxOutputTokens"] == expected_output_limit
         post_count += 1
         return httpx.Response(
             200,
@@ -283,6 +293,11 @@ def test_c2_live_gemini_executor_emits_only_content_free_receipts(
     assert report["status"] == "passed"
     assert report["successful_call_count"] == 400
     assert report["credential_value_recorded"] is False
+    assert projected_maximum_cost(load_live_config()) == pytest.approx(0.2336)
+    assert {
+        row["route_id"]: row["maximum_output_tokens_per_call"]
+        for row in report["route_receipts"]
+    } == {"economic": 384, "capability": 64}
     evidence = (tmp_path / "live-provider-receipts.json").read_text("utf-8")
     assert secret not in evidence
     assert "Return one JSON" not in evidence
@@ -296,7 +311,50 @@ def test_c2_live_config_prevents_projected_budget_overrun(tmp_path: Path) -> Non
     path.write_text(json.dumps(config), encoding="utf-8")
     with pytest.raises(CertificationFailure, match="c2.live_projected_cost_exceeds_budget"):
         load_live_config(path)
+
+    config = json.loads(CONFIG_PATH.read_text("utf-8"))
+    config["routes"][0]["maximum_output_tokens_per_call"] = 439
+    route_over_budget = tmp_path / "route-over-budget.json"
+    route_over_budget.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(CertificationFailure, match="c2.live_projected_cost_exceeds_budget"):
+        load_live_config(route_over_budget)
     assert projected_maximum_cost(load_live_config()) <= 0.25
+
+
+def test_c2_live_config_rejects_route_model_swap_and_boolean_limits(tmp_path: Path) -> None:
+    config = json.loads(CONFIG_PATH.read_text("utf-8"))
+    config["routes"][0]["model_id"] = "gemini-3.6-flash"
+    swapped = tmp_path / "swapped-route.json"
+    swapped.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(CertificationFailure, match="c2.live_model_not_allowlisted"):
+        load_live_config(swapped)
+
+    config = json.loads(CONFIG_PATH.read_text("utf-8"))
+    config["routes"][0]["maximum_output_tokens_per_call"] = True
+    boolean_limit = tmp_path / "boolean-limit.json"
+    boolean_limit.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(CertificationFailure, match="c2.live_output_limit_invalid"):
+        load_live_config(boolean_limit)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "failure_code"),
+    [
+        ("provider_id", "caller-selected-provider", "c2.live_config_boundary_invalid"),
+        ("calls_per_route", 201, "c2.live_config_invalid"),
+        ("requests_per_minute", 21, "c2.live_config_invalid"),
+        ("budget_cap_usd", 0.250001, "c2.live_config_invalid"),
+    ],
+)
+def test_c2_live_config_freezes_provider_volume_rate_and_budget(
+    tmp_path: Path, field: str, value: object, failure_code: str
+) -> None:
+    config = json.loads(CONFIG_PATH.read_text("utf-8"))
+    config[field] = value
+    path = tmp_path / f"invalid-{field}.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(CertificationFailure, match=failure_code):
+        load_live_config(path)
 
 
 def test_c2_live_quota_circuit_stops_repeated_429_requests(
@@ -324,3 +382,72 @@ def test_c2_live_quota_circuit_stops_repeated_429_requests(
     assert report["provider_request_count"] == 6
     assert report["successful_call_count"] == 0
     assert report["quota_circuit_open_routes"] == ["capability", "economic"]
+
+
+def test_c2_live_non_stop_failure_keeps_only_allowlisted_scalar_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "synthetic-provider-credential-value"
+    injected_finish_reason = "secret-provider-text-must-not-survive"
+    monkeypatch.setenv("GEMINI_API_KEY", secret)
+    route_attempts = {"economic": 0, "capability": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, content=b"official-pricing-snapshot")
+        model_id = request.url.path.split("/")[-1].split(":")[0]
+        route_id = "economic" if model_id == "gemini-3.1-flash-lite" else "capability"
+        route_attempts[route_id] += 1
+        if route_id == "economic" and route_attempts[route_id] in {1, 2}:
+            return httpx.Response(
+                200,
+                json={
+                    "candidates": [
+                        {
+                            "finishReason": "MAX_TOKENS"
+                            if route_attempts[route_id] == 1
+                            else injected_finish_reason,
+                            "content": {"parts": [{"text": "response-body-must-not-survive"}]},
+                        }
+                    ],
+                    "usageMetadata": {
+                        "promptTokenCount": 20,
+                        "candidatesTokenCount": 0,
+                        "thoughtsTokenCount": 384,
+                        "totalTokenCount": 404,
+                    },
+                },
+            )
+        return httpx.Response(429, json={"error": {"detail": "provider-body-must-not-survive"}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        report = run_gemini_live(
+            tmp_path,
+            candidate_oid="c" * 40,
+            client=client,
+            sleeper=lambda _: None,
+        )
+    assert report["status"] == "blocked"
+    assert route_attempts == {"economic": 5, "capability": 3}
+    first = next(row for row in report["failure_receipts"] if row["call_id"] == "economic-0001")
+    assert first == {
+        "call_id": "economic-0001",
+        "route_id": "economic",
+        "failure_code": "llm.incomplete_output",
+        "provider_http_status": 200,
+        "finish_reason": "MAX_TOKENS",
+        "prompt_token_count": 20,
+        "candidate_token_count": 0,
+        "thought_token_count": 384,
+        "total_token_count": 404,
+    }
+    second = next(row for row in report["failure_receipts"] if row["call_id"] == "economic-0002")
+    assert second["finish_reason"] == "UNRECOGNIZED"
+    evidence = (tmp_path / "live-provider-receipts.json").read_text("utf-8")
+    for forbidden in (
+        secret,
+        injected_finish_reason,
+        "response-body-must-not-survive",
+        "provider-body-must-not-survive",
+    ):
+        assert forbidden not in evidence

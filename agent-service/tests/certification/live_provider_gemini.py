@@ -43,12 +43,31 @@ ALLOWED_ORIGIN = "https://generativelanguage.googleapis.com"
 ALLOWED_API_VERSION = "v1beta"
 ALLOWED_PRICING_SOURCE = "https://ai.google.dev/gemini-api/docs/pricing"
 ALLOWED_MODELS = {"gemini-3.1-flash-lite", "gemini-3.6-flash"}
+EXPECTED_ROUTE_MODELS = {
+    "economic": "gemini-3.1-flash-lite",
+    "capability": "gemini-3.6-flash",
+}
+ALLOWED_FINISH_REASONS = {
+    "FINISH_REASON_UNSPECIFIED",
+    "STOP",
+    "MAX_TOKENS",
+    "SAFETY",
+    "RECITATION",
+    "LANGUAGE",
+    "OTHER",
+    "BLOCKLIST",
+    "PROHIBITED_CONTENT",
+    "SPII",
+    "MALFORMED_FUNCTION_CALL",
+    "IMAGE_SAFETY",
+}
 
 
 @dataclass(frozen=True, slots=True)
 class LiveRoute:
     route_id: str
     model_id: str
+    maximum_output_tokens_per_call: int
     input_price: float
     output_price: float
 
@@ -62,7 +81,6 @@ class LiveConfig:
     calls_per_route: int
     requests_per_minute: int
     maximum_input_tokens_per_call: int
-    maximum_output_tokens_per_call: int
     budget_cap_usd: float
     pricing_source_url: str
     pricing_retrieved_on: str
@@ -76,6 +94,12 @@ def _number(value: object, *, code: str) -> float:
     if not math.isfinite(number) or number < 0:
         raise CertificationFailure(code)
     return number
+
+
+def _positive_integer(value: object, *, code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise CertificationFailure(code)
+    return value
 
 
 def load_live_config(path: Path = CONFIG_PATH) -> LiveConfig:
@@ -92,16 +116,16 @@ def load_live_config(path: Path = CONFIG_PATH) -> LiveConfig:
         "calls_per_route",
         "requests_per_minute",
         "maximum_input_tokens_per_call",
-        "maximum_output_tokens_per_call",
         "budget_cap_usd",
         "pricing_source_url",
         "pricing_retrieved_on",
         "routes",
     }
-    if not isinstance(raw, dict) or set(raw) != required or raw["schema_version"] != "1.0":
+    if not isinstance(raw, dict) or set(raw) != required or raw["schema_version"] != "1.1":
         raise CertificationFailure("c2.live_config_invalid")
     if (
-        raw["api_origin"] != ALLOWED_ORIGIN
+        raw["provider_id"] != PROVIDER_ID
+        or raw["api_origin"] != ALLOWED_ORIGIN
         or raw["api_version"] != ALLOWED_API_VERSION
         or raw["pricing_source_url"] != ALLOWED_PRICING_SOURCE
         or raw["credential_environment_variable"] != "GEMINI_API_KEY"
@@ -115,17 +139,23 @@ def load_live_config(path: Path = CONFIG_PATH) -> LiveConfig:
         if not isinstance(row, dict) or set(row) != {
             "route_id",
             "model_id",
+            "maximum_output_tokens_per_call",
             "input_usd_per_million_tokens",
             "output_usd_per_million_tokens",
         }:
             raise CertificationFailure("c2.live_routes_invalid")
         model_id = str(row["model_id"])
-        if model_id not in ALLOWED_MODELS:
+        route_id = str(row["route_id"])
+        if model_id not in ALLOWED_MODELS or EXPECTED_ROUTE_MODELS.get(route_id) != model_id:
             raise CertificationFailure("c2.live_model_not_allowlisted")
         routes.append(
             LiveRoute(
-                route_id=str(row["route_id"]),
+                route_id=route_id,
                 model_id=model_id,
+                maximum_output_tokens_per_call=_positive_integer(
+                    row["maximum_output_tokens_per_call"],
+                    code="c2.live_output_limit_invalid",
+                ),
                 input_price=_number(
                     row["input_usd_per_million_tokens"],
                     code="c2.live_price_invalid",
@@ -138,12 +168,13 @@ def load_live_config(path: Path = CONFIG_PATH) -> LiveConfig:
         )
     if {route.route_id for route in routes} != {"economic", "capability"}:
         raise CertificationFailure("c2.live_routes_invalid")
-    calls = int(raw["calls_per_route"])
-    rpm = int(raw["requests_per_minute"])
-    input_limit = int(raw["maximum_input_tokens_per_call"])
-    output_limit = int(raw["maximum_output_tokens_per_call"])
+    calls = _positive_integer(raw["calls_per_route"], code="c2.live_config_invalid")
+    rpm = _positive_integer(raw["requests_per_minute"], code="c2.live_config_invalid")
+    input_limit = _positive_integer(
+        raw["maximum_input_tokens_per_call"], code="c2.live_config_invalid"
+    )
     budget = _number(raw["budget_cap_usd"], code="c2.live_budget_invalid")
-    if calls < 200 or rpm < 1 or rpm > 120 or input_limit < 1 or output_limit < 1 or budget <= 0:
+    if calls != 200 or rpm != 20 or budget <= 0 or budget > 0.25:
         raise CertificationFailure("c2.live_config_invalid")
     config = LiveConfig(
         provider_id=str(raw["provider_id"]),
@@ -153,7 +184,6 @@ def load_live_config(path: Path = CONFIG_PATH) -> LiveConfig:
         calls_per_route=calls,
         requests_per_minute=rpm,
         maximum_input_tokens_per_call=input_limit,
-        maximum_output_tokens_per_call=output_limit,
         budget_cap_usd=budget,
         pricing_source_url=str(raw["pricing_source_url"]),
         pricing_retrieved_on=str(raw["pricing_retrieved_on"]),
@@ -169,7 +199,7 @@ def projected_maximum_cost(config: LiveConfig) -> float:
         config.calls_per_route
         * (
             config.maximum_input_tokens_per_call * route.input_price
-            + config.maximum_output_tokens_per_call * route.output_price
+            + route.maximum_output_tokens_per_call * route.output_price
         )
         / 1_000_000
         for route in config.routes
@@ -184,13 +214,58 @@ def _percentile(values: list[float], quantile: float) -> float:
     return ordered[index]
 
 
+def _safe_token_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _safe_provider_observation(response: httpx.Response) -> dict[str, Any]:
+    observation: dict[str, Any] = {"provider_http_status": response.status_code}
+    if response.status_code >= 400:
+        return observation
+    try:
+        body = response.json()
+        first = body["candidates"][0]
+        usage = body["usageMetadata"]
+    except (IndexError, KeyError, TypeError, ValueError):
+        return observation
+    finish_reason = first.get("finishReason")
+    observation["finish_reason"] = (
+        finish_reason if finish_reason in ALLOWED_FINISH_REASONS else "UNRECOGNIZED"
+    )
+    for source, target in (
+        ("promptTokenCount", "prompt_token_count"),
+        ("candidatesTokenCount", "candidate_token_count"),
+        ("thoughtsTokenCount", "thought_token_count"),
+        ("totalTokenCount", "total_token_count"),
+    ):
+        count = _safe_token_count(usage.get(source))
+        if count is not None:
+            observation[target] = count
+    return observation
+
+
+class _ContentFreeObservingClient:
+    """Delegate HTTP while retaining only allowlisted scalar response metadata."""
+
+    def __init__(self, client: httpx.Client) -> None:
+        self._client = client
+        self.last_observation: dict[str, Any] = {}
+
+    def post(self, *args: Any, **kwargs: Any) -> httpx.Response:
+        response = self._client.post(*args, **kwargs)
+        self.last_observation = _safe_provider_observation(response)
+        return response
+
+
 def _call_once(
     client: httpx.Client,
     *,
     config: LiveConfig,
     route: LiveRoute,
     api_key: str,
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, Any] | None, str | None, dict[str, Any]]:
     prompt = (
         "Return one JSON object with the boolean field ok set to true. "
         "Do not add any other fields."
@@ -202,6 +277,7 @@ def _call_once(
         for selected in certified_gemini_routes().routes
         if selected.model_id == route.model_id
     )
+    observer = _ContentFreeObservingClient(client)
     adapter = GeminiModelAdapter(
         input_resolver=lambda reference: prompt
         if reference == input_ref
@@ -212,7 +288,7 @@ def _call_once(
             "required": ["ok"],
             "additionalProperties": False,
         },
-        client=client,
+        client=observer,  # type: ignore[arg-type]
     )
     started = time.perf_counter()
     try:
@@ -223,7 +299,7 @@ def _call_once(
                 input_ref=input_ref,
                 input_sha256=input_sha256,
                 required_capabilities=frozenset({"json"}),
-                max_output_tokens=config.maximum_output_tokens_per_call,
+                max_output_tokens=route.maximum_output_tokens_per_call,
             ),
             ProviderCredential(
                 PROVIDER_ID,
@@ -238,7 +314,7 @@ def _call_once(
             input_tokens < 1
             or output_tokens < 1
             or input_tokens > config.maximum_input_tokens_per_call
-            or output_tokens > config.maximum_output_tokens_per_call
+            or output_tokens > route.maximum_output_tokens_per_call
             or result.payload != {"ok": True}
         ):
             raise AdapterFailure("llm.schema_invalid", retryable=False)
@@ -257,9 +333,10 @@ def _call_once(
                 "response_sha256": result.output_sha256,
             },
             None,
+            observer.last_observation,
         )
     except AdapterFailure as error:
-        return None, error.code
+        return None, error.code, observer.last_observation
 
 
 def run_gemini_live(
@@ -319,7 +396,7 @@ def run_gemini_live(
                         sleeper(remaining)
                 last_started = time.perf_counter()
                 provider_request_count += 1
-                receipt, failure = _call_once(
+                receipt, failure, observation = _call_once(
                     selected,
                     config=config,
                     route=route,
@@ -337,6 +414,7 @@ def run_gemini_live(
                             "call_id": call_id,
                             "route_id": route.route_id,
                             "failure_code": failure or "provider.invalid_response",
+                            **observation,
                         }
                     )
                     continue
@@ -375,6 +453,14 @@ def run_gemini_live(
             {
                 "route_id": route.route_id,
                 "model_id": route.model_id,
+                "maximum_input_tokens_per_call": config.maximum_input_tokens_per_call,
+                "maximum_output_tokens_per_call": route.maximum_output_tokens_per_call,
+                "projected_maximum_cost_usd": config.calls_per_route
+                * (
+                    config.maximum_input_tokens_per_call * route.input_price
+                    + route.maximum_output_tokens_per_call * route.output_price
+                )
+                / 1_000_000,
                 "call_count": len(rows),
                 "failure_count": sum(
                     row["route_id"] == route.route_id for row in failures
