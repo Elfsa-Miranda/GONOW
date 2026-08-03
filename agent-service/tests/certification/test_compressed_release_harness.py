@@ -23,6 +23,7 @@ from c4_recovery_soak import (  # noqa: E402
     _handle_count,
     _rss_bytes,
     _windows_process_api,
+    run_c4,
     run_c4_fast,
     run_real_soak,
 )
@@ -135,8 +136,8 @@ def test_c4_binary_sample_stream_rejects_partial_record(tmp_path: Path) -> None:
         _decode_soak_samples(sample_path)
 
 
-def test_c4_formal_soak_contract_rejects_same_process_and_weak_evidence() -> None:
-    valid = {
+def _valid_formal_soak_report() -> dict[str, object]:
+    return {
         "status": "passed",
         "soak_id": "c4-real-resource-soak-v1",
         "target_seconds": 14_400,
@@ -163,6 +164,10 @@ def test_c4_formal_soak_contract_rejects_same_process_and_weak_evidence() -> Non
         "samples_artifact_sha256": "a" * 64,
         "child_result_sha256": "b" * 64,
     }
+
+
+def test_c4_formal_soak_contract_rejects_same_process_and_weak_evidence() -> None:
+    valid = _valid_formal_soak_report()
     assert _formal_soak_contract_failures(valid) == []
 
     mutations = {
@@ -179,6 +184,52 @@ def test_c4_formal_soak_contract_rejects_same_process_and_weak_evidence() -> Non
         tampered = dict(valid)
         tampered[field] = invalid_value
         assert _formal_soak_contract_failures(tampered), field
+
+
+def test_c4_gate_directly_binds_the_soak_samples_source(tmp_path: Path) -> None:
+    samples_path = tmp_path / "soak-samples.json"
+    samples_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "soak_id": "c4-real-resource-soak-v1",
+                "samples": [],
+            },
+            sort_keys=True,
+        ),
+        "utf-8",
+    )
+    soak = _valid_formal_soak_report()
+    (tmp_path / "soak-report.json").write_text(
+        json.dumps(soak, sort_keys=True), "utf-8"
+    )
+
+    report = run_c4(tmp_path, "c" * 40)
+
+    matching_sources = [
+        source
+        for source in report["source_artifacts"]
+        if source["path"] == "soak-samples.json"
+    ]
+    assert report["status"] == "passed"
+    assert len(matching_sources) == 1
+    assert matching_sources[0]["sha256"]
+
+
+def test_c4_gate_fails_closed_when_soak_samples_are_missing(tmp_path: Path) -> None:
+    soak = _valid_formal_soak_report()
+    (tmp_path / "soak-report.json").write_text(
+        json.dumps(soak, sort_keys=True), "utf-8"
+    )
+
+    report = run_c4(tmp_path, "c" * 40)
+
+    assert report["status"] == "failed"
+    assert "c4.soak_samples_missing" in report["blocker_codes"]
+    assert not any(
+        source["path"] == "soak-samples.json"
+        for source in report["source_artifacts"]
+    )
 
 
 def test_c5_fault_catalog_and_short_observation_are_executable(tmp_path: Path) -> None:

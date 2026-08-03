@@ -1153,6 +1153,7 @@ def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
     candidate = require_candidate_oid(candidate_oid)
     fast = run_c4_fast(evidence_root)
     soak_path = evidence_root / "soak-report.json"
+    samples_path = evidence_root / "soak-samples.json"
     blocker_codes: list[str] = []
     if soak_path.is_file():
         soak = json.loads(soak_path.read_text("utf-8"))
@@ -1168,6 +1169,8 @@ def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
     virtual = fast["virtual"]
     judge = fast["judge"]
     soak_contract_failures = _formal_soak_contract_failures(soak)
+    if soak_path.is_file() and not samples_path.is_file():
+        blocker_codes.append("c4.soak_samples_missing")
     passed = (
         fault["minimum_schedules_per_killpoint_outcome"] >= 20
         and fault["stale_worker_denial_failure_count"] == 0
@@ -1177,6 +1180,7 @@ def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
         and virtual["fake_provider_lifecycle_count"] >= 100_000
         and virtual["fake_provider_unknown_outcome_count"] == 0
         and not soak_contract_failures
+        and samples_path.is_file()
         and judge["annotation_count"] >= 400
         and judge["minimum_primary_slice_annotations"] >= 50
         and judge["judge_mechanical_gap_pp"] <= 5
@@ -1228,6 +1232,8 @@ def run_c4(evidence_root: Path, candidate_oid: str) -> dict[str, Any]:
     ]
     if soak_path.is_file():
         sources.append(source_artifact(evidence_root, "soak-report.json"))
+    if samples_path.is_file():
+        sources.append(source_artifact(evidence_root, "soak-samples.json"))
     report = gate_report(
         gate_id="C4",
         candidate_oid=candidate,
