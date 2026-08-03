@@ -543,6 +543,15 @@ if ($RunnerText -notmatch 'if \(\$TaskIdValue -ceq ''TASK-P10-011''\)' -or
     $RunnerText -notmatch 'Get-P10011LivePullRequestState' -or
     $RunnerText -notmatch 'Invoke-RestMethod -Method Get' -or
     $RunnerText -notmatch 'X-GitHub-Api-Version' -or
+    $RunnerText -notmatch 'branches/main/protection' -or
+    $RunnerText -notmatch "GetEnvironmentVariable\('GH_TOKEN','Process'\)" -or
+    $RunnerText -notmatch 'branch_protection_required_check_set_mismatch' -or
+    $RunnerText -notmatch 'branch_protection_enforce_admins' -or
+    $RunnerText -notmatch 'branch_protection_requires_pull_request' -or
+    $RunnerText -notmatch 'branch_protection_allows_force_push' -or
+    $RunnerText -notmatch 'branch_protection_allows_deletion' -or
+    $RunnerText -notmatch 'branch_protection_requires_linear_history' -or
+    $RunnerText -notmatch 'branch_protection_management_authorized=\$false' -or
     $RunnerText -notmatch 'live_query_failure_count' -or
     $RunnerText -notmatch 'task_card_binding=\$CardBinding' -or
     $RunnerText -notmatch 'acceptance_attestation_sha256' -or
@@ -560,7 +569,42 @@ if ($RunnerText -notmatch 'if \(\$TaskIdValue -ceq ''TASK-P10-011''\)' -or
     $RunnerText -notmatch 'p10_011_security_failed' -or
     $RunnerText -notmatch 'p10_011_evidence_failed' -or
     $RunnerText -notmatch 'p10_011_rollback_verification_failed') {
-  throw 'negative: P10-011 must bind exact Phase 10 attestations and PR refs/checks, perform only a two-parent non-force merge with tree equality, record zero review requests, and retain revert-PR rollback evidence'
+  throw 'negative: P10-011 must bind exact Phase 10 attestations, authenticated main protection, PR refs/checks, a two-parent non-force tree-equal merge, zero review requests, and revert-PR rollback evidence'
+}
+$P10011LiveAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-P10011LivePullRequestState'},$true)
+if($null-eq$P10011LiveAst){throw 'negative: P10-011 live verifier function is unavailable for behavioral protection tests'}
+. ([ScriptBlock]::Create($P10011LiveAst.Extent.Text))
+$script:P10011ProtectionAvailable=$true
+$script:P10011ProtectionForcePush=$false
+$P10011Head='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+$P10011Merge='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+$P10011Observation=[pscustomobject]@{pr_number=7;head_oid=$P10011Head;merge_commit_sha=$P10011Merge}
+function Invoke-RestMethod {
+  [CmdletBinding()]
+  param([string]$Method,[string]$Uri,[hashtable]$Headers,[int]$TimeoutSec)
+  if($Uri-cmatch'/pulls/7$'){return [pscustomobject]@{number=7;merged=$true;state='closed';merge_commit_sha=$P10011Merge;base=[pscustomobject]@{ref='main';repo=[pscustomobject]@{full_name='Elfsa-Miranda/GO_NOW'}};head=[pscustomobject]@{ref='codex/gonow-agent-landing';sha=$P10011Head};requested_reviewers=@();requested_teams=@()}}
+  if($Uri-cmatch'/check-runs\?'){return [pscustomobject]@{check_runs=@('agent-required','baseline-and-candidate','tracked-and-history'|ForEach-Object{[pscustomobject]@{name=$_;status='completed';conclusion='success'}})}}
+  if($Uri-cmatch"/git/commits/$P10011Head$"){return [pscustomobject]@{tree=[pscustomobject]@{sha='cccccccccccccccccccccccccccccccccccccccc'}}}
+  if($Uri-cmatch"/git/commits/$P10011Merge$"){return [pscustomobject]@{parents=@([pscustomobject]@{sha='1'},[pscustomobject]@{sha='2'});tree=[pscustomobject]@{sha='cccccccccccccccccccccccccccccccccccccccc'}}}
+  if($Uri-cmatch'/branches/main/protection$'){
+    if(-not$script:P10011ProtectionAvailable){throw 'Branch not protected'}
+    return [pscustomobject]@{required_status_checks=[pscustomobject]@{strict=$true;checks=@('agent-required','baseline-and-candidate','tracked-and-history'|ForEach-Object{[pscustomobject]@{context=$_}})};enforce_admins=[pscustomobject]@{enabled=$true};required_pull_request_reviews=[pscustomobject]@{required_approving_review_count=0};allow_force_pushes=[pscustomobject]@{enabled=$script:P10011ProtectionForcePush};allow_deletions=[pscustomobject]@{enabled=$false};required_linear_history=[pscustomobject]@{enabled=$false}}
+  }
+  throw "unexpected URI: $Uri"
+}
+$P10011PreviousToken=$env:GH_TOKEN;$env:GH_TOKEN='test-owner-token'
+try {
+  $P10011Protected=Get-P10011LivePullRequestState -Observation $P10011Observation
+  if(-not[bool]$P10011Protected.passed-or[int]$P10011Protected.checks.branch_protection_query_failure_count-ne0){throw 'negative: exact protected-main contract must pass the P10-011 live verifier'}
+  $script:P10011ProtectionAvailable=$false
+  $P10011Unprotected=Get-P10011LivePullRequestState -Observation $P10011Observation
+  if([bool]$P10011Unprotected.passed-or[int]$P10011Unprotected.checks.branch_protection_query_failure_count-ne1){throw 'negative: unprotected main must fail closed with one protection query failure'}
+  $script:P10011ProtectionAvailable=$true;$script:P10011ProtectionForcePush=$true
+  $P10011ForceEnabled=Get-P10011LivePullRequestState -Observation $P10011Observation
+  if([bool]$P10011ForceEnabled.passed-or-not[bool]$P10011ForceEnabled.checks.branch_protection_allows_force_push){throw 'negative: protected main that allows force pushes must fail closed'}
+} finally {
+  if($null-eq$P10011PreviousToken){Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue}else{$env:GH_TOKEN=$P10011PreviousToken}
+  Remove-Item Function:\Invoke-RestMethod -ErrorAction SilentlyContinue
 }
 $ReleaseRouteIndex=$RunnerText.IndexOf("if (`$TaskIdValue -ceq 'TASK-P10-011')",[StringComparison]::Ordinal)
 $GenericPhaseRouteIndex=$RunnerText.IndexOf("if (`$TaskIdValue -cmatch '^TASK-P",[StringComparison]::Ordinal)
