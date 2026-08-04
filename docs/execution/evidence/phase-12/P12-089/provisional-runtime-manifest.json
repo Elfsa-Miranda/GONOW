@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "archive_id": "PHASE12-PROVISIONAL-ARCHITECTURE-ARCHIVE",
+  "execution_mode": "local_provisional",
+  "worktree": "D:\\GO_NOW-repair-phase12-architecture-archive",
+  "branch": "codex/repair-phase12-architecture-archive",
+  "source_checkpoint_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
+  "created_from_clean_status": true,
+  "formal_governance_branch_created": false,
+  "specialist_branch_count": 0,
+  "specialist_worktree_count": 0,
+  "formal_selection_status": "pending",
+  "phase11_source_regression": {
+    "head_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
+    "ci_gates": {"passed": 15, "total": 15},
+    "python_unit_tests": {"passed": 695, "failed": 0, "skipped": 0, "xfailed": 0},
+    "contract_tests": {"passed": 182, "failed": 0, "skipped": 0, "xfailed": 0},
+    "evidence_boundary": "source checkpoint snapshot; affected regression for this archive is recorded separately"
+  },
+  "affected_regression": {
+    "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File agent-service/scripts/ci.ps1 -Stage All -ReportRoot D:\\GO_NOW-phase12-archive-ci-20260804",
+    "exit_code": 0,
+    "ci_gate_count": 15,
+    "ci_gate_failures": 0,
+    "mandatory_skip_count": 0,
+    "xfailed": 0,
+    "dart_version": "3.11.5",
+    "python_unit_tests": {"passed": 695, "failed": 0, "errors": 0, "skipped": 0},
+    "contract_tests": {"passed": 182, "failed": 0, "errors": 0, "skipped": 0},
+    "ci_summary_sha256": "4045abc1a52010ef0547206fbcb60e92afb327f0c7652be1ef01d7c7114cfa8b",
+    "unit_junit_sha256": "31a7cc87fff73205c6dd02fad440d20b44727d452c2272e032b73fcdec464128",
+    "contract_junit_sha256": "60b7338214a73cf28604d702f09cee3c5b258a8012521696a51ec2a1f8a1f759",
+    "report_location": "external local path D:\\GO_NOW-phase12-archive-ci-20260804; hashes are retained in-repository",
+    "repository_dirty_count_before": 20,
+    "repository_dirty_count_after": 20,
+    "unexpected_repository_write_count": 0
+  },
+  "runtime_change_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T13:47:44.5953793+08:00"
+}

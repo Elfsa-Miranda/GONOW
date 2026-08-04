@@ -303,3 +303,25 @@ Phase 11 adds a PostgreSQL-backed knowledge lifecycle, tenant/ACL hard filters, 
 - First checks: inspect the feature-flag generation, tenant/principal context, active knowledge alias, deletion tombstone, P11-009 quality manifest, and Worker error code before retrying.
 
 Operational details: [RAG architecture](docs/architecture/rag.md), [rollback](docs/runbooks/rag-rollback.md), [knowledge deletion](docs/runbooks/knowledge-deletion.md), and [citation contract](docs/api/rag-citations.md).
+
+## Release C dormant architecture archive (Phase 12 local provisional)
+
+Phase 12 currently adds documentation and machine-verifiable guardrails only. It does not make a
+formal Release C selection, add a runtime dependency, change a public contract, create a specialist
+branch, allocate production traffic, or write production data. The running target remains the
+high-quality single itinerary Agent with `agent-api` and `agent-worker` as its two processes.
+
+The archive covers three dormant non-Multi-Agent candidates: explicit structured Memory, a
+deterministic cost router, and migration of one legacy write entry to a typed Domain Command. Each
+candidate is separately activatable and reversible, but exactly one may be selected only after a
+stable Release B and real, calibrated failure/cost/load evidence. Multi-Agent remains explicitly
+deferred with zero implementation commits and zero allocation.
+
+There is nothing to enable from this archive. Keep every candidate allocation at zero and continue
+using the existing single-Agent path. If a later formal selection is authorized, follow the XOR
+governance runbook and create only the selected work-package artifacts; reverting this documentation
+commit removes the dormant archive without changing runtime behavior or data.
+
+See [Release C selection architecture](docs/architecture/release-c-selection.md),
+[governance and rollback](docs/runbooks/release-c-governance.md), and
+[selection interface boundary](docs/api/release-c-selection.md).
