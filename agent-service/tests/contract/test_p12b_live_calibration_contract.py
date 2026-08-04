@@ -418,3 +418,41 @@ def test_deepseek_v3_retries_only_four_retryable_failures(
     assert result["qualified_success_count"] == 10
     assert all(int(task["attempt_count"]) <= 2 for task in result["tasks"])
     assert result["redline_failure_count"] == 0
+
+
+def test_deepseek_v4_rechecks_only_three_failed_scenarios_without_retry(
+    ready_environment: None,
+) -> None:
+    hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host is not None
+        hosts.append(request.url.host)
+        return _handler(request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = live.run_deepseek_targeted_repair_calibration(
+            manifest_path=MANIFEST, client=client
+        )
+    assert result["status"] == "deepseek_targeted_repair_complete"
+    assert result["task_count"] == 3
+    assert result["live_call_count"] == 3
+    assert result["retry_count"] == 0
+    assert result["qualified_success_count"] == 3
+    assert result["quality_rule_failure_count"] == 0
+    assert {task["scenario_id"] for task in result["tasks"]} == {
+        "CR-V1-003",
+        "CR-V1-008",
+        "CR-V1-009",
+    }
+    assert result["limits"] == {
+        "max_tasks": 3,
+        "max_calls": 3,
+        "max_total_tokens": 10_000,
+        "max_cost_microusd": 250_000,
+        "max_retryable_retries": 0,
+    }
+    assert all(result["guardrails"].values())
+    assert hosts == ["api.deepseek.com"] * 3
+    assert result["candidate_allocation"] == 0
+    assert not result["benefit_claim_eligible"]

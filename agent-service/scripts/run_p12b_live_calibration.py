@@ -80,6 +80,11 @@ DEEPSEEK_V3_MAX_RETRIES = 4
 DEEPSEEK_V3_RETRYABLE_CODES = frozenset(
     {"llm.provider_unavailable", "llm.rate_limited", "llm.timeout"}
 )
+DEEPSEEK_V4_SCENARIO_IDS = frozenset({"CR-V1-003", "CR-V1-008", "CR-V1-009"})
+DEEPSEEK_V4_MAX_TASKS = 3
+DEEPSEEK_V4_MAX_CALLS = 3
+DEEPSEEK_V4_MAX_TOTAL_TOKENS = 10_000
+DEEPSEEK_V4_MAX_COST_MICROUSD = 250_000
 MANIFEST_REQUIRED_SHA256 = "84e4b409dc8f66fd34e2ac3458e0c50e1d65ecc0f04bb996ff35a88a1e5b9344"
 PRICE_SNAPSHOT_PATH = REPOSITORY_ROOT / "docs/execution/evidence/phase-12b/P12B-010/price-snapshot.json"
 
@@ -916,23 +921,40 @@ def run_calibration(
     return provisional
 
 
-def run_deepseek_quality_calibration(
-    *, manifest_path: Path, client: httpx.Client | None = None
+def _run_deepseek_quality_calibration(
+    *,
+    manifest_path: Path,
+    client: httpx.Client | None,
+    cohort: str,
+    schema_version: str,
+    scenario_ids: frozenset[str] | None,
+    max_tasks: int,
+    max_calls: int,
+    max_total_tokens: int,
+    max_cost_microusd: int,
+    max_retries: int,
+    complete_status: str,
+    repair_status: str,
 ) -> dict[str, Any]:
     """Certify DeepSeek quality across every stratum without a Gemini live arm."""
 
-    scenarios, manifest_sha256 = _load_manifest(manifest_path)
+    all_scenarios, manifest_sha256 = _load_manifest(manifest_path)
+    scenarios = tuple(
+        scenario
+        for scenario in all_scenarios
+        if scenario_ids is None or scenario["scenario_id"] in scenario_ids
+    )
     rates, price_snapshot_sha256 = _load_prices()
     limits = {
-        "max_tasks": DEEPSEEK_V3_MAX_TASKS,
-        "max_calls": DEEPSEEK_V3_MAX_CALLS,
-        "max_total_tokens": DEEPSEEK_V3_MAX_TOTAL_TOKENS,
-        "max_cost_microusd": DEEPSEEK_V3_MAX_COST_MICROUSD,
-        "max_retryable_retries": DEEPSEEK_V3_MAX_RETRIES,
+        "max_tasks": max_tasks,
+        "max_calls": max_calls,
+        "max_total_tokens": max_total_tokens,
+        "max_cost_microusd": max_cost_microusd,
+        "max_retryable_retries": max_retries,
     }
     if not os.environ.get("DEEPSEEK_API_KEY", ""):
         return {
-            "schema_version": "3.0",
+            "schema_version": schema_version,
             "status": "pending_key",
             "missing_environment_variables": ["DEEPSEEK_API_KEY"],
             "manifest_sha256": manifest_sha256,
@@ -949,12 +971,12 @@ def run_deepseek_quality_calibration(
             "attempts": [],
             "candidate_allocation": 0,
         }
-    if len(scenarios) != DEEPSEEK_V3_MAX_TASKS:
-        raise CalibrationError("calibration.deepseek_v3_scenario_count")
+    if len(scenarios) != max_tasks:
+        raise CalibrationError("calibration.deepseek_scenario_count")
     budget = CalibrationBudget(
-        call_limit=DEEPSEEK_V3_MAX_CALLS,
-        token_limit=DEEPSEEK_V3_MAX_TOTAL_TOKENS,
-        cost_limit_microusd=DEEPSEEK_V3_MAX_COST_MICROUSD,
+        call_limit=max_calls,
+        token_limit=max_total_tokens,
+        cost_limit_microusd=max_cost_microusd,
     )
     attempts: list[LiveAttempt] = []
     tasks: list[dict[str, Any]] = []
@@ -994,7 +1016,7 @@ def run_deepseek_quality_calibration(
             task["initial_failure_class"] = initial_failure
             if (
                 initial_failure in DEEPSEEK_V3_RETRYABLE_CODES
-                and retries < DEEPSEEK_V3_MAX_RETRIES
+                and retries < max_retries
             ):
                 retries += 1
                 retry = _execute_arm(
@@ -1034,15 +1056,11 @@ def run_deepseek_quality_calibration(
         bool(task["quality_rule_codes"]) for task in tasks
     )
     redlines = {
-        "task_cap_exceeded": int(len(tasks) > DEEPSEEK_V3_MAX_TASKS),
-        "call_cap_exceeded": int(len(attempts) > DEEPSEEK_V3_MAX_CALLS),
-        "token_cap_exceeded": int(
-            budget.total_tokens > DEEPSEEK_V3_MAX_TOTAL_TOKENS
-        ),
-        "cost_cap_exceeded": int(
-            budget.cost_microusd > DEEPSEEK_V3_MAX_COST_MICROUSD
-        ),
-        "retry_cap_exceeded": int(retries > DEEPSEEK_V3_MAX_RETRIES),
+        "task_cap_exceeded": int(len(tasks) > max_tasks),
+        "call_cap_exceeded": int(len(attempts) > max_calls),
+        "token_cap_exceeded": int(budget.total_tokens > max_total_tokens),
+        "cost_cap_exceeded": int(budget.cost_microusd > max_cost_microusd),
+        "retry_cap_exceeded": int(retries > max_retries),
         "secret_or_content_evidence_field": 0,
         "production_write": 0,
     }
@@ -1051,7 +1069,7 @@ def run_deepseek_quality_calibration(
         "all_strata_quality_qualified": candidate["qualified_success_count"]
         == len(scenarios),
         "schema_and_business_rules": quality_rule_failure_count == 0,
-        "bounded_retry": retries <= DEEPSEEK_V3_MAX_RETRIES
+        "bounded_retry": retries <= max_retries
         and all(int(task["attempt_count"]) <= 2 for task in tasks),
         "provider_availability": provider_failure_count == 0,
         "successful_task_p95_latency_lte_20s": (
@@ -1061,13 +1079,11 @@ def run_deepseek_quality_calibration(
     }
     quality_gate_passed = all(guardrails.values())
     result = {
-        "schema_version": "3.0",
+        "schema_version": schema_version,
         "status": (
-            "deepseek_quality_complete"
-            if quality_gate_passed
-            else "deepseek_quality_repair_required"
+            complete_status if quality_gate_passed else repair_status
         ),
-        "cohort": "deepseek-quality-v3",
+        "cohort": cohort,
         "manifest_sha256": manifest_sha256,
         "dataset_sha256": DATASET_SHA256,
         "price_snapshot_sha256": price_snapshot_sha256,
@@ -1109,8 +1125,46 @@ def run_deepseek_quality_calibration(
     )
     result["quality_gate_passed"] = all(result["guardrails"].values())
     if not result["quality_gate_passed"]:
-        result["status"] = "deepseek_quality_repair_required"
+        result["status"] = repair_status
     return result
+
+
+def run_deepseek_quality_calibration(
+    *, manifest_path: Path, client: httpx.Client | None = None
+) -> dict[str, Any]:
+    return _run_deepseek_quality_calibration(
+        manifest_path=manifest_path,
+        client=client,
+        cohort="deepseek-quality-v3",
+        schema_version="3.0",
+        scenario_ids=None,
+        max_tasks=DEEPSEEK_V3_MAX_TASKS,
+        max_calls=DEEPSEEK_V3_MAX_CALLS,
+        max_total_tokens=DEEPSEEK_V3_MAX_TOTAL_TOKENS,
+        max_cost_microusd=DEEPSEEK_V3_MAX_COST_MICROUSD,
+        max_retries=DEEPSEEK_V3_MAX_RETRIES,
+        complete_status="deepseek_quality_complete",
+        repair_status="deepseek_quality_repair_required",
+    )
+
+
+def run_deepseek_targeted_repair_calibration(
+    *, manifest_path: Path, client: httpx.Client | None = None
+) -> dict[str, Any]:
+    return _run_deepseek_quality_calibration(
+        manifest_path=manifest_path,
+        client=client,
+        cohort="deepseek-targeted-v4",
+        schema_version="4.0",
+        scenario_ids=DEEPSEEK_V4_SCENARIO_IDS,
+        max_tasks=DEEPSEEK_V4_MAX_TASKS,
+        max_calls=DEEPSEEK_V4_MAX_CALLS,
+        max_total_tokens=DEEPSEEK_V4_MAX_TOTAL_TOKENS,
+        max_cost_microusd=DEEPSEEK_V4_MAX_COST_MICROUSD,
+        max_retries=0,
+        complete_status="deepseek_targeted_repair_complete",
+        repair_status="deepseek_targeted_repair_required",
+    )
 
 
 def _atomic_write(path: Path, value: dict[str, Any]) -> None:
@@ -1130,7 +1184,13 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--cohort",
-        choices=("pilot", "expansion", "repair-v2", "deepseek-quality-v3"),
+        choices=(
+            "pilot",
+            "expansion",
+            "repair-v2",
+            "deepseek-quality-v3",
+            "deepseek-targeted-v4",
+        ),
         required=True,
     )
     parser.add_argument("--prior", type=Path)
@@ -1141,6 +1201,8 @@ def main() -> int:
     result = (
         run_deepseek_quality_calibration(manifest_path=args.manifest)
         if args.cohort == "deepseek-quality-v3"
+        else run_deepseek_targeted_repair_calibration(manifest_path=args.manifest)
+        if args.cohort == "deepseek-targeted-v4"
         else run_calibration(
             manifest_path=args.manifest,
             cohort=args.cohort,
