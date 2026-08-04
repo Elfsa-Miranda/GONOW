@@ -1,0 +1,28 @@
+{
+  "schema_version":"4.0",
+  "task_id":"TASK-P12B-060",
+  "enabler_id":"REPAIR-P12B-060-V4-PROMPT-SEMANTICS",
+  "status":"repair_required_one_business_failure",
+  "cohort":"deepseek-targeted-v4",
+  "source_checkpoint":{"external_reference":"control-repo-git-metadata:p12b-live/deepseek-targeted-v4-20260805.json","sha256":"804c3f160ffd9145c3e78f8eb752b57ec76cfc18979eeeea0f6ee49389c925c5","size_bytes":4432,"secret_material_persisted":0},
+  "limits":{"max_tasks":3,"max_calls":3,"max_total_tokens":10000,"max_cost_microusd":250000,"max_retryable_retries":0},
+  "raw_totals":{"task_count":3,"live_call_count":3,"retry_count":0,"qualified_success_count":2,"quality_rule_failure_count":1,"provider_failure_count":0,"total_tokens":3551,"total_cost_microusd":644,"total_cost_usd_estimate":0.000644,"total_cost_cny_at_policy_rate":0.005152,"cost_per_qualified_success_microusd":322,"successful_task_p95_latency_ms":3732,"production_write_count":0},
+  "latest_result_per_scenario_deepseek_certification":{"qualified_success_count":9,"denominator":10,"qualified_success_rate":0.9,"remaining_failed_scenario_ids":["CR-V1-003"],"method":"retain the seven v3 successes and replace the three v3 failures with their v4 results"},
+  "p12b_cumulative_v1_v2_v3_v4":{"live_call_count":29,"total_tokens":21909,"total_cost_microusd":4359,"total_cost_cny_at_policy_rate":0.034872},
+  "tasks":[
+    {"scenario_id":"CR-V1-003","status":"failed","failure_class":"quality.unique_item_ids","quality_rule_codes":["quality.unique_item_ids"],"attempt_count":1,"latency_ms":7401,"max_output_tokens":1280,"output_sha256":"32062f62b5cf4b74d1d6e9e4417c935a0fb2211a079630bfe9e1c63ad7341787"},
+    {"scenario_id":"CR-V1-008","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":3663,"max_output_tokens":768,"output_sha256":"1d9ff7eaa2ecc34a2fdd9b4962b960e210363495286f255b88d347ea758d449c"},
+    {"scenario_id":"CR-V1-009","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":3732,"max_output_tokens":768,"output_sha256":"16907a6af6721d03ccc73616d1c8d05aeb242290eeaec3acbcc9604c4968bb50"}
+  ],
+  "attempt_metering":[
+    {"scenario_id":"CR-V1-003","input_tokens":591,"output_tokens":849,"cache_hit_input_tokens":0,"cache_miss_input_tokens":591,"cost_microusd":321},
+    {"scenario_id":"CR-V1-008","input_tokens":588,"output_tokens":469,"cache_hit_input_tokens":512,"cache_miss_input_tokens":76,"cost_microusd":144},
+    {"scenario_id":"CR-V1-009","input_tokens":583,"output_tokens":471,"cache_hit_input_tokens":256,"cache_miss_input_tokens":327,"cost_microusd":179}
+  ],
+  "guardrails":{"all_targeted_scenarios_quality_qualified":false,"schema_and_business_rules":false,"bounded_retry":true,"provider_availability":true,"successful_task_p95_latency_lte_20s":true,"safety_redlines":true},
+  "redline_failure_count":0,
+  "candidate_allocation":0,
+  "benefit_claim_eligible":false,
+  "secret_material_persisted":0,
+  "claim_boundary":"DeepSeek-only targeted negative quality evidence; Gemini live baseline remains unavailable and no relative benefit claim is allowed."
+}
