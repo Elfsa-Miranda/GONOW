@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-990",
+  "phase": "Phase 12D",
+  "executed_at": "2026-08-04T18:35:46+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "88c538b1461be6a825d77dbd636b828767e8e898",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Run the prescribed complete 15-gate CI exactly once",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File agent-service/scripts/ci.ps1",
+      "exit_code": 0,
+      "stdout_tail": "15 gates passed; 736 unit passed in 186.21s; 183 contract passed in 94.81s",
+      "duration_seconds": 287.7,
+      "redaction_reason": "Only gate names, counts and durations are retained."
+    },
+    {
+      "step": 2,
+      "description": "Run the full Flutter regression exactly once",
+      "command": "flutter test --reporter expanded",
+      "exit_code": 0,
+      "stdout_tail": "124 tests passed",
+      "duration_seconds": 10.6,
+      "redaction_reason": "Metadata-only SafeLogger events and dependency notices are omitted."
+    },
+    {
+      "step": 3,
+      "description": "Attempt the prescribed P12D script from repository root",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File agent-service/scripts/run_p12d_failure_matrix.ps1",
+      "exit_code": 4,
+      "stdout_tail": "no tests ran; relative test path not found",
+      "duration_seconds": 1.5,
+      "redaction_reason": "The no-op invocation failure is retained exactly."
+    },
+    {
+      "step": 4,
+      "description": "Run the unchanged P12D RealPG/fault script from its required service working directory",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_p12d_failure_matrix.ps1",
+      "working_directory": "agent-service",
+      "exit_code": 0,
+      "stdout_tail": "52 passed in 98.39s; baseline=10000/10k; candidate=0/10k; excluded failures=0",
+      "duration_seconds": 100.2,
+      "redaction_reason": "Migration chatter is omitted; profile counts, hashes and durations are retained in regression-summary.json."
+    }
+  ]
+}

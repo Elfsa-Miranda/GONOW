@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-990",
+  "git_object_format": "sha1",
+  "head_oid": "88c538b1461be6a825d77dbd636b828767e8e898",
+  "artifacts": [
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/acceptance.md",
+      "sha256": "49250e5907a1f23e1f8e0a05a9c11de376b01b382c6214f52c1fa7f4b1faef0f",
+      "size_bytes": 2344,
+      "mime_type": "text/markdown",
+      "artifact_type": "p12d-local-acceptance-candidate",
+      "generated_by_step": "TASK-P12D-990:Evidence",
+      "generated_at": "2026-08-04T18:35:46+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/artifact-manifest.premerge.json",
+      "sha256": "1964d66b678e0b50e6c304cdcafd5a1f99e54d867f282e983c9d9f55d0538dc7",
+      "size_bytes": 3152,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-premerge-manifest",
+      "generated_by_step": "TASK-P12D-990:Evidence",
+      "generated_at": "2026-08-04T18:35:46+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-990/regression-summary.json",
+      "sha256": "f10fd29026bfdb6f7afadb4406c6c3c757387924e371ae255be2eeed04500914",
+      "size_bytes": 2274,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-complete-regression",
+      "generated_by_step": "TASK-P12D-990:Regression",
+      "generated_at": "2026-08-04T18:35:46+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-990/commands.json",
+      "sha256": "aac25fad95b5b7b7b2f6b240ddc0fc35db3561dca96112f1a5d7538fd9d01589",
+      "size_bytes": 2081,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-command-evidence",
+      "generated_by_step": "TASK-P12D-990:Evidence",
+      "generated_at": "2026-08-04T18:35:46+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-990/gate-results.json",
+      "sha256": "118c59d136820aa2cef6b1099bba9cf1d0ac2c3fa415497fead2a40433a416b2",
+      "size_bytes": 3196,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-gate-evidence",
+      "generated_by_step": "TASK-P12D-990:Evidence",
+      "generated_at": "2026-08-04T18:35:46+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/status/TASK-P12D-990.json",
+      "sha256": "2888d5dce2077517cba2f7c4f2fd17b8c54c847914a1d274b57eebfb2832ebf1",
+      "size_bytes": 1795,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-task-status",
+      "generated_by_step": "TASK-P12D-990:Evidence",
+      "generated_at": "2026-08-04T18:35:46+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    }
+  ]
+}
