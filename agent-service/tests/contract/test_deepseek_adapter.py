@@ -26,6 +26,7 @@ from app.models.deepseek import (  # noqa: E402
 from app.models.gateway import AdapterFailure, ModelInvocation, ProviderCredential  # noqa: E402
 from app.models.gemini import canonical_digest  # noqa: E402
 from app.models.json_schema import (  # noqa: E402
+    canonical_schema,
     canonical_schema_text,
     validation_rule_codes,
 )
@@ -285,3 +286,20 @@ def test_local_schema_validator_covers_closed_output_shapes(
     payload: dict[str, object], expected: str
 ) -> None:
     assert expected in validation_rule_codes(payload, TEST_SCHEMA)
+
+
+@pytest.mark.parametrize(
+    ("schema_type", "valid", "invalid"),
+    [
+        ("boolean", True, 1),
+        ("number", 1.25, True),
+        ("number", 0, float("inf")),
+        ("null", None, False),
+    ],
+)
+def test_local_schema_validator_covers_json_primitive_types(
+    schema_type: str, valid: object, invalid: object
+) -> None:
+    schema = canonical_schema({"type": schema_type})
+    assert validation_rule_codes(valid, schema) == ()
+    assert validation_rule_codes(invalid, schema) == ("schema.type",)

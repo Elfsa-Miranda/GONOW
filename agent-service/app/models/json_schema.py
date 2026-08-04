@@ -8,6 +8,7 @@ dependency while still enforcing the exact schema bytes sent to providers.
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -128,7 +129,15 @@ def _validate_definition(schema: dict[str, Any]) -> None:
     if unsupported:
         raise JsonSchemaContractError("schema.keyword_unsupported")
     expected_type = schema.get("type")
-    if expected_type not in {"object", "array", "string", "integer"}:
+    if expected_type not in {
+        "object",
+        "array",
+        "string",
+        "integer",
+        "number",
+        "boolean",
+        "null",
+    }:
         raise JsonSchemaContractError("schema.type_unsupported")
     properties = schema.get("properties", {})
     if expected_type == "object":
@@ -171,6 +180,13 @@ def _validate_value(
         "array": lambda item: isinstance(item, list),
         "string": lambda item: isinstance(item, str),
         "integer": lambda item: isinstance(item, int) and not isinstance(item, bool),
+        "number": lambda item: (
+            isinstance(item, (int, float))
+            and not isinstance(item, bool)
+            and math.isfinite(float(item))
+        ),
+        "boolean": lambda item: isinstance(item, bool),
+        "null": lambda item: item is None,
     }[expected_type](value)
     if not valid_type:
         failures.add("schema.type")
@@ -220,6 +236,9 @@ def _validate_value(
         pattern = schema.get("pattern")
         if pattern is not None and re.fullmatch(str(pattern), value) is None:
             failures.add("schema.pattern")
+        return
+
+    if expected_type in {"boolean", "null"}:
         return
 
     minimum = schema.get("minimum")
