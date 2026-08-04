@@ -30,6 +30,32 @@ SUPPORTED_KEYWORDS = frozenset(
     }
 )
 
+GEMINI_RESPONSE_SCHEMA_KEYWORDS = frozenset(
+    {
+        "$anchor",
+        "$defs",
+        "$id",
+        "$ref",
+        "additionalProperties",
+        "anyOf",
+        "description",
+        "enum",
+        "format",
+        "items",
+        "maximum",
+        "maxItems",
+        "minimum",
+        "minItems",
+        "oneOf",
+        "prefixItems",
+        "properties",
+        "propertyOrdering",
+        "required",
+        "title",
+        "type",
+    }
+)
+
 
 class JsonSchemaContractError(ValueError):
     def __init__(self, code: str) -> None:
@@ -66,6 +92,35 @@ def canonical_schema_text(schema: dict[str, Any]) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def project_provider_schema(
+    schema: dict[str, Any], *, allowed_keywords: frozenset[str]
+) -> dict[str, Any]:
+    """Remove unsupported provider hints while retaining the full local contract."""
+
+    canonical = canonical_schema(schema)
+
+    def project(node: Any, *, parent_keyword: str = "") -> Any:
+        if isinstance(node, list):
+            return [project(item, parent_keyword=parent_keyword) for item in node]
+        if not isinstance(node, dict):
+            return node
+        if parent_keyword == "properties":
+            return {
+                str(name): project(child)
+                for name, child in sorted(node.items())
+            }
+        return {
+            str(keyword): project(child, parent_keyword=str(keyword))
+            for keyword, child in sorted(node.items())
+            if str(keyword) in allowed_keywords
+        }
+
+    projected = project(canonical)
+    if not isinstance(projected, dict) or projected.get("type") != canonical.get("type"):
+        raise JsonSchemaContractError("schema.provider_projection_invalid")
+    return projected
 
 
 def _validate_definition(schema: dict[str, Any]) -> None:

@@ -17,7 +17,12 @@ from app.models.gateway import (
     ProviderCredential,
 )
 from app.models.ledger import TokenUsage
-from app.models.json_schema import canonical_schema, validation_rule_codes
+from app.models.json_schema import (
+    GEMINI_RESPONSE_SCHEMA_KEYWORDS,
+    canonical_schema,
+    project_provider_schema,
+    validation_rule_codes,
+)
 from app.models.routes import CertifiedModelRoute, CertifiedModelRoutes, ModelTier
 
 
@@ -107,6 +112,10 @@ class GeminiModelAdapter:
     ) -> None:
         self._input_resolver = input_resolver
         self._response_schema = canonical_schema(response_schema)
+        self._provider_response_schema = project_provider_schema(
+            self._response_schema,
+            allowed_keywords=GEMINI_RESPONSE_SCHEMA_KEYWORDS,
+        )
         self._output_validator = output_validator or (lambda _: ())
         self._client = client
 
@@ -176,7 +185,7 @@ class GeminiModelAdapter:
                 "temperature": 0,
                 "maxOutputTokens": invocation.max_output_tokens,
                 "responseMimeType": "application/json",
-                "responseJsonSchema": self._response_schema,
+                "responseJsonSchema": self._provider_response_schema,
                 "thinkingConfig": {"thinkingLevel": "low"},
             },
         }

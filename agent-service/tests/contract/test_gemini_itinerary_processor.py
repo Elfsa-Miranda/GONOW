@@ -82,6 +82,12 @@ def _response(request: httpx.Request, *, days: int) -> httpx.Response:
     assert request.url.host == "generativelanguage.googleapis.com"
     assert request.headers["x-goog-api-key"] == "synthetic-gemini-credential"
     assert request_body["generationConfig"]["responseMimeType"] == "application/json"
+    provider_schema = request_body["generationConfig"]["responseJsonSchema"]
+    serialized_schema = json.dumps(provider_schema, sort_keys=True)
+    assert "minLength" not in serialized_schema
+    assert "maxLength" not in serialized_schema
+    assert "pattern" not in serialized_schema
+    assert "uniqueItems" not in serialized_schema
     return httpx.Response(
         200,
         json={

@@ -366,3 +366,55 @@ def test_business_guardrails_emit_finite_rule_codes(
         quality_checks=request["hard_constraints"],
     )
     assert expected in codes
+
+
+def test_deepseek_v3_covers_all_strata_with_no_gemini_calls(
+    ready_environment: None,
+) -> None:
+    hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host is not None
+        hosts.append(request.url.host)
+        return _handler(request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = live.run_deepseek_quality_calibration(
+            manifest_path=MANIFEST, client=client
+        )
+    assert result["status"] == "deepseek_quality_complete"
+    assert result["task_count"] == 10
+    assert result["live_call_count"] == 10
+    assert result["retry_count"] == 0
+    assert result["qualified_success_count"] == 10
+    assert result["quality_rule_failure_count"] == 0
+    assert all(result["guardrails"].values())
+    assert set(hosts) == {"api.deepseek.com"}
+    assert result["candidate_allocation"] == 0
+    assert not result["benefit_claim_eligible"]
+
+
+def test_deepseek_v3_retries_only_four_retryable_failures(
+    ready_environment: None,
+) -> None:
+    failed_once: set[str] = set()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        prompt = body["messages"][-1]["content"]
+        scenario = _request_input(prompt)
+        destination = str(scenario["destination"])
+        if len(failed_once) < 4 and destination not in failed_once:
+            failed_once.add(destination)
+            return httpx.Response(503, json={"error": {"status": "UNAVAILABLE"}})
+        return _handler(request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = live.run_deepseek_quality_calibration(
+            manifest_path=MANIFEST, client=client
+        )
+    assert result["live_call_count"] == 14
+    assert result["retry_count"] == 4
+    assert result["qualified_success_count"] == 10
+    assert all(int(task["attempt_count"]) <= 2 for task in result["tasks"])
+    assert result["redline_failure_count"] == 0

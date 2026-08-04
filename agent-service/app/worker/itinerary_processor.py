@@ -178,6 +178,14 @@ def itinerary_business_rule_codes(
     return tuple(sorted(failures))
 
 
+def itinerary_max_output_tokens(requested_days: int) -> int:
+    """Bound JSON output by observed itinerary shape rather than a broad default."""
+
+    if requested_days < 1 or requested_days > 31:
+        raise WorkerExecutionError()
+    return min(4_096, max(768, requested_days * 256))
+
+
 @dataclass(frozen=True, slots=True)
 class ItineraryCostRoutingConfig:
     """Explicit local routing inputs; absence means exact legacy Gemini behavior."""
@@ -348,7 +356,7 @@ class GeminiItineraryProcessor:
         adapter = gemini_adapter
         self.last_route_decision = None
         requested_days = int(job.structured_input.get("days", 0))
-        max_output_tokens = min(8_192, max(1_024, requested_days * 512))
+        max_output_tokens = itinerary_max_output_tokens(requested_days)
 
         if self._cost_routing is not None:
             baseline_plan = gemini_routes.plan(required_capabilities)

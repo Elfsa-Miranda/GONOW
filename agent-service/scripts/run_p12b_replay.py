@@ -33,7 +33,7 @@ from app.models.deepseek import MODEL_ID as DEEPSEEK_MODEL_ID
 from app.models.deepseek import PROVIDER_ID as DEEPSEEK_PROVIDER_ID
 from app.models.deepseek import ROUTE_ID as DEEPSEEK_ROUTE_ID
 from app.models.gemini import canonical_digest, certified_gemini_routes
-from app.worker.itinerary_processor import _prompt
+from app.worker.itinerary_processor import _prompt, itinerary_max_output_tokens
 
 
 DATASET_SHA256 = "653297b4c18c28757d085490e524c5dbfc92a7ee7f75d7ca88ecc296ae4c1049"
@@ -323,9 +323,7 @@ def run_replay(
                 estimated_input_tokens=max(
                     1, (len(prompt.encode("utf-8")) + 3) // 4
                 ),
-                max_output_tokens=min(
-                    8_192, max(1_024, int(request["days"]) * 512)
-                ),
+                max_output_tokens=itinerary_max_output_tokens(int(request["days"])),
                 as_of_epoch_seconds=AS_OF_EPOCH_SECONDS,
             ),
             policy=policy,

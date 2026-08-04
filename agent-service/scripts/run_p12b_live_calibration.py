@@ -54,6 +54,7 @@ from app.worker.itinerary_processor import (  # noqa: E402
     ITINERARY_RESPONSE_SCHEMA,
     _prompt,
     itinerary_business_rule_codes,
+    itinerary_max_output_tokens,
 )
 from scripts.run_p12b_replay import (  # noqa: E402
     DATASET_SHA256,
@@ -71,6 +72,14 @@ REPAIR_V2_MAX_TASKS = 4
 REPAIR_V2_MAX_CALLS = 8
 REPAIR_V2_MAX_TOTAL_TOKENS = 40_000
 REPAIR_V2_MAX_COST_MICROUSD = 500_000
+DEEPSEEK_V3_MAX_TASKS = 10
+DEEPSEEK_V3_MAX_CALLS = 14
+DEEPSEEK_V3_MAX_TOTAL_TOKENS = 60_000
+DEEPSEEK_V3_MAX_COST_MICROUSD = 500_000
+DEEPSEEK_V3_MAX_RETRIES = 4
+DEEPSEEK_V3_RETRYABLE_CODES = frozenset(
+    {"llm.provider_unavailable", "llm.rate_limited", "llm.timeout"}
+)
 MANIFEST_REQUIRED_SHA256 = "84e4b409dc8f66fd34e2ac3458e0c50e1d65ecc0f04bb996ff35a88a1e5b9344"
 PRICE_SNAPSHOT_PATH = REPOSITORY_ROOT / "docs/execution/evidence/phase-12b/P12B-010/price-snapshot.json"
 
@@ -382,7 +391,11 @@ def _make_output_sensitive_key_count(value: Any) -> int:
     if isinstance(value, dict):
         return sum(
             int(
-                key != "secret_material_persisted"
+                key
+                not in {
+                    "secret_material_persisted",
+                    "secret_or_content_evidence_field",
+                }
                 and any(fragment in str(key).lower() for fragment in forbidden_fragments)
             )
             + _make_output_sensitive_key_count(child)
@@ -638,9 +651,7 @@ def _expansion_projection(
                 sort_keys=True,
             ).encode("utf-8")
         )
-        max_output = min(
-            8_192, max(1_024, int(scenario["request"]["days"]) * 512)
-        )
+        max_output = itinerary_max_output_tokens(int(scenario["request"]["days"]))
         baseline_plan = certified_gemini_routes().plan(
             _required_capabilities(scenario["request"])
         )
@@ -745,8 +756,8 @@ def run_calibration(
             prompt = _prompt(scenario["request"])
             input_sha256 = canonical_digest(prompt)
             input_ref = f"context://sha256/{input_sha256}"
-            max_output_tokens = min(
-                8_192, max(1_024, int(scenario["request"]["days"]) * 512)
+            max_output_tokens = itinerary_max_output_tokens(
+                int(scenario["request"]["days"])
             )
             baseline_plan = certified_gemini_routes().plan(
                 _required_capabilities(scenario["request"])
@@ -905,6 +916,203 @@ def run_calibration(
     return provisional
 
 
+def run_deepseek_quality_calibration(
+    *, manifest_path: Path, client: httpx.Client | None = None
+) -> dict[str, Any]:
+    """Certify DeepSeek quality across every stratum without a Gemini live arm."""
+
+    scenarios, manifest_sha256 = _load_manifest(manifest_path)
+    rates, price_snapshot_sha256 = _load_prices()
+    limits = {
+        "max_tasks": DEEPSEEK_V3_MAX_TASKS,
+        "max_calls": DEEPSEEK_V3_MAX_CALLS,
+        "max_total_tokens": DEEPSEEK_V3_MAX_TOTAL_TOKENS,
+        "max_cost_microusd": DEEPSEEK_V3_MAX_COST_MICROUSD,
+        "max_retryable_retries": DEEPSEEK_V3_MAX_RETRIES,
+    }
+    if not os.environ.get("DEEPSEEK_API_KEY", ""):
+        return {
+            "schema_version": "3.0",
+            "status": "pending_key",
+            "missing_environment_variables": ["DEEPSEEK_API_KEY"],
+            "manifest_sha256": manifest_sha256,
+            "dataset_sha256": DATASET_SHA256,
+            "price_snapshot_sha256": price_snapshot_sha256,
+            "limits": limits,
+            "task_count": 0,
+            "live_call_count": 0,
+            "total_tokens": 0,
+            "total_cost_microusd": 0,
+            "redline_failure_count": 0,
+            "secret_material_persisted": 0,
+            "tasks": [],
+            "attempts": [],
+            "candidate_allocation": 0,
+        }
+    if len(scenarios) != DEEPSEEK_V3_MAX_TASKS:
+        raise CalibrationError("calibration.deepseek_v3_scenario_count")
+    budget = CalibrationBudget(
+        call_limit=DEEPSEEK_V3_MAX_CALLS,
+        token_limit=DEEPSEEK_V3_MAX_TOTAL_TOKENS,
+        cost_limit_microusd=DEEPSEEK_V3_MAX_COST_MICROUSD,
+    )
+    attempts: list[LiveAttempt] = []
+    tasks: list[dict[str, Any]] = []
+    retries = 0
+    owns_client = client is None
+    live_client = client or httpx.Client(
+        follow_redirects=False,
+        timeout=httpx.Timeout(60.0),
+    )
+    try:
+        for scenario in scenarios:
+            prompt = _prompt(scenario["request"])
+            input_sha256 = canonical_digest(prompt)
+            input_ref = f"context://sha256/{input_sha256}"
+            max_output_tokens = itinerary_max_output_tokens(
+                int(scenario["request"]["days"])
+            )
+            baseline_plan = certified_gemini_routes().plan(
+                _required_capabilities(scenario["request"])
+            )
+            task = _execute_arm(
+                scenario=scenario,
+                arm="candidate",
+                prompt=prompt,
+                input_ref=input_ref,
+                input_sha256=input_sha256,
+                max_output_tokens=max_output_tokens,
+                baseline_plan=baseline_plan,
+                client=live_client,
+                budget=budget,
+                rates=rates,
+                attempts=attempts,
+                max_total_attempts=1,
+            )
+            initial_failure = task["failure_class"]
+            task["retry_used"] = False
+            task["initial_failure_class"] = initial_failure
+            if (
+                initial_failure in DEEPSEEK_V3_RETRYABLE_CODES
+                and retries < DEEPSEEK_V3_MAX_RETRIES
+            ):
+                retries += 1
+                retry = _execute_arm(
+                    scenario=scenario,
+                    arm="candidate",
+                    prompt=prompt,
+                    input_ref=input_ref,
+                    input_sha256=input_sha256,
+                    max_output_tokens=max_output_tokens,
+                    baseline_plan=baseline_plan,
+                    client=live_client,
+                    budget=budget,
+                    rates=rates,
+                    attempts=attempts,
+                    max_total_attempts=1,
+                )
+                retry["attempt_count"] += task["attempt_count"]
+                retry["latency_ms"] += task["latency_ms"]
+                retry["retry_used"] = True
+                retry["initial_failure_class"] = initial_failure
+                task = retry
+            tasks.append(task)
+    finally:
+        if owns_client:
+            live_client.close()
+
+    candidate = _arm_summary(tasks, attempts, "candidate")
+    qualified_latencies = [
+        int(task["latency_ms"])
+        for task in tasks
+        if task["quality_qualified"]
+    ]
+    provider_failure_count = sum(
+        task["failure_class"] in DEEPSEEK_V3_RETRYABLE_CODES for task in tasks
+    )
+    quality_rule_failure_count = sum(
+        bool(task["quality_rule_codes"]) for task in tasks
+    )
+    redlines = {
+        "task_cap_exceeded": int(len(tasks) > DEEPSEEK_V3_MAX_TASKS),
+        "call_cap_exceeded": int(len(attempts) > DEEPSEEK_V3_MAX_CALLS),
+        "token_cap_exceeded": int(
+            budget.total_tokens > DEEPSEEK_V3_MAX_TOTAL_TOKENS
+        ),
+        "cost_cap_exceeded": int(
+            budget.cost_microusd > DEEPSEEK_V3_MAX_COST_MICROUSD
+        ),
+        "retry_cap_exceeded": int(retries > DEEPSEEK_V3_MAX_RETRIES),
+        "secret_or_content_evidence_field": 0,
+        "production_write": 0,
+    }
+    redline_failure_count = sum(redlines.values())
+    guardrails = {
+        "all_strata_quality_qualified": candidate["qualified_success_count"]
+        == len(scenarios),
+        "schema_and_business_rules": quality_rule_failure_count == 0,
+        "bounded_retry": retries <= DEEPSEEK_V3_MAX_RETRIES
+        and all(int(task["attempt_count"]) <= 2 for task in tasks),
+        "provider_availability": provider_failure_count == 0,
+        "successful_task_p95_latency_lte_20s": (
+            (_nearest_rank_p95(qualified_latencies) or 0) <= 20_000
+        ),
+        "safety_redlines": redline_failure_count == 0,
+    }
+    quality_gate_passed = all(guardrails.values())
+    result = {
+        "schema_version": "3.0",
+        "status": (
+            "deepseek_quality_complete"
+            if quality_gate_passed
+            else "deepseek_quality_repair_required"
+        ),
+        "cohort": "deepseek-quality-v3",
+        "manifest_sha256": manifest_sha256,
+        "dataset_sha256": DATASET_SHA256,
+        "price_snapshot_sha256": price_snapshot_sha256,
+        "limits": limits,
+        "task_count": len(tasks),
+        "live_call_count": len(attempts),
+        "retry_count": retries,
+        "total_tokens": budget.total_tokens,
+        "total_cost_microusd": budget.cost_microusd,
+        "cost_per_qualified_success_microusd": candidate[
+            "cost_per_qualified_success_microusd"
+        ],
+        "qualified_success_count": candidate["qualified_success_count"],
+        "quality_rule_failure_count": quality_rule_failure_count,
+        "provider_failure_count": provider_failure_count,
+        "successful_task_p95_latency_ms": _nearest_rank_p95(qualified_latencies),
+        "guardrails": guardrails,
+        "quality_gate_passed": quality_gate_passed,
+        "redlines": redlines,
+        "redline_failure_count": redline_failure_count,
+        "tasks": tasks,
+        "attempts": [asdict(attempt) for attempt in attempts],
+        "candidate_allocation": 0,
+        "allocation_change_authorized": False,
+        "benefit_claim_eligible": False,
+        "secret_material_persisted": 0,
+        "production_write_count": 0,
+        "claim_boundary": (
+            "DeepSeek-only local quality and unit-cost evidence; no live baseline, "
+            "relative Cost Router benefit or production suitability claim."
+        ),
+    }
+    result["redlines"]["secret_or_content_evidence_field"] = (
+        _make_output_sensitive_key_count(result)
+    )
+    result["redline_failure_count"] = sum(result["redlines"].values())
+    result["guardrails"]["safety_redlines"] = (
+        result["redline_failure_count"] == 0
+    )
+    result["quality_gate_passed"] = all(result["guardrails"].values())
+    if not result["quality_gate_passed"]:
+        result["status"] = "deepseek_quality_repair_required"
+    return result
+
+
 def _atomic_write(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -921,17 +1129,23 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
-        "--cohort", choices=("pilot", "expansion", "repair-v2"), required=True
+        "--cohort",
+        choices=("pilot", "expansion", "repair-v2", "deepseek-quality-v3"),
+        required=True,
     )
     parser.add_argument("--prior", type=Path)
     args = parser.parse_args()
     prior = (
         json.loads(args.prior.read_text(encoding="utf-8")) if args.prior else None
     )
-    result = run_calibration(
-        manifest_path=args.manifest,
-        cohort=args.cohort,
-        prior=prior,
+    result = (
+        run_deepseek_quality_calibration(manifest_path=args.manifest)
+        if args.cohort == "deepseek-quality-v3"
+        else run_calibration(
+            manifest_path=args.manifest,
+            cohort=args.cohort,
+            prior=prior,
+        )
     )
     _atomic_write(args.output, result)
     summary = {
@@ -945,6 +1159,9 @@ def main() -> int:
             "total_cost_microusd",
             "redline_failure_count",
             "expansion_allowed",
+            "quality_gate_passed",
+            "qualified_success_count",
+            "retry_count",
             "secret_material_persisted",
         )
     }
