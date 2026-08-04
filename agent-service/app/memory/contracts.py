@@ -136,7 +136,7 @@ class MemoryCommandReceipt(StrictModel):
     command_id: UUID
     idempotency_key: SafeIdentifier
     request_digest: Sha256
-    outcome: Literal["applied", "replayed", "conflicted"]
+    outcome: Literal["applied", "replayed", "conflicted", "deleted"]
     memory_id: UUID
     version: Annotated[int, Field(ge=1)]
     outbox_event_id: UUID
@@ -164,6 +164,23 @@ class MemoryConflictView(StrictModel):
     current_provenance: Provenance
     competing_provenance: Provenance
     state: Literal[MemoryState.CONFLICTED] = MemoryState.CONFLICTED
+
+
+class DeleteMemoryCommand(StrictModel):
+    command_id: UUID
+    memory_id: UUID
+    idempotency_key: SafeIdentifier
+    expected_version: Annotated[int, Field(ge=1)]
+    confirmed_by_user: Literal[True]
+    reason_code: Literal["user_delete", "consent_withdrawal"]
+
+
+class MemoryExport(StrictModel):
+    tenant_id: SafeIdentifier
+    principal_id: SafeIdentifier
+    purpose: Literal[MemoryPurpose.ITINERARY_PERSONALIZATION]
+    records: tuple[MemoryRecord, ...]
+    exported_at: datetime
 
 
 class AuthorizationContext(StrictModel):

@@ -10,8 +10,10 @@ from app.memory.contracts import (
     CandidateState,
     ConfirmMemoryCommand,
     ConsentGrant,
+    DeleteMemoryCommand,
     MemoryCandidate,
     MemoryCommandReceipt,
+    MemoryExport,
     MemoryFact,
     Provenance,
     assert_consent,
@@ -53,3 +55,21 @@ class StructuredMemoryService:
         if command.retention_until <= at or command.retention_until > at + MAX_RETENTION:
             raise ValueError("memory.retention_out_of_bounds")
         return self._repository.confirm_atomic(command=command, candidate=candidate, consent=consent, context=context, now=at)
+
+    @staticmethod
+    def _assert_delete_authority(context: AuthorizationContext) -> None:
+        if not context.identity_verified:
+            raise PermissionError("memory.identity_ambiguous")
+        if not context.server_authorized:
+            raise PermissionError("memory.server_authorization_denied")
+
+    def delete_memory(self, *, command: DeleteMemoryCommand, context: AuthorizationContext, now: datetime | None = None) -> MemoryCommandReceipt:
+        self._assert_delete_authority(context)
+        return self._repository.delete_atomic(command=command, context=context, now=now or datetime.now(UTC))
+
+    def export_memories(self, *, consent: ConsentGrant | None, context: AuthorizationContext, now: datetime | None = None) -> MemoryExport:
+        at = now or datetime.now(UTC)
+        assert_consent(consent=consent, context=context, at=at)
+        records = self._repository.active_records_for(tenant_id=context.tenant_id, principal_id=context.principal_id, purpose=context.purpose)
+        records = tuple(record for record in records if record.retention_until > at)
+        return MemoryExport(tenant_id=context.tenant_id, principal_id=context.principal_id, purpose=context.purpose, records=records, exported_at=at)
