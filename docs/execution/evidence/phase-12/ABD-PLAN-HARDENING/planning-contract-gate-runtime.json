@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "gate_id": "PHASE12-ABD-PLANNING-CONTRACTS",
+  "head_oid": "508eabd9a5ee7d573007443856858a328e74a756",
+  "validated_paths": [
+    "docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json",
+    "docs/execution/evidence/phase-12a/P12A-000/metrics-preregistration.json",
+    "docs/execution/evidence/phase-12a/P12A-000/proposed-execution-contract.json",
+    "docs/execution/evidence/phase-12b/P12B-000/metrics-preregistration.json",
+    "docs/execution/evidence/phase-12b/P12B-000/proposed-execution-contract.json",
+    "docs/execution/evidence/phase-12d/P12D-000/metrics-preregistration.json",
+    "docs/execution/evidence/phase-12d/P12D-000/proposed-execution-contract.json",
+    "docs/execution/schemas/phase12-candidate-execution-contract-v1.schema.json",
+    "docs/execution/schemas/phase12-star-preregistration-v1.schema.json",
+    "docs/execution/schemas/phase12-trigger-evidence-v1.schema.json"
+  ],
+  "validated_document_count": 10,
+  "positive_package_count": 3,
+  "negative_tests": [
+    {
+      "test_id": "missing_metric_denominator_rejected",
+      "passed": true
+    },
+    {
+      "test_id": "averageable_redline_rejected",
+      "passed": true
+    },
+    {
+      "test_id": "dormant_activation_ready_rejected",
+      "passed": true
+    },
+    {
+      "test_id": "stable_ct_repurpose_rejected",
+      "passed": true
+    },
+    {
+      "test_id": "p12d_positive_none_write_entry_rejected",
+      "passed": true
+    }
+  ],
+  "negative_test_pass_count": 5,
+  "error_count": 0,
+  "errors": [],
+  "overall_status": "passed",
+  "formal_selection_status": "pending",
+  "runtime_or_contract_change_count": 0,
+  "recorded_at": "2026-08-04T16:00:43.289511+08:00"
+}
