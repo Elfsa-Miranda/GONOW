@@ -1,0 +1,91 @@
+{
+  "schema_version": "2.0",
+  "task_id": "TASK-P12D-060-STAR-REPAIR",
+  "qualification_status": "qualified_for_local_provisional_review",
+  "supersedes_for_star_reporting": "docs/execution/evidence/phase-12d/P12D-060/star-evaluation.json",
+  "preregistration_reference": "docs/execution/evidence/phase-12d/P12D-000/metrics-preregistration.json",
+  "complete_experiment_reference": "docs/execution/evidence/phase-12d/P12D-050/star-completeness-results.json",
+  "situation": "The tracked legacy Basic Info path publishes local success before a resource-id remote update without expected-version CAS or durable receipt lookup.",
+  "task": "Migrate exactly one Basic Info write entry to a typed, single-writer Domain Command and quantify its controlled reliability, normal-write equivalence, receipt completeness, redlines, and local cost without fabricating production facts.",
+  "action": {
+    "architecture": "single_agent",
+    "selected_write_entry_count": 1,
+    "typed_command": true,
+    "expected_version_cas": true,
+    "transactional_receipt_and_outbox": true,
+    "tenant_rls_and_server_authorization": true,
+    "unknown_outcome_receipt_lookup": true,
+    "legacy_fallback_after_ambiguous_outcome": false,
+    "default_allocation_percent": 0,
+    "kill_switch_default_active": true,
+    "deepseek_or_other_model_call_count": 0
+  },
+  "result": {
+    "claim_scope": "local_controlled_mechanism",
+    "primary": {
+      "metric_id": "stale_conflict_partial_effect_rate_per_10k_intents",
+      "legacy_observed_rate_per_10k": 10000.0,
+      "candidate_observed_rate_per_10k": 0.0,
+      "observed_relative_improvement_percent": 100.0,
+      "one_sided_95_improvement_lower_bound_per_10k": 9997.004716,
+      "candidate_one_sided_95_partial_effect_upper_bound_per_10k": 2.995284,
+      "denominators": {
+        "legacy": 10000,
+        "candidate": 10000
+      },
+      "passed": true
+    },
+    "normal_write_guardrail": {
+      "legacy_successes": 10000,
+      "legacy_denominator": 10000,
+      "candidate_successes": 10000,
+      "candidate_denominator": 10000,
+      "field_equivalence_count": 10000,
+      "fixed_fixture_success_difference_pp": 0.0,
+      "receipt_coverage_rate": 1.0,
+      "logical_outbox_events_per_successful_command": 1.0,
+      "population_noninferiority_claim": false,
+      "passed_for_frozen_fixture_census": true
+    },
+    "redlines": {
+      "duplicate_formal_write_count": 0,
+      "unauthorized_or_cross_tenant_write_count": 0,
+      "mutation_outbox_divergence_count": 0,
+      "lost_or_ambiguous_committed_outcome_count": 0,
+      "data_loss_count": 0,
+      "redline_failure_count": 0
+    },
+    "local_cost_diagnostic": {
+      "candidate_seconds_per_successful_command": 0.013581983,
+      "candidate_p95_ms": 23.8489,
+      "legacy_seconds_per_successful_intent": 0.001760137,
+      "legacy_p95_ms": 3.6969,
+      "candidate_to_legacy_p95_ratio": 6.451054,
+      "candidate_to_legacy_throughput_ratio": 0.129594,
+      "production_performance_claim": false,
+      "assessment": "material local overhead; production latency and capacity guardrails are required before allocation"
+    }
+  },
+  "star_assessment": {
+    "qualified": true,
+    "qualification_scope": "local controlled mechanism and frozen fixture census",
+    "strengths": [
+      "one preregistered primary with identical paired inputs",
+      "exact one-sided 95 percent uncertainty bound",
+      "10,000 normal-write intents per arm with explicit success and receipt denominators",
+      "zero-tolerance redlines kept outside the primary",
+      "all failed invocations retained in diagnostic history",
+      "negative local latency and throughput cost disclosed"
+    ],
+    "remaining_external_measurement": [
+      "read-only production schema and RLS inventory",
+      "instrumented legacy production baseline window",
+      "authorized stable-bucket canary with allocation and kill-switch control",
+      "production latency, capacity, incident, and recovery observation window"
+    ]
+  },
+  "production_improvement_claim": false,
+  "production_measurement_status": "measurement_pending",
+  "production_allocation_percent": 0,
+  "production_write_count": 0
+}
