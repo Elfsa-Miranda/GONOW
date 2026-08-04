@@ -39,7 +39,7 @@ from harness_common import (  # noqa: E402
     write_atomic_json,
     write_atomic_text,
 )
-from live_provider_gemini import run_gemini_live  # noqa: E402
+from live_provider_deepseek import run_deepseek_live  # noqa: E402
 
 
 def _run(
@@ -292,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
             database_url=arguments.database_url,
         )
     elif arguments.action == "c2-live":
-        result = run_gemini_live(evidence_root, candidate_oid=candidate)
+        result = run_deepseek_live(evidence_root, candidate_oid=candidate)
     elif arguments.action == "c2-aggregate":
         result = aggregate_c2(evidence_root, candidate_oid=candidate)
     elif arguments.action == "c3":
