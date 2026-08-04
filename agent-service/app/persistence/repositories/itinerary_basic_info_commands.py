@@ -30,6 +30,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.context import RequestContext
@@ -421,6 +422,29 @@ class ItineraryBasicInfoCommandRepository:
         ).mappings().one_or_none()
         return None if row is None else self._receipt_from_row(row, replayed=True)
 
+    def replay_existing(
+        self,
+        *,
+        context: RequestContext,
+        command: UpdateItineraryBasicInfoCommand,
+    ) -> ItineraryBasicInfoReceipt | None:
+        self._set_tenant(context.tenant_id)
+        command_digest = semantic_command_hash(command)
+        idempotency_digest = scoped_idempotency_digest(context, command)
+        row = self._find_receipt(
+            command_id=command.command_id,
+            idempotency_digest=idempotency_digest,
+        )
+        if row is None:
+            return None
+        return self._replay(
+            row,
+            context=context,
+            command=command,
+            command_digest=command_digest,
+            idempotency_digest=idempotency_digest,
+        )
+
     def _set_tenant(self, tenant_id: str) -> None:
         self._session.execute(select(func.set_config("app.tenant_id", tenant_id, True)))
 
@@ -577,14 +601,22 @@ class ItineraryBasicInfoCommandService:
         context: RequestContext,
         command: UpdateItineraryBasicInfoCommand,
     ) -> ItineraryBasicInfoReceipt:
-        with self._session_factory.begin() as session:
-            receipt = ItineraryBasicInfoCommandRepository(
-                session, business_table=self._business_table
-            ).execute(
-                context=context,
-                command=command,
-                fault_injector=self._fault_injector,
-            )
+        try:
+            with self._session_factory.begin() as session:
+                receipt = ItineraryBasicInfoCommandRepository(
+                    session, business_table=self._business_table
+                ).execute(
+                    context=context,
+                    command=command,
+                    fault_injector=self._fault_injector,
+                )
+        except IntegrityError as error:
+            with self._session_factory.begin() as session:
+                receipt = ItineraryBasicInfoCommandRepository(
+                    session, business_table=self._business_table
+                ).replay_existing(context=context, command=command)
+            if receipt is None:
+                raise DomainCommandPersistenceError() from error
         _inject(self._fault_injector, "after_commit_before_response")
         return receipt
 
