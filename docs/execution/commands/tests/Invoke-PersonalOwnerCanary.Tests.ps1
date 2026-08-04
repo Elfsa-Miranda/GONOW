@@ -38,6 +38,8 @@ foreach ($Name in $RequiredFunctions) {
 }
 foreach ($RequiredToken in @(
   'owner-canary-journey-adapter/v1',
+  'Invoke-OwnerCanaryHttpsAdapter.ps1',
+  'Install-RepositoryHttpsAdapterDefaults',
   'environment_name_presence_and_adapter_identity_only',
   'RedirectStandardInput = $true',
   'owner_canary_adapter_stderr_nonempty',
@@ -145,10 +147,10 @@ try {
   if (-not [bool]$Ready.passed -or [int]$Ready.secret_value_read_count -ne 0 -or @($Ready.adapter_inventory | Where-Object { -not [bool]$_.valid_absolute_non_reparse_executable }).Count -ne 0) {
     throw 'positive: complete readiness inventory was rejected'
   }
-  [Environment]::SetEnvironmentVariable('GONOW_RELEASE_B_TRACE_ADAPTER', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('GONOW_RELEASE_B_TRACE_ADAPTER', 'relative-adapter.ps1', 'Process')
   $MissingOutput = @(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ScriptPath -CandidateHeadOid $Candidate -ValidateInputsOnly 2>&1)
   if ($LASTEXITCODE -eq 0 -or ($MissingOutput -join "`n") -match 'secret-sentinel-must-not-appear') {
-    throw 'negative: missing adapter reference was accepted or leaked a value'
+    throw 'negative: invalid explicit adapter reference was replaced or leaked a value'
   }
 } finally {
   foreach ($Name in $Names) { [Environment]::SetEnvironmentVariable($Name, $SavedEnvironment[$Name], 'Process') }

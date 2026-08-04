@@ -28,6 +28,8 @@ $ZeroHash = '0' * 64
 $Target = 'gonow.agent.itinerary_planning.release_b'
 $Protocol = 'owner-canary-adapter/v1'
 $JourneyProtocol = 'owner-canary-journey-adapter/v1'
+$RepositoryHttpsAdapterRelativePath = 'docs/execution/commands/Invoke-OwnerCanaryHttpsAdapter.ps1'
+$RepositoryHttpsAdapterPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $RepositoryHttpsAdapterRelativePath))
 $RequiredEnvironmentNames = @(
   'GONOW_AGENT_API_URL',
   'GONOW_OWNER_CANARY_IDENTITY_REF',
@@ -154,6 +156,25 @@ function Resolve-AdapterExecutable {
   $Extension = [IO.Path]::GetExtension($FullPath).ToLowerInvariant()
   if ($Extension -notin @('.exe','.ps1')) { throw "owner_canary_adapter_extension_forbidden:$EnvironmentName" }
   return [ordered]@{ environment_name=$EnvironmentName; path=$FullPath; extension=$Extension; sha256=Get-Sha256 -LiteralPath $FullPath }
+}
+
+function Install-RepositoryHttpsAdapterDefaults {
+  if (-not (Test-Path -LiteralPath $RepositoryHttpsAdapterPath -PathType Leaf)) {
+    throw 'owner_canary_repository_https_adapter_missing'
+  }
+  $Tracked = @(& git -C $RepositoryRoot ls-files --cached -- $RepositoryHttpsAdapterRelativePath)
+  if ($LASTEXITCODE -ne 0 -or $RepositoryHttpsAdapterRelativePath -notin $Tracked) {
+    throw 'owner_canary_repository_https_adapter_not_tracked'
+  }
+  $Item = Get-Item -LiteralPath $RepositoryHttpsAdapterPath -Force
+  if ([bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'owner_canary_repository_https_adapter_reparse_point'
+  }
+  foreach ($Name in $AdapterEnvironmentNames) {
+    if (-not (Test-Path -LiteralPath "Env:$Name")) {
+      [Environment]::SetEnvironmentVariable($Name, $RepositoryHttpsAdapterPath, 'Process')
+    }
+  }
 }
 
 function Invoke-Adapter {
@@ -430,6 +451,7 @@ function Add-CommandRows {
   Write-AtomicJson -LiteralPath $CommandsPath -Value $Ledger
 }
 
+Install-RepositoryHttpsAdapterDefaults
 $Presence = Get-EnvironmentNamePresence
 $MissingNames = @($RequiredEnvironmentNames | Where-Object { -not [bool]$Presence[$_] })
 $AdapterInventory = @()
