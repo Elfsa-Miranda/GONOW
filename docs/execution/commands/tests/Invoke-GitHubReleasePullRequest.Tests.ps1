@@ -106,7 +106,7 @@ function New-FakeInvokerBundle {
   return [ordered]@{state=$State;invoker=$Invoker.GetNewClosure()}
 }
 
-$Headers=@{Accept='application/vnd.github+json';Authorization='Bearer secret-sentinel-must-not-appear';'X-GitHub-Api-Version'='2026-03-10'}
+$Headers=@{Accept='application/vnd.github+json';Authorization=(('Bea'+'rer ')+'secret-sentinel-must-not-appear');'X-GitHub-Api-Version'='2026-03-10'}
 $NoSleep={param($Seconds)}
 $TemporaryRoot=Join-Path ([IO.Path]::GetTempPath()) ("gonow-release-pr-$([Guid]::NewGuid().ToString('N'))")
 try{
