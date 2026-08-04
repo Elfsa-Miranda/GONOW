@@ -1,0 +1,14 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V2",
+  "algorithm":"sha256",
+  "artifacts":[
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/live-calibration-v2.json","sha256":"402313f5259dba6d87220658fcab7b863c3fcdf7bebb129a316fd68cdbdc208c","size_bytes":4895},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/provider-diagnosis-v2.json","sha256":"b4e15a4aaba8e55b4936615a6680732dc32ce9fd4cfd5054bb48b4210c1c54c9","size_bytes":1528},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/star-evaluation-v2.json","sha256":"1cc950a9d4fb3b0ab8a577825c09af88026fc2327bea4cbc2140abe6c99d548f","size_bytes":1852},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/live-commands-v2.json","sha256":"920db1c5099b61e3286afe11e43371bba49f9c326ce7a31e8222b6fc4f6c4142","size_bytes":1296}
+  ],
+  "source_checkpoint_sha256":"3f35f824895e13fba5597aac23e452d397cb5ff787cb4ba7d4375251cbbc97fa",
+  "v1_evidence_hash_mismatch_count":0,
+  "secret_material_persisted":0
+}
