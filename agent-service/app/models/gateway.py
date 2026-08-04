@@ -21,7 +21,46 @@ class ModelGatewayError(RuntimeError):
 
 
 class AdapterFailure(ModelGatewayError):
-    pass
+    """Content-free provider failure with optional metering and rule receipts."""
+
+    def __init__(
+        self,
+        code: str,
+        *,
+        retryable: bool = False,
+        rule_codes: tuple[str, ...] = (),
+        metered_usage: TokenUsage | None = None,
+        output_sha256: str | None = None,
+        input_cache_hit_tokens: int = 0,
+        input_cache_miss_tokens: int | None = None,
+    ) -> None:
+        if (
+            not code
+            or any(not item for item in rule_codes)
+            or (output_sha256 is not None and SHA256.fullmatch(output_sha256) is None)
+            or input_cache_hit_tokens < 0
+            or (
+                input_cache_miss_tokens is not None
+                and input_cache_miss_tokens < 0
+            )
+            or (
+                metered_usage is not None
+                and input_cache_hit_tokens > metered_usage.input_tokens
+            )
+            or (
+                metered_usage is not None
+                and input_cache_miss_tokens is not None
+                and input_cache_hit_tokens + input_cache_miss_tokens
+                != metered_usage.input_tokens
+            )
+        ):
+            raise ModelGatewayError("llm.failure_receipt_invalid")
+        self.rule_codes = tuple(sorted(set(rule_codes)))
+        self.metered_usage = metered_usage
+        self.output_sha256 = output_sha256
+        self.input_cache_hit_tokens = input_cache_hit_tokens
+        self.input_cache_miss_tokens = input_cache_miss_tokens
+        super().__init__(code, retryable=retryable)
 
 
 @dataclass(frozen=True, slots=True, repr=False)

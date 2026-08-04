@@ -25,6 +25,10 @@ from app.models.deepseek import (  # noqa: E402
 )
 from app.models.gateway import AdapterFailure, ModelInvocation, ProviderCredential  # noqa: E402
 from app.models.gemini import canonical_digest  # noqa: E402
+from app.models.json_schema import (  # noqa: E402
+    canonical_schema_text,
+    validation_rule_codes,
+)
 
 
 PROMPT = 'Return JSON: {"route":"fixed"}'
@@ -40,12 +44,28 @@ CREDENTIAL = ProviderCredential(
     "secret://environment/DEEPSEEK_API_KEY",
     "synthetic-deepseek-credential",
 )
+TEST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "days": {"type": "array", "items": {"type": "object", "properties": {}, "additionalProperties": False}},
+    },
+    "required": ["title", "days"],
+    "additionalProperties": False,
+}
 
 
-def _adapter(handler) -> tuple[DeepSeekModelAdapter, httpx.Client]:
+def _adapter(
+    handler, *, output_validator=None
+) -> tuple[DeepSeekModelAdapter, httpx.Client]:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     return (
-        DeepSeekModelAdapter(input_resolver=lambda _: PROMPT, client=client),
+        DeepSeekModelAdapter(
+            input_resolver=lambda _: PROMPT,
+            response_schema=TEST_SCHEMA,
+            output_validator=output_validator,
+            client=client,
+        ),
         client,
     )
 
@@ -93,6 +113,10 @@ def test_adapter_uses_one_literal_origin_model_non_thinking_json_request() -> No
     assert body["model"] == MODEL_ID  # type: ignore[index]
     assert body["thinking"] == {"type": "disabled"}  # type: ignore[index]
     assert body["response_format"] == {"type": "json_object"}  # type: ignore[index]
+    messages = body["messages"]  # type: ignore[index]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"].endswith(canonical_schema_text(TEST_SCHEMA))
+    assert messages[1] == {"role": "user", "content": PROMPT}
     assert body["temperature"] == 0  # type: ignore[index]
     assert result.usage.total_tokens == 125
     assert result.input_cache_hit_tokens == 40
@@ -104,7 +128,7 @@ def test_adapter_uses_one_literal_origin_model_non_thinking_json_request() -> No
     [
         (429, "llm.rate_limited", True),
         (503, "llm.provider_unavailable", True),
-        (400, "llm.provider_rejected", False),
+        (400, "llm.request_invalid", False),
     ],
 )
 def test_adapter_classifies_provider_failures_without_network_retry(
@@ -191,3 +215,73 @@ def test_adapter_rejects_invalid_json_and_incomplete_output() -> None:
             )
     finally:
         client.close()
+
+
+def test_adapter_rejects_schema_and_business_shape_with_content_free_codes() -> None:
+    responses = iter(
+        (
+            httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": '{"title":"fixed","days":[],"extra":1}'
+                            },
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                },
+            ),
+            httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {"content": '{"title":"fixed","days":[]}'},
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                },
+            ),
+        )
+    )
+    adapter, client = _adapter(
+        lambda _: next(responses),
+        output_validator=lambda _: ("quality.exact_day_count",),
+    )
+    try:
+        with pytest.raises(AdapterFailure) as schema_failure:
+            adapter.invoke(
+                certified_deepseek_route(), INVOCATION, CREDENTIAL, timeout_seconds=9
+            )
+        with pytest.raises(AdapterFailure) as business_failure:
+            adapter.invoke(
+                certified_deepseek_route(), INVOCATION, CREDENTIAL, timeout_seconds=9
+            )
+    finally:
+        client.close()
+    assert schema_failure.value.rule_codes == (
+        "quality.exact_day_count",
+        "schema.additional_properties",
+    )
+    assert schema_failure.value.metered_usage is not None
+    assert business_failure.value.rule_codes == ("quality.exact_day_count",)
+    assert business_failure.value.metered_usage is not None
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"title": "fixed"}, "schema.required"),
+        ({"title": "", "days": []}, "schema.min_length"),
+        ({"title": "fixed", "days": "not-array"}, "schema.type"),
+        ({"title": "fixed", "days": [], "extra": 1}, "schema.additional_properties"),
+    ],
+)
+def test_local_schema_validator_covers_closed_output_shapes(
+    payload: dict[str, object], expected: str
+) -> None:
+    assert expected in validation_rule_codes(payload, TEST_SCHEMA)

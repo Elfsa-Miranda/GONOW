@@ -48,12 +48,15 @@ from app.models.gemini import (  # noqa: E402
     canonical_digest,
     certified_gemini_routes,
 )
-from app.models.ledger import ModelUsageLedger  # noqa: E402
+from app.models.ledger import ModelUsageLedger, TokenUsage  # noqa: E402
 from app.models.routes import CertifiedModelRoute, FixedCertifiedRoutePlan  # noqa: E402
-from app.worker.itinerary_processor import ITINERARY_RESPONSE_SCHEMA, _prompt  # noqa: E402
+from app.worker.itinerary_processor import (  # noqa: E402
+    ITINERARY_RESPONSE_SCHEMA,
+    _prompt,
+    itinerary_business_rule_codes,
+)
 from scripts.run_p12b_replay import (  # noqa: E402
     DATASET_SHA256,
-    _quality_qualified,
     _required_capabilities,
     load_dataset,
 )
@@ -64,6 +67,10 @@ MAX_CALLS = 40
 MAX_TOTAL_TOKENS = 100_000
 MAX_COST_MICROUSD = 1_000_000
 PILOT_IDS = frozenset({"CR-V1-001", "CR-V1-007", "CR-V1-008", "CR-V1-010"})
+REPAIR_V2_MAX_TASKS = 4
+REPAIR_V2_MAX_CALLS = 8
+REPAIR_V2_MAX_TOTAL_TOKENS = 40_000
+REPAIR_V2_MAX_COST_MICROUSD = 500_000
 MANIFEST_REQUIRED_SHA256 = "84e4b409dc8f66fd34e2ac3458e0c50e1d65ecc0f04bb996ff35a88a1e5b9344"
 PRICE_SNAPSHOT_PATH = REPOSITORY_ROOT / "docs/execution/evidence/phase-12b/P12B-010/price-snapshot.json"
 
@@ -100,6 +107,7 @@ class LiveAttempt:
     cost_microusd: int
     latency_ms: int
     output_sha256: str | None
+    rule_codes: tuple[str, ...] = ()
 
 
 class CalibrationBudget:
@@ -109,16 +117,22 @@ class CalibrationBudget:
         calls: int = 0,
         total_tokens: int = 0,
         cost_microusd: int = 0,
+        call_limit: int = MAX_CALLS,
+        token_limit: int = MAX_TOTAL_TOKENS,
+        cost_limit_microusd: int = MAX_COST_MICROUSD,
     ) -> None:
         if (
             calls < 0
             or total_tokens < 0
             or cost_microusd < 0
-            or calls > MAX_CALLS
-            or total_tokens > MAX_TOTAL_TOKENS
-            or cost_microusd > MAX_COST_MICROUSD
+            or calls > call_limit
+            or total_tokens > token_limit
+            or cost_microusd > cost_limit_microusd
         ):
             raise CalibrationError("calibration.prior_budget_invalid")
+        self.call_limit = call_limit
+        self.token_limit = token_limit
+        self.cost_limit_microusd = cost_limit_microusd
         self.calls = calls
         self.total_tokens = total_tokens
         self.cost_microusd = cost_microusd
@@ -148,35 +162,50 @@ class CalibrationBudget:
             output=max_output_tokens,
             rate=rate,
         )
-        if self.calls + 1 > MAX_CALLS:
+        if self.calls + 1 > self.call_limit:
             raise CalibrationError("calibration.call_cap")
-        if self.total_tokens + worst_tokens > MAX_TOTAL_TOKENS:
+        if self.total_tokens + worst_tokens > self.token_limit:
             raise CalibrationError("calibration.token_cap")
-        if self.cost_microusd + worst_cost > MAX_COST_MICROUSD:
+        if self.cost_microusd + worst_cost > self.cost_limit_microusd:
             raise CalibrationError("calibration.cost_cap")
         self.calls += 1
 
-    def record_result(self, *, result: ModelResult, rate: PriceRate) -> int:
-        hit = result.input_cache_hit_tokens
+    def record_usage(
+        self,
+        *,
+        usage: TokenUsage,
+        input_cache_hit_tokens: int,
+        input_cache_miss_tokens: int | None,
+        rate: PriceRate,
+    ) -> int:
+        hit = input_cache_hit_tokens
         miss = (
-            result.input_cache_miss_tokens
-            if result.input_cache_miss_tokens is not None
-            else result.usage.input_tokens - hit
+            input_cache_miss_tokens
+            if input_cache_miss_tokens is not None
+            else usage.input_tokens - hit
         )
-        tokens = result.usage.total_tokens
+        tokens = usage.total_tokens
         cost = self._cost(
             input_hit=hit,
             input_miss=miss,
-            output=result.usage.output_tokens,
+            output=usage.output_tokens,
             rate=rate,
         )
         self.total_tokens += tokens
         self.cost_microusd += cost
-        if self.total_tokens > MAX_TOTAL_TOKENS:
+        if self.total_tokens > self.token_limit:
             raise CalibrationError("calibration.token_cap_post_call")
-        if self.cost_microusd > MAX_COST_MICROUSD:
+        if self.cost_microusd > self.cost_limit_microusd:
             raise CalibrationError("calibration.cost_cap_post_call")
         return cost
+
+    def record_result(self, *, result: ModelResult, rate: PriceRate) -> int:
+        return self.record_usage(
+            usage=result.usage,
+            input_cache_hit_tokens=result.input_cache_hit_tokens,
+            input_cache_miss_tokens=result.input_cache_miss_tokens,
+            rate=rate,
+        )
 
 
 class RecordingBudgetAdapter:
@@ -230,6 +259,27 @@ class RecordingBudgetAdapter:
                 timeout_seconds=timeout_seconds,
             )
         except AdapterFailure as error:
+            usage = error.metered_usage
+            cost = 0
+            input_tokens = 0
+            output_tokens = 0
+            cache_hit = 0
+            cache_miss = 0
+            if usage is not None:
+                input_tokens = usage.input_tokens
+                output_tokens = usage.output_tokens
+                cache_hit = error.input_cache_hit_tokens
+                cache_miss = (
+                    error.input_cache_miss_tokens
+                    if error.input_cache_miss_tokens is not None
+                    else input_tokens - cache_hit
+                )
+                cost = self._budget.record_usage(
+                    usage=usage,
+                    input_cache_hit_tokens=cache_hit,
+                    input_cache_miss_tokens=cache_miss,
+                    rate=rate,
+                )
             self._records.append(
                 LiveAttempt(
                     scenario_id=self._scenario_id,
@@ -240,13 +290,14 @@ class RecordingBudgetAdapter:
                     model_id=route.model_id,
                     status="failed",
                     failure_class=error.code,
-                    input_tokens=0,
-                    output_tokens=0,
-                    cache_hit_input_tokens=0,
-                    cache_miss_input_tokens=0,
-                    cost_microusd=0,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cache_hit_input_tokens=cache_hit,
+                    cache_miss_input_tokens=cache_miss,
+                    cost_microusd=cost,
                     latency_ms=max(0, round((self._monotonic() - started) * 1000)),
-                    output_sha256=None,
+                    output_sha256=error.output_sha256,
+                    rule_codes=error.rule_codes,
                 )
             )
             raise
@@ -274,6 +325,7 @@ class RecordingBudgetAdapter:
                 cost_microusd=cost,
                 latency_ms=max(0, round((self._monotonic() - started) * 1000)),
                 output_sha256=result.output_sha256,
+                rule_codes=(),
             )
         )
         return result
@@ -383,6 +435,16 @@ def _arm_summary(tasks: list[dict[str, Any]], attempts: list[LiveAttempt], arm: 
                 }
             )
         },
+        "quality_rule_failures": {
+            code: sum(code in attempt.rule_codes for attempt in arm_attempts)
+            for code in sorted(
+                {
+                    code
+                    for attempt in arm_attempts
+                    for code in attempt.rule_codes
+                }
+            )
+        },
     }
 
 
@@ -399,12 +461,19 @@ def _execute_arm(
     budget: CalibrationBudget,
     rates: Mapping[tuple[str, str], PriceRate],
     attempts: list[LiveAttempt],
+    max_total_attempts: int,
 ) -> dict[str, Any]:
+    output_validator = lambda payload: itinerary_business_rule_codes(
+        payload,
+        scenario["request"],
+        quality_checks=scenario["quality_checks"],
+    )
     gemini_adapter = GeminiModelAdapter(
         input_resolver=lambda reference: prompt
         if reference == input_ref
         else (_ for _ in ()).throw(KeyError(reference)),
         response_schema=ITINERARY_RESPONSE_SCHEMA,
+        output_validator=output_validator,
         client=client,
     )
     if arm == "baseline":
@@ -425,6 +494,8 @@ def _execute_arm(
                 input_resolver=lambda reference: prompt
                 if reference == input_ref
                 else (_ for _ in ()).throw(KeyError(reference)),
+                response_schema=ITINERARY_RESPONSE_SCHEMA,
+                output_validator=output_validator,
                 client=client,
             ),
         )
@@ -434,7 +505,15 @@ def _execute_arm(
         rates=rates,
         scenario_id=scenario["scenario_id"],
         arm=arm,
-        prompt_utf8_bytes=len(prompt.encode("utf-8")),
+        prompt_utf8_bytes=len(prompt.encode("utf-8"))
+        + len(
+            json.dumps(
+                ITINERARY_RESPONSE_SCHEMA,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ),
         records=attempts,
     )
     gateway = AuthenticatedModelGateway(
@@ -443,7 +522,7 @@ def _execute_arm(
         adapter=adapter,
         ledger=ModelUsageLedger(),
         circuit_breaker=CircuitBreaker(failure_threshold=2, cooldown_seconds=30),
-        retry_policy=RetryPolicy(max_total_attempts=2),
+        retry_policy=RetryPolicy(max_total_attempts=max_total_attempts),
     )
     invocation = ModelInvocation(
         request_id=f"p12b-{scenario['scenario_id']}-{arm}",
@@ -457,23 +536,35 @@ def _execute_arm(
     try:
         outcome = gateway.invoke(invocation, now_monotonic=time.monotonic())
         payload = outcome.result.payload
-        quality = bool(
-            payload
-            and _quality_qualified(
-                payload, scenario["request"], scenario["quality_checks"]
+        rule_codes = (
+            itinerary_business_rule_codes(
+                payload,
+                scenario["request"],
+                quality_checks=scenario["quality_checks"],
             )
+            if payload is not None
+            else ("schema.payload_missing",)
         )
-        failure_code = None if quality else "quality_guardrail"
+        quality = not rule_codes
+        failure_code = None if quality else rule_codes[0]
         output_sha256 = outcome.result.output_sha256
         route_id = outcome.route_id
         fallback_used = outcome.fallback_used
         fallback_depth = int(outcome.fallback_used)
     except (ModelGatewayError, CalibrationError) as error:
+        arm_attempts = attempts[before:]
+        rule_codes = tuple(
+            sorted({code for attempt in arm_attempts for code in attempt.rule_codes})
+        )
         quality = False
-        failure_code = getattr(error, "code", "calibration.failure")
-        output_sha256 = None
-        route_id = None
-        fallback_used = len(attempts) - before > 1
+        failure_code = (
+            arm_attempts[-1].failure_class
+            if arm_attempts and arm_attempts[-1].failure_class
+            else getattr(error, "code", "calibration.failure")
+        )
+        output_sha256 = arm_attempts[-1].output_sha256 if arm_attempts else None
+        route_id = arm_attempts[-1].route_id if arm_attempts else None
+        fallback_used = len(arm_attempts) > 1
         fallback_depth = int(fallback_used)
     return {
         "scenario_id": scenario["scenario_id"],
@@ -482,6 +573,7 @@ def _execute_arm(
         "max_output_tokens": max_output_tokens,
         "status": "qualified_success" if quality else "failed",
         "failure_class": failure_code,
+        "quality_rule_codes": list(rule_codes),
         "quality_qualified": quality,
         "route_id": route_id,
         "output_sha256": output_sha256,
@@ -492,9 +584,19 @@ def _execute_arm(
     }
 
 
-def _prior_values(prior: dict[str, Any] | None) -> tuple[list[dict[str, Any]], list[LiveAttempt], CalibrationBudget]:
+def _prior_values(
+    prior: dict[str, Any] | None,
+    *,
+    call_limit: int,
+    token_limit: int,
+    cost_limit_microusd: int,
+) -> tuple[list[dict[str, Any]], list[LiveAttempt], CalibrationBudget]:
     if prior is None:
-        return [], [], CalibrationBudget()
+        return [], [], CalibrationBudget(
+            call_limit=call_limit,
+            token_limit=token_limit,
+            cost_limit_microusd=cost_limit_microusd,
+        )
     if (
         prior.get("schema_version") != "1.0"
         or prior.get("dataset_sha256") != DATASET_SHA256
@@ -511,6 +613,9 @@ def _prior_values(prior: dict[str, Any] | None) -> tuple[list[dict[str, Any]], l
             calls=len(attempts),
             total_tokens=sum(item.input_tokens + item.output_tokens for item in attempts),
             cost_microusd=sum(item.cost_microusd for item in attempts),
+            call_limit=call_limit,
+            token_limit=token_limit,
+            cost_limit_microusd=cost_limit_microusd,
         ),
     )
 
@@ -525,7 +630,14 @@ def _expansion_projection(
     for scenario in scenarios:
         if scenario["scenario_id"] in PILOT_IDS:
             continue
-        prompt_bytes = len(_prompt(scenario["request"]).encode("utf-8"))
+        prompt_bytes = len(_prompt(scenario["request"]).encode("utf-8")) + len(
+            json.dumps(
+                ITINERARY_RESPONSE_SCHEMA,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        )
         max_output = min(
             8_192, max(1_024, int(scenario["request"]["days"]) * 512)
         )
@@ -559,11 +671,18 @@ def run_calibration(
 ) -> dict[str, Any]:
     scenarios, manifest_sha256 = _load_manifest(manifest_path)
     rates, price_snapshot_sha256 = _load_prices()
+    repair_v2 = cohort == "repair-v2"
+    task_limit = REPAIR_V2_MAX_TASKS if repair_v2 else MAX_TASKS
+    call_limit = REPAIR_V2_MAX_CALLS if repair_v2 else MAX_CALLS
+    token_limit = REPAIR_V2_MAX_TOTAL_TOKENS if repair_v2 else MAX_TOTAL_TOKENS
+    cost_limit = (
+        REPAIR_V2_MAX_COST_MICROUSD if repair_v2 else MAX_COST_MICROUSD
+    )
     limits = {
-        "max_tasks": MAX_TASKS,
-        "max_calls": MAX_CALLS,
-        "max_total_tokens": MAX_TOTAL_TOKENS,
-        "max_cost_microusd": MAX_COST_MICROUSD,
+        "max_tasks": task_limit,
+        "max_calls": call_limit,
+        "max_total_tokens": token_limit,
+        "max_cost_microusd": cost_limit,
     }
     missing = [
         name
@@ -588,7 +707,12 @@ def run_calibration(
             "tasks": [],
             "attempts": [],
         }
-    tasks, attempts, budget = _prior_values(prior)
+    tasks, attempts, budget = _prior_values(
+        prior,
+        call_limit=call_limit,
+        token_limit=token_limit,
+        cost_limit_microusd=cost_limit,
+    )
     completed_ids = {task["scenario_id"] for task in tasks}
     if len(completed_ids) * 2 != len(tasks):
         raise CalibrationError("calibration.prior_pairing_invalid")
@@ -600,11 +724,15 @@ def run_calibration(
         if prior is None or not prior.get("expansion_allowed"):
             raise CalibrationError("calibration.expansion_not_allowed")
         selected = [item for item in scenarios if item["scenario_id"] not in PILOT_IDS]
+    elif cohort == "repair-v2":
+        if prior is not None:
+            raise CalibrationError("calibration.repair_v2_prior_forbidden")
+        selected = [item for item in scenarios if item["scenario_id"] in PILOT_IDS]
     else:
         raise CalibrationError("calibration.cohort_invalid")
     if completed_ids & {item["scenario_id"] for item in selected}:
         raise CalibrationError("calibration.duplicate_task")
-    if len(completed_ids) + len(selected) > MAX_TASKS:
+    if len(completed_ids) + len(selected) > task_limit:
         raise CalibrationError("calibration.task_cap")
 
     owns_client = client is None
@@ -637,6 +765,7 @@ def run_calibration(
                         budget=budget,
                         rates=rates,
                         attempts=attempts,
+                        max_total_attempts=1 if repair_v2 else 2,
                     )
                 )
     finally:
@@ -710,8 +839,14 @@ def run_calibration(
         and expansion_projection["projected_cost_microusd"] <= MAX_COST_MICROUSD
     )
     provisional = {
-        "schema_version": "1.0",
-        "status": "pilot_complete" if cohort == "pilot" else "complete",
+        "schema_version": "2.0" if repair_v2 else "1.0",
+        "status": (
+            "repair_v2_complete"
+            if repair_v2
+            else "pilot_complete"
+            if cohort == "pilot"
+            else "complete"
+        ),
         "cohort": cohort,
         "manifest_sha256": manifest_sha256,
         "dataset_sha256": DATASET_SHA256,
@@ -736,11 +871,11 @@ def run_calibration(
         "claim_boundary": "bounded local synthetic live sample; not production traffic or invoice",
     }
     redlines = {
-        "task_cap_exceeded": int(provisional["task_count"] > MAX_TASKS),
-        "call_cap_exceeded": int(provisional["live_call_count"] > MAX_CALLS),
-        "token_cap_exceeded": int(provisional["total_tokens"] > MAX_TOTAL_TOKENS),
+        "task_cap_exceeded": int(provisional["task_count"] > task_limit),
+        "call_cap_exceeded": int(provisional["live_call_count"] > call_limit),
+        "token_cap_exceeded": int(provisional["total_tokens"] > token_limit),
         "cost_cap_exceeded": int(
-            provisional["total_cost_microusd"] > MAX_COST_MICROUSD
+            provisional["total_cost_microusd"] > cost_limit
         ),
         "paired_input_mismatch": paired_mismatches,
         "fallback_depth_gt_1": int(candidate["maximum_fallback_depth"] > 1),
@@ -759,6 +894,14 @@ def run_calibration(
     provisional["redlines"] = redlines
     provisional["redline_failure_count"] = redline_failure_count
     provisional["expansion_allowed"] = expansion_allowed
+    provisional["benefit_claim_eligible"] = bool(
+        baseline["qualified_success_count"] > 0
+        and candidate["qualified_success_count"] > 0
+        and all(guardrails.values())
+        and redline_failure_count == 0
+    )
+    provisional["candidate_allocation"] = 0
+    provisional["allocation_change_authorized"] = False
     return provisional
 
 
@@ -777,7 +920,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--cohort", choices=("pilot", "expansion"), required=True)
+    parser.add_argument(
+        "--cohort", choices=("pilot", "expansion", "repair-v2"), required=True
+    )
     parser.add_argument("--prior", type=Path)
     args = parser.parse_args()
     prior = (

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 import json
 import time
@@ -15,6 +15,7 @@ from app.models.gateway import (
     CircuitBreaker,
     CredentialProvider,
     ModelInvocation,
+    ModelGatewayError,
     RetryPolicy,
 )
 from app.models.cost_router import (
@@ -119,6 +120,62 @@ ITINERARY_RESPONSE_SCHEMA: dict[str, Any] = {
     "required": ["title", "days"],
     "additionalProperties": False,
 }
+
+
+def itinerary_business_rule_codes(
+    payload: dict[str, Any],
+    structured_input: dict[str, Any],
+    *,
+    quality_checks: Iterable[str] = (),
+    available_claim_ids: frozenset[str] = frozenset(),
+) -> tuple[str, ...]:
+    """Evaluate typed itinerary invariants without retaining output content."""
+
+    try:
+        output = ValidatedItineraryOutput.model_validate(payload)
+    except (TypeError, ValueError):
+        return ("schema.typed_model",)
+    checks = frozenset(quality_checks) | frozenset(
+        str(item) for item in structured_input.get("hard_constraints", ())
+    )
+    failures: set[str] = set()
+    requested_days = int(structured_input.get("days", 0))
+    if requested_days < 1 or len(output.days) != requested_days:
+        failures.add("quality.exact_day_count")
+    if tuple(day.day_number for day in output.days) != tuple(
+        range(1, requested_days + 1)
+    ):
+        failures.add("quality.consecutive_day_numbers")
+
+    item_ids: list[str] = []
+    for day in output.days:
+        if "max_3_items_per_day" in checks and len(day.items) > 3:
+            failures.add("quality.max_3_items_per_day")
+        ordered = sorted(day.items, key=lambda item: item.start_minute)
+        previous_end = -1
+        for item in ordered:
+            end = item.start_minute + item.duration_minutes
+            if end > 1_440:
+                failures.add("quality.day_end_within_1440")
+            if "no_overlap" in checks and item.start_minute < previous_end:
+                failures.add("quality.no_overlap")
+            if "no_late_night" in checks and end > 1_320:
+                failures.add("quality.no_late_night")
+            if "daylight_only" in checks and (
+                item.start_minute < 360 or end > 1_200
+            ):
+                failures.add("quality.daylight_only")
+            if not set(item.claim_ids).issubset(available_claim_ids):
+                failures.add("quality.claim_id_not_available")
+            item_ids.append(item.item_id)
+            previous_end = max(previous_end, end)
+        if "morning_start" in checks and min(
+            item.start_minute for item in day.items
+        ) > 600:
+            failures.add("quality.morning_start")
+    if len(item_ids) != len(set(item_ids)):
+        failures.add("quality.unique_item_ids")
+    return tuple(sorted(failures))
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,19 +301,12 @@ class GeminiItineraryProcessor:
         structured_input: dict[str, Any],
         available_claim_ids: frozenset[str],
     ) -> None:
-        requested_days = int(structured_input.get("days", 0))
-        if requested_days < 1 or len(output.days) != requested_days:
-            raise WorkerExecutionError()
-        if tuple(day.day_number for day in output.days) != tuple(
-            range(1, requested_days + 1)
+        if itinerary_business_rule_codes(
+            output.model_dump(mode="json"),
+            structured_input,
+            available_claim_ids=available_claim_ids,
         ):
             raise WorkerExecutionError()
-        for day in output.days:
-            for item in day.items:
-                if item.start_minute + item.duration_minutes > 1_440 or not set(
-                    item.claim_ids
-                ).issubset(available_claim_ids):
-                    raise WorkerExecutionError()
 
     def process(self, job: ClaimedItineraryJob) -> ItineraryCandidate:
         evidence: tuple[SingleAgentKnowledgeEvidence, ...] = ()
@@ -277,11 +327,18 @@ class GeminiItineraryProcessor:
         prompt = _prompt(job.structured_input, evidence)
         input_sha256 = canonical_digest(prompt)
         input_ref = f"context://sha256/{input_sha256}"
+        available_claim_ids = frozenset(item.claim_id for item in evidence)
+        output_validator = lambda payload: itinerary_business_rule_codes(
+            payload,
+            job.structured_input,
+            available_claim_ids=available_claim_ids,
+        )
         gemini_adapter = GeminiModelAdapter(
             input_resolver=lambda reference: prompt
             if reference == input_ref
             else (_ for _ in ()).throw(KeyError(reference)),
             response_schema=ITINERARY_RESPONSE_SCHEMA,
+            output_validator=output_validator,
             client=self._client,
         )
         required_capabilities = self._required_capabilities(job.structured_input)
@@ -338,6 +395,8 @@ class GeminiItineraryProcessor:
                     input_resolver=lambda reference: prompt
                     if reference == input_ref
                     else (_ for _ in ()).throw(KeyError(reference)),
+                    response_schema=ITINERARY_RESPONSE_SCHEMA,
+                    output_validator=output_validator,
                     client=self._deepseek_client or self._client,
                 ),
             )
@@ -360,14 +419,16 @@ class GeminiItineraryProcessor:
             required_capabilities=required_capabilities,
             max_output_tokens=max_output_tokens,
         )
-        outcome = gateway.invoke(invocation, now_monotonic=self._clock())
+        try:
+            outcome = gateway.invoke(invocation, now_monotonic=self._clock())
+        except ModelGatewayError as error:
+            raise WorkerExecutionError() from error
         if outcome.result.payload is None:
             raise WorkerExecutionError()
         try:
             output = ValidatedItineraryOutput.model_validate(outcome.result.payload)
         except (TypeError, ValueError) as error:
             raise WorkerExecutionError() from error
-        available_claim_ids = frozenset(item.claim_id for item in evidence)
         self._validate_business_shape(
             output,
             job.structured_input,

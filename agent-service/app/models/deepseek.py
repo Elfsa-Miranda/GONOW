@@ -23,6 +23,11 @@ from app.models.gemini import (
     canonical_digest,
 )
 from app.models.ledger import TokenUsage
+from app.models.json_schema import (
+    canonical_schema,
+    canonical_schema_text,
+    validation_rule_codes,
+)
 from app.models.routes import CertifiedModelRoute, ModelTier
 
 
@@ -50,7 +55,9 @@ def certified_deepseek_route() -> CertifiedModelRoute:
                 "origin": API_ORIGIN,
                 "thinking": "disabled",
                 "response_format": "json_object",
-                "version": "1",
+                "schema_delivery": "complete_canonical_json_schema_system_message",
+                "local_schema_and_business_validation": True,
+                "version": "2",
             }
         ),
     )
@@ -84,17 +91,33 @@ class DeepSeekModelAdapter:
         self,
         *,
         input_resolver: Callable[[str], str],
+        response_schema: dict[str, Any],
+        output_validator: Callable[[dict[str, Any]], tuple[str, ...]] | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         self._input_resolver = input_resolver
+        self._response_schema = canonical_schema(response_schema)
+        self._response_schema_text = canonical_schema_text(self._response_schema)
+        self._output_validator = output_validator or (lambda _: ())
         self._client = client
 
     @staticmethod
-    def _response_error(status_code: int) -> AdapterFailure:
+    def _response_error(response: httpx.Response) -> AdapterFailure:
+        status_code = response.status_code
         if status_code == 429:
             return AdapterFailure("llm.rate_limited", retryable=True)
         if status_code in {500, 502, 503, 504}:
             return AdapterFailure("llm.provider_unavailable", retryable=True)
+        if status_code == 401:
+            return AdapterFailure("auth.provider_unauthenticated", retryable=False)
+        if status_code == 402:
+            return AdapterFailure("billing.provider_account", retryable=False)
+        if status_code == 403:
+            return AdapterFailure("auth.provider_permission_denied", retryable=False)
+        if status_code == 404:
+            return AdapterFailure("llm.model_not_found", retryable=False)
+        if status_code == 400:
+            return AdapterFailure("llm.request_invalid", retryable=False)
         return AdapterFailure("llm.provider_rejected", retryable=False)
 
     def invoke(
@@ -129,7 +152,17 @@ class DeepSeekModelAdapter:
 
         payload = {
             "model": MODEL_ID,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Return only one JSON object that matches this complete JSON "
+                        "Schema exactly; do not add fields. JSON Schema:"
+                        + self._response_schema_text
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
             "thinking": {"type": "disabled"},
             "response_format": {"type": "json_object"},
             "temperature": 0,
@@ -151,14 +184,8 @@ class DeepSeekModelAdapter:
                 timeout=timeout_seconds,
             )
             if response.status_code >= 400:
-                raise self._response_error(response.status_code)
+                raise self._response_error(response)
             body = response.json()
-            choice = body["choices"][0]
-            if choice.get("finish_reason") != "stop":
-                raise AdapterFailure("llm.incomplete_output", retryable=False)
-            parsed = json.loads(choice["message"]["content"])
-            if not isinstance(parsed, dict):
-                raise AdapterFailure("llm.schema_invalid", retryable=False)
             usage = body["usage"]
             input_tokens = int(usage["prompt_tokens"])
             output_tokens = int(usage["completion_tokens"])
@@ -174,13 +201,57 @@ class DeepSeekModelAdapter:
                 or cache_hit + cache_miss != input_tokens
             ):
                 raise AdapterFailure("llm.usage_invalid", retryable=False)
+            token_usage = TokenUsage(
+                input_tokens=input_tokens, output_tokens=output_tokens
+            )
+            choice = body["choices"][0]
+            if choice.get("finish_reason") != "stop":
+                raise AdapterFailure(
+                    "llm.incomplete_output",
+                    retryable=False,
+                    metered_usage=token_usage,
+                    input_cache_hit_tokens=cache_hit,
+                    input_cache_miss_tokens=cache_miss,
+                )
+            try:
+                parsed = json.loads(choice["message"]["content"])
+            except (TypeError, ValueError) as error:
+                raise AdapterFailure(
+                    "llm.schema_invalid",
+                    retryable=False,
+                    metered_usage=token_usage,
+                    input_cache_hit_tokens=cache_hit,
+                    input_cache_miss_tokens=cache_miss,
+                ) from error
+            if not isinstance(parsed, dict):
+                raise AdapterFailure(
+                    "llm.schema_invalid",
+                    retryable=False,
+                    metered_usage=token_usage,
+                    input_cache_hit_tokens=cache_hit,
+                    input_cache_miss_tokens=cache_miss,
+                )
             output_sha256 = canonical_digest(parsed)
+            rule_codes = tuple(
+                sorted(
+                    set(validation_rule_codes(parsed, self._response_schema))
+                    | set(self._output_validator(parsed))
+                )
+            )
+            if rule_codes:
+                raise AdapterFailure(
+                    rule_codes[0],
+                    retryable=False,
+                    rule_codes=rule_codes,
+                    metered_usage=token_usage,
+                    output_sha256=output_sha256,
+                    input_cache_hit_tokens=cache_hit,
+                    input_cache_miss_tokens=cache_miss,
+                )
             return ModelResult(
                 output_ref=f"candidate://sha256/{output_sha256}",
                 output_sha256=output_sha256,
-                usage=TokenUsage(
-                    input_tokens=input_tokens, output_tokens=output_tokens
-                ),
+                usage=token_usage,
                 payload=parsed,
                 input_cache_hit_tokens=cache_hit,
                 input_cache_miss_tokens=cache_miss,

@@ -14,7 +14,12 @@ SERVICE_ROOT = Path(__file__).resolve().parents[2]
 site.addsitedir(str(SERVICE_ROOT / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(SERVICE_ROOT))
 
-from app.models.gateway import ProviderCredential
+from app.models.gateway import AdapterFailure, ModelInvocation, ProviderCredential
+from app.models.gemini import (
+    GeminiModelAdapter,
+    canonical_digest,
+    certified_gemini_routes,
+)
 from app.persistence.repositories.jobs import JobClaim
 from app.worker.execution import ClaimedItineraryJob, WorkerExecutionError
 from app.worker.itinerary_processor import GeminiItineraryProcessor
@@ -192,3 +197,64 @@ def test_provider_credential_repr_never_contains_secret() -> None:
         "synthetic-gemini-credential",
     )
     assert "synthetic-gemini-credential" not in repr(credential)
+
+
+@pytest.mark.parametrize(
+    ("status_code", "provider_status", "reason", "expected"),
+    [
+        (400, "INVALID_ARGUMENT", "", "llm.request_invalid"),
+        (401, "UNAUTHENTICATED", "", "auth.provider_unauthenticated"),
+        (403, "PERMISSION_DENIED", "", "auth.provider_permission_denied"),
+        (403, "PERMISSION_DENIED", "BILLING_DISABLED", "billing.provider_account"),
+        (404, "NOT_FOUND", "", "llm.model_not_found"),
+    ],
+)
+def test_adapter_classifies_captured_provider_rejections_without_body_retention(
+    status_code: int,
+    provider_status: str,
+    reason: str,
+    expected: str,
+) -> None:
+    prompt = "Return one JSON object."
+    schema = {
+        "type": "object",
+        "properties": {"ok": {"type": "string"}},
+        "required": ["ok"],
+        "additionalProperties": False,
+    }
+    details = [{"reason": reason}] if reason else []
+    response = httpx.Response(
+        status_code,
+        json={
+            "error": {
+                "status": provider_status,
+                "details": details,
+                "message": "sensitive-captured-body-must-not-escape",
+            }
+        },
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda _: response)
+    ) as client:
+        adapter = GeminiModelAdapter(
+            input_resolver=lambda _: prompt,
+            response_schema=schema,
+            client=client,
+        )
+        route = certified_gemini_routes().plan(frozenset({"json"}))[0]
+        invocation = ModelInvocation(
+            request_id="gemini-error-classification",
+            input_ref="context://sha256/" + canonical_digest(prompt),
+            input_sha256=canonical_digest(prompt),
+            required_capabilities=frozenset({"json"}),
+            max_output_tokens=64,
+        )
+        credential = ProviderCredential(
+            route.provider_id,
+            "secret://environment/GEMINI_API_KEY",
+            "synthetic-gemini-credential",
+        )
+        with pytest.raises(AdapterFailure) as caught:
+            adapter.invoke(route, invocation, credential, timeout_seconds=5)
+    assert caught.value.code == expected
+    assert "sensitive-captured-body" not in repr(caught.value)
