@@ -217,6 +217,7 @@ try {
     $text = Get-Content -LiteralPath $path -Raw -Encoding UTF8
     if ($text -match '(?i)sk-[a-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|bearer\s+eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+') { $contentFindings.Add("$path::secret_like") }
     if ($text -match '(?im)^\s*git\s+reset\s+--hard\b|^\s*git\s+clean\s+-[^\r\n]*f|^\s*(rm\s+-rf|Remove-Item\s+.+-Recurse.+-Force)\b') { $contentFindings.Add("$path::unsafe_command") }
+    if ($text -cmatch '(?m)[ \t]+$' -or $text -cmatch '(\r?\n){2}$') { $contentFindings.Add("$path::whitespace_error") }
   }
   $diffOutput = @(& git diff --check $BaseOid -- 2>&1)
   $diffExit = $LASTEXITCODE

@@ -113,4 +113,3 @@ implementation, first set experimental allocation to zero and activate the route
 last known-good policy digest and price version, keep route and budget receipts for audit, replay the
 Release B equivalence suite, then diagnose. Never delete ledger evidence, route to an uncertified
 provider, weaken the quality floor, or change region/privacy eligibility to recover availability.
-

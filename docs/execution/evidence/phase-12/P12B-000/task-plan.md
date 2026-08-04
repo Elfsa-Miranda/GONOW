@@ -87,4 +87,3 @@ Neither task exists or runs under this design-only package.
 
 Design ready count: 1. Formal selected count: 0. Implementation, contract, multi-Agent, allocation,
 and production write counts are zero. Independent review is pending_external.
-
