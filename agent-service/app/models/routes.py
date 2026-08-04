@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Protocol
 
 
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -82,3 +83,38 @@ class CertifiedModelRoutes:
         if required_capabilities.issubset(fallback.capabilities):
             return preferred, fallback
         return (preferred,)
+
+
+class ModelRoutePlan(Protocol):
+    def plan(
+        self, required_capabilities: frozenset[str]
+    ) -> tuple[CertifiedModelRoute, ...]: ...
+
+
+class FixedCertifiedRoutePlan:
+    """A preselected certified route and, optionally, one exact fallback."""
+
+    def __init__(self, routes: tuple[CertifiedModelRoute, ...]) -> None:
+        if (
+            len(routes) not in {1, 2}
+            or len({route.route_id for route in routes}) != len(routes)
+        ):
+            raise ModelRouteError()
+        self._routes = routes
+
+    @property
+    def routes(self) -> tuple[CertifiedModelRoute, ...]:
+        return self._routes
+
+    def plan(
+        self, required_capabilities: frozenset[str]
+    ) -> tuple[CertifiedModelRoute, ...]:
+        if not required_capabilities or not required_capabilities.issubset(
+            self._routes[0].capabilities
+        ):
+            raise ModelRouteError()
+        if len(self._routes) == 2 and not required_capabilities.issubset(
+            self._routes[1].capabilities
+        ):
+            raise ModelRouteError()
+        return self._routes

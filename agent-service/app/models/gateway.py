@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from app.models.ledger import ModelUsageLedger, TokenUsage
-from app.models.routes import CertifiedModelRoute, CertifiedModelRoutes
+from app.models.routes import CertifiedModelRoute, ModelRoutePlan
 
 
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -59,11 +59,24 @@ class ModelResult:
     output_sha256: str
     usage: TokenUsage
     payload: dict[str, Any] | None = field(default=None, repr=False, compare=False)
+    input_cache_hit_tokens: int = 0
+    input_cache_miss_tokens: int | None = None
 
     def __post_init__(self) -> None:
         if (
             not self.output_ref.startswith("candidate://")
             or SHA256.fullmatch(self.output_sha256) is None
+            or self.input_cache_hit_tokens < 0
+            or (
+                self.input_cache_miss_tokens is not None
+                and self.input_cache_miss_tokens < 0
+            )
+            or self.input_cache_hit_tokens > self.usage.input_tokens
+            or (
+                self.input_cache_miss_tokens is not None
+                and self.input_cache_hit_tokens + self.input_cache_miss_tokens
+                != self.usage.input_tokens
+            )
         ):
             raise ModelGatewayError("llm.response_invalid")
 
@@ -138,7 +151,7 @@ class AuthenticatedModelGateway:
     def __init__(
         self,
         *,
-        routes: CertifiedModelRoutes,
+        routes: ModelRoutePlan,
         credentials: CredentialProvider,
         adapter: ModelAdapter,
         ledger: ModelUsageLedger,

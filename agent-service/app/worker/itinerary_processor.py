@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import json
 import time
 from typing import Any
@@ -16,6 +17,22 @@ from app.models.gateway import (
     ModelInvocation,
     RetryPolicy,
 )
+from app.models.cost_router import (
+    CostRouteDecision,
+    CostRouterError,
+    PrivacyClass,
+    RoutingPolicy,
+    RoutingRequest,
+    evaluate_cost_route,
+)
+from app.models.deepseek import (
+    EnvironmentDeepSeekCredentialProvider,
+    FixedCostRouterCredentialProvider,
+    FixedCostRouterModelAdapter,
+    ROUTE_ID as DEEPSEEK_ROUTE_ID,
+    DeepSeekModelAdapter,
+    certified_deepseek_route,
+)
 from app.models.gemini import (
     EnvironmentGeminiCredentialProvider,
     GeminiModelAdapter,
@@ -23,6 +40,7 @@ from app.models.gemini import (
     certified_gemini_routes,
 )
 from app.models.ledger import ModelUsageLedger
+from app.models.routes import FixedCertifiedRoutePlan
 from app.runtime.candidate import (
     CandidateProjector,
     ItineraryCandidate,
@@ -103,6 +121,38 @@ ITINERARY_RESPONSE_SCHEMA: dict[str, Any] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class ItineraryCostRoutingConfig:
+    """Explicit local routing inputs; absence means exact legacy Gemini behavior."""
+
+    policies: tuple[RoutingPolicy, ...]
+    region: str
+    privacy_class: PrivacyClass
+    quality_floor_ppm: int
+    latency_budget_ms: int
+    remaining_budget_microusd: int
+
+    def __post_init__(self) -> None:
+        baseline_ids = tuple(policy.baseline_route_id for policy in self.policies)
+        if (
+            not self.policies
+            or len(baseline_ids) != len(set(baseline_ids))
+            or not self.region
+            or not 0 <= self.quality_floor_ppm <= 1_000_000
+            or self.latency_budget_ms <= 0
+            or self.remaining_budget_microusd < 0
+        ):
+            raise CostRouterError("router.runtime_config_invalid")
+
+    def policy_for_baseline(self, route_id: str) -> RoutingPolicy:
+        matches = tuple(
+            policy for policy in self.policies if policy.baseline_route_id == route_id
+        )
+        if len(matches) != 1:
+            raise CostRouterError("router.policy_missing")
+        return matches[0]
+
+
 def _prompt(
     structured_input: dict[str, Any],
     evidence: tuple[SingleAgentKnowledgeEvidence, ...] = (),
@@ -149,7 +199,7 @@ def _prompt(
 
 
 class GeminiItineraryProcessor:
-    """Convert one fenced Job input into a strictly validated typed Candidate."""
+    """Convert one fenced Job with Gemini baseline and optional local cost route."""
 
     def __init__(
         self,
@@ -160,6 +210,10 @@ class GeminiItineraryProcessor:
         ledger: ModelUsageLedger | None = None,
         rag_enabled: bool = False,
         knowledge_provider: SingleAgentKnowledgeProvider | None = None,
+        cost_routing: ItineraryCostRoutingConfig | None = None,
+        deepseek_credentials: CredentialProvider | None = None,
+        deepseek_client: httpx.Client | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         self._credentials = credentials or EnvironmentGeminiCredentialProvider()
         self._client = client
@@ -167,6 +221,13 @@ class GeminiItineraryProcessor:
         self.ledger = ledger or ModelUsageLedger()
         self._rag_enabled = rag_enabled
         self._knowledge_provider = knowledge_provider
+        self._cost_routing = cost_routing
+        self._deepseek_credentials = (
+            deepseek_credentials or EnvironmentDeepSeekCredentialProvider()
+        )
+        self._deepseek_client = deepseek_client
+        self._wall_clock = wall_clock
+        self.last_route_decision: CostRouteDecision | None = None
 
     @staticmethod
     def _required_capabilities(structured_input: dict[str, Any]) -> frozenset[str]:
@@ -216,16 +277,74 @@ class GeminiItineraryProcessor:
         prompt = _prompt(job.structured_input, evidence)
         input_sha256 = canonical_digest(prompt)
         input_ref = f"context://sha256/{input_sha256}"
-        adapter = GeminiModelAdapter(
+        gemini_adapter = GeminiModelAdapter(
             input_resolver=lambda reference: prompt
             if reference == input_ref
             else (_ for _ in ()).throw(KeyError(reference)),
             response_schema=ITINERARY_RESPONSE_SCHEMA,
             client=self._client,
         )
+        required_capabilities = self._required_capabilities(job.structured_input)
+        gemini_routes = certified_gemini_routes()
+        routes = gemini_routes
+        credentials: CredentialProvider = self._credentials
+        adapter = gemini_adapter
+        self.last_route_decision = None
+        requested_days = int(job.structured_input.get("days", 0))
+        max_output_tokens = min(8_192, max(1_024, requested_days * 512))
+
+        if self._cost_routing is not None:
+            baseline_plan = gemini_routes.plan(required_capabilities)
+            baseline = baseline_plan[0]
+            try:
+                policy = self._cost_routing.policy_for_baseline(baseline.route_id)
+                decision = evaluate_cost_route(
+                    request=RoutingRequest(
+                        task_class="itinerary_generation",
+                        required_capabilities=required_capabilities,
+                        region=self._cost_routing.region,
+                        privacy_class=self._cost_routing.privacy_class,
+                        quality_floor_ppm=self._cost_routing.quality_floor_ppm,
+                        latency_budget_ms=self._cost_routing.latency_budget_ms,
+                        remaining_budget_microusd=(
+                            self._cost_routing.remaining_budget_microusd
+                        ),
+                        estimated_input_tokens=max(
+                            1, (len(prompt.encode("utf-8")) + 3) // 4
+                        ),
+                        max_output_tokens=max_output_tokens,
+                        as_of_epoch_seconds=int(self._wall_clock()),
+                    ),
+                    policy=policy,
+                )
+            except CostRouterError as error:
+                raise WorkerExecutionError() from error
+            self.last_route_decision = decision
+            if decision.selected_route_id == DEEPSEEK_ROUTE_ID:
+                if decision.fallback_route_id != baseline.route_id:
+                    raise WorkerExecutionError()
+                routes = FixedCertifiedRoutePlan(
+                    (certified_deepseek_route(), baseline)
+                )
+            elif decision.selected_route_id != baseline.route_id:
+                raise WorkerExecutionError()
+            credentials = FixedCostRouterCredentialProvider(
+                gemini=self._credentials,
+                deepseek=self._deepseek_credentials,
+            )
+            adapter = FixedCostRouterModelAdapter(
+                gemini=gemini_adapter,
+                deepseek=DeepSeekModelAdapter(
+                    input_resolver=lambda reference: prompt
+                    if reference == input_ref
+                    else (_ for _ in ()).throw(KeyError(reference)),
+                    client=self._deepseek_client or self._client,
+                ),
+            )
+
         gateway = AuthenticatedModelGateway(
-            routes=certified_gemini_routes(),
-            credentials=self._credentials,
+            routes=routes,
+            credentials=credentials,
             adapter=adapter,
             ledger=self.ledger,
             circuit_breaker=CircuitBreaker(
@@ -234,13 +353,12 @@ class GeminiItineraryProcessor:
             ),
             retry_policy=RetryPolicy(max_total_attempts=2),
         )
-        requested_days = int(job.structured_input.get("days", 0))
         invocation = ModelInvocation(
             request_id=f"job-{job.claim.job_id}",
             input_ref=input_ref,
             input_sha256=input_sha256,
-            required_capabilities=self._required_capabilities(job.structured_input),
-            max_output_tokens=min(8_192, max(1_024, requested_days * 512)),
+            required_capabilities=required_capabilities,
+            max_output_tokens=max_output_tokens,
         )
         outcome = gateway.invoke(invocation, now_monotonic=self._clock())
         if outcome.result.payload is None:
