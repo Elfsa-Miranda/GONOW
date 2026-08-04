@@ -2,70 +2,63 @@
 
 ## Current safe state
 
-`formal_selection_status=local_provisional_selected`, `selected_candidate=12B`, and
-`selected_count=1`. The deterministic Cost Router package exists locally only for server-side
-itinerary generation. Candidate allocation and production writes are zero. Formal owner review,
-provider production eligibility, remote integration, deployment, and Release C acceptance remain
-pending. 12A and 12C are dormant; the earlier P12D package remains historical `ready_for_review`
-evidence and is dormant for this cycle. No Multi-Agent framework exists.
+`selected_candidate=12A`, `selected_count=1`, and
+`formal_selection_status=local_provisional_selected`. Structured Memory is implemented only in the
+local P12A branch, is default off, and has zero production allocation and writes. P12B, P12C, and
+P12D are dormant for new work. The runtime remains Single-Agent.
 
 ## First checks
 
-1. Bind the candidate to a full Git object ID and verify the worktree is clean.
-2. Confirm route scope is exactly `server:itinerary_generation`, policy is deterministic, and
-   candidate allocation is zero by default.
-3. Verify the pinned policy, price snapshot, fixed provider/model IDs, Schema digest, region/privacy
-   eligibility, provider health, and content-free reservation ledger.
-4. Verify the model receives the complete canonical JSON Schema and that both adapters run local
-   Schema plus itinerary business-shape validation before returning a Candidate.
-5. Check finite failure codes, physical-attempt token/cost accounting, one-hop fallback depth,
-   kill switch, and rollback digest. Never inspect or persist response bodies or API keys.
-6. Preserve the immutable P12B-060 v1 negative result. For the latest DeepSeek set, expect 10/10
-   qualified scenarios and zero Schema, business, provider, fallback, or safety-redline failures.
-7. Treat the Gemini live baseline as externally blocked after its classified rate-limit/5xx
-   failures. Do not retry merely to obtain a green baseline.
+1. Bind the exact candidate Git object ID and verify the worktree and status records.
+2. Confirm the type is one of the four closed Memory types and the purpose is exactly
+   `itinerary.personalization`; reject free text, transcript, hidden profile, or inference payloads.
+3. Verify authenticated tenant and principal, current purpose-specific consent, consent version and
+   expiry, provenance, retention, record version, and idempotency key.
+4. For a write, verify Candidate status, explicit confirmation, server authorization, expected CAS
+   version, atomic receipt, and outbox event. The Worker must not directly write formal Memory.
+5. For a read or export, verify the same tenant/principal/purpose boundary and FORCE RLS context.
+6. For a conflict, preserve both claims and provenance; never select a winner silently.
+7. For delete or consent withdrawal, inspect the tombstone and all seven covered surfaces before any
+   restore: record, Candidate, index, cache, export, eval trace, and restore ledger.
 
 ## Enable, disable, and degrade
 
-There is no production enable command in this local provisional package. Any future enablement
-requires approved provider eligibility, fresh prices, owner-frozen quality margins, production
-observability, a non-zero comparable baseline, and explicit rollout authority.
+There is no local command that authorizes production enablement. Future enablement requires approved
+production schema/RLS/grant evidence, privacy and data approval, real deletion/export/restore drills,
+monitoring, rollback ownership, independent review, and rollout authority.
 
-| Candidate | Enable only after | Disable / first rollback action | Degraded behavior |
-|---|---|---|---|
-| 12A Memory | new XOR cycle, privacy/data approval, CT-009/015, deletion/restore drill | allocation zero; disable reads/proposals; retain tombstones/audit | Release B single Agent without Memory |
-| 12B Cost Router | certified routes, non-zero paired baseline, quality non-inferiority, cost/success, latency/fallback/redline gates, owner approval | candidate allocation zero; bypass router; restore previous policy digest; retain decision/cost ledger | pinned certified baseline or existing fail-closed policy |
-| 12C Multi-Agent | fresh positive XOR cycle and separately approved package | allocation zero; return to one graph; retain experiment evidence | Release B single Agent |
-| 12D Domain Command | a future independent cycle and production authorization | keep its flag off for new intents; retain receipts/outbox | legacy authorized writer; unknown outcomes still use receipt lookup |
+To disable, set Memory allocation to zero, turn off proposals and the Single-Agent read port, and
+activate the Memory kill switch if necessary. The prior itinerary flow then runs without Memory.
+Preserve formal records, audit, receipts, outbox rows, and tombstones for authorized recovery.
 
-Fallback is bounded to one additional physical call and is never recursive. A quality, Schema,
-privacy, region, certification, or budget failure cannot be compensated by a lower cost. Unknown
-labels, stale prices, missing certification, exhausted budget, or invalid output use the pinned
-fail-closed behavior. The cost ledger reconciles every billed attempt, including failures and
-fallbacks, before releasing a reservation.
+If consent, identity, purpose, policy state, or RLS context is missing or ambiguous, fail closed.
+Memory unavailability may degrade to the prior no-Memory Single-Agent path; it must not degrade to an
+unscoped read, a hidden inference, or a client-side write.
 
-Global rollback order is: set candidate allocation to zero, activate the kill switch or bypass the
-router, pin the previous policy/price digest, preserve evidence and content-free receipts, run the
-focused equivalence checks, then diagnose. Never roll back by deleting audit rows, restoring revoked
-secrets, force-pushing, or writing directly to production.
+## Deletion and recovery
+
+Deletion and consent withdrawal are irreversible domain decisions even when the feature is rolled
+back. Record the tombstone first, fan it out to every derived surface, and verify zero materialization.
+During restore, replay the tombstone ledger before restoring any Memory row or index. A backup copy
+that conflicts with a tombstone stays suppressed. Re-consent may permit a new record with a new
+authorization history; it does not revive the deleted record.
 
 ## Failure handling
 
-Use one root-cause loop: reproduce with captured response/fake first, identify the failing Schema or
-business rule/provider class, apply the smallest reversible fix, run the minimum affected check, and
-then expand only when that check cannot prove the repair. Run full end-to-end verification at final
-acceptance. A repeated provider rate-limit/5xx without a new signal is an external availability
-blocker, not a reason for repeated paid calls.
+Use one root-cause loop: preserve the first failing input and environment, reproduce the smallest
+case, identify the authorization/RLS/CAS/lifecycle boundary, make the smallest reversible repair,
+then run the affected Memory and compatibility tests. Never gain a pass by weakening consent,
+changing expected versions, skipping a negative case, dropping FORCE RLS, or deleting failure
+evidence.
 
-Missing independent review or Gemini availability blocks formal comparison, production allocation,
-remote merge/push, and deployment. It does not invalidate completed local adapter, fake/replay,
-DeepSeek calibration, cost-ledger, safety, rollback, or regression evidence.
+Production schema, policies, trigger behavior, data quality, backup behavior, traffic, and user
+outcomes remain unknown until separately inspected. Missing independent review blocks formal
+acceptance and production use, not completed local engineering evidence.
 
 ## Merge and audit retention
 
-Phase commits land through one history-preserving local integration on
-`codex/gonow-agent-landing` after the applicable provisional gates pass. Never push a Phase branch to
-`main`, and never use local evidence to claim Release C acceptance. Retain the immutable v1 negative
-result, captured-response fixtures, exact finite rule codes, price/policy/Schema digests, token and
-cost counts, provider failure classes, candidate/merge OIDs, rollback result, and artifact hashes.
-Evidence must contain no secrets, personal data, full prompts/responses, or hidden reasoning.
+P12A may land only through a history-preserving local merge into `codex/gonow-agent-landing` after
+P12A-990 and P12-089 pass locally. Do not push `main`, deploy, or write production data. Retain exact
+candidate and merge OIDs, consent and schema digests, finite denial/conflict codes, deletion and
+restore results, regression counts, negative attempts, and artifact hashes. Evidence must contain no
+secret, personal payload, prompt/response body, or hidden reasoning.

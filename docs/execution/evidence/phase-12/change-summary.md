@@ -1,31 +1,36 @@
-# Phase 12B local provisional change summary
+# Phase 12 change summary
 
-The user selected 12B as this cycle's only candidate. The implemented scope is exactly the existing
-server-side itinerary-generation model boundary. 12A and 12C remain dormant; the earlier P12D local
-package is retained as historical `ready_for_review` evidence and receives no new work or allocation.
+This cycle selects only P12A Structured Memory and keeps the runtime Single-Agent. P12B, P12C, and
+P12D remain dormant for new work.
 
-The package adds a deterministic certified-route policy, fixed DeepSeek adapter, content-free budget
-reservation/reconciliation ledger, one-hop fallback, default-off wiring, replay/calibration tools,
-and local canonical JSON Schema plus itinerary business-shape validation for both providers. The
-DeepSeek model receives the full canonical Schema. The Gemini provider projection was repaired and
-validated offline. Invalid or unsafe output fails closed, remains billed, and is represented only by
-a finite rule code; prompts, responses, keys, tenant identity, and user content are not persisted in
-routing or cost evidence.
+## What changed
 
-The immutable P12B-060 v1 result remains negative. Targeted repair then used captured responses and
-fakes before bounded live checks. The latest frozen DeepSeek result is 10/10 quality-qualified with
-zero Schema, business-shape, provider, fallback, or safety-redline failures and p95 latency 8,400 ms.
-All P12B live calibration used 30 calls, 23,108 tokens, 4,555 micro-USD, or CNY 0.03644 under the
-frozen conversion. Gemini produced no qualified live baseline after classified rate-limit/5xx
-availability failures; further calls were stopped and the external blocker retained.
+- Added four closed, typed, user-visible Memory types for itinerary personalization; free text,
+  transcripts, hidden profiles, and model-inferred traits are forbidden.
+- Added explicit consent, tenant/principal, purpose, provenance, retention, version, and deletion
+  identities.
+- Added Candidate-only proposal and a formal write chain requiring user confirmation, server
+  authorization, CAS, idempotency, and atomic outbox.
+- Added seven internal PostgreSQL tables with FORCE RLS tenant/principal isolation and least grants.
+- Added deterministic conflict preservation, poisoning defenses, user-scoped export, tombstone-first
+  deletion/consent withdrawal, and backup resurrection prevention.
+- Added a default-off Single-Agent Memory read port and kill switch. No coordinator, specialist
+  Agent, model API call, new process, or public client contract was added.
 
-Offline paired fake replay is 10/10 in both arms and shows a synthetic mechanics/price ratio of
-0.135149, but it is not a live benefit claim. With baseline success equal to zero, paired live
-quality non-inferiority and relative cost/success are undefined. Allocation remains zero and
-`positive_benefit_claim=false`.
+## Verification
 
-The corrected P12B-990 regression passed 15 CI gates, 830 unit tests, 233 contract tests, 124 Flutter
-tests, and 53 isolated P12D RealPG/fault guardrail tests with zero failures, skips, xfails, denominator
-exclusions, or safety redlines. The first incomplete regression failure and its JSON primitive root
-cause are preserved separately. These results establish a local engineering candidate, not
-production quality, savings, provider eligibility, traffic behavior, or formal acceptance.
+Affected P12A tests passed 65/65. The single P12A-990 full regression passed 15 CI suites, 895 unit,
+255 contract, 124 Flutter, and 53 isolated PostgreSQL/fault tests, with zero failures, skips, or
+xfails. Real PostgreSQL proved seven FORCE RLS tables, an authorized principal seeing one row, a
+wrong principal seeing zero, and formal Worker update denial.
+
+The first full-regression wrapper timed out after its output channel closed. A later concurrent
+historical certification run caused one PostgreSQL deadlock during contract teardown; the failure
+was retained, the shared-role fixture was isolated, and the ordered affected probe passed 7/7 before
+the final clean regression. No threshold, test, or negative result was suppressed.
+
+## Boundary
+
+All evidence is local controlled mechanism evidence. Production schema, RLS/grants, triggers,
+backups, traffic, data, user consent, and outcome improvement remain unknown. Production allocation,
+production writes, remote pushes, and Multi-Agent implementation are zero.

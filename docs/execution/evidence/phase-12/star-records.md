@@ -1,30 +1,39 @@
-# Phase 12 STAR records
+# Phase 12A STAR records
 
-Phase 12 keeps capability existence, measured behavior, and governance acceptance separate. This
-cycle selects P12B; P12A/P12C are dormant and the prior P12D package remains historical evidence.
+## Situation and task
 
-## Indexed P12B records
+The prior itinerary path had no explicit, typed, user-visible Memory contract. Reusing chat history or
+model inference would have created hidden profiling, ambiguous consent, cross-purpose access,
+conflicting facts, and backup resurrection risk. The selected task was to add only Structured Memory
+while preserving Single-Agent architecture and existing behavior when disabled.
 
-| Record | SHA-256 | Result | Evidence boundary |
-|---|---|---|---|
-| `../phase-12b/P12B-060/live-calibration.json` | `71879579baffb66a41a79e295278da3aa5b7d8ddfda23622d9db1ec115676cb2` | v1: both arms had zero qualified success | Immutable negative evidence; exact DeepSeek rule-code detail was not recorded by the v1 recorder and is not invented later |
-| `../phase-12b/P12B-060/deepseek-quality-final.json` | `67e310e198157bc7e6c03c5670c4f6b4b3dfac3d2aafa3d2dc92b9810141a5a6` | latest DeepSeek strata 10/10 qualified; Schema/business/provider/fallback/redline failures 0; p95 8,400 ms | Bounded local live calibration; response bodies and keys not retained |
-| `../phase-12b/P12B-060/star-evaluation-final.json` | `d337437c5435b55120f44fb33eafb336de3d16afe9c31ca19bafce5a794587fe` | all P12B live: 30 calls, 23,108 tokens, 4,555 micro-USD / CNY 0.03644 | Gemini live baseline success is zero; relative benefit and paired non-inferiority remain undefined |
-| `../phase-12b/P12B-050/stratified-replay-results.json` | `e736f63697b71d30ba3cb725e053b55531da5072668a186e0934796ec6c38e32` | fake replay: baseline and candidate 10/10; synthetic cost ratio 0.135149 | Mechanics and frozen-price diagnostic only; not a live or production benefit claim |
-| `../phase-12b/P12B-060/rollback-drill.json` | `72d663e3c904580d326c14e261b56f4cc43d999c71d66752e29eb977e60cd8bc` | allocation zero, router bypass, prior digest restored, receipts retained | Local rollback proof only |
-| `../phase-12b/P12B-060/BLK-P12B-060-gemini-live-availability.md` | `2c9a8824c195babdcb0b84f4aa8e32343a64359ea1312fa406e74f10a20c2ee8` | Gemini request-invalid repair proved offline; later rate-limit/5xx prevented a non-zero live baseline | External availability blocker; no repeated calls for a green result |
+## Actions and evidence
 
-## Outcome boundary
+| Area | Evidence | SHA-256 |
+|---|---|---|
+| frozen types, consent, purpose, retention, provenance | `../phase-12a/P12A-010/scope-contract.json` | `6951b2cc0189755aff7909d713e04fe1914c6c0e7df973411a7112a8c5560673` |
+| seven FORCE RLS tables and principal isolation | `../phase-12a/P12A-020/realpg-verification.json` | `98c04c982556a061519028655ca8c901689883c8c39599c253e83c89314f5daa` |
+| confirmation, authorization, CAS, idempotency, outbox | `../phase-12a/P12A-030/command-contract-results.json` | `ba1ea5feade8194a3f89821ff03bd0c60118442deed5ac5ef5532f9de82ffba8` |
+| conflict and injection defenses | `../phase-12a/P12A-040/injection-and-conflict-results.json` | `e5627df6ffc3e58c6fc523ddf7fe224ab76ec1cb662aa5815dd4743bf2d2f1dd` |
+| deletion, export, and tombstone-first restore | `../phase-12a/P12A-050/deletion-export-restore-results.json` | `d0d40e3a7a7a148b3852f1c091e4fae64648213e066182750bebd72470680acb` |
+| controlled lifecycle measurement | `../phase-12a/P12A-060/star-evaluation.json` | `cfafef01b3f4daac4a3cf208dc09a7621e00c9b03fda15347453f39d3af45c6f` |
+| complete regression and retained failures | `../phase-12a/P12A-990/regression-summary.json` | `eab115c0058ea31b736db3c41d943239fac0d2e757943c16ba23cef354ff0d2a` |
+| local acceptance boundary | `../phase-12a/acceptance.md` | `94cf2fe213ff5e536f557e91742a035e1597ffe61d0c88f675f95ff0f41caf18` |
 
-- Capability existence: one default-off deterministic Cost Router inside the existing Single-Agent
-  Worker model boundary; no public contract, database schema, process, or Multi-Agent addition.
-- DeepSeek behavior: the latest frozen ten-scenario set is fully quality-qualified and the complete
-  output/metering/fallback/rollback chain is mechanically covered.
-- Comparative benefit: not established. Gemini has zero qualified live successes, so live
-  cost/success ratio and quality non-inferiority cannot be computed.
-- Decision: `candidate_allocation=0`, `positive_benefit_claim=false`, formal acceptance pending.
-- Safety redlines are non-compensable: tenant/secret/PII exposure, invalid Schema/business shape,
-  unapproved region/provider, recursive fallback, unmetered attempt, or production write fails
-  regardless of cost.
-- Historical P12D controlled evidence remains valid within its own local scope, but it is not the
-  selected candidate or an allocation authority in this cycle.
+## Result
+
+Capability existence is proven locally: all four types and the complete authorized lifecycle are
+implemented, default off, and reachable only through the Single-Agent port. In the frozen local
+fixture, authorized lifecycle success was 12/12; four typed eligible fixtures were accepted and eight
+deny/reject fixtures stayed denied. Affected tests were 65/65.
+
+The main acceptance result was 15/15 CI suites, 895 unit, 255 contract, 124 Flutter, and 53
+RealPG/fault tests, with failures/skips/xfails all zero. Diagnostic RealPG checks proved seven FORCE
+RLS tables, one authorized row, zero wrong-principal rows, and denied Worker formal mutation.
+
+Safety redlines are non-compensable and remained zero: cross-tenant materialization, negative-consent
+bypass, injection-executed action, deletion propagation failure, and backup resurrection. Model API
+calls and production writes were zero.
+
+This is not a production-improvement claim. Production schema/RLS, backup replay, real consent,
+traffic, quality, latency, cost, and user outcome remain unknown/pending.
