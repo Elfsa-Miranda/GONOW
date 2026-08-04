@@ -39,8 +39,8 @@
       "candidate": "12B_cost_router",
       "boundary": "unsafe_or_noncompliant_route",
       "control": "deterministic certified-route policy with region/privacy/quality floors, physical-attempt budget accounting, fallback, and kill switch",
-      "local_result": "unselected_no_runtime_change",
-      "residual": "candidate unselected in this XOR cycle"
+      "local_result": "selected_pure_policy_contract_20_tests_passed_no_provider_wiring",
+      "residual": "provider adapter, budget ledger, replay, live calibration and independent owner review remain pending; production allocation is zero"
     },
     {
       "id": "P12-T04",
@@ -73,6 +73,22 @@
       "control": "explicit deferral; no ADR, task plan, specialist branch, coordinator runtime, production allocation, or implementation commit",
       "local_result": "deferred_zero_implementation",
       "residual": "a future cycle would require independent benefit, safety, cost, and rollback evidence"
+    },
+    {
+      "id": "P12-T08",
+      "candidate": "12B_cost_router",
+      "boundary": "content_or_identity_influences_cost_routing",
+      "control": "closed typed request schema excludes prompt, response, reasoning, secret, credential, tenant, user and principal fields; route reasons are a finite content-free enum",
+      "local_result": "schema_and_reason_contract_passed_sensitive_reason_field_count_0",
+      "residual": "P12B-030 integration must prove caller-supplied route factors and secrets cannot enter the evaluator or evidence"
+    },
+    {
+      "id": "P12-T09",
+      "candidate": "12B_cost_router",
+      "boundary": "stale_or_unhealthy_low_cost_route",
+      "control": "certification, capability, region, privacy, quality, latency, explicit price freshness, healthy fresh provider state and remaining budget are hard eligibility filters before deterministic cost ordering",
+      "local_result": "nine_ineligible_candidate_classes_never_selected_and_unsafe_baseline_failed_closed",
+      "residual": "health and price observation sources are local calibration inputs only; production provenance and service levels remain unknown"
     }
   ],
   "production_write_count": 0

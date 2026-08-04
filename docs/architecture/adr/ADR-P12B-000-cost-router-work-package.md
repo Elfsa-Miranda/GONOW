@@ -73,10 +73,13 @@ The local XOR record selects 12B and the activated plan creates these serial tas
 
 1. P12B-010 binds the four-week dataset, price sources, strata, denominators, exclusions, uncertainty,
    TCO formula, and positive/negative trigger decision.
-2. P12B-020 freezes certified-route capabilities, deterministic factor schema, finite reason codes,
-   region/privacy eligibility, and policy digest rules.
-3. P12B-030 implements a default-off deterministic policy evaluator and bounded fallback without a
-   routing LLM, new gateway, or public Candidate-contract change.
+2. P12B-020 implements and freezes the pure deterministic evaluator: certified-route capabilities,
+   closed typed factor schema, finite reason codes, region/privacy/quality-before-cost eligibility,
+   immutable price and health freshness, stable policy/input-class digests, kill switch, and exactly
+   one-hop fallback. It performs no I/O and reads no environment or request content.
+3. P12B-030 implements the fixed provider adapter and wires that already-tested evaluator default-off
+   inside the existing authenticated Worker boundary, without a routing LLM, new central gateway, or
+   public Candidate-contract change.
 4. P12B-040 implements reservation/commit/release budget-ledger semantics, idempotency,
    reconciliation, concurrency and redacted decision evidence in a content-free local reference
    ledger. Durable PostgreSQL production storage remains a separately approved contract.
@@ -99,9 +102,11 @@ redacted and access-controlled; secrets and request content never enter the ledg
 residency, retention, deletion, and subprocessors are certified before eligibility. A lower price
 cannot override a safety denial, privacy constraint, authorization failure, or tenant budget boundary.
 
-This design adds no network or trust boundary. Later implementation requires threat-model review,
-fail-closed tests, billing reconciliation tests, and independent Security, Privacy, Eval, Finance,
-and ModelPlatform review.
+The pure evaluator added by P12B-020 creates no network or trust boundary. It accepts only explicit,
+immutable snapshots and fails closed when the existing baseline is unsafe. Provider integration in
+P12B-030 is a later bounded trust-boundary change and remains default-off. Threat-model review,
+billing reconciliation tests, and independent Security, Privacy, Eval, Finance, and ModelPlatform
+review remain required before formal acceptance or production allocation.
 
 ## Reliability
 
