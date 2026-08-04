@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12A-999",
+  "git_object_format": "sha1",
+  "head_oid": "2acb7d07b85edc399b44eeb08f19f0197eb94cfd",
+  "artifacts": [
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12a/merge.json",
+      "sha256": "0e7a2faa0a4bb59ad1c0000ecaebde21aa39c4362495fd165126db43e9ac412e",
+      "size_bytes": 2026,
+      "mime_type": "application/json",
+      "artifact_type": "local-landing-merge-receipt",
+      "generated_by_step": "TASK-P12A-999:PostMergeEvidence",
+      "generated_at": "2026-08-05T04:00:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12a/P12A-999/commands.json",
+      "sha256": "a4449f665696e4258e28fa6095771113fff201e905a2c735f0dca0d0a2dbf277",
+      "size_bytes": 4050,
+      "mime_type": "application/json",
+      "artifact_type": "command-ledger",
+      "generated_by_step": "TASK-P12A-999:PostMergeEvidence",
+      "generated_at": "2026-08-05T04:00:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12a/P12A-999/gate-results.json",
+      "sha256": "2880f4f56c6ef2db43fd73f03dfa6cfe6cfe1e9493c866d520bd48036cda1eea",
+      "size_bytes": 3578,
+      "mime_type": "application/json",
+      "artifact_type": "postmerge-gate-results",
+      "generated_by_step": "TASK-P12A-999:PostMergeEvidence",
+      "generated_at": "2026-08-05T04:00:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/status/TASK-P12A-999.json",
+      "sha256": "e9e669c167b9ee59dbf7b23df5bbcce1cd6b6acee9785f894027c4966c0be4ef",
+      "size_bytes": 1785,
+      "mime_type": "application/json",
+      "artifact_type": "task-status",
+      "generated_by_step": "TASK-P12A-999:PostMergeEvidence",
+      "generated_at": "2026-08-05T04:00:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12a/P12A-990/regression-summary.json",
+      "sha256": "eab115c0058ea31b736db3c41d943239fac0d2e757943c16ba23cef354ff0d2a",
+      "size_bytes": 3609,
+      "mime_type": "application/json",
+      "artifact_type": "premerge-complete-regression",
+      "generated_by_step": "TASK-P12A-990:Regression",
+      "generated_at": "2026-08-05T03:36:27+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "D:/GO_NOW-p12a-focused-smoke-20260805/focused-smoke.xml",
+      "sha256": "cce195edd64fdd2107230171852d62ce0e265c5de69852f6574bc1306900e503",
+      "size_bytes": 9653,
+      "mime_type": "application/xml",
+      "artifact_type": "postmerge-focused-smoke-junit",
+      "generated_by_step": "TASK-P12A-999:IntegrationSmoke",
+      "generated_at": "2026-08-05T03:57:30+08:00",
+      "sensitivity": "internal-test-names-only",
+      "retention": "local-external-evidence"
+    }
+  ]
+}
