@@ -1,0 +1,13 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-060",
+  "status":"local_quality_complete_external_baseline_blocked",
+  "primary_result":{"metric":"deepseek_latest_result_per_scenario_qualified_success_rate","v3":0.7,"v4":0.9,"final":1.0,"qualified_successes":10,"denominator":10,"outcome":"deepseek_quality_guardrail_passed"},
+  "cost_diagnostics":{"live_certification_all_attempts_cost_per_success_microusd":285.4,"latest_successful_results_cost_per_success_microusd":208.2,"all_p12b_live_experiment_cost_cny":0.03644,"synthetic_paired_replay_baseline_cost_per_success_microusd":969.3,"synthetic_paired_replay_candidate_cost_per_success_microusd":131.0,"synthetic_ratio":0.13514907665325493,"synthetic_replay_claim_boundary":"offline mechanics and price-formula signal only; not a live benefit claim"},
+  "quality_diagnostics":{"deepseek_schema_and_business_failures_in_final_selection":0,"deepseek_provider_failures_in_certification_runs":0,"successful_task_p95_latency_ms":8400,"redline_failures":0},
+  "gemini_baseline":{"qualified_successes":0,"failure_evidence":{"v1":{"provider_rejected":3,"rate_limited":1,"historic_rejected_subtype":"unknown"},"v2":{"request_invalid":1,"rate_limited":2,"provider_unavailable":1}},"schema_projection_repaired_offline":true,"live_retest_authorized":false,"blocker":"BLK-P12B-060-gemini-live-availability.md"},
+  "relative_cost_benefit":{"status":"not_computable","quality_noninferiority_against_live_baseline":"not_computable","positive_benefit_claim":false},
+  "guardrails":{"deepseek_full_chain_quality":"pass","schema_and_business_shape":"pass","latency":"pass","bounded_fallback_and_repair":"pass","safety_redlines":"pass","gemini_live_baseline":"blocked_external","allocation":"zero"},
+  "candidate_allocation":0,
+  "production_suitability":"unknown"
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-060",
+  "status":"deepseek_local_quality_certified",
+  "certification_method":"latest live result per frozen scenario after root-cause-specific repairs",
+  "scenario_count":10,
+  "qualified_success_count":10,
+  "qualified_success_rate":1.0,
+  "quality_rule_failure_count":0,
+  "provider_failure_count":0,
+  "successful_task_p95_latency_ms":8400,
+  "latest_result_total_tokens":11806,
+  "latest_result_total_cost_microusd":2082,
+  "latest_result_cost_per_qualified_success_microusd":208.2,
+  "certification_all_attempts":{"live_call_count":14,"total_tokens":16100,"total_cost_microusd":2854,"cost_per_qualified_success_microusd":285.4,"total_cost_cny_at_policy_rate":0.022832},
+  "p12b_all_live_experiments":{"live_call_count":30,"total_tokens":23108,"total_cost_microusd":4555,"total_cost_cny_at_policy_rate":0.03644,"budget_cap_cny":10.0},
+  "source_selection":[
+    {"source":"deepseek-quality-v3","scenario_ids":["CR-V1-001","CR-V1-002","CR-V1-004","CR-V1-005","CR-V1-006","CR-V1-007","CR-V1-010"]},
+    {"source":"deepseek-targeted-v4","scenario_ids":["CR-V1-008","CR-V1-009"]},
+    {"source":"deepseek-identifier-v5","scenario_ids":["CR-V1-003"]}
+  ],
+  "output_contract":{"complete_json_schema_delivered_to_deepseek":true,"local_json_schema_validation":true,"local_business_shape_validation":true,"invalid_output_fails_closed":true,"invalid_output_usage_metered":true,"response_body_persisted":false},
+  "guardrails":{"all_strata_quality_qualified":true,"schema_and_business_rules":true,"provider_availability":true,"successful_task_p95_latency_lte_20s":true,"bounded_repair":true,"safety_redlines":true},
+  "historical_negative_evidence_preserved":true,
+  "gemini_live_baseline_qualified_success_count":0,
+  "relative_cost_per_success":"undefined",
+  "candidate_allocation":0,
+  "positive_benefit_claim":false,
+  "production_suitability":"unknown",
+  "secret_material_persisted":0,
+  "production_write_count":0
+}

@@ -69,6 +69,28 @@ python agent-service/scripts/run_p12b_live_calibration.py `
 The 2026-08-04 pilot stopped after eight calls because neither arm produced a qualified success.
 Expansion was not executed. Allocation remains zero and the router stays bypassed.
 
+## Root-cause repair calibration outcome
+
+The original pilot is immutable negative evidence. Later repair cohorts did not overwrite it:
+
+- v2 repaired full-Schema transmission, local Schema/business validation, finite provider error
+  classification, and invalid-output metering using captured responses and fakes before live calls.
+- Gemini still produced no qualified baseline (request invalid, rate limited, and unavailable), so
+  `BLK-P12B-060-gemini-live-availability.md` stops all further Gemini live calls in this Phase.
+- DeepSeek v3 exposed exact business-rule failures without retaining response bodies. v4 added exact
+  time-window semantics; v5 added deterministic globally unique item identifiers.
+- The final latest-result-per-scenario DeepSeek certification is 10/10 qualified, with no Schema,
+  business-rule, provider, latency, fallback, or safety guardrail failure.
+
+Across all P12B live cohorts, 30 calls used 23,108 tokens and an estimated 4,555 microUSD
+(0.03644 CNY at the frozen policy rate), well below both experiment caps. These results certify the
+local DeepSeek output chain only. With zero qualified Gemini live successes, paired cost per success
+and live quality non-inferiority remain undefined; allocation therefore remains zero and no positive
+Cost Router benefit is claimed.
+
+No further live call is authorized for P12B-060. Final validation proceeds through offline regression,
+the one P12B-990 full regression, and the post-merge focused smoke.
+
 ## Optional key removal after the task
 
 The user may remove the persisted user-scoped variable when it is no longer needed:

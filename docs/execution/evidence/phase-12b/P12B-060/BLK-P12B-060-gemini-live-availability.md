@@ -26,6 +26,8 @@ Official contract: `https://ai.google.dev/api/generate-content` (observed 2026-0
 
 DeepSeek becomes the primary model for the remaining local quality validation. Its single-arm success rate, rule codes, latency, retries, tokens, and estimated unit cost may be reported, but they do not substitute for a live baseline.
 
+As of the v5 close, root-cause-specific DeepSeek repairs produced 10/10 qualified latest results across the frozen strata, with zero remaining Schema/business-rule failures, zero provider failures, and an 8.4 second p95. This clears the local DeepSeek quality blocker only. It does not change the Gemini facts above, authorize allocation, or create a relative benefit claim.
+
 ## Recovery condition
 
 A future, separately budgeted run may clear this blocker only after the provider/account owner supplies a stable usable Gemini quota, the price snapshot is refreshed if expired, captured-response contracts pass, and a preregistered paired cohort produces non-zero qualified successes in both arms. No recovery call is authorized in the current Phase 12B execution.
