@@ -136,7 +136,7 @@ class MemoryCommandReceipt(StrictModel):
     command_id: UUID
     idempotency_key: SafeIdentifier
     request_digest: Sha256
-    outcome: Literal["applied", "replayed"]
+    outcome: Literal["applied", "replayed", "conflicted"]
     memory_id: UUID
     version: Annotated[int, Field(ge=1)]
     outbox_event_id: UUID
@@ -151,6 +151,19 @@ class MemoryOutboxEvent(StrictModel):
     event_type: Literal["memory.confirmed", "memory.updated", "memory.conflicted", "memory.deleted", "memory.consent_revoked"]
     version: Annotated[int, Field(ge=1)]
     created_at: datetime
+
+
+class MemoryConflictView(StrictModel):
+    memory_id: UUID
+    tenant_id: SafeIdentifier
+    principal_id: SafeIdentifier
+    purpose: Literal[MemoryPurpose.ITINERARY_PERSONALIZATION]
+    memory_type: MemoryType
+    current_value: str
+    competing_value: str
+    current_provenance: Provenance
+    competing_provenance: Provenance
+    state: Literal[MemoryState.CONFLICTED] = MemoryState.CONFLICTED
 
 
 class AuthorizationContext(StrictModel):

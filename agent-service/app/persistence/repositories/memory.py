@@ -15,6 +15,7 @@ from app.memory.contracts import (
     ConsentGrant,
     MemoryCandidate,
     MemoryCommandReceipt,
+    MemoryConflictView,
     MemoryOutboxEvent,
     MemoryRecord,
     MemoryState,
@@ -44,6 +45,7 @@ class InMemoryMemoryRepository:
         self._records: dict[tuple[str, str, str, str], MemoryRecord] = {}
         self._attempts: dict[tuple[str, str, str], _Attempt] = {}
         self._outbox: list[MemoryOutboxEvent] = []
+        self._conflicts: dict[tuple[str, str, str, str], MemoryConflictView] = {}
 
     def save_candidate(self, candidate: MemoryCandidate) -> None:
         with self._lock:
@@ -85,6 +87,28 @@ class InMemoryMemoryRepository:
 
             memory_id = current.memory_id if current is not None else uuid4()
             next_version = current_version + 1
+            if current is not None and current.fact.value != candidate.fact.value:
+                conflicted = current.model_copy(update={"state": MemoryState.CONFLICTED, "version": next_version})
+                conflict_view = MemoryConflictView(
+                    memory_id=memory_id, tenant_id=context.tenant_id, principal_id=context.principal_id,
+                    purpose=candidate.fact.purpose, memory_type=candidate.fact.memory_type,
+                    current_value=current.fact.value, competing_value=candidate.fact.value,
+                    current_provenance=current.provenance, competing_provenance=candidate.provenance,
+                )
+                event = MemoryOutboxEvent(
+                    event_id=uuid4(), tenant_id=context.tenant_id, principal_id=context.principal_id,
+                    aggregate_id=memory_id, event_type="memory.conflicted", version=next_version, created_at=now,
+                )
+                receipt = MemoryCommandReceipt(
+                    command_id=command.command_id, idempotency_key=command.idempotency_key,
+                    request_digest=digest, outcome="conflicted", memory_id=memory_id, version=next_version,
+                    outbox_event_id=event.event_id, replayed=False,
+                )
+                self._records[slot] = conflicted
+                self._conflicts[slot] = conflict_view
+                self._outbox.append(event)
+                self._attempts[attempt_key] = _Attempt(digest, receipt)
+                return receipt
             record = MemoryRecord(
                 memory_id=memory_id, tenant_id=context.tenant_id, principal_id=context.principal_id,
                 fact=candidate.fact, provenance=candidate.provenance, consent_version=consent.version,
@@ -109,6 +133,10 @@ class InMemoryMemoryRepository:
     def record_for(self, *, tenant_id: str, principal_id: str, purpose: str, memory_type: str) -> MemoryRecord | None:
         with self._lock:
             return self._records.get((tenant_id, principal_id, purpose, memory_type))
+
+    def conflict_for(self, *, tenant_id: str, principal_id: str, purpose: str, memory_type: str) -> MemoryConflictView | None:
+        with self._lock:
+            return self._conflicts.get((tenant_id, principal_id, purpose, memory_type))
 
     @property
     def outbox_events(self) -> tuple[MemoryOutboxEvent, ...]:
