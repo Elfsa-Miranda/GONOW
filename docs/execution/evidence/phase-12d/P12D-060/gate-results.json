@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-060",
+  "gate_run_at": "2026-08-04T18:25:17+08:00",
+  "git_object_format": "sha1",
+  "head_oid": "cc5a69e77c97182ae62b628a037bfb8fad1e7605",
+  "phase_base_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "tool_versions": {
+    "catalog": "2.3.0",
+    "flutter": "3.41.7",
+    "dart": "3.11.5"
+  },
+  "results": [
+    {
+      "check_id": "OneGuardedWriteEntry",
+      "status": "passed",
+      "detail": "selected_write_entry_count=1; command client reference occurs in exactly one provider write entry; independent flag default=false and kill switch default=true",
+      "evidence_path": "test/itinerary_agent/feature_flag_routing_test.dart",
+      "evidence_sha256": "2cd9bfa7c0e53d5646a6e74e7e9c5c3e3c4d19367136dbe4d09bcbcca1baa8c3"
+    },
+    {
+      "check_id": "TypedTransportAndReceiptRecovery",
+      "status": "passed",
+      "detail": "closed request/receipt parsing; known precommit failure is retryable; unknown outcome performs one lookup and never resubmits or falls back",
+      "evidence_path": "test/itinerary_agent/itinerary_basic_info_command_test.dart",
+      "evidence_sha256": "df04354db9f57d5c6c87385dc720aeb67df31daf7a86ffbfff7e5ab33e7ec87c"
+    },
+    {
+      "check_id": "FlagRoutingAndRollback",
+      "status": "passed",
+      "detail": "flag off legacy=1/command=0; flag on legacy=0/command=1; conflict/unknown preserve local state; kill switch returns new intents to legacy",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-060/rollback-drill.json",
+      "evidence_sha256": "a83d46fc651e4dc0e9a0bff2bc9e9bb5d9122370f9f0b3d05dbe547eedaa2078"
+    },
+    {
+      "check_id": "ControlledStarBoundary",
+      "status": "passed",
+      "detail": "controlled primary improves 10000/10k to 0/10k with identical hashed inputs; production improvement claim=false and measurement_pending",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-060/star-evaluation.json",
+      "evidence_sha256": "ecf9b27210bd5a413cc78cb15030f78be3a478c7541d286fbb3c9fb0920f261e"
+    },
+    {
+      "check_id": "FocusedFlutterSuite",
+      "status": "passed",
+      "detail": "passed=22; failed=0; skipped=0; xfailed=0; affected analyzer new_issue_count=0",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-060/commands.json"
+    },
+    {
+      "check_id": "RedlineAndProductionBoundary",
+      "status": "passed",
+      "detail": "redline_failure_count=0; dual_write_count=0; production allocation=0; production writes=0; production claim=false",
+      "evidence_path": "docs/runbooks/domain-command-single-write.md",
+      "evidence_sha256": "4276ab9b59b293a18629ecf3c36f292bbc3a95b0f3a278f339aaa282e62f740a"
+    }
+  ],
+  "overall_status": "passed"
+}
