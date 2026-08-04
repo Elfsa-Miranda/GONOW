@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-020",
+  "git_object_format": "sha1",
+  "head_oid": "033d4be44952031eb42ffdf89ea7c8ce4be3a28e",
+  "artifacts": [
+    {
+      "path_or_reference": "agent-service/app/commands/itinerary_basic_info.py",
+      "sha256": "d4b21f5ae4fd2995f2709a11e2236f6c577117b7b3b290b416464170ed6df8b7",
+      "size_bytes": 7329,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-typed-command-contract",
+      "generated_by_step": "TASK-P12D-020:Implementation",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "agent-service/tests/security/test_p12d_command_contract.py",
+      "sha256": "382b3cf272bc820facddd9e9811552f5d426bd33db20081b02d8403df412d67c",
+      "size_bytes": 6661,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-typed-command-contract",
+      "generated_by_step": "TASK-P12D-020:FocusedTest",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md",
+      "sha256": "13ecdec9a5f00c58b4b750d0d078fce5e3f25ce109a898581bd87de727c0dc5f",
+      "size_bytes": 9679,
+      "mime_type": "text/markdown",
+      "artifact_type": "p12d-typed-command-contract",
+      "generated_by_step": "TASK-P12D-020:ADR",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/architecture/threat-model/phase-12-review.json",
+      "sha256": "bb8a3c7e3687966cd1a765702775ca8d00483edc5ca7297d2e7668026f757016",
+      "size_bytes": 3838,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-threat-model",
+      "generated_by_step": "TASK-P12D-020:ThreatModel",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-020/command-contract.json",
+      "sha256": "9be23c0d8a31cd07b102e6e83db69be20cf003fa01ca961483e0fbbc47ced809",
+      "size_bytes": 3176,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-typed-command-contract",
+      "generated_by_step": "TASK-P12D-020:Evidence",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-020/threat-model-delta.json",
+      "sha256": "ba5a71aeddbe1c059855e77919698326631cac21be1bf368999502cdd5e4074b",
+      "size_bytes": 2658,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-threat-model",
+      "generated_by_step": "TASK-P12D-020:Evidence",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-020/commands.json",
+      "sha256": "74a937773ccf8d33de9499618b761759c80bd2777b07440c6a77c4f7ad4f1344",
+      "size_bytes": 3326,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-typed-command-contract",
+      "generated_by_step": "TASK-P12D-020:Evidence",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-020/gate-results.json",
+      "sha256": "2a5ce9ec7309b752fefa6d142de2d10d2688981e97fdf55a332d0d314901abff",
+      "size_bytes": 2296,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-typed-command-contract",
+      "generated_by_step": "TASK-P12D-020:Evidence",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/status/TASK-P12D-020.json",
+      "sha256": "878146082ea6352d9106d94fec62ef3c691a01ab03c027aaf94367de7444280f",
+      "size_bytes": 1748,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-typed-command-contract",
+      "generated_by_step": "TASK-P12D-020:Evidence",
+      "generated_at": "2026-08-04T17:07:21+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    }
+  ]
+}

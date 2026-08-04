@@ -20,18 +20,19 @@ remain pending with the named owners.
 
 ## Trigger Evidence
 
-Phase 12D may migrate One write entry only after an accepted Release B head and an immutable,
-representative evidence window identify a named legacy write point. The window must quantify request
-volume, concurrency conflicts, duplicate effects, unauthorized attempts, partial writes, repair load,
-latency/SLA, compatibility population, recovery objectives, and data criticality. At activation,
-`selected_write_entry=none`; TASK-P12D-010 must bind exactly one tracked-repository entry without
-inventing production observations. Local expand-only schema work may follow a positive trigger, but
-no production write is authorized.
+TASK-P12D-010 selected exactly one tracked-repository write point:
+`flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries`. The tracked implementation
+updates provider state and local cache before issuing a Supabase update, does not carry an
+expected-version predicate, and does not propagate the asynchronous result to its sole tracked UI
+caller. These are repository facts and establish a positive local mechanism trigger. Production
+volume, conflict and incident rates, database schema, RLS, SLA and recovery behavior remain
+`unknown`/`measurement_pending`; no production write is authorized.
 
-P12D is eligible only if the evidence shows that a bounded migration improves an agreed primary
-reliability or security result without worsening compatibility, latency, data integrity, privacy, or
-operational recovery. Synthetic results can validate mechanics but cannot select the write entry.
-A credible negative or underpowered result closes this candidate with allocation zero.
+The frozen primary is `stale_conflict_partial_effect_rate_per_10k_intents`. TASK-P12D-050 compares the
+tracked legacy behavior and candidate against identical isolated fixtures, seed `12040010`, 10,000
+stale-conflict intents per arm, concurrency order and failure classification. This can establish a
+local controlled-mechanism improvement only. It cannot establish a production-rate improvement; the
+production measurement remains pending even if every local gate passes.
 
 ## Options and Decision
 
@@ -41,10 +42,13 @@ Command. The selected local-provisional decision chooses the fourth option for e
 selected entry. It authorizes the plan's reversible implementation and isolated tests, but no
 production cohort, production write, remote push, Release acceptance, or Multi-Agent framework.
 
-The selected future command accepts a typed request plus authenticated RequestContext; the model may
-only propose a Candidate. Principal and approval are evaluated server-side against tenant, resource,
-purpose, command type, risk class, expected version, and approval receipt. Client identifiers or model
-output cannot assert principal, tenant, approver, role, or authorization outcome.
+The selected command is `itinerary.basic_info.update` schema `1.0`. It accepts command ID, stable
+idempotency key, target itinerary ID, expected version and a closed Basic Info patch only. Tenant,
+principal, user, role, approval, force-overwrite, raw row, arbitrary plan data, prompt, reasoning and
+tool-result fields are forbidden. The model may only propose a Candidate. Principal and tenant come
+from authenticated `RequestContext`. This Basic Info command is classified by the server-owned,
+versioned low-risk policy `policy:itinerary.basic_info.low-risk:v1`; it requires no client approval
+token and cannot be promoted to a higher-risk operation by request data.
 
 CAS and idempotency form one write contract. The command requires an expected version and stable
 idempotency key scoped to tenant, principal, command type, and target. A semantic retry returns the
@@ -74,10 +78,10 @@ The user's direct local-provisional XOR record creates these serial tasks in the
    cross-tenant denial, and least privilege before any route can use it.
 4. P12D-040 implements the single command handler, atomic mutation plus Transactional outbox,
    idempotency/fencing, receipt, and isolated fake/integration tests behind a default-off flag.
-5. P12D-050 proves legacy/new equivalence, concurrency, retry, crash, replay, restore, denial, and
-   rollback in shadow and an approved bounded cohort.
-6. P12D-060 performs the approved cutover, observes the frozen window, executes contract cleanup only
-   after compatibility expiry, and proves Expand-contract rollback throughout.
+5. P12D-050 proves legacy/new equivalence, concurrency, retry, crash, replay, restore, denial and
+   rollback in the isolated controlled workload, including the frozen 10,000-intent arms.
+6. P12D-060 connects only the selected Flutter write point behind a default-off flag, proves local
+   routing and rollback, and leaves production allocation at zero.
 
 P12D-990 is the local provisional verification task and P12D-999 is the local landing merge task.
 Their execution does not confer formal acceptance or authorize a remote push.
@@ -86,7 +90,9 @@ Their execution does not confer formal acceptance or authorize a remote push.
 
 The server derives principal and tenant from verified identity and maintains tenant scope through
 authorization, SQL transaction, RLS, outbox, receipt, and replay. Approval is explicit, versioned,
-unexpired, command-specific, and independently auditable for high-risk writes. Denial is fail closed.
+unexpired, command-specific, and independently auditable when a different high-risk command requires
+it; this selected low-risk Basic Info command uses the frozen server policy reference instead. Denial
+is fail closed.
 No service role is exposed to clients, no generic arbitrary command endpoint is introduced, and tools
 cannot bypass Domain Command validation.
 
@@ -103,13 +109,14 @@ pointer, or outbox event. After commit, retries resolve from the idempotency rec
 dispatcher resumes outbox delivery. Lease fencing, bounded retry, dead-letter ownership, reconciliation,
 and restore drills make partial outcomes observable and repairable.
 
-TASK-P12D-010 must select exactly one causally matched primary before unblinding from a closed profile:
-duplicate-effect rate, partial-write/event-loss rate, ambiguous-outcome repair minutes, or stale-
-conflict partial-effect rate. Receipt coverage is the mechanism diagnostic and normal-write success is
-the non-inferiority guard. Duplicate formal write, unauthorized/cross-tenant write, mutation/outbox
-divergence and lost/ambiguous committed outcomes are zero-tolerance redlines, not an averageable
-primary score. Fault injection proves mechanics but cannot by itself prove a production incident-rate
-improvement. Without a named write entry and denominator, the STAR result stays measurement pending.
+TASK-P12D-010 froze `stale_conflict_partial_effect_rate_per_10k_intents` before candidate measurement.
+Both local arms use 10,000 intents and retain every failed run in the denominator. Receipt coverage is
+the mechanism diagnostic and normal-write success is the non-inferiority guard. Duplicate formal
+write, unauthorized/cross-tenant write, mutation/outbox divergence and lost/ambiguous committed
+outcomes are zero-tolerance redlines, not an averageable primary score. Fault injection proves
+mechanics but cannot prove a production incident-rate improvement. STAR therefore reports
+`claim_scope=local_controlled_mechanism` and `production_improvement_claim=false`; production remains
+`measurement_pending`.
 
 ## Acceptance and Merge
 
@@ -126,9 +133,10 @@ Local merge task: TASK-P12D-999. P12A, P12B, and P12C remain unselected.
 
 ## Rollback
 
-For this document-only package, revert its commit; runtime remains unchanged. A future implementation
-uses Expand-contract rollback: stop new allocation, route the bounded cohort to the prior authorized
-writer, retain new compatible columns/tables, idempotency records, receipts, and outbox evidence,
-replay Release B equivalence, then diagnose. Cleanup happens only after the approved compatibility
-window and restore proof. Rollback never drops data, reuses a stale approval, disables RLS, rewrites a
-receipt, publishes an uncommitted event, or resurrects an expired worker.
+Until P12D-060 routing, the typed contract is dormant and rollback is removal of the unreferenced
+candidate contract after retaining its digest and evidence. Once routing exists, Expand-contract
+rollback stops new allocation, returns new intents to the prior authorized writer, retains compatible
+tables, idempotency records, receipts and outbox evidence, and diagnoses from the durable outcome.
+Cleanup happens only after an approved compatibility window and restore proof. Rollback never drops
+data, reuses stale authority, disables RLS, rewrites a receipt, publishes an uncommitted event, falls
+back after an ambiguous commit, or resurrects an expired worker.
