@@ -1,9 +1,16 @@
-# ADR-P12A-000: Dormant explicit structured Memory work package
+# ADR-P12A-000: Selected local-provisional explicit structured Memory work package
 
-Status: local provisional design ready; formal selection pending
+Status: selected local provisional; formal acceptance pending external review
 Selection candidate: 12A
 Implementation commit count: 0
 Contract change: false
+
+The user's direct XOR instruction activates only reversible local implementation and tests. Exact
+allowlists are bound by Catalog 2.5.0. Formal acceptance, remote integration, production schema/RLS
+claims and production writes remain unauthorized. The closed data scope is `travel_pace`,
+`mobility_requirement`, `dietary_requirement`, and `transport_preference`, each an enum, solely for
+`itinerary.personalization`, user-visible, and retained at most 365 days. Free text, transcripts,
+hidden profiles and model inference are excluded. Production schema/RLS facts remain `unknown`.
 
 ## Authority, ADR Triggers, and Execution Boundary
 
@@ -20,14 +27,14 @@ contracts are machine-readable in `phase-12a/P12A-000/proposed-execution-contrac
 
 ## Trigger Evidence
 
-Phase 12A may be formally selected only after a stable Release B failure ledger proves that missing
+Production activation may occur only after a stable Release B failure ledger proves that missing
 durable user-approved facts materially cause failures. The `>15%` value is an initial hypothesis,
 not a result. A valid analysis must freeze the window, eligible failure taxonomy, numerator,
 denominator, exclusions, confidence/uncertainty, tenant and locale slices, and the accepted Release B
 head. This design imports no user records and asserts no trigger.
 
-The current outcome is design readiness only: `formal_dependency_status=pending`, allocation zero,
-and no Memory table, service, profile, or branch.
+The current outcome is local provisional selection: the production trigger remains unknown,
+production allocation/write count is zero, and isolated local tests do not prove production facts.
 
 ## Options and Decision
 
@@ -44,13 +51,12 @@ Command.
 
 ### Option 2: explicit typed Memory with negative consent
 
-Chosen as the dormant candidate architecture. Memory is a user-visible typed domain record with
+Chosen for this local provisional cycle. Memory is a user-visible typed domain record with
 purpose, provenance, version, consent, conflict, retention, and deletion state. The model can only
 produce a Memory Candidate. Formal mutation requires an authenticated user confirmation and a typed
 Domain Command using row-level security, compare-and-swap, idempotency, and outbox receipt.
 
-Option 2 is not activated by this ADR. Formal selection, owner approval, schema design, migration,
-tests, cohort, and release tasks remain future atomic work.
+The local task DAG is activated; formal owner acceptance and any production cohort remain future work.
 
 ## Atomic Tasks
 

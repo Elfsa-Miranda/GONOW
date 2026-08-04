@@ -177,6 +177,12 @@ $Original = [IO.File]::ReadAllText($CatalogPath, [Text.UTF8Encoding]::new($false
 $OriginalHash = Get-Sha256 $CatalogPath
 $Current = [scriptblock]::Create($Original).InvokeReturnAsIs()
 $TaskIds = @('TASK-P12B-010','TASK-P12B-020','TASK-P12B-030','TASK-P12B-040','TASK-P12B-050','TASK-P12B-060','TASK-P12B-990','TASK-P12B-999')
+if ([string]$Current.CatalogVersion -ceq '2.5.0' -and
+    @($TaskIds | Where-Object { $null -eq $Current.Tasks[$_] }).Count -eq 0 -and
+    @($Current.Tasks.Keys).Count -eq 177) {
+  [ordered]@{schema_version='1.0';old_sha256=$OriginalHash;new_sha256=$OriginalHash;catalog_version='2.5.0';task_count=177;work_contract_count=151;updated_task_ids=@();idempotent_noop=$true} | ConvertTo-Json -Compress
+  exit 0
+}
 if ([string]$Current.CatalogVersion -ceq '2.4.0' -and
     @($TaskIds | Where-Object { $null -eq $Current.Tasks[$_] }).Count -eq 0 -and
     @($Current.Tasks.Keys).Count -eq 169) {

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "candidate": "P12A",
-  "status": "preregistered_dormant_unbound",
+  "status": "preregistered_local_fixture_bound_production_pending",
   "claim_type": "behavior_improvement",
   "metric_scope": {
     "included": [
@@ -13,9 +13,9 @@
     "not_measured": ["production retention and long-horizon satisfaction until an approved observation window exists"]
   },
   "bindings": {
-    "baseline_oid": "pending_exact_accepted_release_b_head",
+    "baseline_oid": "3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104",
     "candidate_oid": "pending_selected_candidate_head",
-    "dataset_sha256": "pending_trigger_evidence_binding",
+    "dataset_sha256": "pending_TASK_P12A_010_fixture_hash",
     "evaluator_version": "pending_premeasurement_binding",
     "behavior_digest": "pending_premeasurement_binding",
     "model_and_parameters": "pending_premeasurement_binding",

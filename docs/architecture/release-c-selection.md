@@ -2,8 +2,8 @@
 
 archive_mode: local_provisional
 formal_selection_status: local_provisional_selected
-selection_cycle: p12b-local-provisional-20260804
-selected_candidate: 12B
+selection_cycle: p12a-local-provisional-20260805
+selected_candidate: 12A
 selected_count: 1
 formal_none_decision: false
 design_ready_count: 1
@@ -15,14 +15,14 @@ multi_agent_implementation_count: 0
 
 ## Decision boundary
 
-The user selected 12B as the only candidate for this new local execution cycle. The repository records
-that XOR decision and the executable P12B task package; it does not fabricate the independent owner
+The user selected 12A as the only candidate for this new local execution cycle. The repository records
+that XOR decision and the executable P12A task package; it does not fabricate the independent owner
 receipts needed for formal acceptance, remote integration, or production use. The package is
 therefore `local_provisional_selected`, and its terminal local state is `ready_for_review` rather
 than `accepted`.
 
-The earlier P12D local-provisional implementation remains immutable historical evidence on the
-landing branch. It is not selected, modified, or allocated in this cycle. Calling P12D dormant here
+The earlier P12B integrated local-provisional implementation and P12D ready-for-review implementation
+remain immutable historical evidence. Neither is selected, modified, or allocated in this cycle. Calling them dormant here
 means dormant for new work and production allocation; it does not erase its already-proven local
 mechanism or its `ready_for_review` records.
 
@@ -35,8 +35,8 @@ new production boundary is introduced.
 
 | Candidate | Dormant architecture covered | Trigger still required | Present disposition |
 |---|---|---|---|
-| 12A explicit structured Memory | consent, provenance, conflict, deletion/export, restore guard | a future independent XOR cycle | unselected; no implementation or allocation |
-| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | direct user selection for this independent local cycle | selected locally; production allocation remains zero |
+| 12A explicit structured Memory | consent, provenance, conflict, deletion/export, restore guard | direct user selection for this independent local cycle | selected locally; production allocation remains zero |
+| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | prior independent local cycle | historically integrated; dormant this cycle and production allocation remains zero |
 | 12C production Multi-Agent | no framework design is opened by this archive | a separately approved positive trigger and full XOR cycle | explicitly deferred; no ADR, task plan, branch, runtime, or allocation |
 | 12D one Domain Command migration | principal, approval, CAS, idempotency, outbox, compatibility | prior independent local cycle | historical `ready_for_review`; dormant for this cycle and production allocation remains zero |
 
@@ -71,7 +71,7 @@ read port; it must not infer access from tenant membership alone.
 
 ### Activation and rollback
 
-Activation requires a selected 12A ADR, CT-009/CT-015 coverage, privacy/data approval, a deletion
+Local activation uses the direct user XOR selection and exact Catalog 2.5.0 cards. Formal activation requires CT-009/CT-015 coverage, privacy/data approval, a deletion
 and restore drill, a default-off flag, and a zero-leakage cohort. Rollback sets allocation to zero,
 disables Memory reads and proposals, preserves audit/tombstones, and returns to the Release B
 single-Agent behavior. It must not re-enable deleted data.
@@ -150,13 +150,13 @@ Memory, or routing cannot deliver at lower risk.
 
 ## Remaining formal activation sequence
 
-1. Bind an accepted Release B head and a stable, immutable evidence window.
+1. Bind the exact local candidate head and retain the stable landing evidence window.
 2. Calibrate numerator, denominator, exclusions, uncertainty, quality, latency, cost, and redlines.
-3. Independently review the P12B policy, fixed provider eligibility, controlled comparison, rollback,
+3. Independently review the P12A consent, typed data, RLS, deletion/restore, controlled comparison, rollback,
    and exact candidate/merge object IDs; do not rewrite local self-review as owner approval.
 4. Keep production allocation at zero until formal governance, real schema/RLS inventory, rollout
    authority, monitoring, and rollback ownership are available.
-5. Permit only the selected P12B package to proceed. Memory, Multi-Agent, or additional Domain
+5. Permit only the selected P12A package to proceed. Cost Router, Multi-Agent, or additional Domain
    Command work requires another XOR cycle.
 
 ## Evidence boundary and recovery

@@ -357,6 +357,14 @@ function Get-ConditionalTaskRunnerRegistryState {
     'TASK-P12-001'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12-002'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12A-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
+    'TASK-P12A-010'=$StandardWorkModes
+    'TASK-P12A-020'=$StandardWorkModes
+    'TASK-P12A-030'=$StandardWorkModes
+    'TASK-P12A-040'=$StandardWorkModes
+    'TASK-P12A-050'=$StandardWorkModes
+    'TASK-P12A-060'=$StandardWorkModes
+    'TASK-P12A-990'=$AcceptanceWorkModes
+    'TASK-P12A-999'=$StandardWorkModes
     'TASK-P12B-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12B-010'=$StandardWorkModes
     'TASK-P12B-020'=$StandardWorkModes
@@ -2187,8 +2195,8 @@ function Invoke-ModeBootstrapSelfTest {
     schema_parse_errors = $SchemaErrors; yaml_native_errors = $YamlNativeErrors; self_test_failures = $TestFailures
     full_schema_yaml_validation = 'pending_boot005'
   }
-  $Passed = $TaskCount -eq 169 -and $WorkContracts -eq 143 -and
-    @($StatusPaths | Sort-Object -Unique).Count -eq 169 -and
+  $Passed = $TaskCount -eq 177 -and $WorkContracts -eq 151 -and
+    @($StatusPaths | Sort-Object -Unique).Count -eq 177 -and
     $TaskModes.Count -eq 24 -and $MergeModes.Count -eq 11 -and
     $MissingHandlers -eq 0 -and $DuplicateHandlers -eq 0 -and
     $SchemaErrors -eq 0 -and $YamlNativeErrors -eq 0 -and $TestFailures -eq 0 -and
@@ -16237,11 +16245,11 @@ function Invoke-ModeDocumentation {
 function Invoke-ModeStatusBoardAggregate {
   if ($TaskId -ceq 'TASK-P11-089') {
     $Boundary=Get-P11089ExecutionBoundaryState
-    if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_status_board_dependency_failed' ([ordered]@{task_count=169;dependency_failures=1;accepted_implementation_task_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0})}
+    if(-not[bool]$Boundary.passed){return New-BlockedResult 'p11_089_status_board_dependency_failed' ([ordered]@{task_count=177;dependency_failures=1;accepted_implementation_task_count=[int]$Boundary.dependency.checks.accepted_predecessor_count;production_write_count=0})}
   }
   if ($TaskId -ceq 'TASK-P12-089') {
     $Dependency=Get-P12089DependencyState
-    if(-not[bool]$Dependency.passed){return New-BlockedResult 'p12_089_status_board_dependency_failed' ([ordered]@{task_count=169;dependency_failures=1;selection=[string]$Dependency.selection;selected_count=[int]$Dependency.selected_count;production_write_count=0})}
+    if(-not[bool]$Dependency.passed){return New-BlockedResult 'p12_089_status_board_dependency_failed' ([ordered]@{task_count=177;dependency_failures=1;selection=[string]$Dependency.selection;selected_count=[int]$Dependency.selected_count;production_write_count=0})}
   }
   if ($TaskId -notin @('TASK-P01-089','TASK-P02-089','TASK-P03-089','TASK-P04-089','TASK-P05-089','TASK-P06-089','TASK-P07-089','TASK-P08-089','TASK-P09-089','TASK-P10-089','TASK-P11-089','TASK-P12-089')) { return Invoke-PendingMode 'StatusBoardAggregate' }
   $Rows=@()
@@ -16257,12 +16265,12 @@ function Invoke-ModeStatusBoardAggregate {
   }
   $JsonPath=Join-Path $script:RepositoryRoot 'docs\execution\status\task-board.json'
   Write-AtomicJson -LiteralPath $JsonPath -Value ([ordered]@{schema_version='1.0';plan_version='1.4.0';task_count=$Rows.Count;tasks=$Rows;generated_at=[DateTimeOffset]::Now.ToString('o')})
-  $JsonRoundTripFailure=0;try{$RoundTrip=Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;if([int]$RoundTrip.task_count-ne169-or@($RoundTrip.tasks).Count-ne169){$JsonRoundTripFailure=1}}catch{$JsonRoundTripFailure=1}
+  $JsonRoundTripFailure=0;try{$RoundTrip=Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;if([int]$RoundTrip.task_count-ne177-or@($RoundTrip.tasks).Count-ne177){$JsonRoundTripFailure=1}}catch{$JsonRoundTripFailure=1}
   $Markdown=@('# Task board','','Generated from the 1.4.0 TaskGate Catalog and per-task status records.','','| Task | Phase | Status |','|---|---|---|')
   foreach($Row in $Rows){$Markdown+="| $($Row.task_id) | $($Row.phase) | $($Row.status) |"}
   [IO.File]::WriteAllText((Join-Path $script:RepositoryRoot 'docs\execution\status\task-board.md'),($Markdown-join"`n")+"`n",[Text.UTF8Encoding]::new($false))
   $Checks=[ordered]@{task_count=$Rows.Count;duplicate_task_id=0;status_split_brain=0;invalid_transition=0;source_hash_missing=0;json_roundtrip_failure_count=$JsonRoundTripFailure;execplan_changed=$false;production_write_count=0}
-  if($Rows.Count-ne169-or$JsonRoundTripFailure-ne0){return New-BlockedResult 'task_board_catalog_count_or_json_mismatch' $Checks}
+  if($Rows.Count-ne177-or$JsonRoundTripFailure-ne0){return New-BlockedResult 'task_board_catalog_count_or_json_mismatch' $Checks}
   return New-PassedResult $Checks
 }
 function Invoke-ModeHarnessCatalogAggregate {
