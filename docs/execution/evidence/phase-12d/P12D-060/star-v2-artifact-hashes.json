@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-060-STAR-REPAIR",
+  "experiment_code_commit": "a475ff5bdf489bf5c89bb3231bac4614de408114",
+  "evidence_commit": "e8c61a3910a26ac5cba8427825fcec727974e18a",
+  "artifacts": [
+    {
+      "path": "agent-service/tests/contract/test_p12d_legacy_equivalence.py",
+      "sha256": "55e6e460aba647de7e6873e3c9080d752c10bfae5a32468f8da013543542b700"
+    },
+    {
+      "path": "docs/execution/evidence/phase-12d/P12D-050/star-completeness-results.json",
+      "sha256": "6a94d715264f7c1cbb49b07156af9b417eb07cd61669825ef6cb9b6d1fd786db"
+    },
+    {
+      "path": "docs/execution/evidence/phase-12d/P12D-060/star-evaluation-v2.json",
+      "sha256": "d82fe10f6cd006d78129598804a53932b784bb00586b5009842146da72caf54b"
+    },
+    {
+      "path": "docs/execution/evidence/phase-12d/P12D-060/production-measurement-readiness.json",
+      "sha256": "7e735b8ea796fe30eea9de0a0e557b82f47b6e5c4eb68039650436d7988f966a"
+    }
+  ],
+  "generated_at": "2026-08-04T21:07:27.0305700+08:00"
+}
