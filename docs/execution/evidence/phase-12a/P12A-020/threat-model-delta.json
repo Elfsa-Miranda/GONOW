@@ -1,0 +1,12 @@
+{
+  "schema_version":"1.0","task_id":"TASK-P12A-020","review_status":"local_provisional_self_check_formal_review_pending",
+  "assets":["typed user-visible preference","consent event","provenance","tombstone","outbox receipt"],
+  "threats":[
+    {"id":"MEM-T01","threat":"missing/revoked/expired/purpose-mismatched consent bypass","control":"typed fail-closed consent assertion plus RLS","local_evidence":"unit and security tests"},
+    {"id":"MEM-T02","threat":"cross-tenant or cross-principal access","control":"FORCE RLS binds tenant and principal settings","local_evidence":"migration/RLS contract tests; production policy remains unknown"},
+    {"id":"MEM-T03","threat":"model or Worker directly writes formal Memory","control":"Candidate-only model contract and no Worker UPDATE grant","local_evidence":"contract and migration tests"},
+    {"id":"MEM-T04","threat":"free text persists instructions","control":"closed enum values only","local_evidence":"negative validation tests"},
+    {"id":"MEM-T05","threat":"backup resurrection","control":"durable tombstone and restore-ledger surface","local_evidence":"lifecycle implementation pending P12A-050"}
+  ],
+  "production_schema_rls_status":"unknown","production_write_count":0
+}
