@@ -9,6 +9,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$CredentialProviderPath = Join-Path $PSScriptRoot 'GitHubCredentialProvider.psm1'
+Import-Module -Name $CredentialProviderPath -Force -ErrorAction Stop
 $Owner = 'Elfsa-Miranda'
 $Repository = 'GO_NOW'
 $Branch = 'main'
@@ -154,11 +156,7 @@ function New-DesiredProtectionRequest {
 }
 
 function Get-GitHubToken {
-  foreach ($Name in @('GH_TOKEN','GITHUB_TOKEN')) {
-    $Value = [Environment]::GetEnvironmentVariable($Name, 'Process')
-    if (-not [string]::IsNullOrWhiteSpace($Value)) { return $Value }
-  }
-  throw 'github_main_protection_token_missing'
+  return Get-GitHubApiToken -Required -MissingErrorCode 'github_main_protection_token_missing'
 }
 
 function Invoke-GitHubHttp {

@@ -4,6 +4,8 @@ param()
 $ErrorActionPreference = 'Stop'
 $CommandRoot = Split-Path -Parent $PSScriptRoot
 $ScriptPath = Join-Path $CommandRoot 'Invoke-GitHubMainProtection.ps1'
+$CredentialProviderPath = Join-Path $CommandRoot 'GitHubCredentialProvider.psm1'
+Import-Module -Name $CredentialProviderPath -Force -ErrorAction Stop
 $Tokens = $null
 $ParseErrors = $null
 $Ast = [Management.Automation.Language.Parser]::ParseFile($ScriptPath,[ref]$Tokens,[ref]$ParseErrors)
