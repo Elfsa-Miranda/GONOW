@@ -1,74 +1,22 @@
 {
-  "schema_version": "1.0",
-  "task_id": "TASK-P12-089",
-  "gate_run_at": "2026-08-04T19:08:00+08:00",
-  "git_object_format": "sha1",
-  "head_oid": "a22e12f4d6d112775c36316612939db71ec8650d",
-  "phase_base_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
-  "tool_versions": {
-    "catalog": "2.3.0",
-    "python": "3.13.9",
-    "postgresql": "17.10",
-    "flutter": "3.41.7",
-    "dart": "3.11.5"
-  },
-  "results": [
-    {
-      "check_id": "SelectionAndImplementationTerminal",
-      "status": "passed",
-      "detail": "selected_count=1; selected=12D; P12D-000..060 and 990 are ready_for_review; unselected runtime count=0",
-      "evidence_path": "docs/execution/evidence/phase-12d/acceptance.md",
-      "evidence_sha256": "49250e5907a1f23e1f8e0a05a9c11de376b01b382c6214f52c1fa7f4b1faef0f"
-    },
-    {
-      "check_id": "Documentation",
-      "status": "passed",
-      "detail": "README, architecture, runbook, API boundary, threat review, change summary, knowledge transfer and STAR index match the P12D implementation; production claims remain pending",
-      "evidence_path": "docs/execution/evidence/phase-12/change-summary.md",
-      "evidence_sha256": "5fb8d26f9ad3fb129fab37ff781f597bbdc931b6bf81a49518dcefab7fa9b7f5"
-    },
-    {
-      "check_id": "HandoffVerification",
-      "status": "passed",
-      "detail": "local journey passed; reviewer_is_implementer=true; independent_review_status=pending_external; formal_handoff=false",
-      "evidence_path": "docs/execution/evidence/phase-12/P12-089/handoff-verification.json",
-      "evidence_sha256": "54d45a670fc176a66ab3d99d17eb83cfe4362e09d51f91d0872ea8e9f0ede69e"
-    },
-    {
-      "check_id": "HarnessCatalogAggregate",
-      "status": "passed",
-      "detail": "control_count=34; minimum_cases_total=149; implemented_missing_test_path=0; mutation_applied=false; skipped=0; xfailed=0",
-      "evidence_path": "docs/execution/evidence/phase-12/P12-089/harness-catalog-aggregate.json",
-      "evidence_sha256": "0a2b68662c8363cabab6a211d39c6b1e2ccfd095e62d02dfb06a2f6ff1448621"
-    },
-    {
-      "check_id": "ControlledStarBoundary",
-      "status": "passed",
-      "detail": "legacy=10000/10k; candidate=0/10k; identical inputs; all redlines=0; claim_scope=local_controlled_mechanism; production_improvement_claim=false",
-      "evidence_path": "docs/execution/evidence/phase-12d/P12D-060/star-evaluation.json",
-      "evidence_sha256": "ecf9b27210bd5a413cc78cb15030f78be3a478c7541d286fbb3c9fb0920f261e"
-    },
-    {
-      "check_id": "SecurityAndScope",
-      "status": "passed",
-      "detail": "valid_secret_finding_count=0; unsafe_command_example_count=0; production_write_count=0; P12-089 changes are within its file allowlist",
-      "evidence_path": "docs/execution/evidence/phase-12/P12-089/commands.json",
-      "evidence_sha256": "f05b7caed14c818cd9b8b796c0d5d0c8ea5c04a8efca25c85b65dd247c0ee832"
-    },
-    {
-      "check_id": "RollbackVerify",
-      "status": "passed",
-      "detail": "turn the independent flag off or activate the kill switch for new intents; preserve receipts/outbox; implementation_files_changed_by_P12-089=0",
-      "evidence_path": "docs/runbooks/release-c-governance.md",
-      "evidence_sha256": "bc392886c97dee446fb0446919967c2a83352ab402d0f8f38f9655aca33859b0"
-    },
-    {
-      "check_id": "FormalTaskGateBoundary",
-      "status": "passed",
-      "detail": "native Preflight could not attest because the active governance profile is invalid; the result is recorded once and remains pending_external rather than being reported as a pass",
-      "evidence_path": "docs/execution/evidence/phase-12/P12-089/commands.json",
-      "evidence_sha256": "f05b7caed14c818cd9b8b796c0d5d0c8ea5c04a8efca25c85b65dd247c0ee832"
-    }
+  "schema_version":"1.0",
+  "task_id":"TASK-P12-089",
+  "gate_run_at":"2026-08-05T01:30:00+08:00",
+  "git_object_format":"sha1",
+  "head_oid":"5ff4946e6c04c683783422781e273d93bcdd9214",
+  "phase_base_oid":"f941051871ecd7ea811540072a032ce7aaa0119d",
+  "tool_versions":{"catalog":"2.4.0","python":"3.13.9","pytest":"9.1.1","postgresql":"17.10","flutter":"3.41.7","dart":"3.11.5"},
+  "results":[
+    {"check_id":"SelectionAndImplementationTerminal","status":"passed","detail":"selected_count=1; selected=12B; P12B-000,010,020,030,040,050,060,990 ready_for_review; candidate_allocation=0","evidence_path":"docs/execution/evidence/phase-12b/acceptance.md","evidence_sha256":"2c3153e718eb898e8bb7d01650264a20d79d934c7932c1c0f8b3af41d2a7b529"},
+    {"check_id":"Documentation","status":"passed","detail":"README, architecture, runbook, API boundary, threat review, change summary, knowledge transfer and STAR index describe P12B and preserve P12D as historical evidence","evidence_path":"docs/execution/evidence/phase-12/artifact-manifest.premerge.json","evidence_sha256":"b6ea5bc5ee050b7022eebebf22879cec695a0f4cbb241b8e6bf36e21727bafc4"},
+    {"check_id":"HandoffVerification","status":"passed","detail":"local full-chain journey passed; reviewer_is_implementer=true; independent_review_status=pending_external; formal_handoff=false","evidence_path":"docs/execution/evidence/phase-12/P12-089/handoff-verification.json","evidence_sha256":"dafc4d64e06ea294d113011858692c3d4e14fa60ff33af8a96738a60cb34418e"},
+    {"check_id":"HarnessCatalogAggregate","status":"passed","detail":"control_count=34; minimum_cases_total=149; implemented_missing_test_path=0; mutation_applied=false; skipped=0; xfailed=0","evidence_path":"docs/execution/evidence/phase-12/P12-089/harness-catalog-aggregate.json","evidence_sha256":"443ed743b8facf4da5ad801eba875fd24eef5287bef8ceef79f57bf66f117150"},
+    {"check_id":"DeepSeekQualityBoundary","status":"passed","detail":"latest frozen DeepSeek scenarios=10/10 qualified; schema/business/provider/fallback/redline failures=0; p95=8400ms","evidence_path":"docs/execution/evidence/phase-12b/P12B-060/deepseek-quality-final.json","evidence_sha256":"67e310e198157bc7e6c03c5670c4f6b4b3dfac3d2aafa3d2dc92b9810141a5a6"},
+    {"check_id":"ComparativeCostBoundary","status":"passed","detail":"all live=30 calls/23108 tokens/4555 microUSD/CNY0.03644; Gemini qualified baseline=0; paired benefit undefined; positive_benefit_claim=false; allocation=0","evidence_path":"docs/execution/evidence/phase-12/star-records.md","evidence_sha256":"73e5c830d3ae0f2ffb264b9f9c3a40967e0ca5e42e374baf3c9cd3fa4eeecfed"},
+    {"check_id":"GeminiExternalAvailability","status":"passed","detail":"request contract repaired offline; classified rate-limit/5xx blocker retained; additional live calls=0","evidence_path":"docs/execution/evidence/phase-12b/P12B-060/BLK-P12B-060-gemini-live-availability.md","evidence_sha256":"2c9a8824c195babdcb0b84f4aa8e32343a64359ea1312fa406e74f10a20c2ee8"},
+    {"check_id":"SecurityAndScope","status":"passed","detail":"Single-Agent=true; Multi-Agent=false; response_body_or_key_persistence=0; recursive_fallback=0; production_write_count=0","evidence_path":"docs/architecture/threat-model/phase-12-review.json","evidence_sha256":"c8665c65f0bfd9128fd872bc97a4b11235d5aa26f1100616bb6f3b6f730239e2"},
+    {"check_id":"TaskBoardAggregate","status":"passed","detail":"task_count=169; P12B task_count=9; source_hash_missing=0; status_split_brain=0","evidence_path":"docs/execution/status/task-board.json","evidence_sha256":"2a2f1f2d1a6bef58892da27491315c4478579e4c345eddbddf34241224986254"},
+    {"check_id":"FormalBoundary","status":"passed","detail":"local status remains ready_for_review; independent Eval/Finance/Privacy/Security review and formal Release C acceptance remain pending_external","evidence_path":"docs/execution/evidence/phase-12b/acceptance.md","evidence_sha256":"2c3153e718eb898e8bb7d01650264a20d79d934c7932c1c0f8b3af41d2a7b529"}
   ],
-  "overall_status": "passed"
+  "overall_status":"passed"
 }

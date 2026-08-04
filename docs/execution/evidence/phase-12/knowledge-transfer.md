@@ -1,49 +1,53 @@
-# Phase 12D Domain Command knowledge transfer
+# Phase 12B Cost Router knowledge transfer
 
-hardest_item_count: 1
+hardest_item_count: 2
 
 ## Responsibilities and dependency choices
 
 The package keeps one Agent codebase with `agent-api`, `agent-worker`, PostgreSQL, and static internal
-tools. Domain Platform owns the command implementation; Architecture, Security, Product, and Data own
-the remaining independent review. The user selected only 12D. Memory, routing, and Multi-Agent are
-outside this cycle.
+tools. Model Platform owns the deterministic router/adapters/ledger; Eval, Finance, Privacy, and
+Security own the remaining independent review. No central model gateway, routing model, dynamic
+provider market, new process, database migration, or Multi-Agent framework was introduced.
 
-## Hardest item
+## Hardest items
 
-The hardest reliability boundary is a response lost after database commit. The client cannot know
-whether a legacy fallback would double-write, so it must query the original idempotency receipt.
-The handler, client, concurrency test, and fault matrix all enforce this same rule. A unique-key race
-was repaired once by rolling back and converging on the exact tenant-scoped receipt in a fresh
-transaction; the affected matrix then passed.
+The first hard boundary was proving that provider-side structured-output configuration is not local
+output validity. DeepSeek now receives the complete canonical JSON Schema, Gemini receives its
+provider-compatible projection, and both outputs pass the same local Schema and itinerary business
+rules. Every JSON primitive is covered; booleans are not accepted as numbers and non-finite numbers
+fail. Invalid bodies are not stored or echoed.
+
+The second hard boundary was improving model behavior without relaxing quality. The first live
+result was preserved. Failure codes isolated daylight, late-night, and globally unique item-ID
+semantics. Exact minute boundaries and deterministic cross-day IDs were added to the prompt contract,
+then each repair was checked on captured/fake data before the smallest useful live scenario. The
+latest frozen DeepSeek set is 10/10 qualified.
 
 ## Operations must know
 
-The internal server route is unmounted by default. The Flutter flag
-`gonow_itinerary_basic_info_command_v1` is off by default and its kill switch is active by default.
-For an unknown outcome, inspect the original receipt before any retry; never route that intent to the
-legacy writer. For stale conflict, verify no local success state changed. First inspect tenant and
-principal context, expected version, semantic command digest, idempotency digest, receipt, outbox,
-and fence. Other itinerary writes are intentionally unchanged.
+- Candidate allocation is zero and the router is default-off.
+- First inspect policy/price/Schema digests, provider certification/health, route reason, reservation,
+  physical attempts, validation code, and fallback depth.
+- Fallback depth may not exceed one. Quality, privacy, region, Schema, safety, or budget failure
+  cannot be compensated by cost.
+- Never log API keys, prompts, response bodies, tenant/user identity, or hidden reasoning.
+- Gemini rate-limit/5xx is an external availability blocker. Do not repeat calls without a new signal.
+- Rollback bypasses the router, restores the prior policy digest, retains content-free receipts, and
+  does not remove historical negative evidence.
 
-## Estimate comparison
+## Evidence and estimate comparison
 
-The implementation produced five runtime task commits plus independent activation, selection, and
-acceptance commits. No calendar-time equivalence is claimed. The measurable behavior result is the
-pre-registered controlled stale-conflict rate, with 10,000 intents in each arm and no denominator
-exclusions. Candidate elapsed time is diagnostic only and is not a production latency claim.
+The latest DeepSeek set contains ten distinct frozen scenarios. Across all P12B live work there were
+30 calls, 23,108 tokens, and CNY 0.03644 of frozen-price cost. The bounded certification sequence
+used 14 DeepSeek calls, 16,100 tokens, and CNY 0.022832. Those figures are actual local experiment
+counts, not a production bill forecast. The offline replay's lower candidate cost is diagnostic only
+because Gemini has no non-zero comparable live baseline.
 
-## Handoff verification
+## Handoff verification and known risks
 
-Local self-review checks the selected entry, migration/RLS, atomicity, receipt recovery, route/flag,
-controlled inputs and denominators, redlines, regression totals, JSON parsing, changed-path scope,
-and rollback. It does not impersonate an independent reviewer. Security+Product+Data verification
-and formal acceptance remain `pending_external`.
-
-## Known risks and recovery
-
-The remaining risk is mistaking isolated PostgreSQL results for production facts. Every STAR and
-profile therefore sets `production_improvement_claim=false`. Operational rollback turns off the
-named flag or activates its kill switch for new intents, preserves additive command data and receipts,
-and returns Basic Info to the legacy writer. Database removal is deferred until usage is zero and a
-separate contract migration is authorized.
+Local verification covers routing determinism, eligibility, complete Schema delivery, canonical and
+business validation, metering, concurrency, one-hop fallback, rollback, redlines, replay, bounded
+live quality, and the complete regression. It does not impersonate an independent reviewer.
+Production provider eligibility, traffic mix, stable Gemini availability, cost, latency, incidents,
+and quality remain unknown or pending. Formal Eval/Finance/Privacy/Security review and Release C
+acceptance remain `pending_external`.

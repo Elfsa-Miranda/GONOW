@@ -7,7 +7,7 @@ selected_candidate: 12B
 selected_count: 1
 formal_none_decision: false
 design_ready_count: 1
-runtime_change_count: 0
+runtime_change_count: 1
 public_contract_change_count: 0
 schema_change_count: 0
 production_write_count: 0
@@ -86,6 +86,12 @@ Production traffic, production quality, provider data-use approval, and a four-w
 window remain `unknown/pending`; local fake/replay and at most the separately budgeted live
 calibration cannot prove those facts.
 
+The adapter contract is now closed end to end: DeepSeek receives the complete canonical JSON Schema,
+Gemini receives a provider-compatible projection, and both outputs pass the same local canonical
+Schema plus itinerary business-shape validation. The latest frozen DeepSeek scenarios are 10/10
+quality-qualified, but Gemini rate-limit/5xx availability prevented a non-zero live baseline.
+Therefore relative live benefit and quality non-inferiority remain undefined and allocation is zero.
+
 ### Route decision
 
 Routing is a deterministic policy over certified capabilities, task class, region, privacy class,
@@ -107,7 +113,7 @@ A kill switch bypasses the router without changing the Candidate contract. Rollb
 previous route-policy digest, sets experimental allocation to zero, and retains the decision/budget
 ledger for audit. It does not create a central gateway or dynamic provider market.
 
-## 12D: selected single write entry
+## 12D: historical single write entry
 
 Repository evidence selected exactly
 `flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries`. The tracked legacy ordering
