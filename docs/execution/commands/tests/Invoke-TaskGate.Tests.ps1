@@ -571,9 +571,13 @@ if ($RunnerText -notmatch 'if \(\$TaskIdValue -ceq ''TASK-P10-011''\)' -or
     $RunnerText -notmatch 'p10_011_rollback_verification_failed') {
   throw 'negative: P10-011 must bind exact Phase 10 attestations, authenticated main protection, PR refs/checks, a two-parent non-force tree-equal merge, zero review requests, and revert-PR rollback evidence'
 }
+$MainProtectionAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-GitHubMainProtectionState'},$true)
 $P10011LiveAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-P10011LivePullRequestState'},$true)
-if($null-eq$P10011LiveAst){throw 'negative: P10-011 live verifier function is unavailable for behavioral protection tests'}
+$RelC001LiveBehaviorAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-RelC001LivePullRequestState'},$true)
+if($null-eq$MainProtectionAst-or$null-eq$P10011LiveAst-or$null-eq$RelC001LiveBehaviorAst){throw 'negative: shared/P10-011/REL-C-001 live verifiers are unavailable for behavioral protection tests'}
+. ([ScriptBlock]::Create($MainProtectionAst.Extent.Text))
 . ([ScriptBlock]::Create($P10011LiveAst.Extent.Text))
+. ([ScriptBlock]::Create($RelC001LiveBehaviorAst.Extent.Text))
 $script:P10011ProtectionAvailable=$true
 $script:P10011ProtectionForcePush=$false
 $P10011Head='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -582,7 +586,7 @@ $P10011Observation=[pscustomobject]@{pr_number=7;head_oid=$P10011Head;merge_comm
 function Invoke-RestMethod {
   [CmdletBinding()]
   param([string]$Method,[string]$Uri,[hashtable]$Headers,[int]$TimeoutSec)
-  if($Uri-cmatch'/pulls/7$'){return [pscustomobject]@{number=7;merged=$true;state='closed';merge_commit_sha=$P10011Merge;base=[pscustomobject]@{ref='main';repo=[pscustomobject]@{full_name='Elfsa-Miranda/GO_NOW'}};head=[pscustomobject]@{ref='codex/gonow-agent-landing';sha=$P10011Head};requested_reviewers=@();requested_teams=@()}}
+  if($Uri-cmatch'/pulls/7$'){return [pscustomobject]@{number=7;merged=$true;state='closed';merge_commit_sha=$P10011Merge;base=[pscustomobject]@{ref='main';repo=[pscustomobject]@{full_name='Elfsa-Miranda/GO_NOW'}};head=[pscustomobject]@{ref='codex/gonow-agent-landing';sha=$P10011Head};labels=@('automated-merge-authorized','release-c','single-capability'|ForEach-Object{[pscustomobject]@{name=$_}});requested_reviewers=@();requested_teams=@()}}
   if($Uri-cmatch'/check-runs\?'){return [pscustomobject]@{check_runs=@('agent-required','baseline-and-candidate','tracked-and-history'|ForEach-Object{[pscustomobject]@{name=$_;status='completed';conclusion='success'}})}}
   if($Uri-cmatch"/git/commits/$P10011Head$"){return [pscustomobject]@{tree=[pscustomobject]@{sha='cccccccccccccccccccccccccccccccccccccccc'}}}
   if($Uri-cmatch"/git/commits/$P10011Merge$"){return [pscustomobject]@{parents=@([pscustomobject]@{sha='1'},[pscustomobject]@{sha='2'});tree=[pscustomobject]@{sha='cccccccccccccccccccccccccccccccccccccccc'}}}
@@ -596,12 +600,18 @@ $P10011PreviousToken=$env:GH_TOKEN;$env:GH_TOKEN='test-owner-token'
 try {
   $P10011Protected=Get-P10011LivePullRequestState -Observation $P10011Observation
   if(-not[bool]$P10011Protected.passed-or[int]$P10011Protected.checks.branch_protection_query_failure_count-ne0){throw 'negative: exact protected-main contract must pass the P10-011 live verifier'}
+  $RelC001Protected=Get-RelC001LivePullRequestState -Observation $P10011Observation
+  if(-not[bool]$RelC001Protected.passed-or[int]$RelC001Protected.checks.branch_protection_query_failure_count-ne0){throw 'negative: exact protected-main contract must pass the REL-C-001 live verifier'}
   $script:P10011ProtectionAvailable=$false
   $P10011Unprotected=Get-P10011LivePullRequestState -Observation $P10011Observation
   if([bool]$P10011Unprotected.passed-or[int]$P10011Unprotected.checks.branch_protection_query_failure_count-ne1){throw 'negative: unprotected main must fail closed with one protection query failure'}
+  $RelC001Unprotected=Get-RelC001LivePullRequestState -Observation $P10011Observation
+  if([bool]$RelC001Unprotected.passed-or[int]$RelC001Unprotected.checks.branch_protection_query_failure_count-ne1){throw 'negative: unprotected main must fail the final Release C verifier'}
   $script:P10011ProtectionAvailable=$true;$script:P10011ProtectionForcePush=$true
   $P10011ForceEnabled=Get-P10011LivePullRequestState -Observation $P10011Observation
   if([bool]$P10011ForceEnabled.passed-or-not[bool]$P10011ForceEnabled.checks.branch_protection_allows_force_push){throw 'negative: protected main that allows force pushes must fail closed'}
+  $RelC001ForceEnabled=Get-RelC001LivePullRequestState -Observation $P10011Observation
+  if([bool]$RelC001ForceEnabled.passed-or-not[bool]$RelC001ForceEnabled.checks.branch_protection_allows_force_push){throw 'negative: Release C must reject protected main that allows force pushes'}
 } finally {
   if($null-eq$P10011PreviousToken){Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue}else{$env:GH_TOKEN=$P10011PreviousToken}
   Remove-Item Function:\Invoke-RestMethod -ErrorAction SilentlyContinue
@@ -686,7 +696,7 @@ foreach($RelC001Mode in @('Security','Verify','Evidence','Preflight','WorkPrefli
 foreach($FunctionName in @('Get-RelC001PersonalOuterState','Get-RelC001OuterState','Get-RelC001SelectedCapabilityState','Get-RelC001DependencyState','Get-RelC001ObservationState','Get-RelC001LivePullRequestState')){$FunctionAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq$FunctionName},$true);if($null-eq$FunctionAst){throw "negative: REL-C-001 helper is missing: $FunctionName"}}
 $RelC001OuterAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-RelC001PersonalOuterState'},$true);$RelC001CapabilityAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-RelC001SelectedCapabilityState'},$true);$RelC001ObservationAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-RelC001ObservationState'},$true);$RelC001LiveAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-RelC001LivePullRequestState'},$true);$RelC001VerifyAst=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Invoke-ModeVerify'},$true)
 if($RelC001OuterAst.Extent.Text-cnotmatch"Path-ceq'phase11'"-or$RelC001OuterAst.Extent.Text-cnotmatch"Path-ceq'phase12'"-or$RelC001OuterAst.Extent.Text-cnotmatch'rel_c_001_outer_path_none'-or$RelC001OuterAst.Extent.Text-cnotmatch'P10-011/automated-acceptance-attestation\.json'-or$RelC001OuterAst.Extent.Text-cnotmatch'release_b_attestation_sha256'-or$RelC001CapabilityAst.Extent.Text-cnotmatch'rev-list --merges'-or$RelC001CapabilityAst.Extent.Text-cnotmatch'implementation-close-registration\.json'-or$RelC001CapabilityAst.Extent.Text-cnotmatch'merge-authorization\.json'-or$RelC001CapabilityAst.Extent.Text-cnotmatch'rollback-drill\.local\.json'-or$RelC001CapabilityAst.Extent.Text-cnotmatch'unselected_path_commit_count'-or$RelC001ObservationAst.Extent.Text-cnotmatch'Abs\(\[int\]\$Checks\.active_c_capability_count-1\)'){throw 'negative: REL-C-001 must prove outer automated XOR, Release B attestation binding, one accepted merge, exact authorization/local rollback, and zero unselected commits/refs'}
-if($RelC001LiveAst.Extent.Text-cmatch'(?i)-Method\s+(?:Post|Patch|Put|Delete)'-or$RelC001LiveAst.Extent.Text-cnotmatch'-Method Get'-or$RelC001LiveAst.Extent.Text-cnotmatch'MergeCommit\.parents'-or$RelC001VerifyAst.Extent.Text-cnotmatch'accepted=\$true'-or$RelC001VerifyAst.Extent.Text-cnotmatch'auto_merge=\$true'-or$RelC001VerifyAst.Extent.Text-cnotmatch'merged_tree_matches_attested_tree'){throw 'negative: REL-C-001 verifier must use read-only live queries and require an accepted, two-parent, tree-equal non-force merge'}
+if($RelC001LiveAst.Extent.Text-cmatch'(?i)-Method\s+(?:Post|Patch|Put|Delete)'-or$RelC001LiveAst.Extent.Text-cnotmatch'-Method Get'-or$RelC001LiveAst.Extent.Text-cnotmatch'MergeCommit\.parents'-or$RelC001LiveAst.Extent.Text-cnotmatch'Get-GitHubMainProtectionState'-or$RelC001LiveAst.Extent.Text-cnotmatch'branch_protection_failure_count'-or$RelC001VerifyAst.Extent.Text-cnotmatch'accepted=\$true'-or$RelC001VerifyAst.Extent.Text-cnotmatch'auto_merge=\$true'-or$RelC001VerifyAst.Extent.Text-cnotmatch'merged_tree_matches_attested_tree'-or$RelC001VerifyAst.Extent.Text-cnotmatch'branch_protection_enforce_admins'){throw 'negative: REL-C-001 verifier must use read-only live queries and require protected checks plus an accepted, two-parent, tree-equal non-force merge'}
 $RelC001FormalGuardIndex=$RunnerText.IndexOf("if(`$TaskId-ceq'TASK-REL-C-001'-and`$ExecutionMode-cne'formal_adopted')",[StringComparison]::Ordinal);$RelC001StartGuardIndex=$RunnerText.IndexOf("if(`$TaskId-ceq'TASK-REL-C-001'){`$StartState=Get-RelC001OuterState",[StringComparison]::Ordinal)
 $ConditionalRegistryFunction=$RunnerAst.Find({param($Node)$Node-is[Management.Automation.Language.FunctionDefinitionAst]-and$Node.Name-ceq'Get-ConditionalTaskRunnerRegistryState'},$true)
 if($null-eq$ConditionalRegistryFunction-or$RunnerText-cnotmatch 'conditional_task_runner_unimplemented'){throw 'negative: conditional Release C tasks must fail closed before a specialized runner is registered'}
