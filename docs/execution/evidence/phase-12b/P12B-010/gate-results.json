@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-010",
+  "gate_run_at": "2026-08-04T22:24:00+08:00",
+  "git_object_format": "sha1",
+  "head_oid": "3e8a975bf5cbedcc592bbbc2b0a825053ec8d251",
+  "phase_base_oid": "f941051871ecd7ea811540072a032ce7aaa0119d",
+  "tool_versions": {"catalog":"2.4.0","contract":"1.0","python":"3.13.9"},
+  "results": [
+    {
+      "check_id": "RouteScopeFreeze",
+      "status": "passed",
+      "detail": "route_scope_count=1; runtime_entry=server:itinerary_generation; baseline=current Gemini capability rule; candidate=fixed DeepSeek V4 Flash non-thinking; production_fact_claim_count=0",
+      "evidence_path": "docs/execution/evidence/phase-12b/P12B-010/route-scope.json",
+      "evidence_sha256": "833134e970383e44bca371fd147d4cd6b2082a137588fe2361643db3f9976b72"
+    },
+    {
+      "check_id": "DatasetFreeze",
+      "status": "passed",
+      "detail": "scenario_count=10; unique=10; synthetic=10; complex=2; raw_user_or_production=0; nominal_output_tokens_both_arms=47104; validation_errors=0",
+      "evidence_path": "docs/execution/evidence/phase-12b/P12B-010/calibration-dataset-manifest.json",
+      "evidence_sha256": "84e4b409dc8f66fd34e2ac3458e0c50e1d65ecc0f04bb996ff35a88a1e5b9344"
+    },
+    {
+      "check_id": "MetricsFreeze",
+      "status": "passed",
+      "detail": "primary=total_cost_per_successful_quality_qualified_task; same_denominator=true; quality_margin=0; cost_ratio<=0.75; p95/fallback/redlines non-compensable; max_tasks=20; max_calls=40; max_tokens=100000",
+      "evidence_path": "docs/execution/evidence/phase-12b/P12B-010/metrics-binding.json",
+      "evidence_sha256": "2e02731de52ba7705f35a1c9a035106a7b78d026564d1ac7d83910282de5e92c"
+    },
+    {
+      "check_id": "PriceAndBudgetFreeze",
+      "status": "passed",
+      "detail": "official_price_sources=2; model_price_rows=3; experiment_cap_usd=1.0; policy_cap_cny=8.0; untouched_reserve_cny=2.0; silent_price_substitution=false",
+      "evidence_path": "docs/execution/evidence/phase-12b/P12B-010/price-snapshot.json",
+      "evidence_sha256": "a209e6da00317149c5baf8b292cfa162d4c3b5b7e84e3331f8cee55751a63a06"
+    },
+    {
+      "check_id": "AuthorityAndCredentialBoundary",
+      "status": "passed",
+      "detail": "local implementation selected; formal governance and production facts pending; credential value read_or_recorded=false; live_calls=0; tokens=0; cost_usd=0; production_writes=0",
+      "evidence_path": "docs/execution/evidence/phase-12b/P12B-010/trigger-evidence.json",
+      "evidence_sha256": "8485e4c68487cc7304ba04e24a41999b98fb062f728515630294f0a880aed898"
+    }
+  ],
+  "overall_status": "passed"
+}
