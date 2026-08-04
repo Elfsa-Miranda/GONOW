@@ -1,8 +1,8 @@
 """Bounded DeepSeek C2 calibration with content-free receipts.
 
 Gemini evidence remains immutable historical input. This executor writes only
-the additive ``deepseek-v1`` evidence shard and binds every result to one Git
-candidate, one strict configuration, and one complete itinerary JSON Schema.
+its additive versioned DeepSeek evidence shard and binds every result to one
+Git candidate, one strict configuration, and one complete itinerary JSON Schema.
 """
 
 from __future__ import annotations
@@ -45,12 +45,12 @@ from harness_common import (
 )
 
 
-CONFIG_PATH = Path(__file__).with_name("deepseek-c2-live-provider-v1.json")
+CONFIG_PATH = Path(__file__).with_name("deepseek-c2-live-provider-v2.json")
 SCHEMA_PATH = Path(__file__).with_name(
     "deepseek-c2-itinerary-response-v1.schema.json"
 )
-EVIDENCE_DIRECTORY = "deepseek-v1"
-ALLOWED_PRICING_SOURCE = "https://api-docs.deepseek.com/quick_start/pricing"
+EVIDENCE_DIRECTORY = "deepseek-v2"
+ALLOWED_PRICING_SOURCE = "https://api-docs.deepseek.com/quick_start/pricing/"
 EXPECTED_ROUTE_MODELS = {
     "economic": MODEL_ID,
     "capability": MODEL_ID,
@@ -163,7 +163,7 @@ def load_live_config(path: Path = CONFIG_PATH) -> LiveConfig:
         "thresholds",
         "routes",
     }
-    if not isinstance(raw, dict) or set(raw) != required or raw["schema_version"] != "2.0":
+    if not isinstance(raw, dict) or set(raw) != required or raw["schema_version"] != "2.1":
         raise CertificationFailure("c2.live_config_invalid")
     if (
         raw["provider_id"] != PROVIDER_ID
@@ -687,7 +687,7 @@ def run_deepseek_live(
         )
     )
     pricing_snapshot = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "provider_id": config.provider_id,
         "model_id": config.model_id,
         "source_url": config.pricing_source_url,
@@ -711,7 +711,7 @@ def run_deepseek_live(
     pricing_path = output_root / "pricing-snapshot.json"
     write_atomic_json(pricing_path, pricing_snapshot)
     report = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "candidate_head_oid": candidate,
         "provider_id": config.provider_id,
         "model_id": config.model_id,

@@ -120,6 +120,9 @@ def test_deepseek_config_freezes_model_schema_parameters_prices_and_denominator(
     assert config.calls_per_route == 200
     assert config.requests_per_minute == 20
     assert config.budget_cap_usd == 0.25
+    assert config.pricing_source_url == (
+        "https://api-docs.deepseek.com/quick_start/pricing/"
+    )
     assert config.response_schema_sha256 == sha256_file(SCHEMA_PATH)
     assert schema == ITINERARY_RESPONSE_SCHEMA
     assert {route.model_id for route in config.routes} == {"deepseek-v4-flash"}

@@ -70,9 +70,9 @@ from harness_common import (
 )
 
 
-DEEPSEEK_LIVE_EVIDENCE_DIRECTORY = "deepseek-v1"
+DEEPSEEK_LIVE_EVIDENCE_DIRECTORY = "deepseek-v2"
 DEEPSEEK_LIVE_CONFIG_PATH = Path(__file__).with_name(
-    "deepseek-c2-live-provider-v1.json"
+    "deepseek-c2-live-provider-v2.json"
 )
 DEEPSEEK_LIVE_SCHEMA_PATH = Path(__file__).with_name(
     "deepseek-c2-itinerary-response-v1.schema.json"
@@ -782,7 +782,7 @@ def _load_live_provider_receipt(
     except (OSError, ValueError):
         return None, ["c2.live_provider_receipts_invalid"]
     if (
-        report["schema_version"] != "2.0"
+        report["schema_version"] != "2.1"
         or report["candidate_head_oid"] != expected_candidate_oid
         or report["executor"] != "repository_owned_deepseek_live_v1"
         or report["status"] != "passed"

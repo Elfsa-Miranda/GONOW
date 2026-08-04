@@ -1,6 +1,6 @@
 @{
   SchemaVersion = '1.0'
-  ConfigVersion = '1.1.0'
+  ConfigVersion = '1.1.1'
   ActiveGovernanceProfile = 'personal_automated'
   Profiles = @{
     ReleaseBDeep = @{
@@ -21,7 +21,7 @@
       }
       SupportingReports = @{
         C1 = @('regression-report.json','state-space-report.json','c1-e0-expanded.json')
-        C2 = @('security-matrix.json','performance-cost-report.json','c2-postgresql-load.json','deepseek-v1/live-provider-receipts.json','deepseek-v1/pricing-snapshot.json')
+        C2 = @('security-matrix.json','performance-cost-report.json','c2-postgresql-load.json','deepseek-v2/live-provider-receipts.json','deepseek-v2/pricing-snapshot.json')
         C3 = @('quality-slice-report.json')
         C4 = @('fault-injection-report.json','virtual-time-report.json','soak-report.json','soak-samples.json','c4-judge-calibration.json')
         C5 = @('rollback-operations-report.json')
