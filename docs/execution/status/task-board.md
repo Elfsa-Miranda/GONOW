@@ -143,17 +143,25 @@ Generated from the 1.4.0 TaskGate Catalog and per-task status records.
 | TASK-P11-008 | Phase 11 | ready_for_review |
 | TASK-P11-009 | Phase 11 | ready_for_review |
 | TASK-P11-010 | Phase 11 | ready_for_review |
-| TASK-P11-089 | Phase 11 | in_progress |
-| TASK-P11-990 | Phase 11 | not_started |
+| TASK-P11-089 | Phase 11 | ready_for_review |
+| TASK-P11-990 | Phase 11 | ready_for_review |
 | TASK-P11-999 | Phase 11 | not_started |
 | TASK-P12-000 | Phase 12 | not_started |
 | TASK-P12-001 | Phase 12 | not_started |
 | TASK-P12-002 | Phase 12 | not_started |
-| TASK-P12-089 | Phase 12 | not_started |
-| TASK-P12A-000 | Phase 12A | not_started |
-| TASK-P12B-000 | Phase 12B | not_started |
+| TASK-P12-089 | Phase 12 | ready_for_review |
+| TASK-P12A-000 | Phase 12A | ready_for_review |
+| TASK-P12B-000 | Phase 12B | ready_for_review |
 | TASK-P12C-000 | Phase 12C | not_started |
-| TASK-P12D-000 | Phase 12D | not_started |
+| TASK-P12D-000 | Phase 12D | ready_for_review |
+| TASK-P12D-010 | Phase 12D | ready_for_review |
+| TASK-P12D-020 | Phase 12D | ready_for_review |
+| TASK-P12D-030 | Phase 12D | ready_for_review |
+| TASK-P12D-040 | Phase 12D | ready_for_review |
+| TASK-P12D-050 | Phase 12D | ready_for_review |
+| TASK-P12D-060 | Phase 12D | ready_for_review |
+| TASK-P12D-990 | Phase 12D | ready_for_review |
+| TASK-P12D-999 | Phase 12D | not_started |
 | TASK-REL-A-001 | Release A | not_started |
 | TASK-REL-C-000 | Conditional Release C Governance | not_started |
 | TASK-REL-C-001 | Conditional Release C | not_started |

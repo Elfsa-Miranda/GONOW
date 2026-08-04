@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "phase": "Phase 12 architecture archive",
   "archive_mode": "local_provisional",
-  "source_checkpoint_oid": "033d4be44952031eb42ffdf89ea7c8ce4be3a28e",
+  "source_checkpoint_oid": "a22e12f4d6d112775c36316612939db71ec8650d",
   "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
   "model_changed": false,
   "formal_selection_status": "local_provisional_selected",
@@ -47,8 +47,8 @@
       "candidate": "12D_domain_command",
       "boundary": "unauthorized_or_duplicate_domain_write",
       "control": "one named write point, reauthorization, field authority, CAS, idempotency, transactional outbox, receipt lookup, and expand-contract rollback",
-      "local_result": "typed_contract_security_tests_passed",
-      "residual": "migration, RLS, handler, controlled comparison and independent owner acceptance remain pending; production operation is not authorized"
+      "local_result": "realpg_atomic_fault_and_controlled_profile_passed_with_zero_redlines",
+      "residual": "independent owner acceptance, real production schema inventory and production authorization remain pending"
     },
     {
       "id": "P12-T06",
@@ -56,15 +56,15 @@
       "boundary": "client_asserted_authority_or_unbounded_mutation",
       "control": "strict typed schema forbids tenant, principal, role, approval, force, raw row, arbitrary plan data, prompt, reasoning and tool-result fields; server context and closed field authority are required",
       "local_result": "17_security_contract_tests_passed",
-      "residual": "API composition and RealPG RLS enforcement remain pending"
+      "residual": "route remains unmounted by default; independent Security review and production authorization remain pending"
     },
     {
       "id": "P12-T07",
       "candidate": "12D_domain_command",
       "boundary": "ambiguous_commit_or_sensitive_receipt",
       "control": "semantic command hash, server-scoped idempotency digest and metadata-only outcome-shaped receipt contract",
-      "local_result": "contract_shape_passed",
-      "residual": "atomic persistence, crash-after-commit lookup and replay proof remain pending"
+      "local_result": "atomic_persistence_postcommit_lookup_and_replay_passed",
+      "residual": "production traffic and incident measurements remain pending"
     },
     {
       "id": "P12-T05",

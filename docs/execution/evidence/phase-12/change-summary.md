@@ -1,27 +1,22 @@
-# Phase 12 provisional architecture archive change summary
+# Phase 12D local provisional change summary
 
-Before this repair, the Phase 11 checkpoint contained no Phase 12 selection architecture, runbook,
-API boundary, threat review, STAR record, or P12-089 archive. The formal P12 runner correctly blocked
-because Release B stable and an accepted REL-C XOR selection did not exist.
+The user selected 12D as this cycle's only candidate. Repository evidence then selected exactly
+`ItineraryProvider.updateItineraryBasicInfo` for `user_itineraries`; no production traffic, incident,
+or schema fact was guessed.
 
-After this documentation-only repair:
+The package adds a closed Python command contract, additive `domain_command` migration with FORCE
+RLS, atomic handler/receipt/outbox persistence, deterministic concurrency and crash injection, and a
+default-off typed Flutter route. Public OpenAPI stays unchanged because the internal route is not
+mounted by default. Unknown outcomes use receipt lookup and never fall back to the legacy writer.
 
-- Memory, deterministic cost routing, and one Domain Command migration have complete dormant ADRs,
-  six-task atomic plans, local receipts/hashes, design gates, activation prerequisites, degradation,
-  and rollback paths;
-- Multi-Agent is explicitly deferred with no framework, runtime, task-plan, specialist ref/worktree,
-  or traffic allocation;
-- the formal XOR sequence remains unchanged; A/B/D are explicitly `dormant_only`, P12C and formal
-  P12-000/001/002 artifacts remain absent, and no specialist implementation branch exists;
-- operations can distinguish `selected_count=0` archive state from a formal `selection=none` owner
-  decision;
-- a repository-owned gate checks required artifacts/markers, forbidden formal artifacts, specialist
-  refs/worktrees, changed-path scope, secret-like material, runtime/contract changes, and production
-  writes;
-- the current runtime remains the Phase 11 high-quality single Agent with `agent-api` and
-  `agent-worker`; public API, schema, dependencies, databases, flags, and traffic are unchanged.
+The frozen controlled profile ran identical 10,000-intent legacy and candidate workloads. The stale
+conflict partial-effect rate was 10,000/10k for the tracked legacy ordering and 0/10k for the Domain
+Command. Duplicate formal writes, unauthorized/cross-tenant writes, mutation/outbox divergence,
+ambiguous committed outcomes, and data loss were all zero. Full P12D-990 regression passed 15 CI
+suites, 736 unit tests, 183 contract tests, 124 Flutter tests, and 52 focused RealPG/fault tests with
+zero failures, skips, or xfails.
 
-This is `local_provisional` architecture coverage only. Formal Phase 12 task acceptance, Release C
-selection, independent review, merge, push, deployment, and production writes remain pending. C2 live
-provider receipts continue independently under the Phase 10 daily heartbeat and are not represented
-as complete here.
+This is a `local_controlled_mechanism` result. Production schema equivalence, flow distribution,
+incident rate, and improvement remain unknown or `measurement_pending`; production allocation and
+writes are zero. Multi-Agent remains deferred with no framework or runtime. Formal independent
+review, remote push, deployment, and Release acceptance remain pending.
