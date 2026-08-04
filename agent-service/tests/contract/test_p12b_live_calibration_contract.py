@@ -456,3 +456,37 @@ def test_deepseek_v4_rechecks_only_three_failed_scenarios_without_retry(
     assert hosts == ["api.deepseek.com"] * 3
     assert result["candidate_allocation"] == 0
     assert not result["benefit_claim_eligible"]
+
+
+def test_deepseek_v5_rechecks_only_long_horizon_identifier_failure(
+    ready_environment: None,
+) -> None:
+    hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host is not None
+        hosts.append(request.url.host)
+        return _handler(request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = live.run_deepseek_identifier_repair_calibration(
+            manifest_path=MANIFEST, client=client
+        )
+    assert result["status"] == "deepseek_identifier_repair_complete"
+    assert result["task_count"] == 1
+    assert result["live_call_count"] == 1
+    assert result["retry_count"] == 0
+    assert result["qualified_success_count"] == 1
+    assert result["quality_rule_failure_count"] == 0
+    assert [task["scenario_id"] for task in result["tasks"]] == ["CR-V1-003"]
+    assert result["limits"] == {
+        "max_tasks": 1,
+        "max_calls": 1,
+        "max_total_tokens": 5_000,
+        "max_cost_microusd": 100_000,
+        "max_retryable_retries": 0,
+    }
+    assert all(result["guardrails"].values())
+    assert hosts == ["api.deepseek.com"]
+    assert result["candidate_allocation"] == 0
+    assert not result["benefit_claim_eligible"]

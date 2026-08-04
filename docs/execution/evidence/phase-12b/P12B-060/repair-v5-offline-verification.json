@@ -1,0 +1,27 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V5-IDENTIFIER-CONSTRUCTION",
+  "status":"passed",
+  "executed_at":"2026-08-05T00:26:52+08:00",
+  "live_call_count":0,
+  "focused_tests":{"passed":5,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":0.48},
+  "affected_tests":{"passed":95,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":5.75},
+  "verified_behaviors":[
+    "the prompt defines a deterministic item_id from day_number and within-day ordinal",
+    "the construction example conforms to the canonical response Schema pattern",
+    "the one-scenario runner selects only CR-V1-003 and permits exactly one DeepSeek call",
+    "the v5 runner permits no retries and no Gemini call",
+    "complete local Schema and business validation remains fail closed",
+    "the v3 and v4 fake runner contracts remain unchanged"
+  ],
+  "quality_gates":[
+    {"mode":"format","passed":true,"failure_count":0,"external_sha256":"01c88909e31cbb4bc6a78a223038215ccec27c9e76dedf02ea2599c3082f93fb"},
+    {"mode":"lint","passed":true,"failure_count":0,"external_sha256":"ec6e1973b98d755319d2a10bb12b4b14184f50ef768d7435b68e29a207d90f37"},
+    {"mode":"type","passed":true,"failure_count":0,"external_sha256":"e4d5535cb76fc0125cbef7f5dcd9075f2012aa0d24ff3d0270a324c84410cabf"},
+    {"mode":"secret","passed":true,"valid_secret_finding_count":0,"external_sha256":"b0e25eac99807314bc6af4aa9e08f15629d087413cf9b28cdb7a63060eb2b10f"}
+  ],
+  "repository_clean_gate_note":"Each locked mode observed the same intended dirty-path set before and after execution; the final secret scan covered all eight source, test and evidence paths.",
+  "v1_v2_v3_v4_evidence_overwritten":false,
+  "secret_material_persisted":0,
+  "production_write_count":0
+}

@@ -85,6 +85,11 @@ DEEPSEEK_V4_MAX_TASKS = 3
 DEEPSEEK_V4_MAX_CALLS = 3
 DEEPSEEK_V4_MAX_TOTAL_TOKENS = 10_000
 DEEPSEEK_V4_MAX_COST_MICROUSD = 250_000
+DEEPSEEK_V5_SCENARIO_IDS = frozenset({"CR-V1-003"})
+DEEPSEEK_V5_MAX_TASKS = 1
+DEEPSEEK_V5_MAX_CALLS = 1
+DEEPSEEK_V5_MAX_TOTAL_TOKENS = 5_000
+DEEPSEEK_V5_MAX_COST_MICROUSD = 100_000
 MANIFEST_REQUIRED_SHA256 = "84e4b409dc8f66fd34e2ac3458e0c50e1d65ecc0f04bb996ff35a88a1e5b9344"
 PRICE_SNAPSHOT_PATH = REPOSITORY_ROOT / "docs/execution/evidence/phase-12b/P12B-010/price-snapshot.json"
 
@@ -1167,6 +1172,25 @@ def run_deepseek_targeted_repair_calibration(
     )
 
 
+def run_deepseek_identifier_repair_calibration(
+    *, manifest_path: Path, client: httpx.Client | None = None
+) -> dict[str, Any]:
+    return _run_deepseek_quality_calibration(
+        manifest_path=manifest_path,
+        client=client,
+        cohort="deepseek-identifier-v5",
+        schema_version="5.0",
+        scenario_ids=DEEPSEEK_V5_SCENARIO_IDS,
+        max_tasks=DEEPSEEK_V5_MAX_TASKS,
+        max_calls=DEEPSEEK_V5_MAX_CALLS,
+        max_total_tokens=DEEPSEEK_V5_MAX_TOTAL_TOKENS,
+        max_cost_microusd=DEEPSEEK_V5_MAX_COST_MICROUSD,
+        max_retries=0,
+        complete_status="deepseek_identifier_repair_complete",
+        repair_status="deepseek_identifier_repair_required",
+    )
+
+
 def _atomic_write(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -1190,6 +1214,7 @@ def main() -> int:
             "repair-v2",
             "deepseek-quality-v3",
             "deepseek-targeted-v4",
+            "deepseek-identifier-v5",
         ),
         required=True,
     )
@@ -1203,6 +1228,8 @@ def main() -> int:
         if args.cohort == "deepseek-quality-v3"
         else run_deepseek_targeted_repair_calibration(manifest_path=args.manifest)
         if args.cohort == "deepseek-targeted-v4"
+        else run_deepseek_identifier_repair_calibration(manifest_path=args.manifest)
+        if args.cohort == "deepseek-identifier-v5"
         else run_calibration(
             manifest_path=args.manifest,
             cohort=args.cohort,
