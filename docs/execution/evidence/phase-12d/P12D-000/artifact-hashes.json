@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-000",
+  "generated_by": "P12D dormant design closure",
+  "artifacts": [
+    {"path": "docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md", "sha256": "378b366bc04d1e5cb98936584e06a75234cf7f88331e214fcb1a3238b37c2b06", "size_bytes": 7564},
+    {"path": "docs/execution/evidence/phase-12/P12D-000/task-plan.md", "sha256": "b3af9281070f14c7185cfafbd5f118b07f4846f092c3094c3e54c4f17d75ba2a", "size_bytes": 4993},
+    {"path": "docs/execution/status/TASK-P12D-000.json", "sha256": "15fc3d4771418c9f1d5ba657a308bb8a805ba2a2e98ddaf74c66cdb9d247f86c", "size_bytes": 735},
+    {"path": "docs/execution/evidence/phase-12d/P12D-000/design-verification.json", "sha256": "296dc50b35c08e55e9bba16681554edbd54c6d0bb143ce721ba357ecf7374500", "size_bytes": 953},
+    {"path": "docs/execution/evidence/phase-12d/P12D-000/commands.json", "sha256": "deae3024a2b35e26b862e2bfdae38250ad891fa023ddb45b8f296fc754df85f9", "size_bytes": 1023},
+    {"path": "docs/execution/evidence/phase-12d/P12D-000/gate-results.json", "sha256": "588c0ede25a87a8decd00fbc120103a417c5719d5666b5fdeb8285404e49b2a4", "size_bytes": 771}
+  ],
+  "unhashed_artifact_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T14:27:00+08:00"
+}
