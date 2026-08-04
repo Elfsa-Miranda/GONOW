@@ -145,9 +145,9 @@ def upgrade() -> None:
             WITH CHECK (tenant_id = agent_runtime.current_tenant_id() AND principal_id = {SCHEMA}.current_principal_id())"""
         )
         _execute(f"REVOKE ALL ON {SCHEMA}.{table} FROM PUBLIC")
-    _execute(f"GRANT USAGE ON SCHEMA {SCHEMA} TO agent_api, agent_worker")
-    _execute(f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA {SCHEMA} TO agent_api")
-    _execute(f"GRANT SELECT, INSERT ON {SCHEMA}.candidates, {SCHEMA}.outbox_events TO agent_worker")
+    _execute(f"GRANT USAGE ON SCHEMA {SCHEMA} TO gonow_agent_api, gonow_agent_worker")
+    _execute(f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA {SCHEMA} TO gonow_agent_api")
+    _execute(f"GRANT SELECT, INSERT ON {SCHEMA}.candidates, {SCHEMA}.outbox_events TO gonow_agent_worker")
 
 
 def downgrade() -> None:
