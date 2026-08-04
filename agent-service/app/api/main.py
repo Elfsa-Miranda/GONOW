@@ -27,6 +27,7 @@ from app.api.routes.cancel import create_cancel_router
 from app.api.routes.candidates import create_candidates_router
 from app.api.routes.contracts import SchemaRegistry, create_contract_router
 from app.api.routes.events import create_events_router
+from app.api.routes.itinerary_commands import create_itinerary_commands_router
 from app.api.routes.resume import create_resume_router
 from app.api.routes.runs import create_runs_router
 
@@ -72,6 +73,8 @@ class ApiDependencies:
     context_resolver: Any
     resume_handler: Any
     audit_receipt_resolver: Any
+    itinerary_basic_info_command: Any = None
+    itinerary_basic_info_command_enabled: bool = False
     startup: Callable[[], Awaitable[None]] = _no_op_lifecycle
     shutdown: Callable[[], Awaitable[None]] = _no_op_lifecycle
 
@@ -95,6 +98,8 @@ class ApiDependencies:
             context_resolver=_unavailable_context,
             resume_handler=unavailable,
             audit_receipt_resolver=unavailable,
+            itinerary_basic_info_command=unavailable,
+            itinerary_basic_info_command_enabled=False,
         )
 
 
@@ -179,6 +184,14 @@ def create_app(dependencies: ApiDependencies | None = None) -> FastAPI:
             selected.audit_receipt_resolver,
         )
     )
+    if selected.itinerary_basic_info_command_enabled:
+        application.include_router(
+            create_itinerary_commands_router(
+                selected.itinerary_basic_info_command,
+                selected.context_resolver,
+                enabled=True,
+            )
+        )
     return application
 
 
