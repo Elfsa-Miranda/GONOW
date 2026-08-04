@@ -70,7 +70,7 @@ from harness_common import (
 )
 
 
-DEEPSEEK_LIVE_EVIDENCE_DIRECTORY = "deepseek-v2"
+DEEPSEEK_LIVE_EVIDENCE_DIRECTORY = "deepseek-v3"
 DEEPSEEK_LIVE_CONFIG_PATH = Path(__file__).with_name(
     "deepseek-c2-live-provider-v2.json"
 )
@@ -87,9 +87,8 @@ VERSION_SCHEMA = "p10_c2_certification"
 DEFAULT_DATABASE_URL = (
     "postgresql+pg8000://gonow_migrator_test@127.0.0.1:55432/gonow_p03_test"
 )
-ADMIN_DATABASE_URL = (
-    "postgresql+pg8000://gonow_bootstrap_admin@127.0.0.1:55432/gonow_p03_test"
-)
+C2_DEDICATED_DATABASE_PORT = 55433
+C2_ALLOWED_DATABASE_PORTS = frozenset({55432, C2_DEDICATED_DATABASE_PORT})
 PRINCIPALS_SQL = SERVICE_ROOT / "tests" / "security" / "fixtures" / "rls_principals.sql"
 ROLES = (
     "gonow_agent_api",
@@ -193,26 +192,26 @@ class _DatabaseEnvironment:
     worker_factory: sessionmaker[Session]
 
 
-def _validate_database_url(database_url: str) -> None:
+def _admin_database_url(database_url: str) -> str:
     parsed = make_url(database_url)
-    actual = (
-        parsed.drivername,
-        parsed.host,
-        parsed.port,
-        parsed.username,
-        parsed.database,
-        parsed.password,
-    )
-    expected = (
-        "postgresql+pg8000",
-        "127.0.0.1",
-        55432,
-        "gonow_migrator_test",
-        "gonow_p03_test",
-        None,
-    )
-    if actual != expected:
+    if (
+        parsed.drivername != "postgresql+pg8000"
+        or parsed.host != "127.0.0.1"
+        or parsed.port not in C2_ALLOWED_DATABASE_PORTS
+        or parsed.username != "gonow_migrator_test"
+        or parsed.database != "gonow_p03_test"
+        or parsed.password is not None
+        or bool(parsed.query)
+    ):
         raise CertificationFailure("c2.database_not_task_owned")
+    return parsed.set(
+        username="gonow_bootstrap_admin",
+        password=None,
+    ).render_as_string(hide_password=False)
+
+
+def _validate_database_url(database_url: str) -> None:
+    _admin_database_url(database_url)
 
 
 def _drop_schemas(engine: Engine) -> None:
@@ -238,7 +237,7 @@ def _database(database_url: str) -> Iterator[_DatabaseEnvironment]:
     os.environ["GONOW_DATABASE_URL"] = database_url
     os.environ["GONOW_ALEMBIC_VERSION_SCHEMA"] = VERSION_SCHEMA
     owner_engine = create_engine(database_url, pool_pre_ping=True)
-    admin_engine = create_engine(ADMIN_DATABASE_URL, pool_pre_ping=True)
+    admin_engine = create_engine(_admin_database_url(database_url), pool_pre_ping=True)
     try:
         _drop_schemas(owner_engine)
         with owner_engine.begin() as connection:

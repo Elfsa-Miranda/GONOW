@@ -49,7 +49,10 @@ CONFIG_PATH = Path(__file__).with_name("deepseek-c2-live-provider-v2.json")
 SCHEMA_PATH = Path(__file__).with_name(
     "deepseek-c2-itinerary-response-v1.schema.json"
 )
-EVIDENCE_DIRECTORY = "deepseek-v2"
+# v1 and v2 are immutable historical calibration evidence. v3 reuses the
+# unchanged v2 frozen configuration but binds a fresh run to the repaired C2
+# candidate instead of aggregating calls across candidates.
+EVIDENCE_DIRECTORY = "deepseek-v3"
 ALLOWED_PRICING_SOURCE = "https://api-docs.deepseek.com/quick_start/pricing/"
 EXPECTED_ROUTE_MODELS = {
     "economic": MODEL_ID,
