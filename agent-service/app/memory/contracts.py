@@ -123,6 +123,36 @@ class MemoryRecord(StrictModel):
     deletion_generation: Annotated[int, Field(ge=0)] = 0
 
 
+class ConfirmMemoryCommand(StrictModel):
+    command_id: UUID
+    candidate_id: UUID
+    idempotency_key: SafeIdentifier
+    expected_version: Annotated[int, Field(ge=0)]
+    confirmed_by_user: Literal[True]
+    retention_until: datetime
+
+
+class MemoryCommandReceipt(StrictModel):
+    command_id: UUID
+    idempotency_key: SafeIdentifier
+    request_digest: Sha256
+    outcome: Literal["applied", "replayed"]
+    memory_id: UUID
+    version: Annotated[int, Field(ge=1)]
+    outbox_event_id: UUID
+    replayed: bool
+
+
+class MemoryOutboxEvent(StrictModel):
+    event_id: UUID
+    tenant_id: SafeIdentifier
+    principal_id: SafeIdentifier
+    aggregate_id: UUID
+    event_type: Literal["memory.confirmed", "memory.updated", "memory.conflicted", "memory.deleted", "memory.consent_revoked"]
+    version: Annotated[int, Field(ge=1)]
+    created_at: datetime
+
+
 class AuthorizationContext(StrictModel):
     tenant_id: SafeIdentifier
     principal_id: SafeIdentifier
