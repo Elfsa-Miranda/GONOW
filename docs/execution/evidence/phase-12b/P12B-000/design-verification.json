@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-000",
+  "scope": "dormant_design_only",
+  "primary_assertion": "plan registers atomic implementation tasks, quality/cost/fallback gates, and a budget ledger; implementation_commit_count=0",
+  "checks": {
+    "four_week_trigger_contract_present": true,
+    "deterministic_factor_contract_present": true,
+    "route_reason_contract_present": true,
+    "region_privacy_constraint_present": true,
+    "budget_ledger_contract_present": true,
+    "quality_floor_fallback_present": true,
+    "atomic_task_count": 6,
+    "acceptance_merge_ids_present": true,
+    "implementation_commit_count": 0,
+    "contract_change_count": 0,
+    "multi_agent_implementation_count": 0,
+    "production_write_count": 0
+  },
+  "formal_selection_status": "pending",
+  "result": "passed",
+  "recorded_at": "2026-08-04T14:24:00+08:00"
+}

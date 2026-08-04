@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-000",
+  "execution_mode": "local_provisional_dormant_design",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Bind P12B design to completed P12A checkpoint",
+      "command": "git rev-parse 8642424da35e4b3fabb973cd45c96a2f861253ac^{commit}",
+      "exit_code": 0
+    },
+    {
+      "step": 2,
+      "description": "Reuse exact landing-base full entry regression and prior P12A gate",
+      "command": "verify immutable phase-entry report and TASK-P12A-000 gate receipts",
+      "exit_code": 0
+    },
+    {
+      "step": 3,
+      "description": "Verify dormant P12B design package",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1 -TaskId TASK-P12B-000 -BaseOid 8642424da35e4b3fabb973cd45c96a2f861253ac",
+      "exit_code": 0
+    }
+  ],
+  "nonzero_exit_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T14:24:00+08:00"
+}

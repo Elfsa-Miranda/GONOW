@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-000",
+  "generated_by": "P12B dormant design closure",
+  "artifacts": [
+    {"path": "docs/architecture/adr/ADR-P12B-000-cost-router-work-package.md", "sha256": "9efcfe65c185fc07889a2c64ff37a388dec9468c7259f923faf25931a6fd251f", "size_bytes": 7371},
+    {"path": "docs/execution/evidence/phase-12/P12B-000/task-plan.md", "sha256": "aed8c40203f9f84d6d60dcacf434108cb4183caea92b6c8b1a21976446d2b8b9", "size_bytes": 4748},
+    {"path": "docs/execution/status/TASK-P12B-000.json", "sha256": "1016d1289e11feee9243abd04dc410190a7b506e3474f5d6e10e37a6728a4616", "size_bytes": 734},
+    {"path": "docs/execution/evidence/phase-12b/P12B-000/design-verification.json", "sha256": "d2a9b3d5e7c43d0b48fa88eb37aab4188d26a12705357f86d76c5b746a7d1a00", "size_bytes": 863},
+    {"path": "docs/execution/evidence/phase-12b/P12B-000/commands.json", "sha256": "684077c7ae33577961a6d1d60b77ed68279dabfdfcd378663b8152c51c43eaa2", "size_bytes": 995},
+    {"path": "docs/execution/evidence/phase-12b/P12B-000/gate-results.json", "sha256": "6fc30a7d605bcbbd2d147e179eff8001de3bee42a2be991ed7650c00177d157b", "size_bytes": 729}
+  ],
+  "unhashed_artifact_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T14:24:00+08:00"
+}
