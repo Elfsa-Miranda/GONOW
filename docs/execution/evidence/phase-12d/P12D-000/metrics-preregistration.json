@@ -1,0 +1,158 @@
+{
+  "schema_version": "1.0",
+  "candidate": "P12D",
+  "status": "preregistered_dormant_unbound",
+  "claim_type": "behavior_improvement",
+  "metric_scope": {
+    "included": [
+      "one evidence-selected write-point reliability or security primary from a closed metric profile",
+      "stable receipt completeness as the causal observability diagnostic",
+      "normal-write success non-inferiority and zero-tolerance write integrity redlines"
+    ],
+    "not_applicable": ["portfolio-wide writer migration: exactly one write entry is permitted"],
+    "not_measured": ["the selected primary value until TASK-P12D-010 names the write entry and freezes one metric before candidate measurement"]
+  },
+  "bindings": {
+    "baseline_oid": "pending_exact_accepted_release_b_head",
+    "candidate_oid": "pending_selected_candidate_head",
+    "dataset_sha256": "pending_trigger_evidence_binding",
+    "evaluator_version": "pending_premeasurement_binding",
+    "behavior_digest": "pending_premeasurement_binding",
+    "model_and_parameters": "pending_premeasurement_binding",
+    "toolset_version": "pending_premeasurement_binding",
+    "database_version": "pending_premeasurement_binding",
+    "seeds": "pending_premeasurement_binding",
+    "repeat_count": "pending_power_analysis_then_freeze",
+    "runner_hardware": "pending_premeasurement_binding",
+    "time_window": "pending_premeasurement_binding"
+  },
+  "primary_result": {
+    "metric_id": "pending_one_of_closed_write_reliability_profile",
+    "role": "primary_result",
+    "formula": "TASK-P12D-010 must select exactly one before unblinding: duplicate_effect_rate_per_10k_intents OR partial_write_or_event_loss_rate_per_10k_intents OR ambiguous_outcome_manual_repair_minutes_per_1k_intents OR stale_conflict_partial_effect_rate_per_10k_intents",
+    "numerator": "event or duration numerator for the single selected root-cause metric; no composite mixing is allowed",
+    "denominator": "all eligible intents for the selected write entry including failed retried and ambiguous attempts, or 1000 intents for the duration profile",
+    "unit": "selected_profile_unit",
+    "direction": "lower",
+    "threshold": "pending_owner_approved_improvement_bound_before_candidate_measurement",
+    "threshold_source": "TASK-P12D-010 trigger-evidence.json and metrics-binding.json",
+    "success_definition": "selected root-cause outcome improves under the preregistered exact estimator with normal-write guardrails and all redlines passing",
+    "failure_definition": "selected outcome misses its bound, the metric is changed after unblinding, sample is underpowered, or any redline fails",
+    "averaging_allowed": true
+  },
+  "diagnostic": {
+    "metric_id": "command_receipt_coverage_rate",
+    "role": "diagnostic",
+    "formula": "terminal command attempts with a schema-valid stable receipt / all terminal command attempts",
+    "numerator": "terminal attempts with receipt binding command version target principal approval idempotency versions state outbox policy and schema digests",
+    "denominator": "all committed denied conflicted rejected and recovered terminal command attempts",
+    "unit": "ratio",
+    "direction": "higher",
+    "threshold": "1.0 for the candidate contract but not sufficient to claim behavior improvement",
+    "threshold_source": "P12D Stable receipt contract",
+    "success_definition": "every terminal outcome is unambiguous and reconstructable without sensitive body content",
+    "failure_definition": "missing malformed ambiguous or content-leaking receipt",
+    "averaging_allowed": false
+  },
+  "guardrails": [
+    {
+      "metric_id": "normal_write_success_noninferiority_pp",
+      "role": "guardrail",
+      "formula": "100 * (candidate_normal_write_success_rate - legacy_writer_normal_write_success_rate)",
+      "numerator": "candidate-minus-baseline successful normal intents under identical request and dependency conditions",
+      "denominator": "all preregistered non-fault normal intent pairs",
+      "unit": "percentage_points",
+      "direction": "higher",
+      "threshold": "pending_owner_approved_noninferiority_margin_before_candidate_measurement",
+      "threshold_source": "TASK-P12D-010 metrics-binding.json",
+      "success_definition": "one-sided 95 percent lower bound exceeds the frozen negative margin",
+      "failure_definition": "bound fails, sample is underpowered, or normal denials are hidden as security success",
+      "averaging_allowed": false
+    }
+  ],
+  "redlines": [
+    {
+      "metric_id": "duplicate_formal_write_count",
+      "role": "redline",
+      "formula": "count(logical command intents producing more than one formal business side effect or logical outbox event)",
+      "numerator": "duplicate formal effects",
+      "denominator": "all semantic retry concurrent duplicate crash and relay replay cases",
+      "unit": "count",
+      "direction": "zero",
+      "threshold": "0 hard_redline",
+      "threshold_source": "AGENTS.md §6.1 and P12D-DC-002..009",
+      "success_definition": "count equals zero",
+      "failure_definition": "any intent commits or emits more than one logical effect",
+      "averaging_allowed": false
+    },
+    {
+      "metric_id": "unauthorized_or_cross_tenant_write_count",
+      "role": "redline",
+      "formula": "count(business mutations or outbox events committed without current server-derived authorization approval and tenant scope)",
+      "numerator": "unauthorized or cross-tenant formal writes",
+      "denominator": "all adversarial authorization approval replay RLS and TOCTOU cases",
+      "unit": "count",
+      "direction": "zero",
+      "threshold": "0 hard_redline",
+      "threshold_source": "AGENTS.md §5 and §6.1",
+      "success_definition": "count equals zero",
+      "failure_definition": "any denied stale revoked forged or cross-tenant command changes formal state",
+      "averaging_allowed": false
+    },
+    {
+      "metric_id": "mutation_outbox_divergence_count",
+      "role": "redline",
+      "formula": "count(committed mutations without one logical outbox event plus outbox events without a committed mutation)",
+      "numerator": "mutation/outbox divergence outcomes",
+      "denominator": "all normal fault-injection restore reconciliation and relay-replay cases",
+      "unit": "count",
+      "direction": "zero",
+      "threshold": "0 hard_redline",
+      "threshold_source": "Transactional outbox invariant",
+      "success_definition": "count equals zero",
+      "failure_definition": "business truth and logical event truth diverge",
+      "averaging_allowed": false
+    },
+    {
+      "metric_id": "data_loss_or_ambiguous_committed_outcome_count",
+      "role": "redline",
+      "formula": "count(committed outcomes lost after restore or impossible to classify from durable state and receipt)",
+      "numerator": "lost or ambiguous committed outcomes",
+      "denominator": "all commit-boundary kill replay restore and reconciliation cases",
+      "unit": "count",
+      "direction": "zero",
+      "threshold": "0 hard_redline",
+      "threshold_source": "AGENTS.md §6.1 and §7",
+      "success_definition": "count equals zero",
+      "failure_definition": "a committed outcome is lost duplicated or cannot be resolved deterministically",
+      "averaging_allowed": false
+    }
+  ],
+  "statistical_plan": {
+    "comparison_unit": "logical intent for the single selected write entry, clustered by target resource and concurrency episode",
+    "pairing": "legacy and command paths use equivalent request fixtures dependency snapshots and fault schedules; synthetic fault runs are labelled mechanics-only",
+    "estimator": "closed profile selects exact binomial event-rate difference with Clopper-Pearson bounds or clustered bootstrap difference in repair minutes",
+    "confidence_level": 0.95,
+    "interval_method": "exact one-sided event-rate bounds for rare counts; clustered bootstrap only for duration profile, selected before candidate unblinding",
+    "stratification": ["client_version", "risk_class", "concurrency_level", "failure_boundary", "approval_state", "tenant_scope"],
+    "power_and_sample_size": "freeze_from_baseline_or_blinded_pilot_before_candidate_unblinding",
+    "missing_run_handling": "candidate-caused timeout receipt gap or unresolved outcome is failure; symmetric infrastructure-only exclusion requires durable proof and applies to the pair",
+    "outlier_handling": "no event or repair episode is removed; duration reports median p95 and full-tail sensitivity with reasons for externally censored episodes",
+    "zero_success_handling": "undefined_fail_closed",
+    "multiple_comparison_rule": "TASK-P12D-010 selects one primary from the closed profile; switching after unblinding invalidates the STAR, and no primary improvement can offset a redline"
+  },
+  "run_record_contract": {
+    "schema_ref": "AGENTS.md §15.3.3",
+    "required_fields": ["task_id", "run_id", "baseline_or_candidate", "git_oid", "behavior_digest", "dataset_version", "toolset_version", "database_version", "random_seed", "retry_count", "final_success", "failure_category", "evaluator_version", "start_time", "end_time"],
+    "content_exclusions": ["secret", "command_body", "prompt_body", "response_body", "model_reasoning", "unnecessary_PII"],
+    "failure_taxonomy_version": "AGENTS-1.7.0"
+  },
+  "decision_rule": "begin or continue allocation only if TASK-P12D-010 selected one primary from the closed profile before unblinding, its 95 percent improvement bound passes, normal-write success is non-inferior, receipt coverage is complete, and every write-integrity redline is zero",
+  "no_claim_boundary": [
+    "duplicate_formal_write_count equals zero is a hard redline and capability proof, not by itself a behavior-improvement primary",
+    "fault injection proves crash and replay mechanics but cannot estimate a production incident-rate reduction",
+    "without a named write entry there is no valid denominator or primary result and the STAR remains measurement_pending",
+    "a composite of duplicate unauthorized partial and ambiguous outcomes is prohibited because it could hide a redline",
+    "migration or receipt coverage alone proves capability and governance, not value improvement"
+  ]
+}

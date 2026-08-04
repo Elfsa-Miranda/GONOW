@@ -1,10 +1,12 @@
 {
   "schema_version": "1.0",
   "task_id": "TASK-P12A-000",
-  "generated_by": "P12A dormant design closure",
+  "generated_by": "P12A dormant design plus plan-hardening closure",
   "artifacts": [
-    {"path": "docs/architecture/adr/ADR-P12A-000-memory-work-package.md", "sha256": "de2432d6ca6cc04c51e39024751517ce7268a54bd3eac6e095de8a091717249e", "size_bytes": 6009},
-    {"path": "docs/execution/evidence/phase-12/P12A-000/task-plan.md", "sha256": "bdcbadb54681ad59e782c8dc29a3623fd2f1857ff602536fd48374570464bb1f", "size_bytes": 4480},
+    {"path": "docs/architecture/adr/ADR-P12A-000-memory-work-package.md", "sha256": "28df8fb580fa79265e33cd6beea319969e1626b0a64747768d947414e8fae6d7", "size_bytes": 7434},
+    {"path": "docs/execution/evidence/phase-12/P12A-000/task-plan.md", "sha256": "93e031c81613f913471b88b42d2760a2b0bc855b952ef5c0e8ced51e850f63a8", "size_bytes": 8645},
+    {"path": "docs/execution/evidence/phase-12a/P12A-000/proposed-execution-contract.json", "sha256": "6fc74a0cb18b1126d68ab77acd8dee13083b8062e23da01d3bb22c432b3c0785", "size_bytes": 8408},
+    {"path": "docs/execution/evidence/phase-12a/P12A-000/metrics-preregistration.json", "sha256": "524a5da1d621864f860b8c9830b6121ef48efb0de5363cb17b8883227ff13d46", "size_bytes": 9171},
     {"path": "docs/execution/status/TASK-P12A-000.json", "sha256": "64607adb287e6b0b00f162da04f8880b0b11e78a936d93210e6c51091db282ab", "size_bytes": 731},
     {"path": "docs/execution/evidence/phase-12a/P12A-000/design-verification.json", "sha256": "5fc2b83d6cd94b2f11e49767e1e1e95b282bc151ad7f49821b51ea0a99b9323c", "size_bytes": 810},
     {"path": "docs/execution/evidence/phase-12a/P12A-000/commands.json", "sha256": "537643f8cf3638fce8fcf4fdeba385a5d912b1e22f33518db1cffe05f5139159", "size_bytes": 1088},
@@ -12,5 +14,5 @@
   ],
   "unhashed_artifact_count": 0,
   "production_write_count": 0,
-  "recorded_at": "2026-08-04T14:20:00+08:00"
+  "recorded_at": "2026-08-04T15:55:00+08:00"
 }

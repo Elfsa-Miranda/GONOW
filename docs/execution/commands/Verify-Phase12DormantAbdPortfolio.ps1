@@ -3,7 +3,7 @@ param(
   [ValidateSet('TASK-P12A-000','TASK-P12B-000','TASK-P12D-000','ABD')]
   [string]$TaskId = 'ABD',
   [ValidatePattern('^[0-9a-f]{40}$')]
-  [string]$BaseOid = 'd850640325904c443a180ebb2dbb0462638ac293',
+  [string]$BaseOid = '8367050c6bd196fb6d8729efe2b98468061e43e4',
   [string]$OutputPath = ''
 )
 
@@ -72,8 +72,32 @@ try {
   $selectedDefinitions = if ($TaskId -ceq 'ABD') { @($definitions.GetEnumerator()) } else { @([pscustomobject]@{Key=$TaskId;Value=$definitions[$TaskId]}) }
   $selectedDefinitions = @($selectedDefinitions)
   $expectedPackageCount = if ($TaskId -ceq 'ABD') { 3 } else { 1 }
+  $planningContractOutput = 'docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/planning-contract-gate-runtime.json'
+  $planningRaw = @(& python 'docs/execution/commands/validate_phase12_planning_contracts.py' '--repository-root' $RepositoryRoot '--output' $planningContractOutput 2>&1)
+  $planningExit = $LASTEXITCODE
+  $planningStatus = 'missing'
+  $planningErrors = @('planning contract receipt missing')
+  if (Test-Path -LiteralPath $planningContractOutput -PathType Leaf) {
+    try {
+      $planningReceipt = Get-Content -LiteralPath $planningContractOutput -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+      $planningStatus = [string]$planningReceipt.overall_status
+      $planningErrors = @($planningReceipt.errors)
+    }
+    catch {
+      $planningStatus = 'invalid_json'
+      $planningErrors = @($_.Exception.Message)
+    }
+  }
   $required = New-Object System.Collections.Generic.List[string]
   $required.Add('docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1')
+  $required.Add('docs/execution/commands/validate_phase12_planning_contracts.py')
+  $required.Add('docs/execution/schemas/phase12-trigger-evidence-v1.schema.json')
+  $required.Add('docs/execution/schemas/phase12-candidate-execution-contract-v1.schema.json')
+  $required.Add('docs/execution/schemas/phase12-star-preregistration-v1.schema.json')
+  $required.Add('docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json')
+  $required.Add('docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/review-disposition.md')
+  $required.Add('docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/phase-entry.json')
+  $required.Add($planningContractOutput)
   $required.Add('docs/execution/evidence/phase-12/ABD-PORTFOLIO/phase-entry-regression.json')
   foreach ($entry in $selectedDefinitions) {
     $definition = $entry.Value
@@ -82,6 +106,8 @@ try {
       $definition.plan,
       $definition.status,
       "$($definition.evidence)/design-verification.json",
+      "$($definition.evidence)/proposed-execution-contract.json",
+      "$($definition.evidence)/metrics-preregistration.json",
       "$($definition.evidence)/commands.json",
       "$($definition.evidence)/gate-results.json",
       "$($definition.evidence)/artifact-hashes.json"
@@ -124,9 +150,12 @@ try {
       "Acceptance task: TASK-$($definition.prefix)-990",
       "Merge task: TASK-$($definition.prefix)-999"
     )
-    foreach ($marker in @($requiredPlanMarkers + $definition.markers)) {
+    $hardeningMarkers = @('guidance-index.json','proposed-execution-contract.json','Pre-registered STAR contract','TASK-P12-089')
+    foreach ($marker in @($requiredPlanMarkers + $definition.markers + $hardeningMarkers)) {
       if (-not $plan.Contains([string]$marker)) { $planErrors.Add("$task::plan::$marker") }
     }
+    $candidate089Pattern = "(?m)^(?:Atomic task:\s*)?TASK-$([regex]::Escape([string]$definition.prefix))-089\s*$|->\s*(?:TASK-)?$([regex]::Escape([string]$definition.prefix))-089\b"
+    if ($plan -cmatch $candidate089Pattern) { $planErrors.Add("$task::candidate_specific_089") }
     foreach ($heading in @('Trigger Evidence','Options and Decision','Atomic Tasks','Security and Privacy','Reliability','Acceptance and Merge','Rollback')) {
       if ($adr -cnotmatch ("(?m)^##\s+" + [regex]::Escape($heading) + "\s*$")) { $planErrors.Add("$task::adr_heading::$heading") }
     }
@@ -205,11 +234,14 @@ try {
   $changed = @(@($changedTracked)+@($untracked) | Where-Object { $_ } | Sort-Object -Unique)
   $allowed = @($changed | Where-Object {
     $_ -ceq 'docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1' -or
+    $_ -ceq 'docs/execution/commands/validate_phase12_planning_contracts.py' -or
+    $_ -cmatch '^docs/execution/schemas/phase12-(?:trigger-evidence|candidate-execution-contract|star-preregistration)-v1\.schema\.json$' -or
     $_ -cmatch '^docs/architecture/adr/ADR-P12[ABD]-000-[a-z0-9-]+\.md$' -or
     $_ -cmatch '^docs/execution/evidence/phase-12/P12[ABD]-000/task-plan\.md$' -or
     $_ -cmatch '^docs/execution/evidence/phase-12[abd]/P12[ABD]-000/' -or
     $_ -cmatch '^docs/execution/status/TASK-P12[ABD]-000\.json$' -or
     $_ -cmatch '^docs/execution/evidence/phase-12/ABD-PORTFOLIO/' -or
+    $_ -cmatch '^docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/' -or
     $_ -in @('README.md','docs/architecture/release-c-selection.md','docs/runbooks/release-c-governance.md','docs/api/release-c-selection.md','docs/architecture/threat-model/phase-12-review.json','docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1','docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md','docs/execution/evidence/phase-12/change-summary.md','docs/execution/evidence/phase-12/knowledge-transfer.md','docs/execution/evidence/phase-12/star-records.md','docs/execution/evidence/phase-12/artifact-manifest.premerge.json','docs/execution/evidence/phase-12/P12-089/provisional-archive-status.json','docs/execution/evidence/phase-12/P12-089/handoff-verification.json','docs/execution/evidence/phase-12/P12-089/commands.json','docs/execution/evidence/phase-12/P12-089/gate-results.json','docs/execution/evidence/phase-12/P12-089/artifact-hashes.json','docs/execution/evidence/phase-12/P12-089/archive-gate-runtime.json')
   })
   $unexpected = @($changed | Where-Object { $_ -notin $allowed })
@@ -239,6 +271,10 @@ try {
     json_errors = @($jsonErrors)
     hash_error_count = $hashErrors.Count
     hash_errors = @($hashErrors)
+    planning_contract_exit_code = $planningExit
+    planning_contract_status = $planningStatus
+    planning_contract_error_count = $planningErrors.Count
+    planning_contract_errors = @($planningErrors)
     atomic_task_count = $atomicTaskTotal
     forbidden_materialized_count = $forbiddenMaterialized.Count
     forbidden_materialized = @($forbiddenMaterialized)
@@ -263,7 +299,8 @@ try {
     production_write_count = 0
   }
   $passed = (
-    $missing.Count+$planErrors.Count+$statusErrors.Count+$jsonErrors.Count+$hashErrors.Count+$forbiddenMaterialized.Count+$formalRefs.Count+$formalWorktrees.Count+$unexpected.Count+$implementation.Count+$contentFindings.Count+$diffExit -eq 0 -and
+    $missing.Count+$planErrors.Count+$statusErrors.Count+$jsonErrors.Count+$hashErrors.Count+$planningExit+$planningErrors.Count+$forbiddenMaterialized.Count+$formalRefs.Count+$formalWorktrees.Count+$unexpected.Count+$implementation.Count+$contentFindings.Count+$diffExit -eq 0 -and
+    $planningStatus -ceq 'passed' -and
     @($selectedDefinitions).Count -eq $expectedPackageCount -and
     $atomicTaskTotal -ge (6 * $expectedPackageCount)
   )

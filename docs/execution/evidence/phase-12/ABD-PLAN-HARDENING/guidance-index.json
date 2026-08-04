@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "index_id": "PHASE12-ABD-GUIDANCE-INDEX",
+  "guidance_sources": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "e21ca2dabcf5f46ddd96d8763f2212a5da8332abc33419c2e31645693e50f42d",
+      "stable_sections": ["§0.1", "§0.4", "§0.4.1", "§0.4.2", "§2.3", "§5", "§6", "§7.3", "§7.4", "§10 Phase 12", "§14", "§15.3.1", "§15.3.2", "§15.3.3", "§15.3.4", "§16.1"]
+    },
+    {
+      "path": "execplan.md",
+      "sha256": "94217c013ae1b84be05ae69c72cd235f1b63c908092377e287281a7a464da859",
+      "stable_sections": ["§0.2.3", "§0.5", "TASK-REL-C-000", "TASK-P12-000", "TASK-P12-001", "TASK-P12-002", "TASK-P12A-000", "TASK-P12B-000", "TASK-P12D-000", "TASK-P12-089", "TASK-REL-C-001", "§16.1"]
+    },
+    {
+      "path": "docs/execution/commands/TaskGateCatalog.psd1",
+      "sha256": "b8db7118b855be1aec9a6caf81baf13aeae9c11eb6f06292274924c92fe4f52a",
+      "stable_sections": ["TASK-P12A-000", "TASK-P12B-000", "TASK-P12D-000", "TASK-P12-089"]
+    }
+  ],
+  "target_architecture": {
+    "canonical_locator": "D:\\gonow\\deliverables\\GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx",
+    "sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
+    "package_sections": {
+      "P12A": ["§14.6-14.14"],
+      "P12B": ["§27.4-27.7"],
+      "P12D": ["§17", "§20-21", "§26", "§28"]
+    }
+  },
+  "supporting_contracts": [
+    "docs/architecture/release-c-selection.md",
+    "docs/runbooks/release-c-governance.md",
+    "docs/api/release-c-selection.md",
+    "docs/architecture/threat-model/phase-12-review.json"
+  ],
+  "interpretation_rules": [
+    "AGENTS.md and execplan.md remain the two primary execution guidance files",
+    "candidate plans are dormant design contracts and do not supersede TaskGateCatalog.psd1",
+    "stable CT identifiers retain AGENTS.md §7.3 semantics and cannot be repurposed by a candidate plan",
+    "TASK-P12-089 is the only Phase 12 knowledge-transfer task; candidate plans hand off to it rather than creating P12A/B/D-089",
+    "formal activation requires a jointly approved execplan.md and TaskGateCatalog.psd1 revision with exact allowlists"
+  ]
+}
