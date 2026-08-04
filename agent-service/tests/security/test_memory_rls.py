@@ -58,11 +58,29 @@ def _reset(engine) -> None:
         connection.execute(CreateSchema(VERSION_SCHEMA))
 
 
-def _roles(admin_engine) -> None:
+def _roles(admin_engine) -> tuple[str, ...]:
+    created: list[str] = []
     with admin_engine.begin() as connection:
         for role in ROLES:
-            connection.exec_driver_sql(f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN CREATE ROLE {role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; END IF; END $$")
-            connection.exec_driver_sql(f"GRANT {role} TO gonow_migrator_test")
+            exists = connection.execute(
+                text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :role)"),
+                {"role": role},
+            ).scalar_one()
+            if not exists:
+                connection.exec_driver_sql(
+                    f"CREATE ROLE {role} NOLOGIN NOSUPERUSER NOCREATEDB "
+                    "NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS"
+                )
+                created.append(role)
+    return tuple(created)
+
+
+def _drop_created_roles(admin_engine, roles: tuple[str, ...]) -> None:
+    with admin_engine.begin() as connection:
+        for role in roles:
+            connection.exec_driver_sql(f"DROP OWNED BY {role}")
+        for role in roles:
+            connection.exec_driver_sql(f"DROP ROLE {role}")
 
 
 @pytest.fixture()
@@ -71,15 +89,18 @@ def memory_database(monkeypatch: pytest.MonkeyPatch):
     assert (parsed.host, parsed.port, parsed.database, parsed.password) == ("127.0.0.1", 55432, "gonow_p03_test", None)
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     admin = create_engine(ADMIN_URL, pool_pre_ping=True)
-    _reset(engine); _roles(admin)
+    _reset(engine)
+    created_roles = _roles(admin)
     monkeypatch.setenv("GONOW_DATABASE_URL", DATABASE_URL)
     monkeypatch.setenv("GONOW_ALEMBIC_VERSION_SCHEMA", VERSION_SCHEMA)
     command.upgrade(Config(str(SERVICE_ROOT / "alembic.ini")), "p12a_001_memory")
     try:
-        yield engine
+        yield engine, admin
     finally:
         _reset(engine)
-        engine.dispose(); admin.dispose()
+        _drop_created_roles(admin, created_roles)
+        engine.dispose()
+        admin.dispose()
 
 
 def _set_identity(connection, tenant: str, principal: str) -> None:
@@ -88,25 +109,27 @@ def _set_identity(connection, tenant: str, principal: str) -> None:
 
 
 def test_realpg_migration_has_all_forced_rls_tables(memory_database) -> None:
-    inspector = inspect(memory_database)
+    engine, _ = memory_database
+    inspector = inspect(engine)
     assert set(inspector.get_table_names(schema="agent_memory")) == {"consent_events", "candidates", "records", "derivatives", "tombstones", "command_attempts", "outbox_events"}
-    with memory_database.connect() as connection:
+    with engine.connect() as connection:
         rows = connection.execute(text("SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agent_memory' AND c.relkind='r' ORDER BY c.relname")).all()
     assert len(rows) == 7 and all(row.relrowsecurity and row.relforcerowsecurity for row in rows)
 
 
 def test_realpg_rls_binds_tenant_and_principal_and_worker_cannot_write_record(memory_database) -> None:
+    engine, admin = memory_database
     record_id = uuid.uuid4()
-    with memory_database.begin() as connection:
+    with engine.begin() as connection:
         _set_identity(connection, "tenant-a", "user-a")
         connection.execute(text("INSERT INTO agent_memory.records(memory_id,tenant_id,principal_id,purpose,memory_type,enum_value,provenance,state,version,consent_version,retention_until) VALUES (:id,'tenant-a','user-a','itinerary.personalization','travel_pace','balanced',CAST(:provenance AS jsonb),'active',1,1,statement_timestamp()+interval '30 days')"), {"id":record_id,"provenance":'{"source_type":"user_declared","source_ref":"ui:memory-form","source_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'})
-    with memory_database.begin() as connection:
+    with admin.begin() as connection:
         connection.execute(text("SET LOCAL ROLE gonow_agent_api")); _set_identity(connection, "tenant-a", "user-a")
         assert connection.execute(text("SELECT count(*) FROM agent_memory.records")).scalar_one() == 1
-    with memory_database.begin() as connection:
+    with admin.begin() as connection:
         connection.execute(text("SET LOCAL ROLE gonow_agent_api")); _set_identity(connection, "tenant-a", "user-b")
         assert connection.execute(text("SELECT count(*) FROM agent_memory.records")).scalar_one() == 0
-    with memory_database.connect() as connection:
+    with admin.connect() as connection:
         transaction = connection.begin()
         try:
             connection.execute(text("SET LOCAL ROLE gonow_agent_worker")); _set_identity(connection, "tenant-a", "user-a")

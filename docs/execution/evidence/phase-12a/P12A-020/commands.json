@@ -10,4 +10,8 @@
 {"step":9,"command":"new RealPG Memory RLS second pass","exit_code":1,"passed":8,"failed":1,"skipped":0,"xfailed":0,"failure_classification":"negative_transaction_needed_explicit_rollback"},
 {"step":10,"command":"new RealPG Memory RLS after bounded repair","exit_code":0,"passed":9,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":1.42},
 {"step":11,"command":"full affected Memory set including RealPG","exit_code":0,"passed":65,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":1.42},
-{"step":12,"command":"alembic heads","exit_code":0,"head":"p12a_001_memory"}]}
+{"step":12,"command":"alembic heads","exit_code":0,"head":"p12a_001_memory"},
+{"step":13,"command":"pytest Memory RealPG fixture after owned-role lifecycle repair","exit_code":0,"passed":6,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":1.29},
+{"step":14,"command":"pytest Memory RealPG then P12D 10k normal-write order probe while pre-existing landing certification shared port 55432","exit_code":1,"passed":6,"failed":1,"skipped":0,"xfailed":0,"duration_seconds":49.64,"failure_classification":"shared_isolated_port_concurrent_backend_deadlock_40P01"},
+{"step":15,"command":"pytest same Memory-to-P12D order probe after concurrent landing certification ended","exit_code":0,"passed":7,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":91.54},
+{"step":16,"command":"pytest full affected Memory set after fixture lifecycle repair","exit_code":0,"passed":65,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":1.47}]}
