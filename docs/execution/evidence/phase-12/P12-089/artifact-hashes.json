@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "archive_id": "PHASE12-PROVISIONAL-ARCHITECTURE-ARCHIVE",
+  "source_checkpoint_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
+  "generated_by": "final provisional archive hash closure",
+  "artifacts": [
+    {"path": "README.md", "sha256": "a4ea8502c30d11c66b0d410063d061826cbd90e48885caffb1930b8599b6c53b", "size_bytes": 23767},
+    {"path": "docs/architecture/release-c-selection.md", "sha256": "4fdb73a3fc8aeb5b92a1227755c858b79a4e8adf7443e12b472015cd5c2a772f", "size_bytes": 8347},
+    {"path": "docs/runbooks/release-c-governance.md", "sha256": "24521ab9ea2eff105c3d7fbffe16393629f02b202d8f06c24f5c9253969d3968", "size_bytes": 4770},
+    {"path": "docs/api/release-c-selection.md", "sha256": "2c5b5edd67d030604eeb21e065c3148618c0f15ad08070d513b062c9ee0c1765", "size_bytes": 2889},
+    {"path": "docs/architecture/threat-model/phase-12-review.json", "sha256": "f7c2342216890f5583cbb822accadfb16ad5e4ab459af9f79724444095ac6c83", "size_bytes": 2909},
+    {"path": "docs/execution/evidence/phase-12/change-summary.md", "sha256": "10beb7c1cdc18664951336cc3b2a4ecb57adde77325ee27db09201aff07cbe58", "size_bytes": 1622},
+    {"path": "docs/execution/evidence/phase-12/knowledge-transfer.md", "sha256": "8a43602d6a4b1e8c03b5f41e2490864e1fe972fad3249349be1289874c5d351b", "size_bytes": 2877},
+    {"path": "docs/execution/evidence/phase-12/star-records.md", "sha256": "25f90f687da9f0bc45f9fb325a57139cc0c16822b5126fb32160a9f2ff38df5b", "size_bytes": 1434},
+    {"path": "docs/execution/evidence/phase-12/improvements/STAR-xor-safe-architecture-archive.md", "sha256": "39e1ae990a5de383a3d315039fe490fddbc7c65354e0a745c7ab104652a18f47", "size_bytes": 2861},
+    {"path": "docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md", "sha256": "ab60997face72b1c9fb59728b186f4b0dcffadc9c0e47f3d0f5a604ba76abcfa", "size_bytes": 4472},
+    {"path": "docs/execution/blockers/phase-12/BLK-P12-089-archive-gate-line-normalization.md", "sha256": "2f2a0cc5093e94060294275155f1a23adcf797b2fadd61bfb2e605986a86e6eb", "size_bytes": 5446},
+    {"path": "docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1", "sha256": "c50169f55714e3d51a044e78df8eb5d206de70b3f501f7af62434bae5f062716", "size_bytes": 17136},
+    {"path": "docs/execution/evidence/phase-12/artifact-manifest.premerge.json", "sha256": "0976a1be578ede4b8b67b77d683772ce115dc5bd335913bdeefb5a1b28a46a64", "size_bytes": 2715},
+    {"path": "docs/execution/evidence/phase-12/P12-089/provisional-runtime-manifest.json", "sha256": "2724a54e3dc9aba601be8fb8ba1f84e2c553028b85ca907f2c877995d0348e7c", "size_bytes": 2082},
+    {"path": "docs/execution/evidence/phase-12/P12-089/provisional-archive-status.json", "sha256": "51dd0f64f3d29ba46d083aa8dfa085c809c7cf79e699d20431863510af23e8ef", "size_bytes": 958},
+    {"path": "docs/execution/evidence/phase-12/P12-089/handoff-verification.json", "sha256": "1deab02c595f6021f7763d7679eb1e709f5367d90955c4607e5bec35c56e3c56", "size_bytes": 821},
+    {"path": "docs/execution/evidence/phase-12/P12-089/commands.json", "sha256": "3a826b4be3ce2192f68b28369e5a818b8c702793e2302ca221cc4ebbf2ecae36", "size_bytes": 2441},
+    {"path": "docs/execution/evidence/phase-12/P12-089/gate-results.json", "sha256": "2acec80f909a8837546211a5e8d37a1c71589285d34fb612567df9ad5d0112c8", "size_bytes": 1351}
+  ],
+  "unhashed_artifact_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T13:47:44.5953793+08:00"
+}

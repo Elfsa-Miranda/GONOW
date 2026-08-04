@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 12 architecture archive",
+  "archive_mode": "local_provisional",
+  "source_checkpoint_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
+  "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
+  "model_changed": false,
+  "formal_selection_status": "pending",
+  "selected_count": 0,
+  "formal_none_decision": false,
+  "security_owner": "Security",
+  "security_actor_id": "codex-local-implementation-security-self-review",
+  "reviewer_is_implementer": true,
+  "independent_review_status": "pending_external",
+  "formal_review_accepted": false,
+  "runtime_change_count": 0,
+  "public_contract_change_count": 0,
+  "multi_agent_implementation_count": 0,
+  "threats": [
+    {
+      "id": "P12-T01",
+      "candidate": "governance",
+      "boundary": "xor_selection",
+      "control": "formal runner binds stable Release B, one cycle, one selected candidate, owner references, and absent unselected artifacts",
+      "local_result": "guardrail_documented",
+      "residual": "formal Release B and REL-C selection evidence pending"
+    },
+    {
+      "id": "P12-T02",
+      "candidate": "12A_memory",
+      "boundary": "consent_and_cross_tenant_materialization",
+      "control": "negative consent, principal-purpose binding, RLS, explicit Domain Command, conflict provenance, and tombstone-first restore",
+      "local_result": "guardrail_documented",
+      "residual": "candidate unselected; DDL, CT-009/015, privacy review, and restore drill absent by design"
+    },
+    {
+      "id": "P12-T03",
+      "candidate": "12B_cost_router",
+      "boundary": "unsafe_or_noncompliant_route",
+      "control": "deterministic certified-route policy with region/privacy/quality floors, physical-attempt budget accounting, fallback, and kill switch",
+      "local_result": "guardrail_documented",
+      "residual": "candidate unselected; four-week calibrated evidence and route certification pending"
+    },
+    {
+      "id": "P12-T04",
+      "candidate": "12D_domain_command",
+      "boundary": "unauthorized_or_duplicate_domain_write",
+      "control": "one named write point, reauthorization, field authority, CAS, idempotency, transactional outbox, receipt lookup, and expand-contract rollback",
+      "local_result": "guardrail_documented",
+      "residual": "candidate unselected; no write point, schema, migration, or production operation is authorized"
+    },
+    {
+      "id": "P12-T05",
+      "candidate": "12C_multi_agent",
+      "boundary": "unproven_coordination_expansion",
+      "control": "explicit deferral; no ADR, task plan, specialist branch, coordinator runtime, production allocation, or implementation commit",
+      "local_result": "deferred_zero_implementation",
+      "residual": "a future cycle would require independent benefit, safety, cost, and rollback evidence"
+    }
+  ],
+  "production_write_count": 0
+}
