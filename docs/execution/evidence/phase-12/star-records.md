@@ -9,11 +9,12 @@ quality, latency, cost, adoption, or compliance improvement claim.
 | Record | SHA-256 | Primary result | Evidence boundary |
 |---|---|---|---|
 | `improvements/STAR-xor-safe-architecture-archive.md` | `39e1ae990a5de383a3d315039fe490fddbc7c65354e0a745c7ab104652a18f47` | Dormant candidate disposition coverage improved from 0/4 to 4/4 while forbidden formal materialization stayed 0 | Local documentation and machine gate only; formal selection and independent acceptance remain pending |
+| `ABD-PORTFOLIO/improvements/STAR-abd-design-readiness.md` | indexed by `ABD-PORTFOLIO/artifact-hashes.json` | Complete A/B/D design-ready coverage improved from 0/3 to 3/3; atomic plans from 0 to 18 | Local design/governance evidence only; no runtime behavior claim |
 
 ## Phase outcome boundary
 
-- Capability existence: no Phase 12 runtime capability exists; three non-Multi-Agent candidates are
-  documented and Multi-Agent is explicitly deferred.
+- Capability existence: no Phase 12 runtime capability exists; three non-Multi-Agent candidates have
+  complete dormant design packages and Multi-Agent is explicitly deferred.
 - Behavior evidence: not applicable because no runtime, allocation, cohort, or production write was
   introduced.
 - Governance evidence: the common archive and local gate are ready for self-review; the formal P12

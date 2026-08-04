@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "plan_version": "1.7.0",
+  "task_id": "TASK-P12B-000",
+  "phase": "Phase 12B",
+  "status": "ready_for_review",
+  "design_scope": "dormant_only",
+  "formal_task_status": "not_started",
+  "formal_dependency_status": "pending",
+  "formal_selection_asserted": false,
+  "selected": false,
+  "source_checkpoint_oid": "8642424da35e4b3fabb973cd45c96a2f861253ac",
+  "implementation_commit_count": 0,
+  "contract_change": false,
+  "production_write_count": 0,
+  "formal_acceptance": false,
+  "reviewer_independent": false,
+  "independent_review_status": "pending_external",
+  "rollback": "keep cost-router allocation zero and preserve the Release B certified route",
+  "updated_at": "2026-08-04T14:24:00+08:00"
+}

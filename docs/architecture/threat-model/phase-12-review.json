@@ -8,6 +8,7 @@
   "formal_selection_status": "pending",
   "selected_count": 0,
   "formal_none_decision": false,
+  "design_ready_count": 3,
   "security_owner": "Security",
   "security_actor_id": "codex-local-implementation-security-self-review",
   "reviewer_is_implementer": true,
@@ -30,7 +31,7 @@
       "candidate": "12A_memory",
       "boundary": "consent_and_cross_tenant_materialization",
       "control": "negative consent, principal-purpose binding, RLS, explicit Domain Command, conflict provenance, and tombstone-first restore",
-      "local_result": "guardrail_documented",
+      "local_result": "dormant_design_gate_passed",
       "residual": "candidate unselected; DDL, CT-009/015, privacy review, and restore drill absent by design"
     },
     {
@@ -38,7 +39,7 @@
       "candidate": "12B_cost_router",
       "boundary": "unsafe_or_noncompliant_route",
       "control": "deterministic certified-route policy with region/privacy/quality floors, physical-attempt budget accounting, fallback, and kill switch",
-      "local_result": "guardrail_documented",
+      "local_result": "dormant_design_gate_passed",
       "residual": "candidate unselected; four-week calibrated evidence and route certification pending"
     },
     {
@@ -46,7 +47,7 @@
       "candidate": "12D_domain_command",
       "boundary": "unauthorized_or_duplicate_domain_write",
       "control": "one named write point, reauthorization, field authority, CAS, idempotency, transactional outbox, receipt lookup, and expand-contract rollback",
-      "local_result": "guardrail_documented",
+      "local_result": "dormant_design_gate_passed",
       "residual": "candidate unselected; no write point, schema, migration, or production operation is authorized"
     },
     {

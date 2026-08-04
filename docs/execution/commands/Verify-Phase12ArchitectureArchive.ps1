@@ -14,7 +14,7 @@ try {
 
   function Invoke-GitLines {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
-    $output = @(& git @Arguments 2>&1)
+    $output = @(& git -c core.safecrlf=false @Arguments 2>&1)
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
       throw "git $($Arguments -join ' ') failed with exit $exitCode"
@@ -71,7 +71,14 @@ try {
     'docs/execution/evidence/phase-12/P12-089/handoff-verification.json',
     'docs/execution/evidence/phase-12/P12-089/commands.json',
     'docs/execution/evidence/phase-12/P12-089/gate-results.json',
-    'docs/execution/evidence/phase-12/P12-089/artifact-hashes.json'
+    'docs/execution/evidence/phase-12/P12-089/artifact-hashes.json',
+    'docs/execution/status/TASK-P12A-000.json',
+    'docs/execution/status/TASK-P12B-000.json',
+    'docs/execution/status/TASK-P12D-000.json',
+    'docs/execution/evidence/phase-12a/P12A-000/gate-results.json',
+    'docs/execution/evidence/phase-12b/P12B-000/gate-results.json',
+    'docs/execution/evidence/phase-12d/P12D-000/gate-results.json',
+    'docs/execution/evidence/phase-12/ABD-PORTFOLIO/gate-results.json'
   )
   $requiredArtifacts = if ($Bootstrap) { $coreArtifacts } else { @($coreArtifacts + $evidenceArtifacts) }
   $missingArtifacts = @($requiredArtifacts | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
@@ -81,6 +88,7 @@ try {
       'formal_selection_status: pending',
       'selected_count: 0',
       'formal_none_decision: false',
+      'design_ready_count: 3',
       'runtime_change_count: 0',
       'public_contract_change_count: 0',
       'production_write_count: 0',
@@ -132,23 +140,36 @@ try {
     $handoff = Get-Content -LiteralPath 'docs/execution/evidence/phase-12/P12-089/handoff-verification.json' -Raw -Encoding UTF8 | ConvertFrom-Json
     $threat = Get-Content -LiteralPath 'docs/architecture/threat-model/phase-12-review.json' -Raw -Encoding UTF8 | ConvertFrom-Json
     $manifest = Get-Content -LiteralPath 'docs/execution/evidence/phase-12/artifact-manifest.premerge.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+    $portfolioGate = Get-Content -LiteralPath 'docs/execution/evidence/phase-12/ABD-PORTFOLIO/gate-results.json' -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$status.archive_status -cne 'ready_for_review') { $semanticReceiptErrors.Add('status.archive_status') }
     if ([string]$status.formal_task_status -cne 'not_started') { $semanticReceiptErrors.Add('status.formal_task_status') }
     if ([string]$status.formal_selection_status -cne 'pending') { $semanticReceiptErrors.Add('status.formal_selection_status') }
     if ([int]$status.selected_count -ne 0 -or [bool]$status.formal_none_decision) { $semanticReceiptErrors.Add('status.xor_boundary') }
+    if ([int]$status.design_ready_count -ne 3 -or [int]$status.atomic_task_count -ne 18) { $semanticReceiptErrors.Add('status.design_readiness') }
     if ([string]$status.local_gate_status -cne 'passed') { $semanticReceiptErrors.Add('status.local_gate_status') }
     if ([string]$handoff.local_self_review_status -cne 'passed') { $semanticReceiptErrors.Add('handoff.local_self_review_status') }
     if (-not [bool]$handoff.readable -or -not [bool]$handoff.accurate_to_current_diff -or -not [bool]$handoff.contract_synced) { $semanticReceiptErrors.Add('handoff.document_assertions') }
     if (-not [bool]$handoff.reviewer_is_implementer -or [bool]$handoff.formal_handoff -or [bool]$handoff.accepted) { $semanticReceiptErrors.Add('handoff.governance_boundary') }
-    if ([string]$threat.formal_selection_status -cne 'pending' -or [int]$threat.selected_count -ne 0 -or [bool]$threat.formal_none_decision) { $semanticReceiptErrors.Add('threat.xor_boundary') }
-    if ([int]$manifest.candidate_disposition_coverage.numerator -ne 4 -or [int]$manifest.candidate_disposition_coverage.denominator -ne 4) { $semanticReceiptErrors.Add('manifest.coverage') }
+    if ([string]$threat.formal_selection_status -cne 'pending' -or [int]$threat.selected_count -ne 0 -or [bool]$threat.formal_none_decision -or [int]$threat.design_ready_count -ne 3) { $semanticReceiptErrors.Add('threat.xor_boundary') }
+    if ([int]$manifest.candidate_disposition_coverage.numerator -ne 4 -or [int]$manifest.candidate_disposition_coverage.denominator -ne 4 -or [int]$manifest.design_ready_count -ne 3) { $semanticReceiptErrors.Add('manifest.coverage') }
+    if ([string]$portfolioGate.overall_status -cne 'passed' -or [int]$portfolioGate.checks.design_ready_count -ne 3 -or [int]$portfolioGate.checks.formal_selected_count -ne 0) { $semanticReceiptErrors.Add('abd_portfolio.gate') }
+    foreach ($task in @('P12A','P12B','P12D')) {
+      $designStatus = Get-Content -LiteralPath "docs/execution/status/TASK-$task-000.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+      if ([string]$designStatus.status -cne 'ready_for_review' -or [string]$designStatus.design_scope -cne 'dormant_only' -or [string]$designStatus.formal_task_status -cne 'not_started' -or [bool]$designStatus.selected -or [int]$designStatus.implementation_commit_count -ne 0) {
+        $semanticReceiptErrors.Add("$task.design_boundary")
+      }
+    }
   }
 
   $hashIndexErrors = New-Object System.Collections.Generic.List[string]
   if (-not $Bootstrap) {
     foreach ($indexPath in @(
       'docs/execution/evidence/phase-12/artifact-manifest.premerge.json',
-      'docs/execution/evidence/phase-12/P12-089/artifact-hashes.json'
+      'docs/execution/evidence/phase-12/P12-089/artifact-hashes.json',
+      'docs/execution/evidence/phase-12a/P12A-000/artifact-hashes.json',
+      'docs/execution/evidence/phase-12b/P12B-000/artifact-hashes.json',
+      'docs/execution/evidence/phase-12d/P12D-000/artifact-hashes.json',
+      'docs/execution/evidence/phase-12/ABD-PORTFOLIO/artifact-hashes.json'
     )) {
       $index = Get-Content -LiteralPath $indexPath -Raw -Encoding UTF8 | ConvertFrom-Json
       foreach ($artifact in @($index.artifacts)) {
@@ -167,28 +188,16 @@ try {
 
   $forbiddenFormalArtifacts = @(
     'docs/architecture/adr/ADR-release-c-phase12-selected.md',
-    'docs/architecture/adr/ADR-P12A-000-memory-work-package.md',
-    'docs/architecture/adr/ADR-P12B-000-cost-router-work-package.md',
     'docs/architecture/adr/ADR-P12C-000-multi-agent-work-package.md',
-    'docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md',
     'docs/execution/evidence/phase-12/P12-000',
     'docs/execution/evidence/phase-12/P12-001',
     'docs/execution/evidence/phase-12/P12-002',
-    'docs/execution/evidence/phase-12/P12A-000',
-    'docs/execution/evidence/phase-12/P12B-000',
     'docs/execution/evidence/phase-12/P12C-000',
-    'docs/execution/evidence/phase-12/P12D-000',
-    'docs/execution/evidence/phase-12a',
-    'docs/execution/evidence/phase-12b',
     'docs/execution/evidence/phase-12c',
-    'docs/execution/evidence/phase-12d',
     'docs/execution/status/TASK-P12-000.json',
     'docs/execution/status/TASK-P12-001.json',
     'docs/execution/status/TASK-P12-002.json',
-    'docs/execution/status/TASK-P12A-000.json',
-    'docs/execution/status/TASK-P12B-000.json',
     'docs/execution/status/TASK-P12C-000.json',
-    'docs/execution/status/TASK-P12D-000.json',
     'docs/execution/status/TASK-P12-089.json'
   )
   $materializedFormalArtifacts = @($forbiddenFormalArtifacts | Where-Object { Test-Path -LiteralPath $_ })
@@ -202,7 +211,9 @@ try {
   })
 
   $changedTracked = @(Invoke-GitLines @('diff', '--name-only', $BaseOid, '--'))
+  $addedTracked = @(Invoke-GitLines @('diff', '--diff-filter=A', '--name-only', $BaseOid, '--'))
   $untracked = @(Invoke-GitLines @('ls-files', '--others', '--exclude-standard'))
+  $fullWhitespaceScanPaths = @(@($addedTracked) + @($untracked) | Sort-Object -Unique)
   $changedPaths = @(@($changedTracked) + @($untracked) | Where-Object { $_ } | Sort-Object -Unique)
   $allowedExact = @(
     'README.md',
@@ -211,19 +222,28 @@ try {
     'docs/api/release-c-selection.md',
     'docs/architecture/threat-model/phase-12-review.json',
     'docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1',
+    'docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1',
+    'docs/architecture/adr/ADR-P12A-000-memory-work-package.md',
+    'docs/architecture/adr/ADR-P12B-000-cost-router-work-package.md',
+    'docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md',
+    'docs/execution/status/TASK-P12A-000.json',
+    'docs/execution/status/TASK-P12B-000.json',
+    'docs/execution/status/TASK-P12D-000.json',
     'docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md'
   )
   $unexpectedPaths = @($changedPaths | Where-Object {
     $_ -notin $allowedExact -and
     $_ -cnotmatch '^docs/execution/evidence/phase-12/' -and
+    $_ -cnotmatch '^docs/execution/evidence/phase-12[abd]/P12[ABD]-000/' -and
     $_ -cnotmatch '^docs/execution/blockers/phase-12/BLK-P12-089-[a-z0-9-]+\.md$'
   })
-  $implementationPathPattern = '^(agent-service/|lib/|test/|integration_test/|contracts/|supabase/|android/|ios/|web/|pubspec\.(yaml|lock)$)'
+  $implementationPathPattern = '^(agent-service/|lib/|test/|integration_test/|contracts/|supabase/|android/|ios/|web/|linux/|macos/|windows/|pubspec\.(yaml|lock)$)'
   $implementationChanges = @($changedPaths | Where-Object { $_ -cmatch $implementationPathPattern })
   $publicContractChanges = @($changedPaths | Where-Object { $_ -cmatch '^(contracts/|lib/.+\.g\.dart$|docs/api/(?!release-c-selection\.md$))' })
 
   $secretFindings = New-Object System.Collections.Generic.List[string]
   $unsafeCommandFindings = New-Object System.Collections.Generic.List[string]
+  $whitespaceFindings = New-Object System.Collections.Generic.List[string]
   $scanPatterns = @(
     '(?i)sk-[a-z0-9]{20,}',
     '-----BEGIN [A-Z ]*PRIVATE KEY-----',
@@ -243,6 +263,7 @@ try {
     foreach ($pattern in $unsafePatterns) {
       if ($content -match $pattern) { $unsafeCommandFindings.Add("$path::$pattern") }
     }
+    if ($path -in $fullWhitespaceScanPaths -and ($content -cmatch '(?m)[ \t]+$' -or $content -cmatch '(\r?\n){2}$')) { $whitespaceFindings.Add($path) }
   }
 
   $linkedPaths = @(
@@ -253,7 +274,7 @@ try {
   )
   $brokenLinkedPaths = @($linkedPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
 
-  $diffCheckOutput = @(& git diff --check $BaseOid -- 2>&1)
+  $diffCheckOutput = @(& git -c core.safecrlf=false diff --check $BaseOid -- 2>&1)
   $diffCheckExitCode = $LASTEXITCODE
 
   $artifactEntries = @()
@@ -298,9 +319,12 @@ try {
     secret_like_findings = @($secretFindings)
     unsafe_command_example_count = $unsafeCommandFindings.Count
     unsafe_command_examples = @($unsafeCommandFindings)
+    whitespace_error_count = $whitespaceFindings.Count
+    whitespace_errors = @($whitespaceFindings)
     broken_linked_path_count = $brokenLinkedPaths.Count
     broken_linked_paths = @($brokenLinkedPaths)
     diff_check_exit_code = $diffCheckExitCode
+    design_ready_count = 3
     selected_count = 0
     formal_none_decision = $false
     runtime_change_count = 0
@@ -323,6 +347,7 @@ try {
     $publicContractChanges.Count -eq 0 -and
     $secretFindings.Count -eq 0 -and
     $unsafeCommandFindings.Count -eq 0 -and
+    $whitespaceFindings.Count -eq 0 -and
     $brokenLinkedPaths.Count -eq 0 -and
     $diffCheckExitCode -eq 0
   )

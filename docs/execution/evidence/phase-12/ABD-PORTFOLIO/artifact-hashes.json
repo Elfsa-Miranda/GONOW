@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "portfolio_id": "PHASE12-ABD-DORMANT-DESIGNS",
+  "generated_by": "ABD dormant design portfolio closure",
+  "artifacts": [
+    {"path": "docs/execution/evidence/phase-12/ABD-PORTFOLIO/phase-entry-regression.json", "sha256": "2cd6dd9cb05fff0954227e2b1dcff6c4d6c2f8032d06e68094d6b9ca7d9f168b", "size_bytes": 1677},
+    {"path": "docs/execution/evidence/phase-12/ABD-PORTFOLIO/affected-regression.json", "sha256": "4994ff1370e9f5737f4a34118c7664d6ffe1c4558fbe01b0b4a9a00b15e03796", "size_bytes": 1678},
+    {"path": "docs/execution/evidence/phase-12/ABD-PORTFOLIO/change-summary.md", "sha256": "0a4b8cc0dd7b787c9e8bbc7d21042f5c4d2a316be405cf718d0d3d69bddff9a0", "size_bytes": 2578},
+    {"path": "docs/execution/evidence/phase-12/ABD-PORTFOLIO/star-records.md", "sha256": "a5b4e08a7aff6464fe933161c08a2fe9a90ae0b17ca32eebee5a0c0032c4c850", "size_bytes": 1228},
+    {"path": "docs/execution/evidence/phase-12/ABD-PORTFOLIO/improvements/STAR-abd-design-readiness.md", "sha256": "09b3b1dc4bfad71711453324faeb4a87674310c5e3b488551bbfe6f737fcb826", "size_bytes": 4958},
+    {"path": "docs/execution/evidence/phase-12/ABD-PORTFOLIO/commands.json", "sha256": "3d7801042d8fabb60d55059182a668ff75a39d43010a3f458845d68cea94ef21", "size_bytes": 1141},
+    {"path": "docs/execution/evidence/phase-12/ABD-PORTFOLIO/gate-results.json", "sha256": "54ec0e4d2ea60dd8b65f281431f4aab930ea46558611b444e5602ff347e40aa8", "size_bytes": 1203}
+  ],
+  "unhashed_artifact_count": 0,
+  "formal_selected_count": 0,
+  "implementation_commit_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T14:32:00+08:00"
+}

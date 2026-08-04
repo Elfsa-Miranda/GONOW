@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-000",
+  "scope": "dormant_design_only",
+  "primary_assertion": "plan registers one evidence-selected Domain Command write entry plus authorization, CAS, receipt, outbox, and rollback tasks; implementation_commit_count=0",
+  "checks": {
+    "one_write_entry_selection_contract_present": true,
+    "current_named_write_entry_count": 0,
+    "principal_approval_contract_present": true,
+    "cas_idempotency_contract_present": true,
+    "transactional_outbox_contract_present": true,
+    "stable_receipt_contract_present": true,
+    "expand_contract_rollback_present": true,
+    "atomic_task_count": 6,
+    "acceptance_merge_ids_present": true,
+    "implementation_commit_count": 0,
+    "contract_change_count": 0,
+    "multi_agent_implementation_count": 0,
+    "production_write_count": 0
+  },
+  "formal_selection_status": "pending",
+  "result": "passed",
+  "recorded_at": "2026-08-04T14:27:00+08:00"
+}

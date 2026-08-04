@@ -4,8 +4,9 @@
 
 `formal_selection_status=pending`, `selected_count=0`, and `formal_none_decision=false`. These values
 mean there is no Release C capability to enable. Keep all Phase 12 candidate allocations at zero and
-continue the Release B-compatible single-Agent path. Do not create P12A/B/C/D specialist branches,
-run migrations, change routing, or infer approval from this archive.
+continue the Release B-compatible single-Agent path. P12A/B/D design packages are locally reviewable,
+but do not create a formal specialist branch/worktree for any candidate, run migrations, change
+routing, or infer approval from design readiness. P12C remains absent.
 
 ## First checks
 

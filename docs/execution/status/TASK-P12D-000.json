@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "plan_version": "1.7.0",
+  "task_id": "TASK-P12D-000",
+  "phase": "Phase 12D",
+  "status": "ready_for_review",
+  "design_scope": "dormant_only",
+  "formal_task_status": "not_started",
+  "formal_dependency_status": "pending",
+  "formal_selection_asserted": false,
+  "selected": false,
+  "source_checkpoint_oid": "22519f6487e2661a96ef21dc6b3059e6073f4ae9",
+  "implementation_commit_count": 0,
+  "contract_change": false,
+  "production_write_count": 0,
+  "formal_acceptance": false,
+  "reviewer_independent": false,
+  "independent_review_status": "pending_external",
+  "rollback": "keep Domain Command allocation zero and preserve the prior authorized writer",
+  "updated_at": "2026-08-04T14:27:00+08:00"
+}
