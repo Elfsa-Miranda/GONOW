@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12A-000",
+  "selection_candidate": "12A",
+  "portfolio_mode": "dormant_design_ready",
+  "checks": {
+    "trigger_contract_frozen": true,
+    "negative_consent_designed": true,
+    "conflict_state_designed": true,
+    "poisoning_boundary_designed": true,
+    "deletion_export_designed": true,
+    "backup_non_resurrection_designed": true,
+    "single_agent_read_port_designed": true,
+    "atomic_task_count": 6,
+    "applicable_ct": ["CT-009", "CT-015"],
+    "formal_dependency_status": "pending",
+    "formal_selection_asserted": false,
+    "implementation_commit_count": 0,
+    "contract_change": false,
+    "production_write_count": 0
+  },
+  "overall_status": "local_design_ready",
+  "formal_acceptance": false,
+  "recorded_at": "2026-08-04T14:12:00+08:00"
+}

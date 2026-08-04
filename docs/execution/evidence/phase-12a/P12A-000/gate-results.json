@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12A-000",
+  "gate_id": "PHASE12-ABD-DORMANT-DESIGN",
+  "overall_status": "passed",
+  "checks": {
+    "design_ready_count": 1,
+    "atomic_task_count": 6,
+    "missing_artifact_count": 0,
+    "plan_error_count": 0,
+    "status_error_count": 0,
+    "json_error_count": 0,
+    "hash_error_count": 0,
+    "unexpected_path_count": 0,
+    "diff_check_exit_code": 0,
+    "formal_selected_count": 0,
+    "implementation_commit_count": 0,
+    "contract_change_count": 0,
+    "multi_agent_implementation_count": 0,
+    "production_write_count": 0
+  },
+  "formal_selection_status": "pending",
+  "independent_review_status": "pending_external",
+  "recorded_at": "2026-08-04T14:20:00+08:00"
+}

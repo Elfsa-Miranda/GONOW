@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12A-000",
+  "execution_mode": "local_provisional_dormant_design",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Bind clean Phase 12 ABD worktree to landing checkpoint",
+      "command": "git worktree add -b codex/repair-phase12-abd-dormant-designs D:\\GO_NOW-phase12-abd-dormant-designs d850640325904c443a180ebb2dbb0462638ac293",
+      "exit_code": 0
+    },
+    {
+      "step": 2,
+      "description": "Reuse exact-base full integration smoke as phase-entry regression",
+      "command": "verify immutable report hashes for d850640325904c443a180ebb2dbb0462638ac293",
+      "exit_code": 0
+    },
+    {
+      "step": 3,
+      "description": "Verify dormant P12A design package",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1 -TaskId TASK-P12A-000 -BaseOid f545797fd370ccad3acdb021680f1db2e293d05f",
+      "exit_code": 0
+    }
+  ],
+  "nonzero_exit_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T14:20:00+08:00"
+}
