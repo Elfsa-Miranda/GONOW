@@ -9,12 +9,12 @@
     },
     {
       "path": "execplan.md",
-      "sha256": "282d7e1fe97e08c3c2d74dc03714b7f18c975b3d8c3235f08596277a6d7caf63",
+      "sha256": "51f6ccc1cf1936f886f2f39cee3752ac41389fef3e0dc72204155e69710aaab7",
       "stable_sections": ["§0.2.3", "§0.5", "TASK-REL-C-000", "TASK-P12-000", "TASK-P12-001", "TASK-P12-002", "TASK-P12A-000", "TASK-P12B-000", "TASK-P12D-000", "TASK-P12-089", "TASK-REL-C-001", "§16.1"]
     },
     {
       "path": "docs/execution/commands/TaskGateCatalog.psd1",
-      "sha256": "e7179586281cfba1475c9d9877439def91f0f550f3a0aee21dc43710e7e445eb",
+      "sha256": "75a82faefdeeac373c5e1af09c7987aa6c323d97c827cf06e903caf2fb4d9a75",
       "stable_sections": ["TASK-P12A-000", "TASK-P12B-000", "TASK-P12D-000", "TASK-P12-089"]
     }
   ],
@@ -35,7 +35,7 @@
   ],
   "interpretation_rules": [
     "AGENTS.md and execplan.md remain the two primary execution guidance files",
-    "P12A and P12B remain dormant; the direct-user XOR record selects only P12D and its executable cards are authoritative through TaskGateCatalog.psd1",
+    "P12A and P12C plus new P12D work remain dormant for this cycle; the direct-user XOR record selects only P12B and its executable cards are authoritative through TaskGateCatalog.psd1; prior P12D local evidence remains historical",
     "stable CT identifiers retain AGENTS.md §7.3 semantics and cannot be repurposed by a candidate plan",
     "TASK-P12-089 is the only Phase 12 knowledge-transfer task; candidate plans hand off to it rather than creating P12A/B/D-089",
     "local-provisional activation binds exact execplan.md and TaskGateCatalog.psd1 allowlists; formal acceptance and production authority remain pending external owner decisions"

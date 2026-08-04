@@ -1,28 +1,71 @@
 {
   "schema_version": "1.0",
   "task_id": "TASK-P12B-000",
-  "execution_mode": "local_provisional_dormant_design",
+  "phase": "Phase 12B",
+  "executed_at": "2026-08-04T22:08:00+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "f941051871ecd7ea811540072a032ce7aaa0119d",
   "commands": [
     {
       "step": 1,
-      "description": "Bind P12B design to completed P12A checkpoint",
-      "command": "git rev-parse 8642424da35e4b3fabb973cd45c96a2f861253ac^{commit}",
-      "exit_code": 0
+      "description": "Materialize the P12B executable Catalog revision by expected-version CAS",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Update-Phase12BCostRouterTaskGateCatalog.ps1",
+      "exit_code": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Exact counts are retained in gate-results.json; process output bodies are not persisted.",
+      "duration_seconds": 1.0
     },
     {
       "step": 2,
-      "description": "Reuse exact landing-base full entry regression and prior P12A gate",
-      "command": "verify immutable phase-entry report and TASK-P12A-000 gate receipts",
-      "exit_code": 0
+      "description": "Validate selected Phase 12 planning contracts",
+      "command": "locked-python docs/execution/commands/validate_phase12_planning_contracts.py --repository-root . --output <external-evidence>",
+      "exit_code": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Exact counts are retained in gate-results.json; process output bodies are not persisted.",
+      "duration_seconds": 1.6
     },
     {
       "step": 3,
-      "description": "Verify dormant P12B design package",
-      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1 -TaskId TASK-P12B-000 -BaseOid 8642424da35e4b3fabb973cd45c96a2f861253ac",
-      "exit_code": 0
+      "description": "Validate P12B XOR, exact allowlists, dependency order, and local-only boundary",
+      "command": "locked-python docs/execution/commands/validate_phase12b_contracts.py --repository-root . --task P12B-000 --output <external-evidence>",
+      "exit_code": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Exact counts are retained in gate-results.json; process output bodies are not persisted.",
+      "duration_seconds": 1.6
+    },
+    {
+      "step": 4,
+      "description": "Run the affected TaskGate and conditional-registry contract suite after bounded repair",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1",
+      "exit_code": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "The bounded test result is retained in gate-results.json; process output bodies are not persisted.",
+      "duration_seconds": 88.2
+    },
+    {
+      "step": 5,
+      "description": "Check patch whitespace and conflict markers",
+      "command": "git diff --check",
+      "exit_code": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "A clean empty output is represented by the SHA-256 of empty bytes.",
+      "duration_seconds": 0.7
     }
-  ],
-  "nonzero_exit_count": 0,
-  "production_write_count": 0,
-  "recorded_at": "2026-08-04T14:24:00+08:00"
+  ]
 }

@@ -15343,20 +15343,20 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - commit subject：`phase-12a(TASK-P12A-000): record planned deliverable`
 - 提交前：gate、`git diff --check`、allowlist。
 
-#### Phase 12B：成本路由强化
-### TASK-P12B-000：设计休眠的成本路由工作包
+#### Phase 12B：成本路由强化（本轮 XOR 唯一选择）
+### TASK-P12B-000：激活唯一候选 Cost Router 工作包
 
-**状态：** `not_started`
+**状态：** `local_provisional_selected`
 **所属阶段：** Phase 12B
-**阶段分支：** `codex/release-c-governance`（不创建专项分支）
+**阶段分支：** `codex/phase-12b-cost-router`
 **执行顺序：** 12B.000
 **owner：** ModelPlatform
 **独立 reviewer：** Finance+Eval+Security
-**依赖：** TASK-P12-002（XOR 结论选中 12B）
+**依赖：** 本轮直接用户决定；`docs/execution/evidence/phase-12b/P12B-000/selection-record.json`
 **指向规范：** AGENTS.md §6,§10 P12；v1.6.1 §27.4–§27.7
 **估算：** 2–4 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/architecture/adr/ADR-P12B-000-cost-router-work-package.md`；`docs/execution/evidence/phase-12/P12B-000/task-plan.md`；`docs/execution/evidence/phase-12b/P12B-000/`；`docs/execution/status/TASK-P12B-000.json`
-**禁止触碰：** router 代码、中央网关、路由 LLM、并行 C 能力
+**允许修改：** `execplan.md`；`docs/architecture/adr/ADR-P12B-000-cost-router-work-package.md`；`docs/architecture/release-c-selection.md`；`docs/execution/commands/Invoke-TaskGate.ps1`；`docs/execution/commands/TaskGateCatalog.psd1`；`docs/execution/commands/Update-PersonalGovernanceTaskGateCatalog.ps1`；`docs/execution/commands/Update-Phase12BCostRouterTaskGateCatalog.ps1`；`docs/execution/commands/Update-Phase12DDomainCommandTaskGateCatalog.ps1`；`docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1`；`docs/execution/commands/validate_bootstrap_contracts.py`；`docs/execution/commands/validate_phase12_planning_contracts.py`；`docs/execution/commands/validate_phase12b_contracts.py`；`docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json`；`docs/execution/evidence/phase-12/P12B-000/task-plan.md`；`docs/execution/evidence/phase-12b/P12B-000/`；`docs/execution/schemas/phase12-candidate-execution-contract-v1.schema.json`；`docs/execution/schemas/task-gate-catalog-v2.schema.json`；`docs/execution/status/TASK-P12B-000.json`
+**禁止触碰：** P12A/P12C/新的 P12D 实现、Multi-Agent 框架、运行时代码、生产写、`main` 或 remote ref
 
 **目标：**
 
@@ -15419,17 +15419,111 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - `docs/execution/status/TASK-P12B-000.json`
 **回滚步骤：**
 
-1. 撤回未批准计划变更，保持休眠。
+1. 撤回本轮 selection/Catalog 激活，保持 runtime allocation=0。
 2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\docs\execution\commands\Invoke-TaskGate.ps1 -TaskId 'TASK-P12B-000' -Mode RollbackVerify -EvidenceRoot .\docs\execution\evidence`；期望 `old_path_failures=0;unexpected_writes=0`；不确定时保持 `blocked`。
 
 **阻塞条件：**
 
-- 未选/标签不足休眠；实施前拆原子子TASK；写 `BLK-P12B-000-<slug>.md`，ModelPlatform→Finance+Eval+Security，后继停止。
+- selection/Catalog 无法唯一绑定或 Single-Agent 边界破坏时写 `BLK-P12B-000-<slug>.md`，ModelPlatform→Finance+Eval+Security；不依赖卡点的本地工作继续。
 
 **提交要求：**
 
-- commit subject：`phase-12b(TASK-P12B-000): record planned deliverable`
+- commit subject：`phase-12b(TASK-P12B-000): activate executable work package`
 - 提交前：gate、`git diff --check`、allowlist。
+
+### Phase 12B 已选择执行序列
+
+`P12B-010→P12B-020→P12B-030→P12B-040→P12B-050→P12B-060→P12B-990→全局 P12-089→P12B-999`
+
+所有 TASK 采用 `local_provisional`。正式治理、生产四周证据、生产切流和远程推送仍为
+`pending_external`。入口不重跑完整回归，复用 landing `f941051871ecd7ea811540072a032ce7aaa0119d`
+上的稳定 post-P12D smoke。010–060 只运行受影响测试；完整回归仅在 990 执行一次，999 本地
+合入 landing 后只执行 focused smoke。合同、fake、缓存 replay 不得发起 live API call。
+
+### TASK-P12B-010：冻结路由范围、基线、价格与指标
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-000 local provisional selected
+**目标：** 只根据受跟踪仓库和官方价格/API 文档冻结 itinerary-generation 路由范围、相同输入、固定参数、相同失败分母、主要成本公式、质量/延迟/fallback/redline、回滚及 live 预算；生产事实保持 unknown。
+**允许修改：** `agent-service/tests/eval/datasets/cost-router/v1/scenarios.jsonl`；`docs/execution/evidence/phase-12b/P12B-010/calibration-dataset-manifest.json`；`metrics-binding.json`；`price-snapshot.json`；`route-scope.json`；`trigger-evidence.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12B-010.json`。
+**主断言：** `route_scope_count=1; scenario_count<=20; live_call_limit=40; live_token_limit=100000; production_fact_claim_count=0`。
+**专项命令：** `python .\docs\execution\commands\validate_phase12b_contracts.py --repository-root . --task P12B-010`。
+**回滚：** 保留冻结证据，allocation=0，Release B Gemini 路径保持权威。
+**提交：** `phase-12b(TASK-P12B-010): freeze local calibration scope`。
+
+### TASK-P12B-020：冻结 deterministic policy 与安全合同
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-010 local scope frozen
+**目标：** 实现纯函数 policy contract，固定 eligibility、finite reason、policy digest、price freshness、quality-before-cost、kill switch 和 one-hop fallback；不得读取 prompt/tenant identity 作为优化因子。
+**允许修改：** `agent-service/app/models/cost_router.py`；`agent-service/tests/unit/models/test_cost_router.py`；`docs/architecture/adr/ADR-P12B-000-cost-router-work-package.md`；`docs/architecture/threat-model/phase-12-review.json`；`docs/execution/evidence/phase-12b/P12B-020/policy-contract.json`；`threat-model-delta.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12B-020.json`。
+**主断言：** `same_input_divergence=0; ineligible_selected=0; sensitive_reason_field_count=0; recursive_fallback=0`。
+**专项命令：** `python -m pytest -q agent-service/tests/unit/models/test_cost_router.py`。
+**回滚：** router bypass，固定回 Release B policy digest。
+**提交：** `phase-12b(TASK-P12B-020): freeze deterministic policy`。
+
+### TASK-P12B-030：实现固定 provider adapter 与 default-off 接线
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-020
+**目标：** 在既有 Worker model boundary 增加固定 DeepSeek V4 Flash non-thinking JSON adapter，并把 deterministic plan 接入现有 authenticated gateway；默认关闭且无客户端 key、动态 URL、中央网关或 public contract 变化。
+**允许修改：** `agent-service/app/models/deepseek.py`；`agent-service/app/models/gateway.py`；`agent-service/app/models/routes.py`；`agent-service/app/worker/composition.py`；`agent-service/app/worker/itinerary_processor.py`；`agent-service/tests/contract/test_cost_routed_gateway.py`；`test_deepseek_adapter.py`；`docs/execution/evidence/phase-12b/P12B-030/policy-evaluation-results.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12B-030.json`。
+**主断言：** `default_allocation=0; fixed_endpoint_count=2; dynamic_endpoint_count=0; recursive_fallback=0; secret_leak_count=0`。
+**专项命令：** `python -m pytest -q agent-service/tests/contract/test_cost_routed_gateway.py agent-service/tests/contract/test_deepseek_adapter.py agent-service/tests/contract/test_gemini_itinerary_processor.py`。
+**回滚：** flag off，DeepSeek allocation=0，Gemini 原路径与 digest 恢复。
+**提交：** `phase-12b(TASK-P12B-030): implement fixed provider route`。
+
+### TASK-P12B-040：实现 content-free budget ledger
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-020
+**目标：** 实现线程安全的本地 reference ledger，证明 reserve/commit/release/reconcile、semantic collision 和并发不超支；它不冒充 durable production PostgreSQL storage。
+**允许修改：** `agent-service/app/models/cost_ledger.py`；`agent-service/tests/unit/models/test_cost_ledger.py`；`docs/execution/evidence/phase-12b/P12B-040/budget-ledger-results.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12B-040.json`。
+**主断言：** `duplicate_effect_count=0; collision_effect_count=0; overspend_schedule_count=0; content_leak_count=0`。
+**专项命令：** `python -m pytest -q agent-service/tests/unit/models/test_cost_ledger.py`。
+**回滚：** 禁止新 reservation，reconcile open records，保留 append-only receipts。
+**提交：** `phase-12b(TASK-P12B-040): implement budget ledger semantics`。
+
+### TASK-P12B-050：分层 fake/replay 与 redline 验证
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-030 AND TASK-P12B-040
+**目标：** 对冻结场景执行零网络 fake/replay，覆盖 stale price、health、region/privacy、budget、quality floor、kill、fallback 和相同分母成本统计；skip/xfail=0。
+**允许修改：** `agent-service/app/models/cost_router.py`；`cost_ledger.py`；`deepseek.py`（仅根因修复）；`agent-service/tests/eval/test_cost_router_replay.py`；`agent-service/scripts/run_p12b_replay.py`；`docs/execution/evidence/phase-12b/P12B-050/stratified-replay-results.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12B-050.json`。
+**主断言：** `live_call_count=0; failed=0; skipped=0; xfailed=0; redline_failure_count=0`。
+**专项命令：** `python -m pytest -q agent-service/tests/eval/test_cost_router_replay.py`。
+**回滚：** allocation=0，只修具有区分信号的 deterministic path。
+**提交：** `phase-12b(TASK-P12B-050): prove stratified cost replay`。
+
+### TASK-P12B-060：有界 live calibration、STAR 与 rollback
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-050
+**目标：** 密钥仅从环境读取；两 key 可用时执行一次最多 20 个分层任务、40 次调用、100k token 的相同输入比较，无区分信号立即停止。缺 key 时生成 `pending_key` receipt 并暂停 live claim，不降低本地 gate。
+**允许修改：** `agent-service/scripts/run_p12b_live_calibration.py`；`agent-service/tests/contract/test_p12b_live_calibration_contract.py`；`docs/runbooks/cost-router-local-calibration.md`；`docs/execution/evidence/phase-12b/P12B-060/live-calibration.json`；`star-evaluation.json`；`rollback-drill.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12B-060.json`。
+**主断言：** `task_count<=20; live_call_count<=40; total_tokens<=100000; redline_failure_count=0; secret_material_persisted=0`；成本收益不得抵消质量、延迟、fallback 或安全失败。
+**专项命令：** `python -m pytest -q agent-service/tests/contract/test_p12b_live_calibration_contract.py`，随后仅在 key ready 时执行 `python agent-service/scripts/run_p12b_live_calibration.py --manifest ... --output ...`。
+**回滚：** allocation=0、router bypass、prior policy/price digest；保留脱敏 receipts。
+**提交：** `phase-12b(TASK-P12B-060): calibrate bounded live routes`。
+
+### TASK-P12B-990：本地 provisional 接受候选
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-060 mechanics complete（live 可为 `pending_key`）
+**目标：** 一次执行完整规定回归，聚合 Cost Router 合同、replay、STAR、redline、回滚和 no-production-claim；只标 `ready_for_review`。
+**允许修改：** `docs/execution/evidence/phase-12b/acceptance.md`；`artifact-manifest.premerge.json`；`P12B-990/` 标准附件及回归摘要；`docs/execution/status/TASK-P12B-990.json`。
+**完整回归：** `powershell -NoProfile -ExecutionPolicy Bypass -File .\agent-service\scripts\ci.ps1`，随后 `flutter test --reporter expanded`；本卡只运行这一轮完整回归。
+**提交：** `phase-12b(TASK-P12B-990): record provisional acceptance`。
+
+### TASK-P12B-999：本地合入 landing 并执行 focused smoke
+
+**状态：** `not_started`
+**依赖：** TASK-P12B-990 ready_for_review AND 全局 TASK-P12-089 更新本轮 P12B handoff
+**目标：** 冻结 candidate tip，在 `codex/gonow-agent-landing` 形成本地 `--no-ff` 两父 merge，证明 parent/tree 等价并在 merge OID 上执行一次 focused smoke；不要求重跑第二次完整回归。
+**禁止触碰：** `main`、remote ref、squash/rebase、force、生产。
+**主断言：** `parent_count=2; merge_tree=candidate_tree; focused_smoke_failed=0; remote_write_count=0`。
+**回滚：** 只允许审计化 `git revert -m 1 <merge_oid>`；禁止 reset/force。
+**提交：** landing merge subject `merge(P12B): integrate deterministic Cost Router package`。
 
 #### Phase 12C：Multi-Agent 生产化
 ### TASK-P12C-000：设计休眠的 Multi-Agent 工作包

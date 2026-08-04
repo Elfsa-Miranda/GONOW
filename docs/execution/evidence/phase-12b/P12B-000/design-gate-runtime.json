@@ -64,8 +64,9 @@
                    "production_write_count":  0
                },
     "overall_status":  "passed",
-    "execution_mode":  "local_provisional_dormant_design",
-    "formal_selection_status":  "pending",
+    "execution_mode":  "superseded_historical_dormant_design",
+    "formal_selection_status":  "superseded_by_direct_user_p12b_selection",
     "independent_review_status":  "pending_external",
+    "superseded_by":  "docs/execution/evidence/phase-12b/P12B-000/design-verification.json",
     "recorded_at":  "2026-08-04T14:26:05.7893004+08:00"
 }

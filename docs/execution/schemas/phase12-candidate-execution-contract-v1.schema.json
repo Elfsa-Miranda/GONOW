@@ -27,9 +27,9 @@
     "activation_state": {"enum": ["dormant_unselected", "selected_local_provisional"]},
     "activation_ready": {"type": "boolean"},
     "formal_catalog_revision_required": {"type": "boolean"},
-    "selection_record_path": {"const": "docs/execution/evidence/phase-12d/P12D-000/selection-record.json"},
+    "selection_record_path": {"pattern": "^docs/execution/evidence/phase-12[bd]/P12[BD]-000/selection-record\\.json$"},
     "phase_base_oid": {"pattern": "^[0-9a-f]{40}$"},
-    "phase_branch": {"const": "codex/phase-12d-domain-command"},
+    "phase_branch": {"enum": ["codex/phase-12b-cost-router", "codex/phase-12d-domain-command"]},
     "single_agent_architecture": {"const": true},
     "multi_agent_framework_allowed": {"const": false},
     "guidance_index_path": {"const": "docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json"},
@@ -131,7 +131,7 @@
       "then": {
         "required": ["selection_record_path", "phase_base_oid", "phase_branch", "single_agent_architecture", "multi_agent_framework_allowed"],
         "properties": {
-          "candidate": {"const": "P12D"},
+          "candidate": {"enum": ["P12B", "P12D"]},
           "contract_role": {"const": "selected_local_provisional_execution_contract"},
           "catalog_authoritative": {"const": true},
           "activation_ready": {"const": true},

@@ -610,10 +610,10 @@ def main() -> int:
         )
         report.setdefault("toolchain_argument_errors", 0)
     structural_counts_valid = (
-        report["catalog_entries"] == 161
+        report["catalog_entries"] == 169
         and report["taskgate_mode_count"] == 24
         and report["phase_merge_mode_count"] == 12
-        and report["work_contract_count"] == 135
+        and report["work_contract_count"] == 143
         and report["harness_controls"] == 34
         and report["harness_minimum_cases"] == 149
     )
