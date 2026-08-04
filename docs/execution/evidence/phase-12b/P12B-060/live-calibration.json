@@ -1,0 +1,128 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-060",
+  "status": "stopped_no_distinguishing_signal",
+  "cohort": "pilot",
+  "source_checkpoint": {
+    "external_reference": "control-repo-git-metadata:p12b-live/pilot-20260804-v1.json",
+    "sha256": "25d59842b927de926cbf21b8dc7fabd597b169b0518452800a399addc38bd713",
+    "size_bytes": 8212,
+    "secret_material_persisted": 0
+  },
+  "bindings": {
+    "manifest_sha256": "84e4b409dc8f66fd34e2ac3458e0c50e1d65ecc0f04bb996ff35a88a1e5b9344",
+    "dataset_sha256": "653297b4c18c28757d085490e524c5dbfc92a7ee7f75d7ca88ecc296ae4c1049",
+    "price_snapshot_sha256": "a209e6da00317149c5baf8b292cfa162d4c3b5b7e84e3331f8cee55751a63a06",
+    "same_input_and_fixed_parameter_pairing": true
+  },
+  "limits": {
+    "max_tasks": 20,
+    "max_calls": 40,
+    "max_total_tokens": 100000,
+    "max_cost_microusd": 1000000,
+    "policy_cap_cny": 8.0,
+    "untouched_reserve_cny": 2.0
+  },
+  "raw_totals": {
+    "task_count": 4,
+    "paired_arm_task_count": 8,
+    "live_call_count": 8,
+    "total_tokens": 4005,
+    "total_cost_microusd": 1044,
+    "total_cost_usd_estimate": 0.001044,
+    "total_cost_cny_at_policy_rate": 0.008352,
+    "actual_invoice_cost": "unknown",
+    "production_write_count": 0
+  },
+  "arms": {
+    "baseline": {
+      "denominator": 4,
+      "attempt_count": 4,
+      "qualified_success_count": 0,
+      "failure_count": 4,
+      "total_tokens": 0,
+      "total_cost_microusd": 0,
+      "cost_per_qualified_success_microusd": null,
+      "p95_latency_ms": 956,
+      "failure_classes": {"llm.provider_rejected":3,"llm.rate_limited":1},
+      "fallback_count": 0,
+      "maximum_fallback_depth": 0
+    },
+    "candidate": {
+      "denominator": 4,
+      "attempt_count": 4,
+      "qualified_success_count": 0,
+      "failure_count": 4,
+      "total_input_tokens": 560,
+      "total_output_tokens": 3445,
+      "total_tokens": 4005,
+      "total_cost_microusd": 1044,
+      "cost_per_qualified_success_microusd": null,
+      "p95_latency_ms": 7195,
+      "failure_classes": {"llm.incomplete_output":1,"quality_guardrail":3},
+      "fallback_count": 0,
+      "maximum_fallback_depth": 0
+    }
+  },
+  "tasks": [
+    {"scenario_id":"CR-V1-001","arm":"baseline","input_sha256":"12dafbddcbbf475ef9fc238251b55b77bc9dce1ab229e5a547ce8f9fe699c6ed","max_output_tokens":1024,"status":"failed","failure_class":"retry.exhausted","quality_qualified":false,"route_id":null,"output_sha256":null,"attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":956},
+    {"scenario_id":"CR-V1-001","arm":"candidate","input_sha256":"12dafbddcbbf475ef9fc238251b55b77bc9dce1ab229e5a547ce8f9fe699c6ed","max_output_tokens":1024,"status":"failed","failure_class":"quality_guardrail","quality_qualified":false,"route_id":"deepseek-v4-flash-candidate-v1","output_sha256":"27edb064e2a43ca4d44daf326ceba6789959cc25e8fd11eb61696e3c2c63420f","attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":4298},
+    {"scenario_id":"CR-V1-007","arm":"baseline","input_sha256":"a92aad47d72e624010b281a1fc44f01e37c66108b27560be157ffd169303c15a","max_output_tokens":4096,"status":"failed","failure_class":"retry.exhausted","quality_qualified":false,"route_id":null,"output_sha256":null,"attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":925},
+    {"scenario_id":"CR-V1-007","arm":"candidate","input_sha256":"a92aad47d72e624010b281a1fc44f01e37c66108b27560be157ffd169303c15a","max_output_tokens":4096,"status":"failed","failure_class":"quality_guardrail","quality_qualified":false,"route_id":"deepseek-v4-flash-candidate-v1","output_sha256":"672d44f780148e4a270d7cd2999404ac674bd0b0b437783557c21203f0c61569","attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":5576},
+    {"scenario_id":"CR-V1-008","arm":"baseline","input_sha256":"a9423125e5299e8620dbe32b9cd0f8e53ff4db2e00590f81f84cd3aa8b7a7b7f","max_output_tokens":1536,"status":"failed","failure_class":"retry.exhausted","quality_qualified":false,"route_id":null,"output_sha256":null,"attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":639},
+    {"scenario_id":"CR-V1-008","arm":"candidate","input_sha256":"a9423125e5299e8620dbe32b9cd0f8e53ff4db2e00590f81f84cd3aa8b7a7b7f","max_output_tokens":1536,"status":"failed","failure_class":"retry.exhausted","quality_qualified":false,"route_id":null,"output_sha256":null,"attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":7195},
+    {"scenario_id":"CR-V1-010","arm":"baseline","input_sha256":"fda6cad551e564c6079ca325986cd82cd5d50792a09c5bdc5b9896ab0e7f4776","max_output_tokens":5120,"status":"failed","failure_class":"retry.exhausted","quality_qualified":false,"route_id":null,"output_sha256":null,"attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":532},
+    {"scenario_id":"CR-V1-010","arm":"candidate","input_sha256":"fda6cad551e564c6079ca325986cd82cd5d50792a09c5bdc5b9896ab0e7f4776","max_output_tokens":5120,"status":"failed","failure_class":"quality_guardrail","quality_qualified":false,"route_id":"deepseek-v4-flash-candidate-v1","output_sha256":"67ce0d88857273a94e6dad7f660bf845034ba6396205cfd67d5c6e0bf0d6147a","attempt_count":1,"fallback_used":false,"fallback_depth":0,"latency_ms":7178}
+  ],
+  "attempts": [
+    {"scenario_id":"CR-V1-001","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","provider_id":"google-gemini-developer-api","model_id":"gemini-3.1-flash-lite","status":"failed","failure_class":"llm.provider_rejected","input_tokens":0,"output_tokens":0,"cache_hit_input_tokens":0,"cache_miss_input_tokens":0,"cost_microusd":0,"latency_ms":956,"output_sha256":null},
+    {"scenario_id":"CR-V1-001","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","provider_id":"deepseek-api","model_id":"deepseek-v4-flash","status":"succeeded","failure_class":null,"input_tokens":176,"output_tokens":632,"cache_hit_input_tokens":0,"cache_miss_input_tokens":176,"cost_microusd":202,"latency_ms":4298,"output_sha256":"27edb064e2a43ca4d44daf326ceba6789959cc25e8fd11eb61696e3c2c63420f"},
+    {"scenario_id":"CR-V1-007","arm":"baseline","attempt":1,"route_id":"gemini-capability-v1","provider_id":"google-gemini-developer-api","model_id":"gemini-3.6-flash","status":"failed","failure_class":"llm.provider_rejected","input_tokens":0,"output_tokens":0,"cache_hit_input_tokens":0,"cache_miss_input_tokens":0,"cost_microusd":0,"latency_ms":925,"output_sha256":null},
+    {"scenario_id":"CR-V1-007","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","provider_id":"deepseek-api","model_id":"deepseek-v4-flash","status":"succeeded","failure_class":null,"input_tokens":192,"output_tokens":1125,"cache_hit_input_tokens":0,"cache_miss_input_tokens":192,"cost_microusd":342,"latency_ms":5576,"output_sha256":"672d44f780148e4a270d7cd2999404ac674bd0b0b437783557c21203f0c61569"},
+    {"scenario_id":"CR-V1-008","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","provider_id":"google-gemini-developer-api","model_id":"gemini-3.1-flash-lite","status":"failed","failure_class":"llm.provider_rejected","input_tokens":0,"output_tokens":0,"cache_hit_input_tokens":0,"cache_miss_input_tokens":0,"cost_microusd":0,"latency_ms":639,"output_sha256":null},
+    {"scenario_id":"CR-V1-008","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","provider_id":"deepseek-api","model_id":"deepseek-v4-flash","status":"failed","failure_class":"llm.incomplete_output","input_tokens":0,"output_tokens":0,"cache_hit_input_tokens":0,"cache_miss_input_tokens":0,"cost_microusd":0,"latency_ms":7195,"output_sha256":null},
+    {"scenario_id":"CR-V1-010","arm":"baseline","attempt":1,"route_id":"gemini-capability-v1","provider_id":"google-gemini-developer-api","model_id":"gemini-3.6-flash","status":"failed","failure_class":"llm.rate_limited","input_tokens":0,"output_tokens":0,"cache_hit_input_tokens":0,"cache_miss_input_tokens":0,"cost_microusd":0,"latency_ms":532,"output_sha256":null},
+    {"scenario_id":"CR-V1-010","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","provider_id":"deepseek-api","model_id":"deepseek-v4-flash","status":"succeeded","failure_class":null,"input_tokens":192,"output_tokens":1688,"cache_hit_input_tokens":0,"cache_miss_input_tokens":192,"cost_microusd":500,"latency_ms":7178,"output_sha256":"67ce0d88857273a94e6dad7f660bf845034ba6396205cfd67d5c6e0bf0d6147a"}
+  ],
+  "guardrails": {
+    "quality_non_inferior": false,
+    "cost_signal": false,
+    "latency": false,
+    "fallback": true
+  },
+  "post_run_correction": {
+    "original_checkpoint_quality_non_inferior": true,
+    "root_cause": "The initial formula treated zero candidate successes >= zero baseline successes as non-inferiority.",
+    "corrected_rule": "baseline qualified success count must be greater than zero and candidate count must be at least baseline count.",
+    "new_live_calls_for_correction": 0,
+    "focused_contract_tests_after_correction": 6,
+    "focused_contract_failures_after_correction": 0
+  },
+  "expansion": {
+    "allowed": false,
+    "executed": false,
+    "stop_reasons": [
+      "baseline_has_no_quality_qualified_success",
+      "candidate_has_no_quality_qualified_success",
+      "cost_per_success_is_undefined",
+      "latency_comparison_is_not_decision_eligible"
+    ],
+    "budget_was_not_the_blocker": true,
+    "projected_total_calls": 32,
+    "projected_total_tokens": 66745,
+    "projected_total_cost_microusd": 89267
+  },
+  "redlines": {
+    "task_cap_exceeded":0,
+    "call_cap_exceeded":0,
+    "token_cap_exceeded":0,
+    "cost_cap_exceeded":0,
+    "paired_input_mismatch":0,
+    "fallback_depth_gt_1":0,
+    "secret_or_content_evidence_field":0,
+    "production_write":0
+  },
+  "redline_failure_count": 0,
+  "secret_material_persisted": 0,
+  "claim_boundary": "This is a stopped four-scenario local synthetic live pilot. It provides no production, invoice, quality-improvement, latency-improvement or cost-per-success claim."
+}
