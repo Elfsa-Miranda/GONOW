@@ -69,7 +69,9 @@ try {
     }
   }
 
-  $selectedDefinitions = if ($TaskId -ceq 'ABD') { @($definitions.GetEnumerator()) } else { @([ordered]@{Key=$TaskId;Value=$definitions[$TaskId]}) }
+  $selectedDefinitions = if ($TaskId -ceq 'ABD') { @($definitions.GetEnumerator()) } else { @([pscustomobject]@{Key=$TaskId;Value=$definitions[$TaskId]}) }
+  $selectedDefinitions = @($selectedDefinitions)
+  $expectedPackageCount = if ($TaskId -ceq 'ABD') { 3 } else { 1 }
   $required = New-Object System.Collections.Generic.List[string]
   $required.Add('docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1')
   $required.Add('docs/execution/evidence/phase-12/ABD-PORTFOLIO/phase-entry-regression.json')
@@ -220,7 +222,8 @@ try {
   $diffExit = $LASTEXITCODE
 
   $checks = [ordered]@{
-    package_count = $selectedDefinitions.Count
+    package_count = @($selectedDefinitions).Count
+    expected_package_count = $expectedPackageCount
     required_artifact_count = $required.Count
     missing_artifact_count = $missing.Count
     missing_artifacts = @($missing)
@@ -247,7 +250,7 @@ try {
     secret_or_unsafe_finding_count = $contentFindings.Count
     secret_or_unsafe_findings = @($contentFindings)
     diff_check_exit_code = $diffExit
-    design_ready_count = $selectedDefinitions.Count
+    design_ready_count = @($selectedDefinitions).Count
     formal_selected_count = 0
     formal_selection_asserted_count = 0
     implementation_commit_count = 0
@@ -255,7 +258,11 @@ try {
     multi_agent_implementation_count = 0
     production_write_count = 0
   }
-  $passed = $missing.Count+$planErrors.Count+$statusErrors.Count+$jsonErrors.Count+$hashErrors.Count+$forbiddenMaterialized.Count+$formalRefs.Count+$formalWorktrees.Count+$unexpected.Count+$implementation.Count+$contentFindings.Count+$diffExit -eq 0
+  $passed = (
+    $missing.Count+$planErrors.Count+$statusErrors.Count+$jsonErrors.Count+$hashErrors.Count+$forbiddenMaterialized.Count+$formalRefs.Count+$formalWorktrees.Count+$unexpected.Count+$implementation.Count+$contentFindings.Count+$diffExit -eq 0 -and
+    @($selectedDefinitions).Count -eq $expectedPackageCount -and
+    $atomicTaskTotal -ge (6 * $expectedPackageCount)
+  )
   $head = (@(Invoke-GitLines @('rev-parse','HEAD')))[0].Trim()
   if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = if ($TaskId -ceq 'ABD') { 'docs/execution/evidence/phase-12/ABD-PORTFOLIO/portfolio-gate-runtime.json' } else { "$($definitions[$TaskId].evidence)/design-gate-runtime.json" }
