@@ -304,29 +304,32 @@ Phase 11 adds a PostgreSQL-backed knowledge lifecycle, tenant/ACL hard filters, 
 
 Operational details: [RAG architecture](docs/architecture/rag.md), [rollback](docs/runbooks/rag-rollback.md), [knowledge deletion](docs/runbooks/knowledge-deletion.md), and [citation contract](docs/api/rag-citations.md).
 
-## Phase 12D Domain Command package (local provisional)
+## Phase 12B Cost Router package (local provisional)
 
-Phase 12 selected exactly one local candidate: 12D. It moves only
-`ItineraryProvider.updateItineraryBasicInfo` for `user_itineraries` behind a typed, server-authorized
-Domain Command. The new path uses expected-version CAS, tenant-scoped idempotency, one atomic
-mutation/receipt/outbox transaction, receipt lookup after an unknown outcome, and a default-off
-Flutter route. Public OpenAPI remains unchanged because the internal route is not mounted by default.
+This Phase 12 cycle selects only 12B for the existing server-side itinerary-generation boundary.
+The router is deterministic and default-off: it evaluates certified capability, region/privacy,
+quality, latency, provider health, fresh price evidence, and a content-free budget ledger before a
+fixed provider call. It is not a routing LLM and it does not add a coordinator, specialist Agent,
+dynamic provider market, client key, new process, or public Candidate contract.
 
-The independent flag is `gonow_itinerary_basic_info_command_v1`; its default is off and the kill
-switch defaults active. With the flag off, or after activating the kill switch for new intents, the
-legacy Basic Info writer remains available. An unknown command outcome must be resolved by receipt
-lookup and must never fall back to the legacy writer. Other itinerary writes remain untouched.
+The fixed DeepSeek adapter receives the complete canonical JSON Schema and then applies the same
+local Schema and itinerary business-shape validation used by the Gemini path. Invalid, truncated,
+out-of-range, duplicate-ID, or time-window-breaking output fails closed and is still metered. One
+bounded fallback is allowed only when the pinned policy permits it; fallback cannot recurse or make
+a quality/safety failure acceptable. Rollback sets candidate allocation to zero, bypasses the
+router, restores the prior policy digest, and retains content-free decision/cost receipts.
 
-In isolated PostgreSQL 17.10, the frozen stale-conflict profile ran 10,000 legacy and 10,000 command
-intents with identical workload hash and seed. Partial effects were 10,000/10,000 for the tracked
-legacy ordering and 0/10,000 for the candidate; duplicate writes, unauthorized/cross-tenant writes,
-mutation/outbox divergence, ambiguous committed outcomes, and data loss were all zero. This is a
-controlled mechanism result, not a production improvement claim. Production schema equivalence,
-traffic distribution, incident rate, and improvement remain `unknown` / `measurement_pending`.
+The latest frozen DeepSeek result is 10/10 quality-qualified itinerary scenarios with zero Schema,
+business-shape, provider, fallback, or safety-redline failures. All Phase 12B live work used 30 calls,
+23,108 tokens, 4,555 micro-USD (CNY 0.03644 under the frozen conversion), with no response bodies or
+keys retained. Gemini did not form a non-zero live baseline because of provider rate-limit/5xx
+availability, so paired live non-inferiority and relative cost benefit remain undefined. Production
+allocation therefore remains zero and no positive-benefit or production-quality claim is made.
 
-The package preserves the high-quality Single-Agent architecture. No Multi-Agent framework,
-coordinator, specialist runtime, production allocation, production write, remote push, or formal
-Release C acceptance is included. Independent Security/Product/Data review remains pending.
+The earlier P12D Domain Command package remains immutable historical `ready_for_review` evidence and
+is dormant for new work in this cycle. 12A and 12C are also dormant. Independent owner review,
+provider eligibility, production traffic evidence, remote push, deployment, and formal Release C
+acceptance remain pending.
 
 See [Release C selection architecture](docs/architecture/release-c-selection.md),
 [governance and rollback](docs/runbooks/release-c-governance.md), and

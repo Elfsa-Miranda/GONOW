@@ -2,23 +2,29 @@
 
 archive_mode: local_provisional
 formal_selection_status: local_provisional_selected
-selected_candidate: 12D
+selection_cycle: p12b-local-provisional-20260804
+selected_candidate: 12B
 selected_count: 1
 formal_none_decision: false
 design_ready_count: 1
 runtime_change_count: 1
 public_contract_change_count: 0
-schema_change_count: 1
+schema_change_count: 0
 production_write_count: 0
 multi_agent_implementation_count: 0
 
 ## Decision boundary
 
-The user selected 12D as the only candidate for this local execution cycle. The repository records
-that XOR decision and the executable P12D task package; it does not fabricate the independent owner
+The user selected 12B as the only candidate for this new local execution cycle. The repository records
+that XOR decision and the executable P12B task package; it does not fabricate the independent owner
 receipts needed for formal acceptance, remote integration, or production use. The package is
 therefore `local_provisional_selected`, and its terminal local state is `ready_for_review` rather
 than `accepted`.
+
+The earlier P12D local-provisional implementation remains immutable historical evidence on the
+landing branch. It is not selected, modified, or allocated in this cycle. Calling P12D dormant here
+means dormant for new work and production allocation; it does not erase its already-proven local
+mechanism or its `ready_for_review` records.
 
 The deployed architecture target therefore remains one Agent codebase with two processes,
 `agent-api` and `agent-worker`. PostgreSQL remains the durable source of truth. The existing static
@@ -30,9 +36,9 @@ new production boundary is introduced.
 | Candidate | Dormant architecture covered | Trigger still required | Present disposition |
 |---|---|---|---|
 | 12A explicit structured Memory | consent, provenance, conflict, deletion/export, restore guard | a future independent XOR cycle | unselected; no implementation or allocation |
-| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | a future independent XOR cycle | unselected; no implementation or allocation |
+| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | direct user selection for this independent local cycle | selected locally; production allocation remains zero |
 | 12C production Multi-Agent | no framework design is opened by this archive | a separately approved positive trigger and full XOR cycle | explicitly deferred; no ADR, task plan, branch, runtime, or allocation |
-| 12D one Domain Command migration | principal, approval, CAS, idempotency, outbox, compatibility | selected by the user for local provisional implementation | implemented for exactly one named write point; production allocation remains zero |
+| 12D one Domain Command migration | principal, approval, CAS, idempotency, outbox, compatibility | prior independent local cycle | historical `ready_for_review`; dormant for this cycle and production allocation remains zero |
 
 Only one row may move out of dormant design into formal selection in a Release C cycle. A second capability requires a
 new release cycle, evidence window, ADR, gate set, rollback exercise, and merge.
@@ -72,6 +78,20 @@ single-Agent behavior. It must not re-enable deleted data.
 
 ## 12B: deterministic cost router
 
+This cycle activates only the existing itinerary-generation server route. The baseline is the
+current fixed Gemini 3.1 Flash-Lite route; the candidate is the fixed DeepSeek V4 Flash non-thinking
+JSON route. Both remain inside the existing Worker model boundary. No client credential, central
+gateway, routing LLM, new process, dynamic provider market, or public Candidate contract is added.
+Production traffic, production quality, provider data-use approval, and a four-week production
+window remain `unknown/pending`; local fake/replay and at most the separately budgeted live
+calibration cannot prove those facts.
+
+The adapter contract is now closed end to end: DeepSeek receives the complete canonical JSON Schema,
+Gemini receives a provider-compatible projection, and both outputs pass the same local canonical
+Schema plus itinerary business-shape validation. The latest frozen DeepSeek scenarios are 10/10
+quality-qualified, but Gemini rate-limit/5xx availability prevented a non-zero live baseline.
+Therefore relative live benefit and quality non-inferiority remain undefined and allocation is zero.
+
 ### Route decision
 
 Routing is a deterministic policy over certified capabilities, task class, region, privacy class,
@@ -93,7 +113,7 @@ A kill switch bypasses the router without changing the Candidate contract. Rollb
 previous route-policy digest, sets experimental allocation to zero, and retains the decision/budget
 ledger for audit. It does not create a central gateway or dynamic provider market.
 
-## 12D: selected single write entry
+## 12D: historical single write entry
 
 Repository evidence selected exactly
 `flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries`. The tracked legacy ordering
@@ -132,16 +152,17 @@ Memory, or routing cannot deliver at lower risk.
 
 1. Bind an accepted Release B head and a stable, immutable evidence window.
 2. Calibrate numerator, denominator, exclusions, uncertainty, quality, latency, cost, and redlines.
-3. Independently review the existing 12D decision, ADR, migration, controlled comparison, rollback,
+3. Independently review the P12B policy, fixed provider eligibility, controlled comparison, rollback,
    and exact candidate/merge object IDs; do not rewrite local self-review as owner approval.
 4. Keep production allocation at zero until formal governance, real schema/RLS inventory, rollout
    authority, monitoring, and rollback ownership are available.
-5. Permit only the selected 12D package to proceed. Any Memory, router, or Multi-Agent work requires
-   a new XOR cycle.
+5. Permit only the selected P12B package to proceed. Memory, Multi-Agent, or additional Domain
+   Command work requires another XOR cycle.
 
 ## Evidence boundary and recovery
 
-The repository proves capability existence and a controlled mechanism improvement. It does not prove
-production improvement, production schema equivalence, owner approval, or Release acceptance. The
-reversible runtime unit is the default-off 12D route plus its additive database objects; rollback
-stops new command routing while preserving compatible data, receipts, and audit history.
+The repository may prove capability existence and a controlled local comparison. It does not prove
+production improvement, provider production eligibility, owner approval, or Release acceptance. The
+reversible runtime unit is the default-off P12B policy and fixed provider adapter; rollback sets
+allocation to zero, bypasses cost routing, restores the prior Gemini policy digest, and retains
+content-free cost and reservation receipts.

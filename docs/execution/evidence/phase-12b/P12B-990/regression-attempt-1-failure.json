@@ -1,0 +1,20 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-990",
+  "attempt":1,
+  "status":"failed_incomplete_regression",
+  "candidate_head_oid":"ee51dbeda3f3b2b6b70dddcac9574570edaa6cd3",
+  "external_ci_summary":{"reference":"control-repo-git-metadata:p12b-ci-990-final-ee51dbe/ci-summary.json","sha256":"6f141f32374cf3da5ff0b131ec31f441debc679d171b85e526b07c8218c31e87","size_bytes":721},
+  "completed_gates":["lock-check","frozen-sync","format","lint","type","secret","clock-contract","test-report-sandbox","dart-toolchain"],
+  "failed_gate":"unit",
+  "unit_results":{"passed":823,"failed":3,"skipped":0,"xfailed":0,"duration_seconds":367.47},
+  "failed_test_group":"tests/certification/test_compressed_release_harness.py",
+  "failed_test_count":3,
+  "failure_code":"schema.type_unsupported",
+  "root_cause":"The new local fail-closed JSON Schema validator omitted the valid JSON boolean primitive type. The existing content-free Gemini certification harness uses a closed object with an ok:boolean field, so adapter construction failed before fake HTTP execution.",
+  "not_run":["unit-report","contract","sca","licenses","repository-clean","flutter-full","p12d-realpg-fault"],
+  "live_provider_call_count":0,
+  "secret_material_persisted":0,
+  "production_write_count":0,
+  "counted_as_successful_full_regression":false
+}

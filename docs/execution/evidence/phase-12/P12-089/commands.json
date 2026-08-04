@@ -1,83 +1,17 @@
 {
-  "schema_version": "1.0",
-  "task_id": "TASK-P12-089",
-  "phase": "Phase 12",
-  "executed_at": "2026-08-04T19:08:00+08:00",
-  "executor": "codex-local-single-agent",
-  "git_object_format": "sha1",
-  "head_oid": "a22e12f4d6d112775c36316612939db71ec8650d",
-  "commands": [
-    {
-      "step": 1,
-      "description": "Attempt repository TaskGate Preflight; active governance profile validation failed, so formal runner attestation remains pending_external",
-      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Invoke-TaskGate.ps1 -TaskId TASK-P12-089 -Mode Preflight -EvidenceRoot docs/execution/evidence",
-      "exit_code": 1,
-      "stdout_tail": "",
-      "stderr_tail": "",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "duration_seconds": 4,
-      "redaction_reason": "The stable error classification is retained in the description; raw runner output is omitted. Database and production write counts were zero."
-    },
-    {
-      "step": 2,
-      "description": "Apply the minimum local-provisional P12-089 documentation and evidence projection over the exact task allowlist",
-      "command": "Codex apply_patch over the exact TASK-P12-089 file allowlist",
-      "exit_code": 0,
-      "stdout_tail": "",
-      "stderr_tail": "",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "duration_seconds": 1,
-      "redaction_reason": "The literal changed paths and content are in Git; no external or production action occurred."
-    },
-    {
-      "step": 3,
-      "description": "Aggregate Harness Catalog: 34 unique controls, IDs 01..34, minimum cases 149, mutation false",
-      "command": "SHA-256 and structural verification of docs/execution/schemas/harness-test-catalog.yaml",
-      "exit_code": 0,
-      "stdout_tail": "",
-      "stderr_tail": "",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "duration_seconds": 1,
-      "redaction_reason": "The structured aggregate retains all control counts and hashes; raw file output is omitted."
-    },
-    {
-      "step": 4,
-      "description": "Validate changed documents and JSON evidence; whitespace errors and JSON parse errors were zero",
-      "command": "git diff --check and ConvertFrom-Json for Phase 12/P12-089 JSON artifacts",
-      "exit_code": 0,
-      "stdout_tail": "",
-      "stderr_tail": "",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "duration_seconds": 1,
-      "redaction_reason": "Only zero-error conclusions are retained; file bodies remain in Git."
-    },
-    {
-      "step": 5,
-      "description": "Validate P12D-999 contract: catalog tasks 161, selected count 1, Single-Agent true, Multi-Agent false, errors zero",
-      "command": "agent-service/.venv/Scripts/python.exe docs/execution/commands/validate_phase12d_contracts.py --repository-root . --task P12D-999",
-      "exit_code": 0,
-      "stdout_tail": "",
-      "stderr_tail": "",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "duration_seconds": 2.5,
-      "redaction_reason": "The contract verdict and counts are retained in the description; full JSON stdout is not duplicated."
-    },
-    {
-      "step": 6,
-      "description": "Validate commands, gate-results, artifact-hashes, and task status against their repository JSON Schemas; four records passed",
-      "command": "agent-service/.venv/Scripts/python.exe with Draft202012Validator over the four TASK-P12-089 evidence records",
-      "exit_code": 0,
-      "stdout_tail": "",
-      "stderr_tail": "",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "duration_seconds": 1.4,
-      "redaction_reason": "Only the four-record schema verdict is retained; schema and evidence bodies remain in Git."
-    }
+  "schema_version":"1.0",
+  "task_id":"TASK-P12-089",
+  "phase":"Phase 12",
+  "executed_at":"2026-08-05T01:30:00+08:00",
+  "executor":"codex-local-single-agent",
+  "git_object_format":"sha1",
+  "head_oid":"5ff4946e6c04c683783422781e273d93bcdd9214",
+  "commands":[
+    {"step":1,"description":"Verify the selected P12B task chain and zero-allocation decision","command":"read P12B task status and acceptance evidence","exit_code":0,"stdout_tail":"selected=12B; P12B-000,010,020,030,040,050,060,990 ready_for_review; allocation=0","stderr_tail":"","stdout_sha256":"ee878a7b058909245036cf6fbc14257ca13c199c0cc79c6ae878b66fa078d58a","stderr_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","duration_seconds":0.5,"redaction_reason":"Finite task states and allocation only."},
+    {"step":2,"description":"Update the Phase 12 operational handoff to P12B","command":"apply_patch Phase 12 documentation and evidence","exit_code":0,"stdout_tail":"README architecture runbook API threat change summary knowledge transfer and STAR updated","stderr_tail":"","stdout_sha256":"364cc26fe61b4b81f2c7b6f019171f280a77b7a6cb41c2a468b99eed5ec9e808","stderr_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","duration_seconds":2.0,"redaction_reason":"Document names only; no prompt, response, key or personal content."},
+    {"step":3,"description":"Regenerate the task board from tracked status records","command":"deterministic StatusBoardAggregate equivalent over TaskGateCatalog and status files","exit_code":0,"stdout_tail":"task_count=169; P12B task_count=9; status_split_brain=0","stderr_tail":"","stdout_sha256":"fdc3f664f7fd112e13f9b6cf27f764358be8d9f41fde3d5f9ec39cc8a09de369","stderr_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","duration_seconds":1.0,"redaction_reason":"Only catalog and status counts retained."},
+    {"step":4,"description":"Verify the P12-089 premerge artifact manifest","command":"hash and size verification for every manifest artifact","exit_code":0,"stdout_tail":"20 manifest artifacts; hash_or_size_mismatch=0","stderr_tail":"","stdout_sha256":"6c1ee14ca377c52e115b02b85817938453f26439981b6b109e6a6935e719fb41","stderr_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","duration_seconds":0.4,"redaction_reason":"Artifact counts only."},
+    {"step":5,"description":"Validate the selected Phase 12B execution contract","command":"validate_phase12b_contracts.py --task P12B-990","exit_code":0,"stdout_tail":"catalog tasks=169; selected_count=1; Single-Agent=true; Multi-Agent=false; errors=0","stderr_tail":"","stdout_sha256":"0136d7055603c58fb87fd68c49d8caa54081f2eb40d5760bbc48f97f9e488665","stderr_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","duration_seconds":2.3,"redaction_reason":"Finite execution-contract counts only."},
+    {"step":6,"description":"Check secrets, whitespace and local-only boundaries","command":"ci.ps1 -Stage Secret; git diff --check; git rev-parse refs","exit_code":0,"stdout_tail":"secret findings=0; diff_check=0; production_or_remote_writes=0","stderr_tail":"","stdout_sha256":"f7533d429c88675fa5a7016a0e19e9d53a6d5d32265ff6db74d7575d31cc075c","stderr_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","duration_seconds":2.0,"redaction_reason":"Only counts and local-write boundary retained."}
   ]
 }

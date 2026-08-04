@@ -1,0 +1,22 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-990",
+  "gate_run_at":"2026-08-05T01:03:00+08:00",
+  "git_object_format":"sha1",
+  "head_oid":"e926e1b88063a10b1bba808e2a5f64b4c7b87d80",
+  "phase_base_oid":"f941051871ecd7ea811540072a032ce7aaa0119d",
+  "tool_versions":{"catalog":"2.4.0","python":"3.13.9","pytest":"9.1.1","postgresql":"17.10","flutter":"3.41.7","dart":"3.11.5"},
+  "results":[
+    {"check_id":"P12BTaskChain","status":"passed","detail":"TASK-P12B-000,010,020,030,040,050,060 ready_for_review; accepted_count=0","evidence_path":"docs/execution/evidence/phase-12b/acceptance.md","evidence_sha256":"2c3153e718eb898e8bb7d01650264a20d79d934c7932c1c0f8b3af41d2a7b529"},
+    {"check_id":"CompleteRegression","status":"passed","detail":"ci=15/15; unit=830; contract=233; flutter=124; RealPG/fault=53; failed/skipped/xfailed=0","evidence_path":"docs/execution/evidence/phase-12b/P12B-990/regression-summary.json","evidence_sha256":"8c2d2f78efae1a29a4081d90311d4774638d52d59c70e0395272c53c69023ae9"},
+    {"check_id":"DeepSeekFullChainQuality","status":"passed","detail":"latest frozen strata=10/10 qualified; Schema/business/provider failures=0; p95=8400ms","evidence_path":"docs/execution/evidence/phase-12b/P12B-060/deepseek-quality-final.json","evidence_sha256":"67e310e198157bc7e6c03c5670c4f6b4b3dfac3d2aafa3d2dc92b9810141a5a6"},
+    {"check_id":"CostAndAllocation","status":"passed","detail":"30 calls/23108 tokens/4555 microUSD/0.03644 CNY; baseline=0; relative benefit undefined; allocation=0","evidence_path":"docs/execution/evidence/phase-12b/P12B-060/star-evaluation-final.json","evidence_sha256":"d337437c5435b55120f44fb33eafb336de3d16afe9c31ca19bafce5a794587fe"},
+    {"check_id":"GeminiExternalAvailability","status":"passed","detail":"external blocker retained; finite v2 failures classified; offline Schema projection repaired; further live calls=0","evidence_path":"docs/execution/evidence/phase-12b/P12B-060/BLK-P12B-060-gemini-live-availability.md","evidence_sha256":"2c9a8824c195babdcb0b84f4aa8e32343a64359ea1312fa406e74f10a20c2ee8"},
+    {"check_id":"SafetyFallbackRollback","status":"passed","detail":"redlines=0; fallback depth<=1; default-off rollback; secrets/response bodies=0; production writes=0","evidence_path":"docs/execution/evidence/phase-12b/P12B-990/regression-summary.json","evidence_sha256":"8c2d2f78efae1a29a4081d90311d4774638d52d59c70e0395272c53c69023ae9"},
+    {"check_id":"ExistingDatabaseWriteGuardrail","status":"passed","detail":"53 isolated RealPG/fault tests; fixed denominators=10000/10000; exclusions=0; write redlines=0","evidence_path":"docs/execution/evidence/phase-12b/P12B-990/regression-summary.json","evidence_sha256":"8c2d2f78efae1a29a4081d90311d4774638d52d59c70e0395272c53c69023ae9"},
+    {"check_id":"PremergeArtifactIntegrity","status":"passed","detail":"20 implementation, adapter, test, replay, quality, rollback and blocker artifacts match SHA-256 and size","evidence_path":"docs/execution/evidence/phase-12b/artifact-manifest.premerge.json","evidence_sha256":"ccee66a3cfb2a78a787038a940bb7c3adc5b9e7641aaeb652cdfe922e4ff5e2a"},
+    {"check_id":"ExecutionContract","status":"passed","detail":"catalog tasks=169; selected P12B only; error_count=0; Single-Agent=true; Multi-Agent=false","evidence_path":"docs/execution/evidence/phase-12b/P12B-000/proposed-execution-contract.json","evidence_sha256":"4920171b0cd6493455bb709151c1402b6a99e2960cd1f724ccb57ca0e9b147e1"},
+    {"check_id":"LocalOnlyBoundary","status":"passed","detail":"ready_for_review; main=origin/main=142abfc339f003ede8d85d9534336923b5610252; remote/production writes=0","evidence_path":"docs/execution/evidence/phase-12b/acceptance.md","evidence_sha256":"2c3153e718eb898e8bb7d01650264a20d79d934c7932c1c0f8b3af41d2a7b529"}
+  ],
+  "overall_status":"passed"
+}

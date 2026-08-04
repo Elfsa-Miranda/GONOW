@@ -2,81 +2,70 @@
 
 ## Current safe state
 
-`formal_selection_status=local_provisional_selected`, `selected_candidate=12D`, and
-`selected_count=1`. The additive Domain Command package exists locally for exactly the itinerary
-Basic Info write entry. Production allocation and production writes remain zero; formal owner review,
-remote integration, deployment, and Release C acceptance remain pending. 12A, 12B, and 12C are not
-part of this cycle, and no Multi-Agent framework exists.
+`formal_selection_status=local_provisional_selected`, `selected_candidate=12B`, and
+`selected_count=1`. The deterministic Cost Router package exists locally only for server-side
+itinerary generation. Candidate allocation and production writes are zero. Formal owner review,
+provider production eligibility, remote integration, deployment, and Release C acceptance remain
+pending. 12A and 12C are dormant; the earlier P12D package remains historical `ready_for_review`
+evidence and is dormant for this cycle. No Multi-Agent framework exists.
 
 ## First checks
 
-1. Verify the worktree branch and clean status, then bind the candidate to a full Git object ID.
-2. Verify the selected write entry is exactly
-   `flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries`.
-3. Verify `gonow_itinerary_basic_info_command_v1` is off by default and the command kill switch is
-   active by default.
-4. Verify migration, FORCE RLS, command handler, receipt lookup, failure matrix, controlled-profile,
-   Flutter routing, rollback, and P12D-990 evidence hashes.
-5. Verify duplicate write, unauthorized/cross-tenant write, mutation/outbox divergence, ambiguous
-   committed outcome, and data-loss counts are all zero. Redlines never average into STAR.
-6. Verify production schema equivalence, flow distribution, and incident-rate claims remain unknown
-   or measurement pending.
-7. Verify unselected Phase 12 candidates have no runtime, allocation, or implementation in this cycle.
-
-## Formal selection procedure
-
-Run the repository-owned TaskGate modes in task-card order from the dedicated clean governance
-worktree. Do not edit the generated evidence to make a result pass. If the dependency gate returns a
-formal-selection or stable-Release-B reason code, preserve that receipt and continue only unrelated
-local work until the immutable inputs exist.
-
-The selected design must compare at least two alternatives and no-change across security, data,
-compatibility, cost, and rollback. The design then becomes atomic implementation tasks through an
-approved plan change; the design task itself has `implementation_commit_count=0`. A second capability
-is never appended to the same cycle.
+1. Bind the candidate to a full Git object ID and verify the worktree is clean.
+2. Confirm route scope is exactly `server:itinerary_generation`, policy is deterministic, and
+   candidate allocation is zero by default.
+3. Verify the pinned policy, price snapshot, fixed provider/model IDs, Schema digest, region/privacy
+   eligibility, provider health, and content-free reservation ledger.
+4. Verify the model receives the complete canonical JSON Schema and that both adapters run local
+   Schema plus itinerary business-shape validation before returning a Candidate.
+5. Check finite failure codes, physical-attempt token/cost accounting, one-hop fallback depth,
+   kill switch, and rollback digest. Never inspect or persist response bodies or API keys.
+6. Preserve the immutable P12B-060 v1 negative result. For the latest DeepSeek set, expect 10/10
+   qualified scenarios and zero Schema, business, provider, fallback, or safety-redline failures.
+7. Treat the Gemini live baseline as externally blocked after its classified rate-limit/5xx
+   failures. Do not retry merely to obtain a green baseline.
 
 ## Enable, disable, and degrade
 
-There is no production enable command in this local provisional package. In an authorized isolated
-environment, enable only the named Flutter flag after applying the additive migration, configuring
-server authorization, mounting the internal route through approved composition, and verifying the
-same receipt/outbox/CAS tests. The internal route is unmounted by default.
+There is no production enable command in this local provisional package. Any future enablement
+requires approved provider eligibility, fresh prices, owner-frozen quality margins, production
+observability, a non-zero comparable baseline, and explicit rollout authority.
 
 | Candidate | Enable only after | Disable / first rollback action | Degraded behavior |
 |---|---|---|---|
-| 12A Memory | selected ADR, privacy/data approval, CT-009/015, deletion/restore drill | allocation zero; disable reads/proposals; retain tombstones/audit | Release B single Agent without Memory |
-| 12B cost router | four-week calibrated evidence, certified routes, quality/cost/fallback gates | bypass router; restore previous policy digest; retain budget ledger | current certified route or existing fail-closed policy |
+| 12A Memory | new XOR cycle, privacy/data approval, CT-009/015, deletion/restore drill | allocation zero; disable reads/proposals; retain tombstones/audit | Release B single Agent without Memory |
+| 12B Cost Router | certified routes, non-zero paired baseline, quality non-inferiority, cost/success, latency/fallback/redline gates, owner approval | candidate allocation zero; bypass router; restore previous policy digest; retain decision/cost ledger | pinned certified baseline or existing fail-closed policy |
 | 12C Multi-Agent | fresh positive XOR cycle and separately approved package | allocation zero; return to one graph; retain experiment evidence | Release B single Agent |
-| 12D Domain Command | formal owner approval, real schema/RLS inventory, rollout/monitoring authority, all redlines zero | turn the named flag off or activate its kill switch for new intents; retain receipts/outbox | legacy Basic Info writer; unknown outcomes still use receipt lookup |
+| 12D Domain Command | a future independent cycle and production authorization | keep its flag off for new intents; retain receipts/outbox | legacy authorized writer; unknown outcomes still use receipt lookup |
 
-Global rollback order is: stop new allocation, pin the last known-good behavior/route/alias, preserve
-evidence and compatible data, replay the Release B equivalence suite, then diagnose. Never roll back
-by deleting audit rows, restoring revoked secrets, resurrecting deleted data, force-pushing, or
-writing directly to production.
+Fallback is bounded to one additional physical call and is never recursive. A quality, Schema,
+privacy, region, certification, or budget failure cannot be compensated by a lower cost. Unknown
+labels, stale prices, missing certification, exhausted budget, or invalid output use the pinned
+fail-closed behavior. The cost ledger reconciles every billed attempt, including failures and
+fallbacks, before releasing a reservation.
+
+Global rollback order is: set candidate allocation to zero, activate the kill switch or bypass the
+router, pin the previous policy/price digest, preserve evidence and content-free receipts, run the
+focused equivalence checks, then diagnose. Never roll back by deleting audit rows, restoring revoked
+secrets, force-pushing, or writing directly to production.
 
 ## Failure handling
 
-Use one root-cause loop: reproduce once from a clean state; determine the failing input, environment,
-dependency, and impact surface; apply the smallest reversible fix; run the minimum affected check and
-then the affected regression set. A second occurrence or plan change requires a blocker record with
-the complete hypothesis, excluded paths, repair, rollback, and recovery condition. Do not repeat an
-unchanged gate without a new distinguishing signal.
+Use one root-cause loop: reproduce with captured response/fake first, identify the failing Schema or
+business rule/provider class, apply the smallest reversible fix, run the minimum affected check, and
+then expand only when that check cannot prove the repair. Run full end-to-end verification at final
+acceptance. A repeated provider rate-limit/5xx without a new signal is an external availability
+blocker, not a reason for repeated paid calls.
 
-Missing independent review blocks only formal acceptance, production allocation, remote merge/push,
-and deployment. It does not invalidate completed local code, fixtures, RealPG fault evidence, static
-checks, or rollback work.
+Missing independent review or Gemini availability blocks formal comparison, production allocation,
+remote merge/push, and deployment. It does not invalidate completed local adapter, fake/replay,
+DeepSeek calibration, cost-ledger, safety, rollback, or regression evidence.
 
-## Merge and remote contract
+## Merge and audit retention
 
-Phase and repair commits land through a history-preserving integration on
-`codex/gonow-agent-landing` after the applicable gate and acceptance contract is met.
-Never push a Phase branch directly to `main`, and never use this archive to claim that Release C was accepted.
-The remote landing branch must match its expected base before merge; drift requires an explicit sync
-task and affected regression, not an ad-hoc conflict resolution during merge.
-
-## Audit retention
-
-Retain the Release B evidence manifest, selection analysis, decision/approval references, XOR
-reservation, gate results, threat review, rollback evidence, candidate/merge OIDs, and artifact
-hashes. Evidence contains hashes and redacted results only; it must not contain secrets, personal
-data, full prompts/responses, or hidden reasoning.
+Phase commits land through one history-preserving local integration on
+`codex/gonow-agent-landing` after the applicable provisional gates pass. Never push a Phase branch to
+`main`, and never use local evidence to claim Release C acceptance. Retain the immutable v1 negative
+result, captured-response fixtures, exact finite rule codes, price/policy/Schema digests, token and
+cost counts, provider failure classes, candidate/merge OIDs, rollback result, and artifact hashes.
+Evidence must contain no secrets, personal data, full prompts/responses, or hidden reasoning.

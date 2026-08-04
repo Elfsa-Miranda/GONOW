@@ -1,6 +1,6 @@
 # Task board
 
-Generated from the 1.4.0 TaskGate Catalog and per-task status records.
+Generated from the 1.7.0 TaskGate Catalog and per-task status records.
 
 | Task | Phase | Status |
 |---|---|---|
@@ -152,6 +152,14 @@ Generated from the 1.4.0 TaskGate Catalog and per-task status records.
 | TASK-P12-089 | Phase 12 | ready_for_review |
 | TASK-P12A-000 | Phase 12A | ready_for_review |
 | TASK-P12B-000 | Phase 12B | ready_for_review |
+| TASK-P12B-010 | Phase 12B | ready_for_review |
+| TASK-P12B-020 | Phase 12B | ready_for_review |
+| TASK-P12B-030 | Phase 12B | ready_for_review |
+| TASK-P12B-040 | Phase 12B | ready_for_review |
+| TASK-P12B-050 | Phase 12B | ready_for_review |
+| TASK-P12B-060 | Phase 12B | ready_for_review |
+| TASK-P12B-990 | Phase 12B | ready_for_review |
+| TASK-P12B-999 | Phase 12B | not_started |
 | TASK-P12C-000 | Phase 12C | not_started |
 | TASK-P12D-000 | Phase 12D | ready_for_review |
 | TASK-P12D-010 | Phase 12D | ready_for_review |
@@ -161,7 +169,7 @@ Generated from the 1.4.0 TaskGate Catalog and per-task status records.
 | TASK-P12D-050 | Phase 12D | ready_for_review |
 | TASK-P12D-060 | Phase 12D | ready_for_review |
 | TASK-P12D-990 | Phase 12D | ready_for_review |
-| TASK-P12D-999 | Phase 12D | not_started |
+| TASK-P12D-999 | Phase 12D | ready_for_review |
 | TASK-REL-A-001 | Release A | not_started |
 | TASK-REL-C-000 | Conditional Release C Governance | not_started |
 | TASK-REL-C-001 | Conditional Release C | not_started |

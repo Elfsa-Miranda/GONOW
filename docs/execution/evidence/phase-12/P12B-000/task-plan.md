@@ -1,10 +1,10 @@
-# P12B-000 dormant cost-router task plan
+# P12B-000 selected local-provisional cost-router task plan
 
 Task: TASK-P12B-000
 Selection candidate: 12B
-Portfolio mode: dormant_design_ready
-Formal dependency status: pending
-Formal selection asserted: false
+Portfolio mode: selected_local_provisional
+Formal dependency status: pending_external
+Local selection asserted: true
 Implementation commit count: 0
 Contract change: false
 Production write count: 0
@@ -23,8 +23,9 @@ Merge task: TASK-P12B-999
   `docs/execution/evidence/phase-12b/P12B-000/proposed-execution-contract.json`.
 - STAR pre-registration:
   `docs/execution/evidence/phase-12b/P12B-000/metrics-preregistration.json`.
-- Formal activation requires an approved `execplan.md`/Catalog revision with exact allowlists; this
-  dormant contract is deliberately non-authoritative and cannot start runtime work.
+- The direct user XOR decision activates exact `execplan.md`/Catalog allowlists for local work.
+  Formal owner approval, production provider certification, four production weeks and production
+  allocation remain pending and cannot be inferred from this activation.
 
 ADR triggers: §16.1 items 4 (Phase gate activation), 6 (Release C allocation) and 7 (routing/budget
 invariants) apply; items 2, 3 and 5 become mandatory if the selected ledger, external data use or
@@ -40,9 +41,10 @@ package nevertheless replays CT-001/002/005/006/012/013 as inherited Release B r
 candidate-only `P12B-CR-*` nodes for reservation collision, concurrency, deterministic routing,
 eligibility and fallback. Stable CT promotion requires an approved plan/Catalog revision.
 
-TASK-P12B-010 first binds the exact accepted Release B manifest and replays its implemented mandatory
-CT/gates, kill/replay, cross-tenant=0, flag-off digest equivalence, Phase 4 E0 and legacy journeys with
-`skip=0; xfail=0`.
+TASK-P12B-010 binds landing `f941051871ecd7ea811540072a032ce7aaa0119d` and reuses the immediately
+preceding stable post-P12D smoke rather than rerunning the full suite at entry. Each implementation
+task runs only affected routing, quality, cost and security tests. P12B-990 runs the single full
+regression; P12B-999 runs one focused post-merge smoke.
 
 ## Pre-registered STAR contract
 
@@ -65,10 +67,12 @@ package without running 020-060.
 
 ## Frozen scope
 
-This package completes design and decomposition only. It creates no router, gateway, provider,
-runtime flag, public schema, cohort, specialist ref/worktree, database migration, or production write.
-Release B continues on the existing certified single-Agent route. The Four-week trigger and `1.5x`
-ratio remain unproven initial hypotheses until immutable calibrated evidence is bound.
+This package implements one default-off deterministic router at the existing itinerary Worker model
+boundary. It adds a fixed DeepSeek candidate adapter and a local content-free budget-ledger reference
+implementation, but no central gateway, routing LLM, public schema, client key, extra process,
+database migration, production cohort or production write. Release B behavior remains the fallback.
+The four-week production trigger and any production improvement remain unknown; local fake/replay and
+bounded live calibration are controlled mechanism evidence only.
 
 ## Required design contracts
 
@@ -87,17 +91,18 @@ ratio remain unproven initial hypotheses until immutable calibrated evidence is 
 
 Atomic task: TASK-P12B-010
 Depends on: accepted Phase 12 XOR selecting 12B
-Purpose: bind the four-week dataset, TCO formula, strata, exclusions, uncertainty, and trigger result.
+Purpose: bind the repository-derived local dataset, official price snapshot, TCO formula, strata,
+exclusions, uncertainty and no-production-claim boundary; formal four-week evidence stays pending.
 Allowed future change: evidence and selected-plan amendment only; no runtime.
 Evidence schema: future output `docs/execution/evidence/phase-12b/P12B-010/trigger-evidence.json`
 validates against `phase12-trigger-evidence-v1`, including dataset SHA, denominator, exclusions,
 price snapshot/version, TCO formula, frozen quality margin and `trigger_decision=positive|negative`.
-Gate/P12B-CR-001: entry regression passes; comparable complete weeks>=4; unresolved price/label
-gaps=0; estimator/uncertainty and thresholds were frozen before candidate unblinding.
+Gate/P12B-CR-001: stable entry smoke is bound; local scenario and price gaps=0; estimator,
+uncertainty and thresholds are frozen before candidate unblinding; production weeks remain unknown.
 Rollback: retain immutable evidence and leave allocation zero.
 
 Atomic task: TASK-P12B-020
-Depends on: TASK-P12B-010 positive and approved
+Depends on: TASK-P12B-010 local scope frozen; formal production trigger remains pending
 Purpose: freeze certified capabilities, Deterministic factors, Route reason, Region and privacy rules.
 Allowed future change: ADR and internal typed contract after owner approval.
 Gate/P12B-CR-002..003: nondeterministic inputs=0; protected-trait factors=0; uncertified eligible
@@ -114,7 +119,8 @@ Rollback: router bypass and prior policy digest.
 Atomic task: TASK-P12B-040
 Depends on: TASK-P12B-020
 Purpose: implement Budget ledger reservation, commit, release, reconciliation, and audit receipts.
-Allowed future change: separately approved migration/storage paths and internal modules/tests.
+Allowed future change: content-free local reference ledger and tests; durable storage needs a later
+approved migration/storage contract.
 Gate/P12B-CR-006..008: same key/body reserves once; same key/different body conflicts; concurrent
 single-Agent reservations cannot overspend; unreconciled terminal reservations=0; content leakage=0.
 Rollback: disable new reservations, reconcile open entries, preserve append-only receipts.
@@ -129,7 +135,7 @@ Rollback: allocation remains zero; fix only the failed deterministic path and re
 
 Atomic task: TASK-P12B-060
 Depends on: TASK-P12B-050
-Purpose: shadow and bounded cohort evaluation, TCO/quality/latency decision, rollback drill.
+Purpose: fake/replay plus bounded local live calibration, TCO/quality/latency decision, rollback drill.
 Allowed future change: approved allocation policy and evidence only.
 Gate/P12B-CR-012..013: primary cost-ratio upper bound and quality lower-bound guards pass; actual and
 estimated prices reconcile; rollback restores Release B equivalence.
@@ -140,7 +146,7 @@ Rollback: zero allocation, bypass router, restore prior digest, retain receipts.
 TASK-P12B-990 independently verifies trigger binding, factor/reason contracts, budget ledger,
 quality/cost/fallback gates, redlines, replay, cohort evidence, and rollback. TASK-P12B-999 may merge
 only its accepted candidate into `codex/gonow-agent-landing`, with tree equality and exact-merge smoke.
-Neither task exists or runs under this design-only package.
+Both are activated for local provisional execution only.
 
 The selected 060/990 evidence feeds the existing global `TASK-P12-089` before merge. No formal
 `TASK-P12B-089` is created because AGENTS.md §14 requires one 089 per Phase, and Phase 12 already has
@@ -148,5 +154,5 @@ that task.
 
 ## Current closure
 
-Design ready count: 1. Formal selected count: 0. Implementation, contract, multi-Agent, allocation,
-and production write counts are zero. Independent review is pending_external.
+Design ready count: 1. Local selected count: 1. Multi-Agent, production allocation and production
+write counts are zero. Independent review and formal production evidence are pending_external.

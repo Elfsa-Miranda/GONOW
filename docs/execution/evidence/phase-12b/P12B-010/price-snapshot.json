@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-010",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "billing_mode": "standard_live_api",
+  "prices": [
+    {
+      "provider_id": "google-gemini-developer-api",
+      "model_id": "gemini-3.1-flash-lite",
+      "input_cache_miss_usd": 0.25,
+      "input_cache_hit_usd": 0.025,
+      "output_including_thinking_usd": 1.50,
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "provider_id": "google-gemini-developer-api",
+      "model_id": "gemini-3.6-flash",
+      "input_cache_miss_usd": 0.75,
+      "input_cache_hit_usd": 0.075,
+      "output_including_thinking_usd": 3.75,
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "provider_id": "deepseek-api",
+      "model_id": "deepseek-v4-flash",
+      "input_cache_miss_usd": 0.14,
+      "input_cache_hit_usd": 0.0028,
+      "output_usd": 0.28,
+      "source_url": "https://api-docs.deepseek.com/quick_start/pricing/"
+    }
+  ],
+  "cost_formula": "sum((cache_hit_input_tokens*cache_hit_rate + cache_miss_input_tokens*cache_miss_rate + output_tokens*output_rate)/1000000) across every attempt, retry and fallback in the arm",
+  "gemini_uncategorized_input_rule": "bill provider-reported input tokens at cache-miss rate unless an explicit cached-token field is present",
+  "deepseek_usage_rule": "use prompt_cache_hit_tokens and prompt_cache_miss_tokens; their sum must equal prompt_tokens",
+  "monetary_budget": {
+    "user_balance_cny": 10.0,
+    "experiment_hard_cap_cny": 8.0,
+    "untouched_reserve_cny": 2.0,
+    "accounting_policy_cny_per_usd": 8.0,
+    "experiment_hard_cap_usd": 1.0,
+    "accounting_policy_is_market_fx_claim": false
+  },
+  "freshness": {
+    "observed_at": "2026-08-04T22:20:00+08:00",
+    "maximum_age_hours_before_live_call": 168,
+    "google_page_last_updated_utc": "2026-07-09",
+    "deepseek_page_last_updated": "unknown",
+    "refresh_required_when_expired": true,
+    "silent_price_substitution_allowed": false
+  },
+  "unknowns": [
+    "actual account tier or credits applied by either provider",
+    "tax and account-level currency conversion",
+    "future provider price changes"
+  ],
+  "production_fact_claim_count": 0,
+  "recorded_at": "2026-08-04T22:20:00+08:00"
+}

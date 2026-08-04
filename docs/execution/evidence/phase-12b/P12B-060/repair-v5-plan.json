@@ -1,0 +1,25 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V5-IDENTIFIER-CONSTRUCTION",
+  "plan_status":"preregistered_before_live",
+  "root_cause":"The five-day CR-V1-003 response reused an item_id even after receiving a global uniqueness requirement. Long-horizon generation needs a deterministic identifier construction rule, not another repetition of the abstract rule.",
+  "repair_scope":[
+    "require item_id construction from day_number and within-day ordinal",
+    "provide a schema-valid concrete example item_d3_2",
+    "retain global uniqueness validation as the fail-closed authority",
+    "recheck only CR-V1-003 because CR-V1-008 and CR-V1-009 passed v4"
+  ],
+  "primary_model":"deepseek-v4-flash",
+  "gemini_live_calls_authorized":0,
+  "scenario_ids":["CR-V1-003"],
+  "execution":{"primary_calls":1,"maximum_retries":0,"maximum_attempts_per_task":1,"max_output_token_formula":"min(4096,max(768,requested_days*256))","temperature":0,"thinking":"disabled","complete_schema_delivered":true,"complete_local_schema_and_business_validation":true},
+  "budget":{"max_tasks":1,"max_live_calls":1,"max_total_tokens":5000,"max_cost_microusd":100000,"max_cost_usd":0.1,"max_cost_cny_at_policy_rate":0.8,"p12b_calls_before_v5":29,"p12b_max_cumulative_calls_after_v5":30,"p12b_tokens_before_v5":21909,"p12b_max_cumulative_tokens_after_v5":26909,"p12b_cost_microusd_before_v5":4359,"p12b_max_cumulative_cost_microusd_after_v5":104359,"p12b_max_cumulative_cost_cny_at_policy_rate":0.834872,"frozen_experiment_cap_cny":8.0,"user_total_cap_cny":10.0},
+  "mandatory_quality_gate":{"qualified_success_count":1,"quality_rule_failure_count":0,"provider_failure_count":0,"successful_task_p95_latency_ms_lte":20000,"maximum_attempts_per_task":1,"redline_failure_count":0},
+  "stop_rule":"Run CR-V1-003 once with no retry. Preserve any new content-free failure code and return to offline diagnosis; do not repeat the same live experiment for a green result.",
+  "final_certification_rule":"A passing v5 replaces only CR-V1-003 in the latest-result-per-scenario DeepSeek certification, yielding ten qualified scenarios out of ten. Every v1-v5 raw attempt, token and cost remains additive and immutable.",
+  "claim_boundary":"DeepSeek-only identifier repair. Gemini remains externally unavailable, so allocation remains zero and relative Cost Router benefit is not computable.",
+  "candidate_allocation":0,
+  "allocation_change_authorized":false,
+  "key_handling":"Process environment only; no value in repository, logs or evidence.",
+  "production_write_count":0
+}

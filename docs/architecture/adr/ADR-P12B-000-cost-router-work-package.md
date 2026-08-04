@@ -1,6 +1,6 @@
-# ADR-P12B-000: Dormant deterministic cost-router work package
+# ADR-P12B-000: Selected local-provisional deterministic cost-router work package
 
-Status: local provisional design ready; formal selection pending
+Status: selected for local provisional implementation; formal acceptance and production allocation pending
 
 Decision owners: ModelPlatform, Security, Eval, Finance, Privacy
 
@@ -12,9 +12,10 @@ supporting contracts are in `docs/execution/evidence/phase-12/ABD-PLAN-HARDENING
 
 Selection/implementation triggers §16.1 items 4, 6 and 7, plus items 2, 3 or 5 if the chosen ledger,
 data use or public contract changes. A new gateway/provider/process boundary would additionally
-trigger item 1 and is not approved here. The proposed execution and STAR contracts under
-`phase-12b/P12B-000/` remain dormant and non-authoritative until an approved execplan/Catalog revision
-binds exact allowlists and commands.
+trigger item 1. The direct user XOR record under `phase-12b/P12B-000/` activates the execution and
+STAR contracts for this local-only cycle, and the accompanying execplan/Catalog revision binds exact
+allowlists and commands. It does not supply formal owner approval, production provider certification,
+a four-week production window, or production allocation.
 
 ## Trigger Evidence
 
@@ -22,8 +23,10 @@ The Four-week trigger requires four complete, comparable weeks of labelled Relea
 P12B may be selected. The evidence window must freeze task-class strata, certified-route capability,
 quality score, end-to-end latency, billed tokens or units, retries, fallback outcomes, region,
 privacy class, and exclusions. The historical `1.5x` cost ratio is an initial hypothesis, not a
-selection fact. No complete calibrated window is bound by this design package, so the formal
-dependency remains pending and router allocation remains zero.
+selection fact. No complete production-calibrated window is bound by this package, so the formal
+dependency remains pending and router allocation remains zero. For local implementation only,
+TASK-P12B-010 freezes a repository-derived synthetic itinerary workload and the user-supplied live
+call ceiling. That local window validates mechanics and a controlled comparison, not production.
 
 Selection may proceed only if a preregistered primary cost/TCO result improves, every quality and
 safety floor remains non-inferior, uncertainty is reported, and the result cannot be explained by
@@ -33,9 +36,11 @@ negative result closes the candidate without implementation.
 ## Options and Decision
 
 Considered options were: keep the existing certified route; add an LLM router; introduce a central
-multi-provider gateway; or prepare a deterministic policy package. The decision is to prepare only
-the last option as dormant design. It adds no runtime code, dependency, public contract, provider,
-gateway, cohort, or production write.
+multi-provider gateway; or implement a deterministic policy package at the existing Worker model
+boundary. This cycle selects only the last option. The baseline remains the fixed Gemini itinerary
+route and the local candidate is a fixed DeepSeek adapter. No routing LLM, central gateway, dynamic
+provider discovery, new process, public contract, client credential, production cohort, or
+production write is allowed.
 
 Deterministic factors are restricted to versioned inputs: task class, certified capability,
 region, privacy class, quality floor, latency budget, budget state, provider health, and an immutable
@@ -64,23 +69,30 @@ certified route or the existing fail-closed behavior; there is no recursive rout
 
 ## Atomic Tasks
 
-If and only if a formal XOR record selects 12B, a later plan change may create these serial tasks:
+The local XOR record selects 12B and the activated plan creates these serial tasks:
 
 1. P12B-010 binds the four-week dataset, price sources, strata, denominators, exclusions, uncertainty,
    TCO formula, and positive/negative trigger decision.
-2. P12B-020 freezes certified-route capabilities, deterministic factor schema, finite reason codes,
-   region/privacy eligibility, and policy digest rules.
-3. P12B-030 implements a default-off deterministic policy evaluator and bounded fallback without a
-   routing LLM, new gateway, or public Candidate-contract change.
-4. P12B-040 implements reservation/commit/release budget-ledger semantics, idempotency, reconciliation,
-   and redacted decision evidence using separately approved storage contracts.
+2. P12B-020 implements and freezes the pure deterministic evaluator: certified-route capabilities,
+   closed typed factor schema, finite reason codes, region/privacy/quality-before-cost eligibility,
+   immutable price and health freshness, stable policy/input-class digests, kill switch, and exactly
+   one-hop fallback. It performs no I/O and reads no environment or request content.
+3. P12B-030 implements the fixed provider adapter and wires that already-tested evaluator default-off
+   inside the existing authenticated Worker boundary, without a routing LLM, new central gateway, or
+   public Candidate-contract change.
+4. P12B-040 implements reservation/commit/release budget-ledger semantics, idempotency,
+   reconciliation, concurrency and redacted decision evidence in a content-free local reference
+   ledger. Durable PostgreSQL production storage remains a separately approved contract.
 5. P12B-050 replays the preregistered strata and exercises stale price, health, region, privacy,
    budget, quality-floor, kill-switch, and equivalence cases.
-6. P12B-060 runs shadow then bounded cohort gates, verifies TCO/quality/latency/redlines, and proves
-   allocation-zero rollback to the prior policy digest.
+6. P12B-060 runs fake/replay and, when both environment credentials are available, one bounded local
+   live calibration of at most 20 tasks, 40 calls and 100,000 total tokens. It verifies the
+   preregistered local TCO/quality/latency/redlines and proves allocation-zero rollback. Missing
+   credentials leave live calibration pending without weakening any gate.
 
-P12B-990 remains the independent acceptance task and P12B-999 remains the landing merge task. Their
-creation and execution are outside this dormant package.
+P12B-990 is the local provisional acceptance candidate and P12B-999 is the local landing merge task.
+Neither may claim formal acceptance or production readiness without external governance and
+production evidence.
 
 ## Security and Privacy
 
@@ -90,9 +102,11 @@ redacted and access-controlled; secrets and request content never enter the ledg
 residency, retention, deletion, and subprocessors are certified before eligibility. A lower price
 cannot override a safety denial, privacy constraint, authorization failure, or tenant budget boundary.
 
-This design adds no network or trust boundary. Later implementation requires threat-model review,
-fail-closed tests, billing reconciliation tests, and independent Security, Privacy, Eval, Finance,
-and ModelPlatform review.
+The pure evaluator added by P12B-020 creates no network or trust boundary. It accepts only explicit,
+immutable snapshots and fails closed when the existing baseline is unsafe. Provider integration in
+P12B-030 is a later bounded trust-boundary change and remains default-off. Threat-model review,
+billing reconciliation tests, and independent Security, Privacy, Eval, Finance, and ModelPlatform
+review remain required before formal acceptance or production allocation.
 
 ## Reliability
 
@@ -119,7 +133,8 @@ accepted Release B head, accepted REL-C path=`phase12`, accepted Phase 12 XOR se
 approved ADR/plan change, and a clean specialist worktree from that exact object.
 
 Acceptance task: TASK-P12B-990. Merge task: TASK-P12B-999. Neither may claim accepted without the
-required independent review and applicable full regressions. P12A, P12C, and P12D remain dormant.
+required independent review and applicable full regressions. P12A, P12C, and new P12D work remain
+dormant for this cycle; prior P12D `ready_for_review` evidence is historical and unchanged.
 
 ## Rollback
 

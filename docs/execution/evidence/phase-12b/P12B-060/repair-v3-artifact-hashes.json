@@ -1,0 +1,20 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V3-DEEPSEEK",
+  "algorithm":"sha256",
+  "artifacts":[
+    {"path":"agent-service/app/models/json_schema.py","sha256":"eba407a15ded3b48f7150a1a36273962af0e11825e6524d72fe9a1d2c49a49f4","size_bytes":7680},
+    {"path":"agent-service/app/models/gemini.py","sha256":"d59c2e3a6772fb6160f9d87ffdfbe73e8f7a5b0a55dcbfc912392f4aa452ce7b","size_bytes":11248},
+    {"path":"agent-service/app/worker/itinerary_processor.py","sha256":"6d6c025446dd8a888ee19c81fdbbbed4c6a4f858a307334ae6c8988d7d2e3398","size_bytes":18007},
+    {"path":"agent-service/scripts/run_p12b_replay.py","sha256":"3bbc853eb434e50ad797076b00ce3cda0ec5ac3e83375c03cb12833bec7e9458","size_bytes":16500},
+    {"path":"agent-service/scripts/run_p12b_live_calibration.py","sha256":"9d31cba8316ae53ed45ff8fdacf8b40f4935a776f3178bbcf33e9a78c386d6cf","size_bytes":42705},
+    {"path":"agent-service/tests/contract/test_gemini_itinerary_processor.py","sha256":"50e66c67eb3cc47cd35d333d5250ea3d7451c7916e9d6d4d84c9eb6688d7ee3c","size_bytes":9364},
+    {"path":"agent-service/tests/contract/test_p12b_live_calibration_contract.py","sha256":"3f69197bd11fc75696d0b6972cb324bdeef923b7d3e3560caef48c50fb6997f7","size_bytes":15276},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/BLK-P12B-060-gemini-live-availability.md","sha256":"358d178aa9957c4bb4b7bae632e076273f738c4137174b65ca414afad226f601","size_bytes":2949},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/repair-v3-plan.json","sha256":"5cbe14b22273292e1640ab8dc150325b36a193817dcf96303370d3be0465616c","size_bytes":2244},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/repair-v3-offline-verification.json","sha256":"bb84ae4ead737d15a4a0ab3325c62e17abac47d36150b3f27616ac12496b681f","size_bytes":1563},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/repair-v3-commands.json","sha256":"de605919a8d1ce16e44974f828466f07e4bde504c578153288ba3bb5bb69cf1b","size_bytes":1099}
+  ],
+  "v1_v2_evidence_overwritten":false,
+  "secret_material_persisted":0
+}

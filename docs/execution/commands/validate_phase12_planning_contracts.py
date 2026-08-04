@@ -2,7 +2,7 @@
 """Validate dormant or explicitly selected Phase 12 A/B/D execution and STAR contracts.
 
 This validator never treats a dormant template as trigger evidence, implementation approval,
-or a STAR result. A selected contract must be P12D and bind the direct local-provisional record.
+or a STAR result. Selected contracts must bind their candidate-specific local-provisional record.
 """
 
 from __future__ import annotations
@@ -85,12 +85,16 @@ def semantic_execution_errors(candidate: str, value: dict[str, Any]) -> list[str
     test_ids: list[str] = []
     selected = value.get("activation_state") == "selected_local_provisional"
     if selected:
-        if candidate != "P12D":
-            errors.append("only P12D may be selected by this activation")
-        if value.get("selection_record_path") != "docs/execution/evidence/phase-12d/P12D-000/selection-record.json":
-            errors.append("selected P12D selection record is not bound")
+        expected_selection = (
+            f"docs/execution/evidence/phase-12{PACKAGES[candidate]['suffix']}/"
+            f"{candidate}-000/selection-record.json"
+        )
+        if candidate not in {"P12B", "P12D"}:
+            errors.append("only an explicitly activated P12B or historical P12D package may be selected")
+        if value.get("selection_record_path") != expected_selection:
+            errors.append(f"selected {candidate} selection record is not bound")
         if value.get("single_agent_architecture") is not True or value.get("multi_agent_framework_allowed") is not False:
-            errors.append("selected P12D must preserve the Single-Agent architecture boundary")
+            errors.append(f"selected {candidate} must preserve the Single-Agent architecture boundary")
     for index, task in enumerate(value.get("tasks", []), start=1):
         allowlist = task.get("file_allowlist", [])
         status = task.get("file_allowlist_status")
@@ -349,7 +353,7 @@ def main() -> int:
         "error_count": len(errors),
         "errors": errors,
         "overall_status": "passed" if not errors else "failed",
-        "formal_selection_status": "local_provisional_selected" if documents["P12D"]["execution"].get("activation_ready") else "pending",
+        "formal_selection_status": "local_provisional_selected" if documents["P12B"]["execution"].get("activation_ready") else "pending",
         "runtime_or_contract_change_count": 0,
         "recorded_at": datetime.now(timezone.utc).astimezone().isoformat(),
     }

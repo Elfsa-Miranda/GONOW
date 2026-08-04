@@ -67,6 +67,9 @@ def build_worker_runtime_from_environment() -> WorkerRuntime:
         raise WorkerCompositionError()
     if not os.environ.get("GEMINI_API_KEY", ""):
         raise WorkerCompositionError()
+    if os.environ.get("GONOW_COST_ROUTER_ENABLED", "0").strip() not in {"", "0"}:
+        # P12B is local provisional: production composition cannot allocate it.
+        raise WorkerCompositionError()
     try:
         parsed = make_url(database_url)
     except Exception as error:
