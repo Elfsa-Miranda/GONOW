@@ -7,6 +7,12 @@ P12A, P12B, and P12D now each have a reviewable ADR, an atomic implementation pl
 The portfolio is design-ready only. Formal P12-000/001/002 remain not started, the Release C XOR
 selection remains pending, and no candidate is selected.
 
+The plan-hardening revision adds a hashed guidance index, candidate execution contracts, trigger
+evidence Schema, STAR preregistrations, threat-model hooks and a positive/negative semantic validator.
+It also corrects the previous STAR classification: design/task/gate coverage is capability and
+governance evidence, while Memory value, cost-per-success and write reliability remain explicit
+`measurement_pending` behavior claims.
+
 ## Package coverage
 
 | Package | Design focus | Proposed atomic tasks | Local gate | Formal state |

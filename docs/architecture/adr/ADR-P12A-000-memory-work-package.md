@@ -5,6 +5,19 @@ Selection candidate: 12A
 Implementation commit count: 0
 Contract change: false
 
+## Authority, ADR Triggers, and Execution Boundary
+
+This ADR is indexed to `AGENTS.md` §0.1, §5, §6, §7.3, §10 Phase 12, §14, §15.3 and §16;
+`execplan.md` TASK-P12A-000 and the global TASK-P12-089; and v1.6.1 §14.6-14.14. Exact hashes and
+supporting release/threat-model documents are recorded in
+`docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json`.
+
+Formal implementation triggers AGENTS.md §16.1 items 2, 3, 4, 6 and 7; item 5 applies to any public
+contract change. This dormant ADR does not approve those changes. Its proposed execution and STAR
+contracts are machine-readable in `phase-12a/P12A-000/proposed-execution-contract.json` and
+`metrics-preregistration.json`, but remain non-authoritative until `execplan.md` and
+`TaskGateCatalog.psd1` are jointly amended with exact allowlists.
+
 ## Trigger Evidence
 
 Phase 12A may be formally selected only after a stable Release B failure ledger proves that missing
@@ -85,6 +98,13 @@ repairable from the durable ledger.
 The Single-Agent read port returns only typed, already-authorized facts. Provider absence, unknown
 consent, stale policy generation, or deletion uncertainty fails closed or continues on the Release B
 path without making a Memory-backed claim. It never adds an Agent coordinator.
+
+Behavior value is preregistered as paired task-success net gain against the exact Release B no-Memory
+baseline, with correct recall as a diagnostic and non-Memory task success as a non-inferiority guard.
+Cross-tenant recall, negative-consent bypass, retrieved-injection action and deletion/restore leakage
+are zero-tolerance redlines. Schema existence or a high recall rate alone is not a STAR improvement.
+The complete formula, denominator, clustered paired interval, missing-run rule and no-claim boundary
+are frozen in `metrics-preregistration.json` before any candidate result can be unblinded.
 
 ## Acceptance and Merge
 

@@ -1,4 +1,7 @@
-# STAR: Phase 12 A/B/D design readiness
+# Capability and difficulty record: Phase 12 A/B/D design readiness
+
+Classification: `capability_presence + governance_conformance`, not `behavior_improvement`.
+STAR eligibility: `not_applicable` under AGENTS.md §15.3.1.
 
 ## Situation
 
@@ -28,13 +31,14 @@ and make zero runtime, contract, schema, dependency, allocation, or production-w
    added/untracked files while `git diff --check` covers tracked modifications.
 5. Re-ran the affected package gate after each repair, then ran the combined portfolio gate.
 
-## Result
+## Result (coverage evidence, not a STAR improvement)
 
 Primary result formula: `complete_design_ready_packages / planned_packages`.
 
 - Baseline: `0 / 3 = 0%` at landing checkpoint `d850640325904c443a180ebb2dbb0462638ac293`.
 - Candidate: `3 / 3 = 100%` after P12A, P12B, and P12D package closure.
-- Absolute improvement: `+100 percentage points`; this is design/governance coverage only.
+- Coverage change: `+100 percentage points`; this is design/governance coverage and MUST NOT be
+  reported as system behavior improvement.
 - Diagnostic: proposed unique atomic tasks increased from `0` to `18`.
 - Diagnostic: passed task-scoped package gates increased from `0/3` to `3/3`.
 - Guardrails: formal selected `0`; formal candidate implementation `0`; public contract `0`; schema
@@ -43,6 +47,8 @@ Primary result formula: `complete_design_ready_packages / planned_packages`.
 
 No product-behavior, quality, cost, latency, Memory, or Domain Command improvement is claimed. The
 result is local provisional evidence, not independent review, formal acceptance, or Release C approval.
+The actual P12A/P12B/P12D STAR records remain `not_applicable + measurement_pending` until their
+machine-readable preregistrations are fully bound and comparable results exist.
 
 ## Difficulty evidence
 

@@ -4,6 +4,19 @@ Status: local provisional design ready; formal selection pending
 
 Decision owners: DomainPlatform, Security, Data, Product, SRE
 
+## Authority, ADR Triggers, and Execution Boundary
+
+This ADR is indexed to `AGENTS.md` §0.1, §5, §6, §7.3, §8, §10 Phase 12, §14, §15.3 and §16;
+`execplan.md` TASK-P12D-000 and global TASK-P12-089; and v1.6.1 §17, §20-21, §26 and §28. Exact
+hashes and supporting contracts are in
+`docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json`.
+
+Implementation triggers §16.1 items 1-7 as applicable to Command responsibility, schema/RLS/outbox,
+principal/approval, Phase/Release scope, public typed contracts and runtime invariants. This dormant
+ADR approves no such mutation. The proposed execution and STAR contracts under
+`phase-12d/P12D-000/` remain non-authoritative until execplan/Catalog bind the selected write entry,
+exact allowlists, commands and evidence.
+
 ## Trigger Evidence
 
 Phase 12D may migrate One write entry only after an accepted Release B head and an immutable,
@@ -87,10 +100,13 @@ pointer, or outbox event. After commit, retries resolve from the idempotency rec
 dispatcher resumes outbox delivery. Lease fencing, bounded retry, dead-letter ownership, reconciliation,
 and restore drills make partial outcomes observable and repairable.
 
-Primary evaluation is the selected write entry's preregistered reliability/security result. Diagnostics
-include conflict rate, duplicate-effect count, partial-effect count, receipt completeness, outbox lag,
-replay convergence, p95 latency, and repair time. Cross-tenant access, unauthorized write, data loss,
-receipt ambiguity, or mutation/outbox divergence are redlines and cannot be averaged away.
+TASK-P12D-010 must select exactly one causally matched primary before unblinding from a closed profile:
+duplicate-effect rate, partial-write/event-loss rate, ambiguous-outcome repair minutes, or stale-
+conflict partial-effect rate. Receipt coverage is the mechanism diagnostic and normal-write success is
+the non-inferiority guard. Duplicate formal write, unauthorized/cross-tenant write, mutation/outbox
+divergence and lost/ambiguous committed outcomes are zero-tolerance redlines, not an averageable
+primary score. Fault injection proves mechanics but cannot by itself prove a production incident-rate
+improvement. Without a named write entry and denominator, the STAR result stays measurement pending.
 
 ## Acceptance and Merge
 

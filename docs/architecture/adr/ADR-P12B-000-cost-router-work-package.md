@@ -4,6 +4,18 @@ Status: local provisional design ready; formal selection pending
 
 Decision owners: ModelPlatform, Security, Eval, Finance, Privacy
 
+## Authority, ADR Triggers, and Execution Boundary
+
+This ADR is indexed to `AGENTS.md` §0.1, §5, §6, §7.3, §10 Phase 12, §14, §15.3 and §16;
+`execplan.md` TASK-P12B-000 and global TASK-P12-089; and v1.6.1 §27.4-27.7. Exact hashes and
+supporting contracts are in `docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json`.
+
+Selection/implementation triggers §16.1 items 4, 6 and 7, plus items 2, 3 or 5 if the chosen ledger,
+data use or public contract changes. A new gateway/provider/process boundary would additionally
+trigger item 1 and is not approved here. The proposed execution and STAR contracts under
+`phase-12b/P12B-000/` remain dormant and non-authoritative until an approved execplan/Catalog revision
+binds exact allowlists and commands.
+
 ## Trigger Evidence
 
 The Four-week trigger requires four complete, comparable weeks of labelled Release B traffic before
@@ -90,10 +102,13 @@ stable idempotency key, are released after failed starts, and reconcile against 
 Retries are bounded and never select an uncertified route. The kill switch bypasses the router,
 sets new experimental allocation to zero, preserves ledger evidence, and does not mutate Candidates.
 
-Primary evaluation compares cost per successful quality-qualified task. Diagnostics include route
-mix, fallback rate, p95 latency, retry amplification, price-estimate error, and budget-denial rate.
-Redlines include safety, privacy, residency, authorization, or cross-tenant failure; no cost saving
-can average away a redline.
+Primary evaluation compares total cost per successful quality-qualified task and keeps every failed,
+retried and fallback attempt in the cost numerator. Retry/fallback cost amplification is the causal
+diagnostic. Quality-qualified task success is a non-inferiority guard, while quality-floor,
+certification, privacy, residency, sensitive Route-reason content and budget-race violations are
+zero-tolerance redlines. The historical 1.5x and a suggested 1 pp quality margin remain hypotheses;
+TASK-P12B-010 must justify and freeze the actual thresholds, price snapshot, power and one-sided
+confidence rules before unblinding. A negative result retires the package without implementing it.
 
 ## Acceptance and Merge
 

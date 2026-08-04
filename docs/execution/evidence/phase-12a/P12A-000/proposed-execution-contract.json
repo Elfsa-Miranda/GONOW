@@ -1,0 +1,126 @@
+{
+  "schema_version": "1.0",
+  "candidate": "P12A",
+  "contract_role": "dormant_proposed_execution_contract",
+  "catalog_authoritative": false,
+  "activation_state": "dormant_unselected",
+  "activation_ready": false,
+  "formal_catalog_revision_required": true,
+  "guidance_index_path": "docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json",
+  "trigger_evidence_path": "docs/execution/evidence/phase-12a/P12A-010/trigger-evidence.json",
+  "entry_regression": {
+    "required": true,
+    "release_b_manifest_binding": "pending_exact_accepted_release_b_manifest",
+    "required_journeys": [
+      "all replayable mandatory Release B gates and implemented CT cases from the accepted manifest",
+      "kill and replay recovery",
+      "cross-tenant access count equals zero",
+      "flag-off Behavior Package digest equivalence",
+      "Phase 4 E0 parity and legacy critical journeys"
+    ],
+    "skip_count": 0,
+    "xfail_count": 0
+  },
+  "stable_ct_disposition": {
+    "direct_applicable": ["CT-009", "CT-015"],
+    "inherited_regression": ["CT-001", "CT-002", "CT-005", "CT-006", "CT-007", "CT-012", "CT-013"],
+    "explicit_non_applicable": ["CT-011:parallel Multi-Agent branch budget semantics are outside the single-Agent package"],
+    "new_package_test_namespace": "P12A-ME"
+  },
+  "threat_model_hook": {
+    "phase_review_path": "docs/architecture/threat-model/phase-12-review.json",
+    "required_delta_path": "docs/execution/evidence/phase-12a/P12A-020/threat-model-delta.json",
+    "required_scenarios": [
+      "negative consent bypass at extraction write merge retrieval and eval export",
+      "direct and indirect retrieved prompt injection including multilingual and encoded variants",
+      "cross-tenant or stale-policy materialization",
+      "deletion propagation and backup resurrection",
+      "conflict poisoning and provenance downgrade"
+    ]
+  },
+  "tasks": [
+    {
+      "task_id": "TASK-P12A-010",
+      "depends_on": ["accepted Release B", "TASK-P12-002 selects 12A", "entry regression passes"],
+      "required_changes": ["bind calibrated trigger evidence, licensed de-identified dataset, denominator, exclusions, data-purpose approval and premeasurement STAR bindings"],
+      "file_allowlist": ["docs/execution/evidence/phase-12a/P12A-010/trigger-evidence.json", "docs/execution/evidence/phase-12a/P12A-010/metrics-binding.json"],
+      "file_allowlist_status": "exact_proposed",
+      "forbidden_changes": ["runtime code", "schema or migration", "raw user rows", "positive trigger inferred from an initial hypothesis"],
+      "postconditions": ["trigger-evidence validates against phase12-trigger-evidence-v1 and decision is positive or negative", "negative or underpowered decision closes the candidate without TASK-P12A-020"],
+      "test_node_ids": ["P12A-ME-001"],
+      "gate_predicates": ["all required evidence fields non-null", "dataset and Release B OID hashes resolve", "threshold frozen before candidate measurement"],
+      "evidence_outputs": ["docs/execution/evidence/phase-12a/P12A-010/trigger-evidence.json", "docs/execution/evidence/phase-12a/P12A-010/metrics-binding.json"],
+      "rollback": "retain aggregate immutable evidence, set selection to none, and perform no implementation"
+    },
+    {
+      "task_id": "TASK-P12A-020",
+      "depends_on": ["TASK-P12A-010 positive and approved"],
+      "required_changes": ["freeze typed Memory data, consent, provenance, retention, RLS, tombstone, outbox and expand-contract contracts"],
+      "file_allowlist": [],
+      "file_allowlist_status": "must_bind_before_activation",
+      "forbidden_changes": ["hidden transcript-derived profiles", "destructive contract step", "service-role client access"],
+      "postconditions": ["approved execplan and Catalog revision names every file before implementation", "threat-model delta is reviewed before migration"],
+      "test_node_ids": ["P12A-ME-002", "P12A-ME-003"],
+      "gate_predicates": ["clean migrate restore", "cross-tenant and negative-consent denies", "backup non-resurrection plan bound"],
+      "evidence_outputs": ["docs/execution/evidence/phase-12a/P12A-020/threat-model-delta.json"],
+      "rollback": "leave compatible expansion dormant and keep all Memory allocation at zero"
+    },
+    {
+      "task_id": "TASK-P12A-030",
+      "depends_on": ["TASK-P12A-020"],
+      "required_changes": ["implement Candidate confirmation and the sole authorized Memory Domain Command with principal reauthorization, CAS, idempotency and outbox receipt"],
+      "file_allowlist": [],
+      "file_allowlist_status": "must_bind_before_activation",
+      "forbidden_changes": ["model direct formal write", "worker authority assertion", "unscoped idempotency key"],
+      "postconditions": ["forged replayed stale and unknown outcomes have zero unauthorized or partial effects"],
+      "test_node_ids": ["P12A-ME-004", "P12A-ME-005"],
+      "gate_predicates": ["duplicate formal write count zero", "receipt coverage complete for terminal outcomes"],
+      "evidence_outputs": ["docs/execution/evidence/phase-12a/P12A-030/command-contract-results.json"],
+      "rollback": "disable proposal and adoption routes while preserving candidates, receipts and tombstones"
+    },
+    {
+      "task_id": "TASK-P12A-040",
+      "depends_on": ["TASK-P12A-030"],
+      "required_changes": ["implement conflict provenance, deterministic resolution and poisoning quarantine with instructions treated only as data"],
+      "file_allowlist": [],
+      "file_allowlist_status": "must_bind_before_activation",
+      "forbidden_changes": ["retrieved text granting authority", "silent conflict overwrite", "trust escalation by content"],
+      "postconditions": ["retrieved injection executed action count equals zero for direct indirect multilingual and encoded cases"],
+      "test_node_ids": ["P12A-ME-006", "P12A-ME-007", "P12A-ME-008", "P12A-ME-009"],
+      "gate_predicates": ["permutation and replay deterministic", "conflicts remain explicit", "poisoned records quarantined"],
+      "evidence_outputs": ["docs/execution/evidence/phase-12a/P12A-040/injection-and-conflict-results.json"],
+      "rollback": "quarantine uncertain records and bypass the Memory read port"
+    },
+    {
+      "task_id": "TASK-P12A-050",
+      "depends_on": ["TASK-P12A-040"],
+      "required_changes": ["implement deletion and export fanout plus restore ordering that applies tombstone and consent state before aliases open"],
+      "file_allowlist": [],
+      "file_allowlist_status": "must_bind_before_activation",
+      "forbidden_changes": ["rollback of deletion", "backup restore before tombstones", "untracked derived copies"],
+      "postconditions": ["CT-015 passes without skip or xfail", "all declared surfaces are unreadable after deletion"],
+      "test_node_ids": ["P12A-ME-010", "P12A-ME-011"],
+      "gate_predicates": ["delete propagation failure count zero", "export authorization exact", "repair replay idempotent"],
+      "evidence_outputs": ["docs/execution/evidence/phase-12a/P12A-050/deletion-export-restore-results.json"],
+      "rollback": "never reverse deletion; repair from the durable tombstone ledger"
+    },
+    {
+      "task_id": "TASK-P12A-060",
+      "depends_on": ["TASK-P12A-050"],
+      "required_changes": ["add principal-aware single-Agent read port, default-off allocation, observability, bounded cohort and rollback drill"],
+      "file_allowlist": [],
+      "file_allowlist_status": "must_bind_before_activation",
+      "forbidden_changes": ["multi-Agent coordinator", "second runtime service", "allocation before STAR and redlines pass"],
+      "postconditions": ["flag-off digest equals Release B", "STAR decision uses frozen comparable bindings", "kill switch restores Release B behavior"],
+      "test_node_ids": ["P12A-ME-012", "P12A-ME-013"],
+      "gate_predicates": ["CT-009 and CT-015 pass", "all redlines zero", "primary confidence-bound decision passes"],
+      "evidence_outputs": ["docs/execution/evidence/phase-12a/P12A-060/star-evaluation.json", "docs/execution/evidence/phase-12a/P12A-060/rollback-drill.json"],
+      "rollback": "set allocation to zero, disable Memory reads and proposals, and retain audit and deletion state"
+    }
+  ],
+  "global_089_handoff": {
+    "task_id": "TASK-P12-089",
+    "relationship": "selected_package_060_and_990_feed_global_phase12_089",
+    "no_candidate_specific_089_created": true
+  }
+}
