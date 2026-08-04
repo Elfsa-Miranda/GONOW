@@ -22,11 +22,16 @@
   "properties": {
     "schema_version": {"const": "1.0"},
     "candidate": {"enum": ["P12A", "P12B", "P12D"]},
-    "contract_role": {"const": "dormant_proposed_execution_contract"},
-    "catalog_authoritative": {"const": false},
-    "activation_state": {"const": "dormant_unselected"},
-    "activation_ready": {"const": false},
-    "formal_catalog_revision_required": {"const": true},
+    "contract_role": {"enum": ["dormant_proposed_execution_contract", "selected_local_provisional_execution_contract"]},
+    "catalog_authoritative": {"type": "boolean"},
+    "activation_state": {"enum": ["dormant_unselected", "selected_local_provisional"]},
+    "activation_ready": {"type": "boolean"},
+    "formal_catalog_revision_required": {"type": "boolean"},
+    "selection_record_path": {"const": "docs/execution/evidence/phase-12d/P12D-000/selection-record.json"},
+    "phase_base_oid": {"pattern": "^[0-9a-f]{40}$"},
+    "phase_branch": {"const": "codex/phase-12d-domain-command"},
+    "single_agent_architecture": {"const": true},
+    "multi_agent_framework_allowed": {"const": false},
     "guidance_index_path": {"const": "docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json"},
     "trigger_evidence_path": {"pattern": "^docs/execution/evidence/phase-12[abd]/P12[ABD]-010/trigger-evidence\\.json$"},
     "entry_regression": {
@@ -35,7 +40,7 @@
       "required": ["required", "release_b_manifest_binding", "required_journeys", "skip_count", "xfail_count"],
       "properties": {
         "required": {"const": true},
-        "release_b_manifest_binding": {"const": "pending_exact_accepted_release_b_manifest"},
+        "release_b_manifest_binding": {"type": "string", "minLength": 1},
         "required_journeys": {"type": "array", "minItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "skip_count": {"const": 0},
         "xfail_count": {"const": 0}
@@ -87,7 +92,7 @@
           "depends_on": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "required_changes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
           "file_allowlist": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-          "file_allowlist_status": {"enum": ["exact_proposed", "must_bind_before_activation"]},
+          "file_allowlist_status": {"enum": ["exact_proposed", "must_bind_before_activation", "exact_active"]},
           "forbidden_changes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
           "postconditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
           "test_node_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"pattern": "^P12[ABD]-[A-Z]{2}-[0-9]{3}$"}},
@@ -107,5 +112,32 @@
         "no_candidate_specific_089_created": {"const": true}
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"activation_state": {"const": "dormant_unselected"}}, "required": ["activation_state"]},
+      "then": {
+        "properties": {
+          "contract_role": {"const": "dormant_proposed_execution_contract"},
+          "catalog_authoritative": {"const": false},
+          "activation_ready": {"const": false},
+          "formal_catalog_revision_required": {"const": true},
+          "entry_regression": {"properties": {"release_b_manifest_binding": {"const": "pending_exact_accepted_release_b_manifest"}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"activation_state": {"const": "selected_local_provisional"}}, "required": ["activation_state"]},
+      "then": {
+        "required": ["selection_record_path", "phase_base_oid", "phase_branch", "single_agent_architecture", "multi_agent_framework_allowed"],
+        "properties": {
+          "candidate": {"const": "P12D"},
+          "contract_role": {"const": "selected_local_provisional_execution_contract"},
+          "catalog_authoritative": {"const": true},
+          "activation_ready": {"const": true},
+          "formal_catalog_revision_required": {"const": false}
+        }
+      }
+    }
+  ]
 }

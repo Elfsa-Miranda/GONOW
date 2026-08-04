@@ -1,10 +1,10 @@
-# P12D-000 dormant Domain Command task plan
+# P12D-000 selected Domain Command task plan
 
 Task: TASK-P12D-000
 Selection candidate: 12D
-Portfolio mode: dormant_design_ready
-Formal dependency status: pending
-Formal selection asserted: false
+Portfolio mode: local_provisional_selected
+Formal dependency status: governance receipt and independent owner acceptance pending
+Local XOR selection asserted: true
 Implementation commit count: 0
 Contract change: false
 Production write count: 0
@@ -23,13 +23,15 @@ Merge task: TASK-P12D-999
   `docs/execution/evidence/phase-12d/P12D-000/proposed-execution-contract.json`.
 - STAR pre-registration:
   `docs/execution/evidence/phase-12d/P12D-000/metrics-preregistration.json`.
-- The proposed contract cannot supersede `TaskGateCatalog.psd1`. Formal selection must first revise
-  `execplan.md` and Catalog with exact `required_changes[]`, file allowlists, commands, schemas and IDs.
+- The selected execution contract is activated only by the matching `execplan.md` and
+  `TaskGateCatalog.psd1` entries with exact `required_changes[]`, file allowlists, commands, schemas
+  and IDs. `selection-record.json` binds this activation to the user's direct XOR decision.
 
 ADR triggers: §16.1 items 1 (API/Worker/Command responsibility), 2 (schema/RLS/outbox), 3
 (principal/approval/privacy), 4 (Phase gates), 5 (typed command/receipt if public), 6 (Release C
-scope) and 7 (CAS/idempotency/fencing/outbox runtime invariants). The dormant design authorizes no
-implementation under these triggers.
+scope) and 7 (CAS/idempotency/fencing/outbox runtime invariants). This activation authorizes only
+reversible local-provisional implementation and tests; it does not supply owner approval, production
+write authority, remote-push authority, or Release acceptance.
 
 ## CT and test-node disposition
 
@@ -40,9 +42,9 @@ New Domain Command cases use `P12D-DC-*`: semantic duplicate, idempotency collis
 commit, commit-boundary crash, relay replay, stale fencing, approval/RLS denial and restore. Stable
 promotion requires an approved plan/Catalog change.
 
-Before TASK-P12D-010, replay all implemented mandatory Release B CT/gates from the exact accepted
-manifest plus kill/replay, cross-tenant=0, flag-off digest equivalence, Phase 4 E0 and legacy journeys
-with `skip=0; xfail=0`.
+The entry regression reuses the recorded same-runtime smoke bound in `selection-record.json`. The
+next complete regression is deferred to TASK-P12D-990 as instructed; TASK-P12D-010 through 060 run
+only their affected schema, contract, RealPG/fault-injection, security and Flutter test sets.
 
 ## Pre-registered STAR contract
 
@@ -62,10 +64,11 @@ reduction. Missing write entry, denominator, comparable baseline or power leaves
 
 ## Frozen scope
 
-This package completes design and decomposition only. It creates no Domain Command handler, migration,
-table, RLS/grant change, outbox publisher, public contract, flag, cohort, specialist ref/worktree, or
-production write. One write entry must be named by real approved evidence during TASK-P12D-010; the
-current package records `selected_write_entry=none` and does not infer production facts.
+This selected package may create one Domain Command handler, expand-only migration, RLS/grants,
+transactional outbox, typed contract, default-off client flag and local test evidence within the exact
+activated allowlists. One write entry must be named by real tracked-repository evidence during
+TASK-P12D-010; until then `selected_write_entry=none`. Production facts remain unknown unless separately
+proved, production allocation remains zero, and no Multi-Agent framework is in scope.
 
 ## Required design contracts
 
@@ -85,7 +88,7 @@ current package records `selected_write_entry=none` and does not infer productio
 ## Proposed atomic DAG
 
 Atomic task: TASK-P12D-010
-Depends on: accepted Phase 12 XOR selecting 12D
+Depends on: the direct-user local-provisional XOR record selecting exactly 12D
 Purpose: bind real evidence and name exactly one legacy write entry with trigger and impact map.
 Allowed future change: evidence and selected plan/ADR only; no runtime or schema.
 Evidence schema: future output `docs/execution/evidence/phase-12d/P12D-010/trigger-evidence.json`
@@ -140,13 +143,15 @@ Rollback: stop allocation, restore prior writer, retain compatible schema/data/e
 
 TASK-P12D-990 independently verifies the named trigger, one-write scope, authorization/approval,
 CAS/idempotency, RLS, transaction/outbox, receipts, replay/restore, compatibility, cohort and rollback.
-TASK-P12D-999 may merge only an accepted candidate into `codex/gonow-agent-landing`, followed by tree
-equality and exact-merge smoke. Neither task exists or runs under this design-only package.
+TASK-P12D-999 may merge only the locally verified provisional candidate into the local
+`codex/gonow-agent-landing`, followed by tree equality and exact-merge smoke. Neither remote push nor
+formal acceptance is authorized. The tasks now exist in the activated plan/Catalog.
 
 The selected 060/990 evidence feeds the existing global `TASK-P12-089`; no `TASK-P12D-089` is added.
 This preserves AGENTS.md §14's one-089-per-Phase contract.
 
 ## Current closure
 
-Design ready count: 1. Formal selected count: 0. Named write entries, implementation, contract,
-allocation, multi-Agent, migration, and production write counts are zero. Review is pending_external.
+Design ready count: 1. Local-provisional selected count: 1. Formal accepted count: 0. Named write
+entries, implementation, allocation, migration, and production write counts are zero at activation;
+TASK-P12D-010 must select exactly one before implementation. Multi-Agent framework count remains zero.

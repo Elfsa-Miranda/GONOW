@@ -1,28 +1,59 @@
 {
   "schema_version": "1.0",
   "task_id": "TASK-P12D-000",
-  "execution_mode": "local_provisional_dormant_design",
+  "phase": "Phase 12D",
+  "executed_at": "2026-08-04T16:44:00+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "3021eb1378e122687f23b2506456e8dc41228f7e",
   "commands": [
     {
       "step": 1,
-      "description": "Bind P12D design to completed P12B repair checkpoint",
-      "command": "git rev-parse 22519f6487e2661a96ef21dc6b3059e6073f4ae9^{commit}",
-      "exit_code": 0
+      "description": "Validate selected Phase 12 planning contracts",
+      "command": "locked-python docs/execution/commands/validate_phase12_planning_contracts.py --repository-root . --output <external-evidence>",
+      "exit_code": 0,
+      "stdout_tail": "planning-contract:passed;error_count=0",
+      "stderr_tail": "",
+      "stdout_sha256": "45dcbe2aef7fd5cdc5842aae9f77cee4c5c8af0d8c8ed9bee2d9db89480827e2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.9,
+      "redaction_reason": "Only the final mechanical assertion is retained; no sensitive content was read."
     },
     {
       "step": 2,
-      "description": "Reuse exact landing-base full entry regression and passed P12A/P12B gates",
-      "command": "verify immutable phase-entry report plus TASK-P12A-000 and TASK-P12B-000 receipts",
-      "exit_code": 0
+      "description": "Validate the live TaskGateCatalog against its schema",
+      "command": "Export-TaskGateCatalog.ps1 then Draft202012Validator(task-gate-catalog-v2)",
+      "exit_code": 0,
+      "stdout_tail": "catalog-schema:passed;schema_errors=0",
+      "stderr_tail": "",
+      "stdout_sha256": "f8f13105b607df50518f58ae72c4638f898d272d9b5c35025510140738d9307d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 1.8,
+      "redaction_reason": "Catalog validation contains paths and counts only."
     },
     {
       "step": 3,
-      "description": "Verify dormant P12D design package",
-      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1 -TaskId TASK-P12D-000 -BaseOid 22519f6487e2661a96ef21dc6b3059e6073f4ae9",
-      "exit_code": 0
+      "description": "Verify P12D XOR, exact task allowlists, dependency order and local-only boundary",
+      "command": "locked-python docs/execution/commands/validate_phase12d_contracts.py --repository-root . --task P12D-000",
+      "exit_code": 0,
+      "stdout_tail": "p12d-contract:passed;catalog_tasks=161;selected_count=1",
+      "stderr_tail": "",
+      "stdout_sha256": "d3710930c50393f486ffc34c9ef4fbacf541c4387772ad039e597c6d3817c6fe",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 2.1,
+      "redaction_reason": "Only contract counts and boundary results are retained."
+    },
+    {
+      "step": 4,
+      "description": "Check patch whitespace and conflict markers",
+      "command": "git diff --check",
+      "exit_code": 0,
+      "stdout_tail": "git-diff-check:passed",
+      "stderr_tail": "",
+      "stdout_sha256": "2d32eeec234706410f95ace9dc94b2c79f5b9d4ba6258a962532867ef7557088",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.7,
+      "redaction_reason": "Empty git output is summarized as the passed assertion."
     }
-  ],
-  "nonzero_exit_count": 0,
-  "production_write_count": 0,
-  "recorded_at": "2026-08-04T14:27:00+08:00"
+  ]
 }

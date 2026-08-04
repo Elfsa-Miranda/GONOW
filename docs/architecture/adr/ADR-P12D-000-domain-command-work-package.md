@@ -1,6 +1,6 @@
-# ADR-P12D-000: Dormant one-write-entry Domain Command work package
+# ADR-P12D-000: Selected one-write-entry Domain Command work package
 
-Status: local provisional design ready; formal selection pending
+Status: local provisionally selected for implementation; independent owner acceptance pending
 
 Decision owners: DomainPlatform, Security, Data, Product, SRE
 
@@ -12,19 +12,21 @@ hashes and supporting contracts are in
 `docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json`.
 
 Implementation triggers §16.1 items 1-7 as applicable to Command responsibility, schema/RLS/outbox,
-principal/approval, Phase/Release scope, public typed contracts and runtime invariants. This dormant
-ADR approves no such mutation. The proposed execution and STAR contracts under
-`phase-12d/P12D-000/` remain non-authoritative until execplan/Catalog bind the selected write entry,
-exact allowlists, commands and evidence.
+principal/approval, Phase/Release scope, public typed contracts and runtime invariants. The user's
+direct XOR decision activates reversible local implementation only. The execution and STAR contracts
+under `phase-12d/P12D-000/` become machine-authoritative when the matching execplan/Catalog cards bind
+the selection, exact allowlists, commands and evidence. Formal acceptance and production authority
+remain pending with the named owners.
 
 ## Trigger Evidence
 
 Phase 12D may migrate One write entry only after an accepted Release B head and an immutable,
 representative evidence window identify a named legacy write point. The window must quantify request
 volume, concurrency conflicts, duplicate effects, unauthorized attempts, partial writes, repair load,
-latency/SLA, compatibility population, recovery objectives, and data criticality. No such approved
-binding exists in this design package, so `selected_write_entry=none`, formal selection is pending,
-and no schema or production write is authorized.
+latency/SLA, compatibility population, recovery objectives, and data criticality. At activation,
+`selected_write_entry=none`; TASK-P12D-010 must bind exactly one tracked-repository entry without
+inventing production observations. Local expand-only schema work may follow a positive trigger, but
+no production write is authorized.
 
 P12D is eligible only if the evidence shows that a bounded migration improves an agreed primary
 reliability or security result without worsening compatibility, latency, data integrity, privacy, or
@@ -35,8 +37,9 @@ A credible negative or underpowered result closes this candidate with allocation
 
 Options considered are: retain and harden the current writer; migrate every legacy writer at once;
 introduce generic infrastructure first; or migrate one evidence-selected entry through a typed Domain
-Command. The dormant decision prepares the fourth option only. It creates no command implementation,
-table, migration, API schema, public event, runtime flag, cohort, specialist ref, or production write.
+Command. The selected local-provisional decision chooses the fourth option for exactly one evidence-
+selected entry. It authorizes the plan's reversible implementation and isolated tests, but no
+production cohort, production write, remote push, Release acceptance, or Multi-Agent framework.
 
 The selected future command accepts a typed request plus authenticated RequestContext; the model may
 only propose a Candidate. Principal and approval are evaluated server-side against tenant, resource,
@@ -61,7 +64,7 @@ or outbox write.
 
 ## Atomic Tasks
 
-If and only if a formal XOR record selects 12D, a later plan amendment may create these serial tasks:
+The user's direct local-provisional XOR record creates these serial tasks in the amended plan/Catalog:
 
 1. P12D-010 binds real evidence, names exactly one write entry, maps its current authorization,
    transaction, side effects, clients, SLA, recovery, and confirms the trigger.
@@ -76,8 +79,8 @@ If and only if a formal XOR record selects 12D, a later plan amendment may creat
 6. P12D-060 performs the approved cutover, observes the frozen window, executes contract cleanup only
    after compatibility expiry, and proves Expand-contract rollback throughout.
 
-P12D-990 remains the independent acceptance task and P12D-999 remains the landing merge task. Their
-creation and execution are not authorized by this dormant package.
+P12D-990 is the local provisional verification task and P12D-999 is the local landing merge task.
+Their execution does not confer formal acceptance or authorize a remote push.
 
 ## Security and Privacy
 
@@ -115,10 +118,11 @@ CAS/idempotency, transaction/outbox, receipt, compatibility, six atomic tasks, a
 and rollback are machine checked. It is not an accepted ADR, selected write entry, migration, or
 production capability.
 
-Formal work requires accepted Release B, accepted REL-C path=`phase12`, an accepted Phase 12 XOR
-selecting exactly 12D, a named evidence-backed write entry, approved ADR/plan/migration review, and a
-clean specialist worktree from the exact accepted object. Acceptance task: TASK-P12D-990. Merge task:
-TASK-P12D-999. P12A, P12B, and P12C remain dormant.
+Formal acceptance still requires the applicable Release/REL-C evidence, governance receipt,
+independent owner decisions, a named evidence-backed write entry, approved ADR/plan/migration review,
+and the exact verified candidate object. The current local work starts from the recorded clean
+specialist worktree and cannot satisfy those external decisions. Verification task: TASK-P12D-990.
+Local merge task: TASK-P12D-999. P12A, P12B, and P12C remain unselected.
 
 ## Rollback
 

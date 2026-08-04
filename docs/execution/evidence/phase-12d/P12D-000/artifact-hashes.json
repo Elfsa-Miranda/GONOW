@@ -1,18 +1,228 @@
 {
   "schema_version": "1.0",
   "task_id": "TASK-P12D-000",
-  "generated_by": "P12D dormant design plus plan-hardening closure",
+  "git_object_format": "sha1",
+  "head_oid": "3021eb1378e122687f23b2506456e8dc41228f7e",
   "artifacts": [
-    {"path": "docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md", "sha256": "f453e136e0d9b4392792fd95b21184b836ccbae6eccd83ad6d28370e3d5b1233", "size_bytes": 8662},
-    {"path": "docs/execution/evidence/phase-12/P12D-000/task-plan.md", "sha256": "95ae5de9d2de7aad510448d61e3ae2f20e9b16eaa7ada3b11edccc03052ee3e8", "size_bytes": 9045},
-    {"path": "docs/execution/evidence/phase-12d/P12D-000/proposed-execution-contract.json", "sha256": "b809720b290bd8ae166e7c04b9c560437b733b1309e5f14c5ef56037f8f2e1af", "size_bytes": 8733},
-    {"path": "docs/execution/evidence/phase-12d/P12D-000/metrics-preregistration.json", "sha256": "f5d1df0749fdcff4957cef91fc0689458ea4395edbb0661d9a6539ec376953a3", "size_bytes": 10228},
-    {"path": "docs/execution/status/TASK-P12D-000.json", "sha256": "15fc3d4771418c9f1d5ba657a308bb8a805ba2a2e98ddaf74c66cdb9d247f86c", "size_bytes": 735},
-    {"path": "docs/execution/evidence/phase-12d/P12D-000/design-verification.json", "sha256": "296dc50b35c08e55e9bba16681554edbd54c6d0bb143ce721ba357ecf7374500", "size_bytes": 953},
-    {"path": "docs/execution/evidence/phase-12d/P12D-000/commands.json", "sha256": "deae3024a2b35e26b862e2bfdae38250ad891fa023ddb45b8f296fc754df85f9", "size_bytes": 1023},
-    {"path": "docs/execution/evidence/phase-12d/P12D-000/gate-results.json", "sha256": "588c0ede25a87a8decd00fbc120103a417c5719d5666b5fdeb8285404e49b2a4", "size_bytes": 771}
-  ],
-  "unhashed_artifact_count": 0,
-  "production_write_count": 0,
-  "recorded_at": "2026-08-04T15:55:00+08:00"
+    {
+      "path_or_reference": "execplan.md",
+      "sha256": "282d7e1fe97e08c3c2d74dc03714b7f18c975b3d8c3235f08596277a6d7caf63",
+      "size_bytes": 1740213,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md",
+      "sha256": "f26484b045805cc558824871eea908d69d67e561663d6a409be97fff5d437a20",
+      "size_bytes": 9097,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/Invoke-TaskGate.ps1",
+      "sha256": "241cae472aa308b727a2f80665dd9527469ca7cdb1d04e076fc7dd499277cdba",
+      "size_bytes": 2629897,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/TaskGateCatalog.psd1",
+      "sha256": "e7179586281cfba1475c9d9877439def91f0f550f3a0aee21dc43710e7e445eb",
+      "size_bytes": 612379,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/Update-PersonalGovernanceTaskGateCatalog.ps1",
+      "sha256": "cd762b905d9d77b90f81e289dc1157719e74a0b7f917ecccb082de68ec1fbea4",
+      "size_bytes": 29900,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/Update-Phase12DDomainCommandTaskGateCatalog.ps1",
+      "sha256": "5b92f949efc0419e58a93c52bb07ae371fcdc94305f010c3057edc1a764efc86",
+      "size_bytes": 19181,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1",
+      "sha256": "cada601fa0b27cb5ccf2d0d0440783db1d706fd8adc94b47e7169f3f2ec1c770",
+      "size_bytes": 206799,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/validate_bootstrap_contracts.py",
+      "sha256": "28bc3b9e9d74aa20ab5436ee347a7ff4c0730f28329a0101faad5d52fd9fffb8",
+      "size_bytes": 23470,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/validate_phase12_planning_contracts.py",
+      "sha256": "7787ce244f3d61fa2e68acb8357c8fbc648df0f28d0210aee999a57fb226d3f2",
+      "size_bytes": 17208,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/commands/validate_phase12d_contracts.py",
+      "sha256": "62f63e674ef2926a01c6fc2e25f6d6a60240f87e21ebe9e319e78f23d2542b9d",
+      "size_bytes": 7175,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json",
+      "sha256": "b8d038dc86818eb84441c4cd1ef4e30144c0c39f4cbf08bb4c7959089a0c2478",
+      "size_bytes": 2311,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12/P12D-000/task-plan.md",
+      "sha256": "f9df1d97915e5d69574228e5b3fca7bdd7b7f915122bbc2e6c5b316126c879be",
+      "size_bytes": 9676,
+      "mime_type": "text/plain",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-000/proposed-execution-contract.json",
+      "sha256": "adaed16ae3f51c3fb615f913df3b6df3732856d9411483c9261f5acd40bd96e8",
+      "size_bytes": 11388,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-000/selection-record.json",
+      "sha256": "4b5057276819ed44f815344ae05f3f6dc9b4fcc813be88939d6c26bc38d57b14",
+      "size_bytes": 1569,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-000/design-verification.json",
+      "sha256": "c46c1c2c175482b68efb183d72edf664352da7bca75f00779cec07c5e48ee3b5",
+      "size_bytes": 866,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-000/commands.json",
+      "sha256": "5635a7ea53b42b600f26e5ef35c7f6658162b92fbe004af5855526e8e2ca2f36",
+      "size_bytes": 2770,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-000/gate-results.json",
+      "sha256": "375066727c5f0d5a5c18ea36da3fbd84d5c28016cb10004f21a36ff92c22a2b9",
+      "size_bytes": 1860,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/schemas/phase12-candidate-execution-contract-v1.schema.json",
+      "sha256": "392cfb76d50b61acb9e281b8d212c2a91f942ff62dd54b4a0c8b179435e12e8c",
+      "size_bytes": 6686,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/schemas/task-gate-catalog-v2.schema.json",
+      "sha256": "2e0db5302a9c77751e569023f15da47df49ab7ef3f4297a2c099b5b85485ca75",
+      "size_bytes": 11990,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/status/TASK-P12D-000.json",
+      "sha256": "4ba838764058f91984db982114143953af24a6150af27113a6ca6fa490b3d339",
+      "size_bytes": 1711,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-activation",
+      "generated_by_step": "TASK-P12D-000:Evidence",
+      "generated_at": "2026-08-04T16:47:00+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    }
+  ]
 }

@@ -15520,31 +15520,31 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - 提交前：gate、`git diff --check`、allowlist。
 
 #### Phase 12D：Domain Command 分点迁移或基础设施升级
-### TASK-P12D-000：设计休眠的 Domain Command 工作包
+### TASK-P12D-000：激活唯一候选 Domain Command 工作包
 
-**状态：** `not_started`
+**状态：** `local_provisional_selected`
 **所属阶段：** Phase 12D
-**阶段分支：** `codex/release-c-governance`（不创建专项分支）
+**阶段分支：** `codex/phase-12d-domain-command`
 **执行顺序：** 12D.000
 **owner：** DomainPlatform
 **独立 reviewer：** Security+Data+Product
-**依赖：** TASK-P12-002（XOR 结论选中 12D）
+**依赖：** 本轮直接用户决定；`docs/execution/evidence/phase-12d/P12D-000/selection-record.json`
 **指向规范：** AGENTS.md §8,§10 P12；v1.6.1 §17,§20–§21,§26,§28
 **估算：** 2–4 人天，仅用于排序与容量规划，不是交付承诺
-**允许修改：** `docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md`；`docs/execution/evidence/phase-12/P12D-000/task-plan.md`；`docs/execution/evidence/phase-12d/P12D-000/`；`docs/execution/status/TASK-P12D-000.json`
-**禁止触碰：** 写入口、迁移、P9 基础 adopt 链、未证实基础设施
+**允许修改：** `execplan.md`；`docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md`；`docs/execution/commands/Invoke-TaskGate.ps1`；`docs/execution/commands/TaskGateCatalog.psd1`；`docs/execution/commands/Update-PersonalGovernanceTaskGateCatalog.ps1`；`docs/execution/commands/Update-Phase12DDomainCommandTaskGateCatalog.ps1`；`docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1`；`docs/execution/commands/validate_bootstrap_contracts.py`；`docs/execution/commands/validate_phase12_planning_contracts.py`；`docs/execution/commands/validate_phase12d_contracts.py`；`docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json`；`docs/execution/evidence/phase-12/P12D-000/task-plan.md`；`docs/execution/evidence/phase-12d/P12D-000/`；`docs/execution/schemas/phase12-candidate-execution-contract-v1.schema.json`；`docs/execution/schemas/task-gate-catalog-v2.schema.json`；`docs/execution/status/TASK-P12D-000.json`
+**禁止触碰：** 未选 P12A/P12B/P12C、Multi-Agent 框架、生产写、`main`
 
 **目标：**
 
-为一个旧写入口设计 typed command 迁移任务；本卡不改写路径。
+把 dormant 设计转成可执行的串行 TASK、精确 allowlist 和本地门禁；本卡本身不改运行时。
 
 **非目标：**
 
-- 不建分支，不执行迁移，不打包多个写点。
+- 不选择具体写点，不执行迁移，不打包多个写点；写点只能由 TASK-P12D-010 的真实仓库证据选择。
 
 **输入与前置证据：**
 
-- 单写点负载/SLA、XOR 结论、ADR 与 owner。
+- 用户 XOR 选择记录、dormant proposed contract、STAR 预注册、入口 smoke 摘要和精确基线 OID。
 
 **实施步骤：**
 
@@ -15604,8 +15604,108 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **提交要求：**
 
-- commit subject：`phase-12d(TASK-P12D-000): record planned deliverable`
-- 提交前：gate、`git diff --check`、allowlist。
+- commit subject：`phase-12d(TASK-P12D-000): activate executable work package`
+- 提交前：P12D 规划合同校验、Catalog AST/语义校验、`git diff --check`、allowlist。
+
+### Phase 12D 已选择执行序列
+
+`P12D-010→P12D-020→P12D-030→P12D-040→P12D-050→P12D-060→P12D-990→全局 P12-089→P12D-999`
+
+所有 TASK 采用 `local_provisional`；正式治理、生产切流和远程推送仍为 `pending_external`。每卡在编辑前执行 `Preflight` 和 `WorkPreflight`，编辑后执行本卡专项 `Verify`、`Security`、`Evidence`、`WorksetVerify`、`RollbackVerify`。010–050 只运行受影响测试；完整回归只在 990 和本地精确 merge 后各运行一次。
+
+### TASK-P12D-010：选择恰好一个真实仓库写入口
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-000 local provisional selected
+**目标：** 只根据受跟踪仓库事实选择一个 legacy 写入口，冻结影响面、触发和一个 STAR primary；不得推断生产流量或事故。
+**允许修改：** `docs/execution/evidence/phase-12d/P12D-010/repository-write-inventory.json`；`docs/execution/evidence/phase-12d/P12D-010/impact-map.json`；`docs/execution/evidence/phase-12d/P12D-010/trigger-evidence.json`；`docs/execution/evidence/phase-12d/P12D-010/metrics-binding.json`；`docs/execution/evidence/phase-12d/P12D-010/` 中标准 gate 附件；`docs/execution/status/TASK-P12D-010.json`。
+**禁止触碰：** 运行时、schema、第二写点、生产指标声明、后验改 primary。
+**主断言：** `selected_write_entry_count=1; unknown_critical_side_effect_count=0; primary_metric_count=1; production_fact_claim_count=0`。
+**专项命令：** `python .\docs\execution\commands\validate_phase12d_contracts.py --task P12D-010`。
+**回滚：** 保留证据，把选择置为 none，legacy writer 保持权威，allocation=0。
+**提交：** `phase-12d(TASK-P12D-010): select one repository write entry`。
+
+### TASK-P12D-020：冻结 typed command 与安全合同
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-010 positive
+**目标：** 冻结 Basic Info typed patch、server-derived Principal、低风险 approval policy、CAS/idempotency、Stable receipt、错误和兼容合同。
+**允许修改：** `agent-service/app/commands/itinerary_basic_info.py`；`agent-service/tests/security/test_p12d_command_contract.py`；`docs/architecture/adr/ADR-P12D-000-domain-command-work-package.md`；`docs/architecture/threat-model/phase-12-review.json`；`docs/execution/evidence/phase-12d/P12D-020/command-contract.json`；`docs/execution/evidence/phase-12d/P12D-020/threat-model-delta.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12D-020.json`。
+**禁止触碰：** client asserted tenant/principal/role/approval、任意 Map command、数据库或路由。
+**主断言：** `client_asserted_authority_fields=0; typed_operation_count=1; semantic_retry_contract=true; collision_zero_effect=true`。
+**专项命令：** `python -m pytest -q agent-service/tests/security/test_p12d_command_contract.py`。
+**回滚：** 保持 legacy writer，删除未接线路由的候选合同。
+**提交：** `phase-12d(TASK-P12D-020): freeze typed command contract`。
+
+### TASK-P12D-030：实现 expand-only schema、RLS 与恢复合同
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-020
+**目标：** 增加 command attempt/receipt 的 expand-only migration、RLS/grants/index/immutability，并在隔离 PostgreSQL 证明 upgrade/restore/denial。
+**允许修改：** `agent-service/migrations/versions/p12d_001_itinerary_basic_info_commands.py`；`agent-service/tests/integration/test_p12d_migration_restore.py`；`agent-service/tests/security/test_p12d_rls.py`；`docs/execution/evidence/phase-12d/P12D-030/migration-restore-results.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12D-030.json`。
+**禁止触碰：** destructive DDL、已知业务表猜测、service-role client path、生产数据库。
+**主断言：** `destructive_step_count=0; cross_tenant_allow_count=0; restore_mismatch_count=0; least_privilege_gap_count=0`。
+**专项命令：** `python -m pytest -q agent-service/tests/integration/test_p12d_migration_restore.py agent-service/tests/security/test_p12d_rls.py`。
+**回滚：** expansion 保持兼容且 dormant，不删表不丢数据，route allocation=0。
+**提交：** `phase-12d(TASK-P12D-030): add command persistence boundary`。
+
+### TASK-P12D-040：实现单 handler、事务 outbox 与 Stable receipt
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-030
+**目标：** 只为选中写点实现一个 API 内 command module；业务 mutation、attempt、receipt、event/outbox 同事务，default-off，API 进程不调用模型。
+**允许修改：** `agent-service/app/commands/itinerary_basic_info.py`；`agent-service/app/persistence/repositories/itinerary_basic_info_commands.py`；`agent-service/app/api/routes/itinerary_commands.py`；`agent-service/app/api/main.py`；`agent-service/app/api/composition.py`；`contracts/openapi/agent-api.yaml`；`agent-service/tests/integration/test_p12d_domain_command.py`；`agent-service/tests/security/test_p12d_command_service.py`；`agent-service/tests/contract/test_openapi.py`；`docs/execution/evidence/phase-12d/P12D-040/handler-outbox-results.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12D-040.json`。
+**禁止触碰：** 第二 handler、模型/Tool 写、publish-before-commit、敏感 receipt、默认开流量。
+**主断言：** `duplicate_formal_write_count=0; mutation_outbox_divergence_count=0; unauthorized_or_cross_tenant_write_count=0; receipt_content_leak_count=0`。
+**专项命令：** `python -m pytest -q agent-service/tests/integration/test_p12d_domain_command.py agent-service/tests/security/test_p12d_command_service.py agent-service/tests/contract/test_openapi.py`。
+**回滚：** flag off，保留 durable receipt/outbox 供 reconciliation。
+**提交：** `phase-12d(TASK-P12D-040): implement atomic command handler`。
+
+### TASK-P12D-050：故障注入、replay、restore 与 equivalence
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-040
+**目标：** 在隔离数据库证明 semantic retry、collision、并发、commit 边界 crash、relay replay、stale fencing、authorization/RLS denial、legacy bypass 和恢复。
+**允许修改：** `agent-service/tests/integration/test_p12d_domain_command.py`；`agent-service/tests/integration/test_p12d_failure_matrix.py`；`agent-service/tests/contract/test_p12d_legacy_equivalence.py`；`agent-service/tests/security/test_p12d_command_service.py`；`agent-service/scripts/run_p12d_failure_matrix.ps1`；P12D-040 允许的三个 runtime 文件（仅根因修复）；`docs/execution/evidence/phase-12d/P12D-050/fault-and-replay-results.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12D-050.json`。
+**禁止触碰：** skip/xfail、从分母删除失败、把 fault injection 称为生产改善。
+**主断言：** 四项红线均为 0，`receipt_gap_count=0; recovery_divergence_count=0; skip_count=0; xfail_count=0`。
+**专项命令：** `powershell -NoProfile -ExecutionPolicy Bypass -File .\agent-service\scripts\run_p12d_failure_matrix.ps1`。
+**回滚：** allocation=0、legacy writer、reconcile 已提交 outbox，保留 receipts。
+**提交：** `phase-12d(TASK-P12D-050): prove crash-safe command replay`。
+
+### TASK-P12D-060：客户端受限接线、cutover 合同与回滚演练
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-050
+**目标：** 将 `ItineraryProvider.updateItineraryBasicInfo` 这一写入口在独立 default-off flag 下接至 command transport，保留旧 writer bypass，完成本地 bounded comparison 和 rollback drill；不做生产切流。
+**允许修改：** `lib/core/config/agent_feature_flags.dart`；`lib/features/itinerary/data/itinerary_basic_info_command_client.dart`；`lib/features/itinerary/data/itinerary_provider.dart`；`test/itinerary_agent/itinerary_basic_info_command_test.dart`；`test/itinerary_agent/feature_flag_routing_test.dart`；`docs/runbooks/domain-command-single-write.md`；`docs/execution/evidence/phase-12d/P12D-060/star-evaluation.json`；`docs/execution/evidence/phase-12d/P12D-060/rollback-drill.json`；同目录标准 gate 附件；`docs/execution/status/TASK-P12D-060.json`。
+**禁止触碰：** 第二写点、默认开 flag、production allocation、合成结果冒充生产改善、提前清理 legacy path。
+**主断言：** `selected_write_entry_count=1; legacy_bypass_passed=true; redline_failure_count=0; production_claim=false; production_write_count=0`。
+**专项命令：** `flutter test test/itinerary_agent/itinerary_basic_info_command_test.dart test/itinerary_agent/feature_flag_routing_test.dart --reporter expanded`。
+**回滚：** flag off，旧 writer 立即恢复，兼容 schema/receipts/evidence 保留。
+**提交：** `phase-12d(TASK-P12D-060): wire one guarded write entry`。
+
+### TASK-P12D-990：本地 provisional 接受候选
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-060
+**目标：** 一次执行完整规定回归，聚合专项红线、STAR no-claim boundary、回滚和安全证据；只可标 `ready_for_review`。
+**允许修改：** `docs/execution/evidence/phase-12d/acceptance.md`；`docs/execution/evidence/phase-12d/artifact-manifest.premerge.json`；`docs/execution/evidence/phase-12d/P12D-990/` 标准附件及回归摘要；`docs/execution/status/TASK-P12D-990.json`。
+**主断言：** `ci_suites=15; unit>=695; contract>=182; flutter>=110; failed=0; skipped=0; xfailed=0; redline_failure_count=0`，允许测试数只增不减。
+**完整回归：** `powershell -NoProfile -ExecutionPolicy Bypass -File .\agent-service\scripts\ci.ps1`，随后 `flutter test --reporter expanded` 和 P12D RealPG/fault suites；本卡只运行这一轮完整回归。
+**回滚：** 删除接受投影而保留实现和已通过证据，allocation=0。
+**提交：** `phase-12d(TASK-P12D-990): record provisional acceptance`。
+
+### TASK-P12D-999：本地合入 landing 并精确 merge smoke
+
+**状态：** `not_started`
+**依赖：** TASK-P12D-990 AND 全局 TASK-P12-089
+**目标：** 冻结 approval tip，在 `codex/gonow-agent-landing` 形成本地 `--no-ff` 两父 merge；证明 parent/tree 等价并在 merge OID 上执行一次合并后 smoke。
+**允许修改：** 仅本地 `refs/heads/codex/gonow-agent-landing`；landing 上的 `docs/execution/evidence/phase-12d/merge.json`、`docs/execution/evidence/integration/<merge-oid>/smoke-results.json`、`docs/execution/evidence/integration/<merge-oid>/merge-tree-verification.json` 和 `docs/execution/status/TASK-P12D-999.json`。
+**禁止触碰：** `main`、`origin/main`、任何 remote ref、squash/rebase、force、生产。
+**主断言：** `parent_count=2; parent1=premerge_landing_oid; parent2=approval_tip_oid; merge_tree=approval_tip_tree; post_merge_smoke_failed=0`。
+**回滚：** 只允许以审计化 `git revert -m 1 <merge_oid>` 形成新提交；禁止 reset/force。
+**提交：** landing merge subject `merge(P12D): integrate Domain Command single-write package`。
 
 ### 阶段退出门禁
 
