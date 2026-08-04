@@ -132,6 +132,16 @@ def _flutter_counts(machine_output: str) -> dict[str, Any]:
     }
 
 
+def _locked_pythonpath() -> str:
+    site_packages = (Path(sys.prefix) / "Lib" / "site-packages").resolve()
+    if not site_packages.is_dir():
+        raise CertificationFailure("c1.locked_python_site_packages_missing")
+    inherited = os.environ.get("PYTHONPATH", "")
+    return os.pathsep.join(
+        value for value in (str(SERVICE_ROOT), str(site_packages), inherited) if value
+    )
+
+
 def run_regressions(
     evidence_root: Path,
     *,
@@ -160,7 +170,12 @@ def run_regressions(
                 flutter_executable.with_name(
                     "dart.bat" if flutter_executable.suffix.lower() == ".bat" else "dart"
                 )
-            )
+            ),
+            # Process-kill replay probes intentionally start the base Python
+            # executable. Propagate the selected locked environment's packages
+            # so a clean Phase worktree does not silently fall back to Anaconda
+            # or another globally installed dependency set.
+            "PYTHONPATH": _locked_pythonpath(),
         },
     )
     if not python_junit.is_file():
