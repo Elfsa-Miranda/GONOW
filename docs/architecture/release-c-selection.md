@@ -1,23 +1,24 @@
 # Release C selection architecture
 
 archive_mode: local_provisional
-formal_selection_status: pending
-selected_count: 0
+formal_selection_status: local_provisional_selected
+selected_candidate: 12D
+selected_count: 1
 formal_none_decision: false
-design_ready_count: 3
-runtime_change_count: 0
+design_ready_count: 1
+runtime_change_count: 1
 public_contract_change_count: 0
+schema_change_count: 1
 production_write_count: 0
 multi_agent_implementation_count: 0
 
 ## Decision boundary
 
-This document is a dormant architecture archive, not `TASK-P12-000`, an ADR, an owner approval, or
-a Release C selection receipt. The formal Phase 12 sequence remains
-`P12-000 -> P12-001 -> P12-002 -> exactly one of {12A,12B,12C,12D} or none -> P12-089`.
-Release B stable evidence and an accepted REL-C `path=phase12` record are not materialized here, so
-the formal tasks remain `not_started`. `selected_count: 0` describes the present archive state; it
-must not be interpreted as the formal `none` decision.
+The user selected 12D as the only candidate for this local execution cycle. The repository records
+that XOR decision and the executable P12D task package; it does not fabricate the independent owner
+receipts needed for formal acceptance, remote integration, or production use. The package is
+therefore `local_provisional_selected`, and its terminal local state is `ready_for_review` rather
+than `accepted`.
 
 The deployed architecture target therefore remains one Agent codebase with two processes,
 `agent-api` and `agent-worker`. PostgreSQL remains the durable source of truth. The existing static
@@ -28,10 +29,10 @@ new production boundary is introduced.
 
 | Candidate | Dormant architecture covered | Trigger still required | Present disposition |
 |---|---|---|---|
-| 12A explicit structured Memory | consent, provenance, conflict, deletion/export, restore guard | calibrated real failure ledger; the `>15%` value remains an initial hypothesis | dormant design ready; no DDL, service, profile, specialist branch, or cohort |
-| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | four comparable weeks of labelled cost/quality evidence; `1.5x` remains an initial hypothesis | dormant design ready; no router, gateway, routing model, specialist branch, or cohort |
+| 12A explicit structured Memory | consent, provenance, conflict, deletion/export, restore guard | a future independent XOR cycle | unselected; no implementation or allocation |
+| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | a future independent XOR cycle | unselected; no implementation or allocation |
 | 12C production Multi-Agent | no framework design is opened by this archive | a separately approved positive trigger and full XOR cycle | explicitly deferred; no ADR, task plan, branch, runtime, or allocation |
-| 12D one Domain Command migration | principal, approval, CAS, idempotency, outbox, compatibility | one named legacy write point with real load/SLA and risk evidence | dormant design ready; no named write point, write-path, schema, specialist branch, or migration change |
+| 12D one Domain Command migration | principal, approval, CAS, idempotency, outbox, compatibility | selected by the user for local provisional implementation | implemented for exactly one named write point; production allocation remains zero |
 
 Only one row may move out of dormant design into formal selection in a Release C cycle. A second capability requires a
 new release cycle, evidence window, ADR, gate set, rollback exercise, and merge.
@@ -92,21 +93,31 @@ A kill switch bypasses the router without changing the Candidate contract. Rollb
 previous route-policy digest, sets experimental allocation to zero, and retains the decision/budget
 ledger for audit. It does not create a central gateway or dynamic provider market.
 
-## 12D: one Domain Command migration
+## 12D: selected single write entry
 
-The future work package must name exactly one existing legacy write entry from verified load and SLA
-evidence. It cannot bundle itinerary, diary, preference, and collaboration writes into one migration.
-The selected command accepts a typed request with authenticated principal, purpose, approval
-evidence, expected resource version, idempotency key, and trace reference. In one transaction it
-reauthorizes, validates field authority, applies CAS, writes the domain mutation, emits an outbox
-event, and stores a stable receipt. A timeout with unknown outcome is resolved by receipt lookup,
-never blind replay.
+Repository evidence selected exactly
+`flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries`. The tracked legacy ordering
+publishes local/cache success before its resource-id remote update and has no expected-version CAS or
+durable receipt lookup. No claim is made about production traffic, incidents, schema equivalence, or
+RLS outside the repository.
 
-Migration follows expand-contract: add the command and compatibility adapter, shadow/compare without
-formal double-write, move a bounded cohort, verify Realtime/read-model compatibility, then retire the
-legacy write only after usage reaches zero and rollback is proven. Rollback routes the cohort back to
-the legacy authorized path while retaining command receipts and compatible data. This archive makes
-no schema or write-path change.
+The selected internal command admits only a closed Basic Info payload and server-derived principal,
+tenant, role, approval, and purpose. The database package adds dormant command attempt, receipt, and
+outbox tables in the `domain_command` schema, with FORCE RLS and no guessed business-table DDL. The
+handler reauthorizes and applies the existing business mutation, receipt, and logical outbox event in
+one transaction. Stale version, idempotency collision, permission denial, and cross-tenant attempts
+have zero formal side effects. A lost response after commit converges through lookup of the original
+receipt; it never triggers an automatic legacy fallback.
+
+Flutter routes only Basic Info through the new client when the independent flag is on and its kill
+switch is inactive. Other itinerary writers remain on the compatibility path. Turning the flag off
+or activating the kill switch sends new intents to the old authorized writer and retains durable
+receipts/outbox rows for audit and recovery.
+
+The controlled RealPG profile uses one fixed fixture, seed, workload hash, 10,000 legacy intents, and
+10,000 candidate intents. The stale-conflict partial-effect rate changed from 10,000/10k to 0/10k;
+all pre-registered redlines were zero. The claim scope is `local_controlled_mechanism`, production
+improvement is false, and production measurement remains pending.
 
 ## 12C: Multi-Agent explicitly deferred
 
@@ -117,19 +128,20 @@ roles, no shared-branch runtime, and no production allocation. Any later conside
 fresh formal XOR cycle and prove a benefit that a single Agent plus deterministic tools, RAG,
 Memory, or routing cannot deliver at lower risk.
 
-## Formal activation sequence
+## Remaining formal activation sequence
 
 1. Bind an accepted Release B head and a stable, immutable evidence window.
 2. Calibrate numerator, denominator, exclusions, uncertainty, quality, latency, cost, and redlines.
-3. Execute P12-000 and choose exactly one candidate or formal `none`.
-4. Obtain the selected ADR and owner decision in P12-001; reserve the XOR slot in P12-002.
-5. Materialize only the selected candidate work package, then split implementation into atomic tasks
-   with dedicated acceptance and merge tasks. The design card itself never proves implementation.
-6. Prove Release B equivalence when the independent flag/route/alias is off, then merge only to
-   `codex/gonow-agent-landing`. Direct Phase work on `main` is forbidden.
+3. Independently review the existing 12D decision, ADR, migration, controlled comparison, rollback,
+   and exact candidate/merge object IDs; do not rewrite local self-review as owner approval.
+4. Keep production allocation at zero until formal governance, real schema/RLS inventory, rollout
+   authority, monitoring, and rollback ownership are available.
+5. Permit only the selected 12D package to proceed. Any Memory, router, or Multi-Agent work requires
+   a new XOR cycle.
 
 ## Evidence boundary and recovery
 
-The archive claims architecture coverage, not behavior improvement, production validation, owner
-approval, or Release acceptance. Its reversible unit is this documentation-only commit. Reverting it
-leaves runtime, databases, contracts, flags, traffic, and the Phase 11 checkpoint unchanged.
+The repository proves capability existence and a controlled mechanism improvement. It does not prove
+production improvement, production schema equivalence, owner approval, or Release acceptance. The
+reversible runtime unit is the default-off 12D route plus its additive database objects; rollback
+stops new command routing while preserving compatible data, receipts, and audit history.

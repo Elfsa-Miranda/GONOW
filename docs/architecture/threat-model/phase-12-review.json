@@ -2,19 +2,19 @@
   "schema_version": "1.0",
   "phase": "Phase 12 architecture archive",
   "archive_mode": "local_provisional",
-  "source_checkpoint_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
+  "source_checkpoint_oid": "a22e12f4d6d112775c36316612939db71ec8650d",
   "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
   "model_changed": false,
-  "formal_selection_status": "pending",
-  "selected_count": 0,
+  "formal_selection_status": "local_provisional_selected",
+  "selected_count": 1,
   "formal_none_decision": false,
-  "design_ready_count": 3,
+  "design_ready_count": 1,
   "security_owner": "Security",
   "security_actor_id": "codex-local-implementation-security-self-review",
   "reviewer_is_implementer": true,
   "independent_review_status": "pending_external",
   "formal_review_accepted": false,
-  "runtime_change_count": 0,
+  "runtime_change_count": 1,
   "public_contract_change_count": 0,
   "multi_agent_implementation_count": 0,
   "threats": [
@@ -31,24 +31,40 @@
       "candidate": "12A_memory",
       "boundary": "consent_and_cross_tenant_materialization",
       "control": "negative consent, principal-purpose binding, RLS, explicit Domain Command, conflict provenance, and tombstone-first restore",
-      "local_result": "dormant_design_gate_passed",
-      "residual": "candidate unselected; DDL, CT-009/015, privacy review, and restore drill absent by design"
+      "local_result": "unselected_no_runtime_change",
+      "residual": "candidate unselected in this XOR cycle"
     },
     {
       "id": "P12-T03",
       "candidate": "12B_cost_router",
       "boundary": "unsafe_or_noncompliant_route",
       "control": "deterministic certified-route policy with region/privacy/quality floors, physical-attempt budget accounting, fallback, and kill switch",
-      "local_result": "dormant_design_gate_passed",
-      "residual": "candidate unselected; four-week calibrated evidence and route certification pending"
+      "local_result": "unselected_no_runtime_change",
+      "residual": "candidate unselected in this XOR cycle"
     },
     {
       "id": "P12-T04",
       "candidate": "12D_domain_command",
       "boundary": "unauthorized_or_duplicate_domain_write",
       "control": "one named write point, reauthorization, field authority, CAS, idempotency, transactional outbox, receipt lookup, and expand-contract rollback",
-      "local_result": "dormant_design_gate_passed",
-      "residual": "candidate unselected; no write point, schema, migration, or production operation is authorized"
+      "local_result": "realpg_atomic_fault_and_controlled_profile_passed_with_zero_redlines",
+      "residual": "independent owner acceptance, real production schema inventory and production authorization remain pending"
+    },
+    {
+      "id": "P12-T06",
+      "candidate": "12D_domain_command",
+      "boundary": "client_asserted_authority_or_unbounded_mutation",
+      "control": "strict typed schema forbids tenant, principal, role, approval, force, raw row, arbitrary plan data, prompt, reasoning and tool-result fields; server context and closed field authority are required",
+      "local_result": "17_security_contract_tests_passed",
+      "residual": "route remains unmounted by default; independent Security review and production authorization remain pending"
+    },
+    {
+      "id": "P12-T07",
+      "candidate": "12D_domain_command",
+      "boundary": "ambiguous_commit_or_sensitive_receipt",
+      "control": "semantic command hash, server-scoped idempotency digest and metadata-only outcome-shaped receipt contract",
+      "local_result": "atomic_persistence_postcommit_lookup_and_replay_passed",
+      "residual": "production traffic and incident measurements remain pending"
     },
     {
       "id": "P12-T05",

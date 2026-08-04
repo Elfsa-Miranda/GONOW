@@ -47,6 +47,16 @@ class ApiCompositionError(RuntimeError):
         super().__init__(self.code)
 
 
+class _UnavailableCommandService:
+    """Fail closed until an explicit, reviewed business-table adapter is supplied."""
+
+    def execute(self, **_: Any) -> Any:
+        raise ApiCompositionError()
+
+    def lookup(self, **_: Any) -> Any:
+        raise ApiCompositionError()
+
+
 class ApiDatabaseSession(Session):
     pass
 
@@ -256,6 +266,8 @@ def build_api_dependencies_from_environment(
         context_resolver=resolve_context,
         resume_handler=ResumeTransitionService(factory),
         audit_receipt_resolver=_audit_receipt,
+        itinerary_basic_info_command=_UnavailableCommandService(),
+        itinerary_basic_info_command_enabled=False,
         startup=lifecycle.startup,
         shutdown=lifecycle.shutdown,
     )

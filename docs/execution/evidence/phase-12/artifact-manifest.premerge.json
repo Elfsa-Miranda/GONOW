@@ -1,35 +1,113 @@
 {
   "schema_version": "1.0",
-  "archive_id": "PHASE12-PROVISIONAL-ARCHITECTURE-ARCHIVE",
+  "archive_id": "PHASE12D-LOCAL-PROVISIONAL-CONVERGENCE",
   "phase": "Phase 12",
+  "selected_subphase": "Phase 12D",
   "execution_mode": "local_provisional",
-  "source_checkpoint_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
-  "formal_task_status": "not_started",
-  "formal_selection_status": "pending",
-  "selected_count": 0,
+  "source_checkpoint_oid": "a22e12f4d6d112775c36316612939db71ec8650d",
+  "formal_task_status": "ready_for_review",
+  "formal_selection_status": "local_provisional_selected",
+  "selected_candidate": "12D",
+  "selected_count": 1,
   "formal_none_decision": false,
-  "candidate_disposition_coverage": {"numerator": 4, "denominator": 4},
-  "design_ready_count": 3,
-  "atomic_task_count": 18,
-  "runtime_change_count": 0,
+  "design_ready_count": 1,
+  "runtime_change_count": 1,
   "public_contract_change_count": 0,
-  "schema_change_count": 0,
+  "schema_change_count": 1,
   "dependency_change_count": 0,
+  "implementation_commit_count": 5,
   "multi_agent_implementation_count": 0,
   "production_write_count": 0,
+  "claim_scope": "local_controlled_mechanism",
+  "production_improvement_claim": false,
+  "production_measurement_status": "measurement_pending",
   "independent_review_status": "pending_external",
   "artifacts": [
-    {"path": "README.md", "sha256": "26b07ad881586799edc5c85a62123c69ef9e8bfe54619005540e7b11a15b7918", "size_bytes": 23934},
-    {"path": "docs/architecture/release-c-selection.md", "sha256": "809e22d3c463382892f3ffd5007bbfa955c6b2ed81418b9ebaa479175b5e16b9", "size_bytes": 8475},
-    {"path": "docs/runbooks/release-c-governance.md", "sha256": "f1d37165246b343a4000c5e961014150994c37a003742c6b202f50f685cc16c9", "size_bytes": 4871},
-    {"path": "docs/api/release-c-selection.md", "sha256": "a09ccb2d56fc5d6d622201f2ad70ada1bbf49655d1215507362b4c836b232a91", "size_bytes": 3077},
-    {"path": "docs/architecture/threat-model/phase-12-review.json", "sha256": "2e2d181b8290192536c73c8d11b4d536d12c7f4a1d15c89d772e473da47eab66", "size_bytes": 2954},
-    {"path": "docs/execution/evidence/phase-12/change-summary.md", "sha256": "72cc8ca213f62814dcb8f15c2b2b1b1c1aaa71a379563c61263c1f0708f22338", "size_bytes": 1743},
-    {"path": "docs/execution/evidence/phase-12/knowledge-transfer.md", "sha256": "9e9d8e34bfbadfef8a4fc42e0a7f317fde8b588d0abcdb4702ff5afed9950ffe", "size_bytes": 2908},
-    {"path": "docs/execution/evidence/phase-12/star-records.md", "sha256": "09e1b0ba4487bd1ae0272c4e4447872ee500db63a3d990bc179aed861bf990e5", "size_bytes": 1727},
-    {"path": "docs/execution/evidence/phase-12/improvements/STAR-xor-safe-architecture-archive.md", "sha256": "39e1ae990a5de383a3d315039fe490fddbc7c65354e0a745c7ab104652a18f47", "size_bytes": 2861},
-    {"path": "docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md", "sha256": "7d86077fc0c5272809c4a9673a3f96d2d41ebd4be1551038386ad56e5d9abf3b", "size_bytes": 4542},
-    {"path": "docs/execution/blockers/phase-12/BLK-P12-089-archive-gate-line-normalization.md", "sha256": "2f2a0cc5093e94060294275155f1a23adcf797b2fadd61bfb2e605986a86e6eb", "size_bytes": 5446},
-    {"path": "docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1", "sha256": "cd363cd4be77c04a2a9d8f71e504b90f0327e3b3dbbddd338a856bb3f3727ce3", "size_bytes": 19556}
-  ]
+    {
+      "path": "README.md",
+      "sha256": "efb5d43368989b60854363e705622efb00f4833f0ab762c9fdb4b145271e80c2",
+      "size_bytes": 24266
+    },
+    {
+      "path": "docs/architecture/release-c-selection.md",
+      "sha256": "33b848dc978aff809f0f927173383b53c3bcf1957ef8823abd7994e4c36e29fc",
+      "size_bytes": 8964
+    },
+    {
+      "path": "docs/runbooks/release-c-governance.md",
+      "sha256": "bc392886c97dee446fb0446919967c2a83352ab402d0f8f38f9655aca33859b0",
+      "size_bytes": 5422
+    },
+    {
+      "path": "docs/api/release-c-selection.md",
+      "sha256": "7719e313cfb70010dd9172b1c36f352021d15302c4b635b4bf9fb98f509b7d62",
+      "size_bytes": 3105
+    },
+    {
+      "path": "docs/architecture/threat-model/phase-12-review.json",
+      "sha256": "cea1559490acaca6ec58dcabfbf2430b5e159630c8033f74bb8863a428505125",
+      "size_bytes": 3907
+    },
+    {
+      "path": "docs/execution/evidence/phase-12/change-summary.md",
+      "sha256": "5fb8d26f9ad3fb129fab37ff781f597bbdc931b6bf81a49518dcefab7fa9b7f5",
+      "size_bytes": 1561
+    },
+    {
+      "path": "docs/execution/evidence/phase-12/knowledge-transfer.md",
+      "sha256": "bb3d796b7a9cf408f258c11f0799e2872f737e7b23c6a5e2b2d3efd9856b4bbd",
+      "size_bytes": 2706
+    },
+    {
+      "path": "docs/execution/evidence/phase-12/star-records.md",
+      "sha256": "a8e19a56c67af6eb081fa04303c7151d5cd9006d478ef16fa2dd768fde5e76bb",
+      "size_bytes": 2215
+    },
+    {
+      "path": "docs/execution/evidence/phase-12d/acceptance.md",
+      "sha256": "49250e5907a1f23e1f8e0a05a9c11de376b01b382c6214f52c1fa7f4b1faef0f",
+      "size_bytes": 2344
+    },
+    {
+      "path": "docs/execution/evidence/phase-12d/artifact-manifest.premerge.json",
+      "sha256": "1964d66b678e0b50e6c304cdcafd5a1f99e54d867f282e983c9d9f55d0538dc7",
+      "size_bytes": 3152
+    },
+    {
+      "path": "docs/execution/evidence/phase-12d/P12D-050/fault-and-replay-results.json",
+      "sha256": "ea255dbbf14c6ce3d421d665332541f82634f85d95589e75a4cded049a3a3118",
+      "size_bytes": 5653
+    },
+    {
+      "path": "docs/execution/evidence/phase-12d/P12D-060/star-evaluation.json",
+      "sha256": "ecf9b27210bd5a413cc78cb15030f78be3a478c7541d286fbb3c9fb0920f261e",
+      "size_bytes": 3110
+    },
+    {
+      "path": "docs/execution/evidence/phase-12/P12-089/handoff-verification.json",
+      "sha256": "54d45a670fc176a66ab3d99d17eb83cfe4362e09d51f91d0872ea8e9f0ede69e",
+      "size_bytes": 1929
+    },
+    {
+      "path": "docs/execution/evidence/phase-12/P12-089/harness-catalog-aggregate.json",
+      "sha256": "0a2b68662c8363cabab6a211d39c6b1e2ccfd095e62d02dfb06a2f6ff1448621",
+      "size_bytes": 1568
+    },
+    {
+      "path": "docs/execution/schemas/harness-test-catalog.yaml",
+      "sha256": "8f7843c3b1849a2c2d289f48eeab2cb9d5d8b813f12e6c5fd39daf27a0a2bbe8",
+      "size_bytes": 5697
+    },
+    {
+      "path": "docs/execution/status/task-board.json",
+      "sha256": "cc33bb841af305162c17f447ff0e0a6be45fd9c7dce5baef9b566a33a296f3c5",
+      "size_bytes": 26153
+    },
+    {
+      "path": "docs/execution/status/task-board.md",
+      "sha256": "b2dc5f547dae69a84972b3eeb1597524a6e522b7f0c4429f77a6611f124ce128",
+      "size_bytes": 7431
+    }
+  ],
+  "recorded_at": "2026-08-04T18:56:29.0338462+08:00"
 }

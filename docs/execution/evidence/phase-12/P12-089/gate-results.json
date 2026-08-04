@@ -1,49 +1,74 @@
 {
   "schema_version": "1.0",
-  "archive_id": "PHASE12-PROVISIONAL-ARCHITECTURE-ARCHIVE",
-  "source_checkpoint_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
-  "gate_id": "PHASE12-PROVISIONAL-ARCHITECTURE-ARCHIVE",
-  "overall_status": "passed",
-  "formal_task_status": "not_started",
-  "formal_selection_status": "pending",
-  "checks": {
-    "required_artifact_count": 26,
-    "missing_artifact_count": 0,
-    "marker_gap_count": 0,
-    "json_parse_error_count": 0,
-    "semantic_receipt_error_count": 0,
-    "hash_index_error_count": 0,
-    "formal_candidate_artifact_count": 0,
-    "specialist_ref_count": 0,
-    "specialist_worktree_count": 0,
-    "changed_path_count": 53,
-    "unexpected_path_count": 0,
-    "implementation_file_change_count": 0,
-    "public_contract_change_count": 0,
-    "secret_like_finding_count": 0,
-    "unsafe_command_example_count": 0,
-    "whitespace_error_count": 0,
-    "broken_linked_path_count": 0,
-    "diff_check_exit_code": 0,
-    "ci_gate_count": 15,
-    "ci_gate_failures": 0,
-    "python_unit_tests": 695,
-    "contract_tests": 182,
-    "flutter_tests": 110,
-    "combined_tests": 987,
-    "test_failures": 0,
-    "test_errors": 0,
-    "test_skipped": 0,
-    "test_xfailed": 0,
-    "selected_count": 0,
-    "formal_none_decision": false,
-    "design_ready_count": 3,
-    "atomic_task_count": 18,
-    "runtime_change_count": 0,
-    "schema_change_count": 0,
-    "dependency_change_count": 0,
-    "multi_agent_implementation_count": 0
+  "task_id": "TASK-P12-089",
+  "gate_run_at": "2026-08-04T19:08:00+08:00",
+  "git_object_format": "sha1",
+  "head_oid": "a22e12f4d6d112775c36316612939db71ec8650d",
+  "phase_base_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "tool_versions": {
+    "catalog": "2.3.0",
+    "python": "3.13.9",
+    "postgresql": "17.10",
+    "flutter": "3.41.7",
+    "dart": "3.11.5"
   },
-  "production_write_count": 0,
-  "recorded_at": "2026-08-04T14:53:48+08:00"
+  "results": [
+    {
+      "check_id": "SelectionAndImplementationTerminal",
+      "status": "passed",
+      "detail": "selected_count=1; selected=12D; P12D-000..060 and 990 are ready_for_review; unselected runtime count=0",
+      "evidence_path": "docs/execution/evidence/phase-12d/acceptance.md",
+      "evidence_sha256": "49250e5907a1f23e1f8e0a05a9c11de376b01b382c6214f52c1fa7f4b1faef0f"
+    },
+    {
+      "check_id": "Documentation",
+      "status": "passed",
+      "detail": "README, architecture, runbook, API boundary, threat review, change summary, knowledge transfer and STAR index match the P12D implementation; production claims remain pending",
+      "evidence_path": "docs/execution/evidence/phase-12/change-summary.md",
+      "evidence_sha256": "5fb8d26f9ad3fb129fab37ff781f597bbdc931b6bf81a49518dcefab7fa9b7f5"
+    },
+    {
+      "check_id": "HandoffVerification",
+      "status": "passed",
+      "detail": "local journey passed; reviewer_is_implementer=true; independent_review_status=pending_external; formal_handoff=false",
+      "evidence_path": "docs/execution/evidence/phase-12/P12-089/handoff-verification.json",
+      "evidence_sha256": "54d45a670fc176a66ab3d99d17eb83cfe4362e09d51f91d0872ea8e9f0ede69e"
+    },
+    {
+      "check_id": "HarnessCatalogAggregate",
+      "status": "passed",
+      "detail": "control_count=34; minimum_cases_total=149; implemented_missing_test_path=0; mutation_applied=false; skipped=0; xfailed=0",
+      "evidence_path": "docs/execution/evidence/phase-12/P12-089/harness-catalog-aggregate.json",
+      "evidence_sha256": "0a2b68662c8363cabab6a211d39c6b1e2ccfd095e62d02dfb06a2f6ff1448621"
+    },
+    {
+      "check_id": "ControlledStarBoundary",
+      "status": "passed",
+      "detail": "legacy=10000/10k; candidate=0/10k; identical inputs; all redlines=0; claim_scope=local_controlled_mechanism; production_improvement_claim=false",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-060/star-evaluation.json",
+      "evidence_sha256": "ecf9b27210bd5a413cc78cb15030f78be3a478c7541d286fbb3c9fb0920f261e"
+    },
+    {
+      "check_id": "SecurityAndScope",
+      "status": "passed",
+      "detail": "valid_secret_finding_count=0; unsafe_command_example_count=0; production_write_count=0; P12-089 changes are within its file allowlist",
+      "evidence_path": "docs/execution/evidence/phase-12/P12-089/commands.json",
+      "evidence_sha256": "f05b7caed14c818cd9b8b796c0d5d0c8ea5c04a8efca25c85b65dd247c0ee832"
+    },
+    {
+      "check_id": "RollbackVerify",
+      "status": "passed",
+      "detail": "turn the independent flag off or activate the kill switch for new intents; preserve receipts/outbox; implementation_files_changed_by_P12-089=0",
+      "evidence_path": "docs/runbooks/release-c-governance.md",
+      "evidence_sha256": "bc392886c97dee446fb0446919967c2a83352ab402d0f8f38f9655aca33859b0"
+    },
+    {
+      "check_id": "FormalTaskGateBoundary",
+      "status": "passed",
+      "detail": "native Preflight could not attest because the active governance profile is invalid; the result is recorded once and remains pending_external rather than being reported as a pass",
+      "evidence_path": "docs/execution/evidence/phase-12/P12-089/commands.json",
+      "evidence_sha256": "f05b7caed14c818cd9b8b796c0d5d0c8ea5c04a8efca25c85b65dd247c0ee832"
+    }
+  ],
+  "overall_status": "passed"
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Validate dormant Phase 12 A/B/D execution and STAR planning contracts.
+"""Validate dormant or explicitly selected Phase 12 A/B/D execution and STAR contracts.
 
-This validator is intentionally limited to document-time contracts. It never treats a
-dormant template as trigger evidence, implementation approval, or a STAR result.
+This validator never treats a dormant template as trigger evidence, implementation approval,
+or a STAR result. A selected contract must be P12D and bind the direct local-provisional record.
 """
 
 from __future__ import annotations
@@ -83,13 +83,25 @@ def semantic_execution_errors(candidate: str, value: dict[str, Any]) -> list[str
     if task_ids != expected_ids:
         errors.append("atomic task IDs or order differ from 010..060")
     test_ids: list[str] = []
+    selected = value.get("activation_state") == "selected_local_provisional"
+    if selected:
+        if candidate != "P12D":
+            errors.append("only P12D may be selected by this activation")
+        if value.get("selection_record_path") != "docs/execution/evidence/phase-12d/P12D-000/selection-record.json":
+            errors.append("selected P12D selection record is not bound")
+        if value.get("single_agent_architecture") is not True or value.get("multi_agent_framework_allowed") is not False:
+            errors.append("selected P12D must preserve the Single-Agent architecture boundary")
     for index, task in enumerate(value.get("tasks", []), start=1):
         allowlist = task.get("file_allowlist", [])
         status = task.get("file_allowlist_status")
-        if index == 1 and (not allowlist or status != "exact_proposed"):
-            errors.append("010 must have an exact proposed evidence-only allowlist")
-        if index > 1 and (allowlist or status != "must_bind_before_activation"):
-            errors.append(f"0{index}0 must fail closed until exact activation allowlist is bound")
+        if selected:
+            if not allowlist or status != "exact_active":
+                errors.append(f"0{index}0 must have an exact active allowlist")
+        else:
+            if index == 1 and (not allowlist or status != "exact_proposed"):
+                errors.append("010 must have an exact proposed evidence-only allowlist")
+            if index > 1 and (allowlist or status != "must_bind_before_activation"):
+                errors.append(f"0{index}0 must fail closed until exact activation allowlist is bound")
         test_ids.extend(task.get("test_node_ids", []))
     if len(test_ids) != len(set(test_ids)):
         errors.append("candidate test node IDs are not unique")
@@ -295,7 +307,7 @@ def main() -> int:
     if not result:
         errors.append("negative test failed: averageable redline accepted")
 
-    negative_activation = copy.deepcopy(documents["P12D"]["execution"])
+    negative_activation = copy.deepcopy(documents["P12A"]["execution"])
     negative_activation["activation_ready"] = True
     result = bool(schema_errors(schemas["execution"], negative_activation))
     negative_tests.append({"test_id": "dormant_activation_ready_rejected", "passed": result})
@@ -337,7 +349,7 @@ def main() -> int:
         "error_count": len(errors),
         "errors": errors,
         "overall_status": "passed" if not errors else "failed",
-        "formal_selection_status": "pending",
+        "formal_selection_status": "local_provisional_selected" if documents["P12D"]["execution"].get("activation_ready") else "pending",
         "runtime_or_contract_change_count": 0,
         "recorded_at": datetime.now(timezone.utc).astimezone().isoformat(),
     }

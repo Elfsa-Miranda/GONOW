@@ -2,6 +2,18 @@ enum AgentEntryKind { itineraryPlanning, ordinaryChat }
 
 enum AgentPlanningRoute { legacy, agent }
 
+enum ItineraryBasicInfoWriteRoute { legacy, domainCommand }
+
+final class ItineraryBasicInfoWriteRouteDecision {
+  const ItineraryBasicInfoWriteRouteDecision({
+    required this.route,
+    required this.reasonCode,
+  });
+
+  final ItineraryBasicInfoWriteRoute route;
+  final String reasonCode;
+}
+
 final class AgentRouteDecision {
   const AgentRouteDecision({
     required this.entry,
@@ -40,16 +52,49 @@ final class AgentFeatureFlags {
   const AgentFeatureFlags({
     this.itineraryPlanningEnabled = false,
     this.itineraryPlanningKillSwitch = true,
+    this.itineraryBasicInfoCommandEnabled = false,
+    this.itineraryBasicInfoCommandKillSwitch = true,
     this.clientGeneration = 1,
     this.serverGeneration = 0,
   });
 
   static const String itineraryPlanningFlagName = 'gonow_itinerary_agent_v1';
+  static const String itineraryBasicInfoCommandFlagName =
+      'gonow_itinerary_basic_info_command_v1';
 
   final bool itineraryPlanningEnabled;
   final bool itineraryPlanningKillSwitch;
+  final bool itineraryBasicInfoCommandEnabled;
+  final bool itineraryBasicInfoCommandKillSwitch;
   final int clientGeneration;
   final int serverGeneration;
+
+  ItineraryBasicInfoWriteRouteDecision evaluateItineraryBasicInfoWrite({
+    required bool commandRouteAvailable,
+  }) {
+    if (itineraryBasicInfoCommandKillSwitch) {
+      return const ItineraryBasicInfoWriteRouteDecision(
+        route: ItineraryBasicInfoWriteRoute.legacy,
+        reasonCode: 'command_kill_switch_active',
+      );
+    }
+    if (!itineraryBasicInfoCommandEnabled) {
+      return const ItineraryBasicInfoWriteRouteDecision(
+        route: ItineraryBasicInfoWriteRoute.legacy,
+        reasonCode: 'command_flag_disabled',
+      );
+    }
+    if (!commandRouteAvailable) {
+      return const ItineraryBasicInfoWriteRouteDecision(
+        route: ItineraryBasicInfoWriteRoute.legacy,
+        reasonCode: 'command_route_unavailable',
+      );
+    }
+    return const ItineraryBasicInfoWriteRouteDecision(
+      route: ItineraryBasicInfoWriteRoute.domainCommand,
+      reasonCode: 'command_flag_enabled',
+    );
+  }
 
   AgentRouteDecision evaluate(
     AgentEntryKind entry, {

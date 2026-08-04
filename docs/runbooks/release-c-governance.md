@@ -2,24 +2,26 @@
 
 ## Current safe state
 
-`formal_selection_status=pending`, `selected_count=0`, and `formal_none_decision=false`. These values
-mean there is no Release C capability to enable. Keep all Phase 12 candidate allocations at zero and
-continue the Release B-compatible single-Agent path. P12A/B/D design packages are locally reviewable,
-but do not create a formal specialist branch/worktree for any candidate, run migrations, change
-routing, or infer approval from design readiness. P12C remains absent.
+`formal_selection_status=local_provisional_selected`, `selected_candidate=12D`, and
+`selected_count=1`. The additive Domain Command package exists locally for exactly the itinerary
+Basic Info write entry. Production allocation and production writes remain zero; formal owner review,
+remote integration, deployment, and Release C acceptance remain pending. 12A, 12B, and 12C are not
+part of this cycle, and no Multi-Agent framework exists.
 
 ## First checks
 
 1. Verify the worktree branch and clean status, then bind the candidate to a full Git object ID.
-2. Verify Release B stable evidence, its manifest hash, and its accepted landing object ID.
-3. Verify the REL-C cycle record selects `path=phase12` and is bound to the same Release B head.
-4. Verify the evidence window has explicit numerator, denominator, exclusions, uncertainty, and
-   redline counts; an initial hypothesis is not a trigger result.
-5. Verify P12-000 chooses exactly one of 12A/12B/12C/12D or formal `none`.
-6. Verify P12-001 approval and P12-002 reservation bind the same cycle, head, artifact hashes, and
-   selection. Mismatch fails closed.
-7. Verify unselected task artifacts, branches, worktrees, allocations, and implementation commits are
-   all absent.
+2. Verify the selected write entry is exactly
+   `flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries`.
+3. Verify `gonow_itinerary_basic_info_command_v1` is off by default and the command kill switch is
+   active by default.
+4. Verify migration, FORCE RLS, command handler, receipt lookup, failure matrix, controlled-profile,
+   Flutter routing, rollback, and P12D-990 evidence hashes.
+5. Verify duplicate write, unauthorized/cross-tenant write, mutation/outbox divergence, ambiguous
+   committed outcome, and data-loss counts are all zero. Redlines never average into STAR.
+6. Verify production schema equivalence, flow distribution, and incident-rate claims remain unknown
+   or measurement pending.
+7. Verify unselected Phase 12 candidates have no runtime, allocation, or implementation in this cycle.
 
 ## Formal selection procedure
 
@@ -35,14 +37,17 @@ is never appended to the same cycle.
 
 ## Enable, disable, and degrade
 
-There is no enable command for the provisional archive.
+There is no production enable command in this local provisional package. In an authorized isolated
+environment, enable only the named Flutter flag after applying the additive migration, configuring
+server authorization, mounting the internal route through approved composition, and verifying the
+same receipt/outbox/CAS tests. The internal route is unmounted by default.
 
 | Candidate | Enable only after | Disable / first rollback action | Degraded behavior |
 |---|---|---|---|
 | 12A Memory | selected ADR, privacy/data approval, CT-009/015, deletion/restore drill | allocation zero; disable reads/proposals; retain tombstones/audit | Release B single Agent without Memory |
 | 12B cost router | four-week calibrated evidence, certified routes, quality/cost/fallback gates | bypass router; restore previous policy digest; retain budget ledger | current certified route or existing fail-closed policy |
 | 12C Multi-Agent | fresh positive XOR cycle and separately approved package | allocation zero; return to one graph; retain experiment evidence | Release B single Agent |
-| 12D Domain Command | one named write point, expand-contract plan, CAS/outbox/receipt tests | route bounded cohort to prior authorized writer; retain receipts | legacy compatible write path |
+| 12D Domain Command | formal owner approval, real schema/RLS inventory, rollout/monitoring authority, all redlines zero | turn the named flag off or activate its kill switch for new intents; retain receipts/outbox | legacy Basic Info writer; unknown outcomes still use receipt lookup |
 
 Global rollback order is: stop new allocation, pin the last known-good behavior/route/alias, preserve
 evidence and compatible data, replay the Release B equivalence suite, then diagnose. Never roll back
@@ -57,8 +62,9 @@ then the affected regression set. A second occurrence or plan change requires a 
 the complete hypothesis, excluded paths, repair, rollback, and recovery condition. Do not repeat an
 unchanged gate without a new distinguishing signal.
 
-Formal selection missing blocks only formal selection, acceptance, production allocation, remote
-merge, and push. It does not block local documentation, fixtures, static checks, or repair work.
+Missing independent review blocks only formal acceptance, production allocation, remote merge/push,
+and deployment. It does not invalidate completed local code, fixtures, RealPG fault evidence, static
+checks, or rollback work.
 
 ## Merge and remote contract
 

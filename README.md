@@ -304,25 +304,29 @@ Phase 11 adds a PostgreSQL-backed knowledge lifecycle, tenant/ACL hard filters, 
 
 Operational details: [RAG architecture](docs/architecture/rag.md), [rollback](docs/runbooks/rag-rollback.md), [knowledge deletion](docs/runbooks/knowledge-deletion.md), and [citation contract](docs/api/rag-citations.md).
 
-## Release C dormant architecture archive (Phase 12 local provisional)
+## Phase 12D Domain Command package (local provisional)
 
-Phase 12 currently adds documentation and machine-verifiable guardrails only. It does not make a
-formal Release C selection, add a runtime dependency, change a public contract, create a specialist
-branch, allocate production traffic, or write production data. The running target remains the
-high-quality single itinerary Agent with `agent-api` and `agent-worker` as its two processes.
+Phase 12 selected exactly one local candidate: 12D. It moves only
+`ItineraryProvider.updateItineraryBasicInfo` for `user_itineraries` behind a typed, server-authorized
+Domain Command. The new path uses expected-version CAS, tenant-scoped idempotency, one atomic
+mutation/receipt/outbox transaction, receipt lookup after an unknown outcome, and a default-off
+Flutter route. Public OpenAPI remains unchanged because the internal route is not mounted by default.
 
-The archive covers three dormant non-Multi-Agent candidates: explicit structured Memory, a
-deterministic cost router, and migration of one evidence-selected legacy write entry to a typed
-Domain Command. Their ADRs, six-task atomic plans, local status receipts, hashes, and automated design
-gates are complete (`design_ready_count=3`), but none is formally started or selected. Exactly one may
-be selected only after a stable Release B and real, calibrated failure/cost/load evidence. Multi-Agent
-remains explicitly deferred with zero implementation commits and zero allocation.
+The independent flag is `gonow_itinerary_basic_info_command_v1`; its default is off and the kill
+switch defaults active. With the flag off, or after activating the kill switch for new intents, the
+legacy Basic Info writer remains available. An unknown command outcome must be resolved by receipt
+lookup and must never fall back to the legacy writer. Other itinerary writes remain untouched.
 
-There is nothing to enable from this archive. Keep every candidate allocation at zero and continue
-using the existing single-Agent path. If a later formal selection is authorized, follow the XOR
-governance runbook and create a clean implementation worktree only for the selected package; the
-unselected design packages remain dormant. Reverting these documentation commits changes no runtime
-behavior or data.
+In isolated PostgreSQL 17.10, the frozen stale-conflict profile ran 10,000 legacy and 10,000 command
+intents with identical workload hash and seed. Partial effects were 10,000/10,000 for the tracked
+legacy ordering and 0/10,000 for the candidate; duplicate writes, unauthorized/cross-tenant writes,
+mutation/outbox divergence, ambiguous committed outcomes, and data loss were all zero. This is a
+controlled mechanism result, not a production improvement claim. Production schema equivalence,
+traffic distribution, incident rate, and improvement remain `unknown` / `measurement_pending`.
+
+The package preserves the high-quality Single-Agent architecture. No Multi-Agent framework,
+coordinator, specialist runtime, production allocation, production write, remote push, or formal
+Release C acceptance is included. Independent Security/Product/Data review remains pending.
 
 See [Release C selection architecture](docs/architecture/release-c-selection.md),
 [governance and rollback](docs/runbooks/release-c-governance.md), and

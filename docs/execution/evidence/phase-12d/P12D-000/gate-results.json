@@ -1,26 +1,45 @@
 {
   "schema_version": "1.0",
   "task_id": "TASK-P12D-000",
-  "gate_id": "PHASE12-ABD-DORMANT-DESIGN",
-  "overall_status": "passed",
-  "checks": {
-    "design_ready_count": 1,
-    "atomic_task_count": 6,
-    "current_named_write_entry_count": 0,
-    "missing_artifact_count": 0,
-    "plan_error_count": 0,
-    "status_error_count": 0,
-    "json_error_count": 0,
-    "hash_error_count": 0,
-    "unexpected_path_count": 0,
-    "diff_check_exit_code": 0,
-    "formal_selected_count": 0,
-    "implementation_commit_count": 0,
-    "contract_change_count": 0,
-    "multi_agent_implementation_count": 0,
-    "production_write_count": 0
+  "gate_run_at": "2026-08-04T16:44:00+08:00",
+  "git_object_format": "sha1",
+  "head_oid": "3021eb1378e122687f23b2506456e8dc41228f7e",
+  "phase_base_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "tool_versions": {
+    "catalog": "2.3.0",
+    "contract": "1.0",
+    "python": "3.13.9",
+    "powershell": "5.1"
   },
-  "formal_selection_status": "pending",
-  "independent_review_status": "pending_external",
-  "recorded_at": "2026-08-04T14:29:00+08:00"
+  "results": [
+    {
+      "check_id": "XorSelection",
+      "status": "passed",
+      "detail": "selected_candidate=P12D; selected_count=1; P12A/P12B/P12C unselected",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-000/selection-record.json",
+      "evidence_sha256": "4b5057276819ed44f815344ae05f3f6dc9b4fcc813be88939d6c26bc38d57b14"
+    },
+    {
+      "check_id": "CatalogSchema",
+      "status": "passed",
+      "detail": "catalog_version=2.3.0; task_count=161; P12D executable_task_count=8; schema_errors=0",
+      "evidence_path": "docs/execution/commands/TaskGateCatalog.psd1",
+      "evidence_sha256": "e7179586281cfba1475c9d9877439def91f0f550f3a0aee21dc43710e7e445eb"
+    },
+    {
+      "check_id": "ExecutableContract",
+      "status": "passed",
+      "detail": "010..060 exact allowlists match; 990->global 089->local-only 999; mismatch_count=0",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-000/proposed-execution-contract.json",
+      "evidence_sha256": "adaed16ae3f51c3fb615f913df3b6df3732856d9411483c9261f5acd40bd96e8"
+    },
+    {
+      "check_id": "SecurityBoundary",
+      "status": "passed",
+      "detail": "single_agent_architecture=true; multi_agent_framework_allowed=false; remote/main/production writes=0",
+      "evidence_path": "docs/execution/schemas/task-gate-catalog-v2.schema.json",
+      "evidence_sha256": "2e0db5302a9c77751e569023f15da47df49ab7ef3f4297a2c099b5b85485ca75"
+    }
+  ],
+  "overall_status": "passed"
 }

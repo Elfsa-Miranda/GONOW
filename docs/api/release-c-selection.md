@@ -2,16 +2,16 @@
 
 ## Public API status
 
-This Phase 12 archive changes no OpenAPI, Dart, Event, State, Candidate, SSE, Domain Command, or
-database schema. It adds no endpoint and reserves no public error code. Existing clients and the
-single-Agent runtime therefore remain byte-for-byte governed by the prior contracts.
+Phase 12D adds a strict internal Domain Command contract and typed Dart client for exactly itinerary
+Basic Info. The route is not mounted in the default API composition, so the published OpenAPI remains
+unchanged. No Event, State, Candidate, or SSE public contract changes.
 
-runtime_change_count: 0
+runtime_change_count: 1
 public_contract_change_count: 0
-schema_change_count: 0
-implementation_commit_count: 0
+schema_change_count: 1
+implementation_commit_count: 5
 production_write_count: 0
-design_ready_count: 3
+selected_count: 1
 
 ## Governance record shape
 
@@ -40,29 +40,30 @@ valid approval by itself:
 ```
 
 The formal runner must reject missing or mismatched cycle, head, digest, evidence window, owner
-identity, or XOR reservation. `selected_count=0` in this provisional archive is not a formal
-`selection=none` receipt. `design_ready_count=3` means only that A/B/D plans and local evidence pass
-their design gates; it creates no API, selection, allocation, or implementation authority.
+identity, or XOR reservation. `selected_count=1` records the user's local 12D choice; it does not
+grant production allocation or replace independent owner approval.
 
-## Future internal ports, if selected
+## Implemented internal command boundary
 
-These are architecture constraints for a later selected package; they are not implemented types:
+The internal route shape is
+`POST /v1/itineraries/{itinerary_id}/commands/basic-info`. The request contains only the selected
+Basic Info fields, expected version, idempotency key, and trace reference. Principal, tenant, role,
+approval, and purpose come from trusted server context and are forbidden in client input. The result
+is a closed metadata-only receipt. `GET` receipt lookup by the original idempotency key resolves an
+unknown response outcome.
 
-- 12A exposes an authorized typed Memory read port and a separate explicit-confirmation Domain
-  Command. Raw history and hidden model profiles are not inputs.
-- 12B exposes a deterministic route decision with policy digest, reason, certified route, price
-  snapshot, budget reservation, and fallback. Free-form model text cannot select a route.
-- 12D exposes one typed command containing principal context, approval, expected version,
-  idempotency key, and trace reference, returning a stable receipt or stable failure.
-- 12C exposes nothing in this archive because Multi-Agent is deferred.
+Unknown version, identity, authorization, collision, or receipt outcome fails closed. A stale
+command makes zero business, receipt, or outbox side effects. A reused key with different semantic
+content is a collision. Same key and same content returns the original receipt. Client transport
+ambiguity never falls back to the legacy writer.
 
-Unknown version, identity, consent, route certification, authorization, or receipt outcome fails
-closed. Any future public or database contract change requires its own ADR, generated-client update,
-compatibility matrix, migration/rollback evidence, and formal selection.
+The additive `domain_command` schema contains attempts, receipts, and outbox events under FORCE RLS.
+It does not guess or create the production `user_itineraries` table. Production schema equivalence
+remains unknown and must be inventoried before production authorization.
 
 ## Compatibility and rollback
 
-With every Phase 12 flag off, behavior must equal the accepted Release B package. Reverting the
-archive changes documentation only. A later selected package must provide an independent
-flag/route/alias and a Release B equivalence replay before traffic; rollback disables only that
-selection and preserves durable evidence and compatible data.
+With `gonow_itinerary_basic_info_command_v1` off, the Basic Info provider uses the legacy path. With
+the flag on and kill switch inactive, only that write entry uses the command client; all other writes
+stay unchanged. Conflict and unknown outcome do not publish local success. Rollback disables new
+command routing but preserves command receipts, outbox events, and compatible business data.
