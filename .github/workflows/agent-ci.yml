@@ -7,6 +7,8 @@ on:
       - "contracts/**"
       - "docs/execution/commands/Invoke-GitHubMainProtection.ps1"
       - "docs/execution/commands/tests/Invoke-GitHubMainProtection.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleasePullRequest.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleasePullRequest.Tests.ps1"
       - ".github/workflows/agent-ci.yml"
   push:
     branches:
@@ -17,6 +19,8 @@ on:
       - "contracts/**"
       - "docs/execution/commands/Invoke-GitHubMainProtection.ps1"
       - "docs/execution/commands/tests/Invoke-GitHubMainProtection.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleasePullRequest.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleasePullRequest.Tests.ps1"
       - ".github/workflows/agent-ci.yml"
   workflow_dispatch:
 
@@ -67,6 +71,11 @@ jobs:
         shell: powershell
         run: >-
           .\docs\execution\commands\tests\Invoke-GitHubMainProtection.Tests.ps1
+
+      - name: Run release PR adapter contracts
+        shell: powershell
+        run: >-
+          .\docs\execution\commands\tests\Invoke-GitHubReleasePullRequest.Tests.ps1
 
       - name: Provision isolated PostgreSQL contract database
         shell: powershell
