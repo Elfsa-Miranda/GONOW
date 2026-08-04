@@ -1,0 +1,82 @@
+schema_version: "1.0"
+task_id: TASK-P11-010
+phase: phase-11
+execution_mode: local_provisional
+capability: single_agent_rag
+parallel_phase12: false
+production_write_count: 0
+
+privacy:
+  status: passed
+  dataset_classification: synthetic_no_user_data
+  user_record_count: 0
+  secret_finding_count: 0
+  retained_body_count: 0
+
+feature_flag:
+  key: gonow.agent.itinerary_planning.rag
+  default_enabled: false
+  production_allocation_percent: 0
+  remote_object_written: false
+  approved_cohort_ids: []
+  local_synthetic_cohort_ids:
+    - rag-holdout-v01
+  formal_owner_approval: false
+
+shadow:
+  status: passed
+  mode: offline_deterministic_replay
+  sample:
+    window_id: rag-holdout-v01
+    total_queries: 9
+    scored_queries: 8
+    deletion_cases: 1
+    security_cases: 2
+  observed:
+    recall_at_1: 1.0
+    citation_precision: 1.0
+    acl_canary_leak_count: 0
+    tenant_leak_count: 0
+    stale_version_leak_count: 0
+    deletion_failure_count: 0
+    p95_latency_ms: 0.305
+    cost_usd_per_successful_query: 0.0
+
+review:
+  status: ready_for_review
+  candidate_evidence: docs/execution/evidence/phase-11/P11-009/rag-manifest.json
+  independent_reviewer_complete: false
+  release_accepted: false
+
+cohort:
+  status: passed_local_synthetic_only
+  allocation_percent: 100
+  cohort_ids:
+    - rag-holdout-v01
+  real_user_count: 0
+  production_enabled: false
+  gates:
+    rag_trigger_threshold: passed
+    acl_canary: passed
+    deletion_no_resurrection: passed
+    citation_correctness: passed
+    sample_window: passed
+    cost: passed
+
+rollback:
+  status: passed
+  trigger: any_redline_or_threshold_failure
+  first_action: set_flag_allocation_to_zero
+  second_action: retain_prior_knowledge_alias
+  old_alias: no_rag_single_agent_path
+  candidate_alias: rag-package-local-provisional-v01
+  destructive_action_count: 0
+  restored_deleted_content_count: 0
+  unexpected_write_count: 0
+
+release_c_gate:
+  status: local_provisional_passed_formal_pending
+  selected_capability_count: 1
+  selected_capability: rag
+  formal_release_c_selection_present: false
+  production_rollout_authorized: false

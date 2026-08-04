@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gonow.invalid/schemas/rag-eval-v1.json",
+  "title": "GoNow synthetic RAG holdout v1",
+  "oneOf": [
+    {"$ref": "#/$defs/document"},
+    {"$ref": "#/$defs/query"},
+    {"$ref": "#/$defs/label"},
+    {"$ref": "#/$defs/acl"}
+  ],
+  "$defs": {
+    "docId": {"type": "string", "pattern": "^RAG-D[0-9]{3}$"},
+    "queryId": {"type": "string", "pattern": "^RAG-Q[0-9]{3}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "schema_version", "doc_id", "tenant_id", "source_id", "version_id", "current_version_id", "chunk_id", "chunk_digest", "text", "source_status", "deleted", "purpose", "license_identifier", "source_class"],
+      "properties": {
+        "record_type": {"const": "document"},
+        "schema_version": {"const": "1.0"},
+        "doc_id": {"$ref": "#/$defs/docId"},
+        "tenant_id": {"type": "string", "minLength": 1},
+        "source_id": {"type": "string", "format": "uuid"},
+        "version_id": {"type": "string", "format": "uuid"},
+        "current_version_id": {"type": "string", "format": "uuid"},
+        "chunk_id": {"type": "string", "format": "uuid"},
+        "chunk_digest": {"$ref": "#/$defs/digest"},
+        "text": {"type": "string", "minLength": 1, "maxLength": 500},
+        "source_status": {"enum": ["active", "retired", "deleted"]},
+        "deleted": {"type": "boolean"},
+        "purpose": {"const": "travel_knowledge_retrieval"},
+        "license_identifier": {"enum": ["first-party", "cc-by-4.0", "tenant-owned"]},
+        "source_class": {"enum": ["first_party_product_knowledge", "public_licensed_reference", "tenant_private_curated"]}
+      }
+    },
+    "query": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "schema_version", "query_id", "split", "tenant_id", "principal_id", "group_ids", "text", "vector_ranking", "lexical_ranking", "top_k", "deletion_case", "security_case"],
+      "properties": {
+        "record_type": {"const": "query"},
+        "schema_version": {"const": "1.0"},
+        "query_id": {"$ref": "#/$defs/queryId"},
+        "split": {"const": "holdout"},
+        "tenant_id": {"type": "string", "minLength": 1},
+        "principal_id": {"type": "string", "minLength": 1},
+        "group_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "text": {"type": "string", "minLength": 1, "maxLength": 300},
+        "vector_ranking": {"type": "array", "items": {"$ref": "#/$defs/docId"}, "uniqueItems": true},
+        "lexical_ranking": {"type": "array", "items": {"$ref": "#/$defs/docId"}, "uniqueItems": true},
+        "top_k": {"const": 1},
+        "deletion_case": {"type": "boolean"},
+        "security_case": {"enum": ["none", "ssrf", "tool"]}
+      }
+    },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "schema_version", "query_id", "label_status", "relevant_doc_ids", "expect_no_results", "require_current_version"],
+      "properties": {
+        "record_type": {"const": "label"},
+        "schema_version": {"const": "1.0"},
+        "query_id": {"$ref": "#/$defs/queryId"},
+        "label_status": {"const": "synthetic_curated"},
+        "relevant_doc_ids": {"type": "array", "items": {"$ref": "#/$defs/docId"}, "uniqueItems": true},
+        "expect_no_results": {"type": "boolean"},
+        "require_current_version": {"type": "boolean"}
+      }
+    },
+    "acl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "schema_version", "doc_id", "tenant_id", "principal_ids", "group_ids", "tenant_read"],
+      "properties": {
+        "record_type": {"const": "acl"},
+        "schema_version": {"const": "1.0"},
+        "doc_id": {"$ref": "#/$defs/docId"},
+        "tenant_id": {"type": "string", "minLength": 1},
+        "principal_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "group_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "tenant_read": {"type": "boolean"}
+      }
+    }
+  }
+}

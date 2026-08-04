@@ -17,7 +17,7 @@ void main() {
         descriptor: () async => const ContractDescriptor(
           name: 'agent-api',
           major: 1,
-          version: '1.0.0',
+          version: '1.1.1',
           specSha256: agentApiSpecSha256,
         ),
       ),
@@ -38,7 +38,7 @@ void main() {
         descriptor: () async => const ContractDescriptor(
           name: 'agent-api',
           major: 1,
-          version: '1.0.0',
+          version: '1.1.1',
           specSha256:
               '0000000000000000000000000000000000000000000000000000000000000000',
         ),
@@ -48,6 +48,60 @@ void main() {
     expect(
       _failure(await repository.verifyContract()).kind,
       AgentRunFailureKind.contractMismatch,
+    );
+  });
+
+  test('start and Candidate map typed receipts', () async {
+    final DefaultAgentRunRepository repository = DefaultAgentRunRepository(
+      gateway: _FakeGateway(
+        start:
+            ({
+              required String idempotencyKey,
+              required RunStartRequest request,
+            }) async {
+              expect(idempotencyKey, 'request-1111111111111111');
+              expect(request.itinerary.destination, 'Shanghai');
+              return RunStartResponse(
+                runId: runId,
+                threadId: request.threadId,
+                state: 'queued',
+                version: 1,
+                replayed: false,
+                behaviorDigest: 'b' * 64,
+              );
+            },
+        candidate: ({required String runId}) async => <String, dynamic>{
+          'run_id': runId,
+          'candidate_id': 'cand_11111111111111111111111111111111',
+        },
+      ),
+    );
+    const StartAgentRunCommand command = StartAgentRunCommand(
+      idempotencyKey: 'request-1111111111111111',
+      threadId: '22222222-2222-4222-8222-222222222222',
+      origin: 'Beijing',
+      destination: 'Shanghai',
+      startsOn: '2026-08-03',
+      days: 3,
+      budgetMinor: 500000,
+      currency: 'CNY',
+      locale: 'zh-CN',
+      timezone: 'Asia/Shanghai',
+      hardConstraints: <String>['no red-eye flights'],
+    );
+
+    final AgentRunResult<StartAgentRunReceipt> started = await repository
+        .startRun(command);
+    final AgentRunResult<AgentRunCandidateReceipt> candidate = await repository
+        .getCandidate(runId);
+
+    expect(started, isA<AgentRunSuccess<StartAgentRunReceipt>>());
+    expect(candidate, isA<AgentRunSuccess<AgentRunCandidateReceipt>>());
+    expect(
+      (candidate as AgentRunSuccess<AgentRunCandidateReceipt>)
+          .value
+          .payload['run_id'],
+      runId,
     );
   });
 
@@ -115,6 +169,18 @@ void main() {
               gatewayCalls += 1;
               throw StateError('should not run');
             },
+        start:
+            ({
+              required String idempotencyKey,
+              required RunStartRequest request,
+            }) async {
+              gatewayCalls += 1;
+              throw StateError('should not run');
+            },
+        candidate: ({required String runId}) async {
+          gatewayCalls += 1;
+          throw StateError('should not run');
+        },
       ),
     );
 
@@ -134,8 +200,30 @@ void main() {
         const CancelAgentRunCommand(runId: '', expectedVersion: -1),
       ),
     );
+    final AgentRunFailure startFailure = _failure(
+      await repository.startRun(
+        const StartAgentRunCommand(
+          idempotencyKey: 'short',
+          threadId: 'not-a-uuid',
+          origin: '',
+          destination: '',
+          startsOn: 'invalid',
+          days: 0,
+          budgetMinor: -1,
+          currency: 'cny',
+          locale: 'invalid',
+          timezone: '',
+          hardConstraints: <String>[],
+        ),
+      ),
+    );
+    final AgentRunFailure candidateFailure = _failure(
+      await repository.getCandidate('not-a-uuid'),
+    );
     expect(resumeFailure.kind, AgentRunFailureKind.invalidRequest);
     expect(cancelFailure.kind, AgentRunFailureKind.invalidRequest);
+    expect(startFailure.kind, AgentRunFailureKind.invalidRequest);
+    expect(candidateFailure.kind, AgentRunFailureKind.invalidRequest);
     expect(gatewayCalls, 0);
   });
 
@@ -144,6 +232,11 @@ void main() {
         'auth.invalid_token': AgentRunFailureKind.authenticationRequired,
         'auth.forbidden': AgentRunFailureKind.forbidden,
         'context.invalid': AgentRunFailureKind.invalidContext,
+        'idempotency.conflict': AgentRunFailureKind.idempotencyConflict,
+        'run.start_rejected': AgentRunFailureKind.runStartRejected,
+        'cancel.conflict': AgentRunFailureKind.cancelConflict,
+        'resume.invalid_or_expired': AgentRunFailureKind.resumeInvalidOrExpired,
+        'sse.last_event_id_invalid': AgentRunFailureKind.invalidEventCursor,
         'tenant.scope_missing': AgentRunFailureKind.tenantScopeMissing,
         'rate.limit': AgentRunFailureKind.rateLimited,
         'schema.unsupported': AgentRunFailureKind.unsupportedSchema,
@@ -250,6 +343,13 @@ _FakeGateway _throwingCancel(Object error) => _FakeGateway(
 );
 
 typedef _Descriptor = Future<ContractDescriptor> Function();
+typedef _Start =
+    Future<RunStartResponse> Function({
+      required String idempotencyKey,
+      required RunStartRequest request,
+    });
+typedef _Candidate =
+    Future<Map<String, dynamic>> Function({required String runId});
 typedef _Resume =
     Future<ResumeResponse> Function({
       required String runId,
@@ -262,9 +362,17 @@ typedef _Cancel =
     });
 
 final class _FakeGateway implements AgentRunGateway {
-  const _FakeGateway({this.descriptor, this.resume, this.cancel});
+  const _FakeGateway({
+    this.descriptor,
+    this.start,
+    this.candidate,
+    this.resume,
+    this.cancel,
+  });
 
   final _Descriptor? descriptor;
+  final _Start? start;
+  final _Candidate? candidate;
   final _Resume? resume;
   final _Cancel? cancel;
 
@@ -272,6 +380,19 @@ final class _FakeGateway implements AgentRunGateway {
   Future<ContractDescriptor> getContractDescriptor() =>
       descriptor?.call() ??
       Future<ContractDescriptor>.error(UnimplementedError());
+
+  @override
+  Future<RunStartResponse> startRun({
+    required String idempotencyKey,
+    required RunStartRequest request,
+  }) =>
+      start?.call(idempotencyKey: idempotencyKey, request: request) ??
+      Future<RunStartResponse>.error(UnimplementedError());
+
+  @override
+  Future<Map<String, dynamic>> getRunCandidate({required String runId}) =>
+      candidate?.call(runId: runId) ??
+      Future<Map<String, dynamic>>.error(UnimplementedError());
 
   @override
   Future<ResumeResponse> resumeRun({

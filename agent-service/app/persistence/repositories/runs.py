@@ -98,6 +98,8 @@ class RunCreateResult:
     run_id: uuid.UUID
     state: RunState
     replayed: bool
+    manifest_digest: str
+    version: int = 1
 
 
 class RunsRepository:
@@ -128,6 +130,41 @@ class RunsRepository:
         self._session.add(record)
         self._session.flush()
         return record
+
+    def get_or_create_thread(
+        self,
+        *,
+        tenant_id: str,
+        owner_principal_id: str,
+        thread_id: uuid.UUID,
+    ) -> ThreadRecord:
+        """Idempotently bind a client-generated Thread id to one tenant owner."""
+
+        self._require_transaction()
+        if not tenant_id or not owner_principal_id:
+            raise ValueError("tenant_id and owner_principal_id are required")
+        inserted = self._session.execute(
+            insert(ThreadRecord)
+            .values(
+                thread_id=thread_id,
+                tenant_id=tenant_id,
+                owner_principal_id=owner_principal_id,
+            )
+            .on_conflict_do_nothing(index_elements=[ThreadRecord.thread_id])
+            .returning(ThreadRecord)
+        ).scalar_one_or_none()
+        if inserted is not None:
+            return inserted
+        existing = self._session.execute(
+            select(ThreadRecord).where(
+                ThreadRecord.thread_id == thread_id,
+                ThreadRecord.tenant_id == tenant_id,
+                ThreadRecord.owner_principal_id == owner_principal_id,
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise RuntimeRecordNotFound()
+        return existing
 
     def create_or_replay_run(
         self,
@@ -186,16 +223,22 @@ class RunsRepository:
             ).scalar_one()
             if existing.request_hash != request_hash:
                 raise IdempotencyConflict()
-            state = self._session.execute(
-                select(RunRecord.state).where(
+            state, version, existing_manifest_digest = self._session.execute(
+                select(
+                    RunRecord.state,
+                    RunRecord.version,
+                    RunRecord.manifest_digest,
+                ).where(
                     RunRecord.run_id == existing.run_id,
                     RunRecord.tenant_id == tenant_id,
                 )
-            ).scalar_one()
+            ).one()
             return RunCreateResult(
                 run_id=existing.run_id,
                 state=RunState(state),
                 replayed=True,
+                manifest_digest=existing_manifest_digest,
+                version=version,
             )
 
         record = RunRecord(
@@ -219,6 +262,8 @@ class RunsRepository:
             run_id=record.run_id,
             state=RunState.QUEUED,
             replayed=False,
+            manifest_digest=manifest_digest,
+            version=1,
         )
 
     def transition_state(

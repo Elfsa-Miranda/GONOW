@@ -5,6 +5,12 @@ on:
     paths:
       - "agent-service/**"
       - "contracts/**"
+      - "docs/execution/commands/Invoke-GitHubMainProtection.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubMainProtection.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleaseLabels.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleaseLabels.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleasePullRequest.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleasePullRequest.Tests.ps1"
       - ".github/workflows/agent-ci.yml"
   push:
     branches:
@@ -13,6 +19,12 @@ on:
     paths:
       - "agent-service/**"
       - "contracts/**"
+      - "docs/execution/commands/Invoke-GitHubMainProtection.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubMainProtection.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleaseLabels.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleaseLabels.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleasePullRequest.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleasePullRequest.Tests.ps1"
       - ".github/workflows/agent-ci.yml"
   workflow_dispatch:
 
@@ -44,6 +56,36 @@ jobs:
         shell: pwsh
         run: uv python install 3.13.9
 
+      - name: Install locked Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.41.7"
+          channel: stable
+          cache: false
+
+      - name: Resolve locked Dart packages
+        shell: powershell
+        run: |
+          dart pub get --enforce-lockfile
+          if (@(git status --porcelain=v1 --untracked-files=no).Count -ne 0) {
+            throw 'Package resolution changed tracked files'
+          }
+
+      - name: Run branch-protection adapter contracts
+        shell: powershell
+        run: >-
+          .\docs\execution\commands\tests\Invoke-GitHubMainProtection.Tests.ps1
+
+      - name: Run release-label adapter contracts
+        shell: powershell
+        run: >-
+          .\docs\execution\commands\tests\Invoke-GitHubReleaseLabels.Tests.ps1
+
+      - name: Run release PR adapter contracts
+        shell: powershell
+        run: >-
+          .\docs\execution\commands\tests\Invoke-GitHubReleasePullRequest.Tests.ps1
+
       - name: Provision isolated PostgreSQL contract database
         shell: powershell
         run: >-
@@ -59,6 +101,7 @@ jobs:
           .\agent-service\scripts\ci.ps1
           -UvPath (Get-Command uv).Source
           -PythonVersion 3.13.9
+          -DartPath (Get-Command dart).Source
           -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
 
       - name: Stop isolated PostgreSQL contract database

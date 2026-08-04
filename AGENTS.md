@@ -1,7 +1,7 @@
 # GoNow 仓库级执行宪章
 
 > 文档：`AGENTS.md`  
-> 版本：`1.4.0`  
+> 版本：`2.0.0-personal`
 > 目标架构：`GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx`  
 > 目标架构 canonical locator：`D:\gonow\deliverables\GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx`（用户提供的本轮只读输入；路径本身不构成不可变身份）  
 > 目标架构 artifact SHA-256：`644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6`  
@@ -11,8 +11,8 @@
 > 本次核验 `BASE_SHA`（固定远程基线的不可变提交）：`142abfc339f003ede8d85d9534336923b5610252`  
 > 基线提交：`2026-07-18T23:33:34+08:00`，`Update README.md`  
 > 生成时间：`2026-07-31T01:11:04+08:00`  
-> 本次执行治理修订：`2026-07-31T16:02:42+08:00`  
-> 采纳状态：`active_for_local_provisional_execution`；允许立即进行可逆、非生产的本地 bootstrap、实现、测试和修复，正式合并、推送、生产写与 Release accepted 仍按 §0.4 完成适用 owner 采纳  
+> 本次执行治理修订：`2026-08-02T14:42:24+08:00`
+> 采纳状态：`active_personal_automated_governance`；仓库 owner 已在本轮明确授权 §0.4.3 的个人项目自动门禁、阶段 push/merge、owner-only canary 与机械 acceptance。所有授权仍受候选 OID、最小权限、成本上限、kill switch、零安全红线和可逆性约束
 > 默认时区：`Asia/Shanghai`
 
 ## 0. 文档目的、适用范围与术语
@@ -95,8 +95,9 @@ v1.6.1 是最终要实现的总架构，但不是当前实现证明。其目标�
 - `1.2.0` 候选修订记录：增加逐 TASK CAS 状态账本与稳定 `docs/execution/status/` 目录，限定 089 的 Harness Catalog CAS 聚合和派生看板写入，修正 baseline 归档路径；影响 `execplan.md` 的 status Schema、write-set、BOOT 物化和 089/990/999 门禁，不改变 v1.6.1 产品能力、Release 范围或生产数据用途。本记录不冒充批准；采纳时必须保存 Architecture+Product 及受影响 Security/Data owner 的决策引用。
 - `1.3.0` 候选修订记录：消除 BOOT 工具先后循环，增加 Gate/PhaseMerge mode 注册与 Catalog 结构校验，明确治理采纳 receipt 的可执行解锁输入与 BOOT-001/002 内容寻址断点续跑，并移除未供应的 `ConvertFrom-Yaml` 隐含依赖；这是兼容性执行门禁增强，不改变 v1.6.1 产品能力、Release 范围或生产数据用途。`1.3.0` 重新冻结后，任何旧版本采纳 receipt 均不得沿用。
 - `1.4.0` 候选修订记录：把治理采纳从“创建控制仓前的全局锁”调整为“正式合并、推送、生产写和 Release acceptance 前的治理门”，增加本地 provisional bootstrap、机械证据依赖、自诊断/自修复、替代路径和局部阻断规则。该修订不放宽 secret、跨租户、生产写、数据丢失、不可逆操作等 Hard Constraint；它只消除等待外部批准或工具时对全部安全本地工作的无差别停工。
+- `2.0.0-personal` 修订记录：在完整保留原 enterprise governance、五档生产观察和独立 owner 审批合同的同时，为本个人项目启用 §0.4.3 的自动治理 profile；以 C1–C5 高密度压缩认证加最终 owner-only production canary 替代 Release B 的 31 天日历等待，并允许门禁通过后自动 accepted、阶段 push/merge 和受限 Release 操作。该修订改变 Release acceptance、批准与灰度时间硬约束，属于 `MAJOR`；不放宽 secret/PII、跨租户、任意 SQL/Tool、未经 Domain Command 的正式写、数据丢失、不可逆删除、force-push 或安全红线。
 - 子目录未来可以有更严格的 `AGENTS.md`，但 MUST NOT 放宽本文件。根文件是唯一仓库级权威。
-- 批准本文件表示认可实施合同，不表示任何 Phase 已完成；完成状态只能由对应提交、机器证据、回滚演练和独立 owner 批准共同证明。
+- 批准本文件表示认可实施合同，不表示任何 Phase 已完成；完成状态只能由对应提交、机器证据、回滚演练和适用 profile 的 acceptance 共同证明：enterprise 使用独立 owner，current personal 使用 §0.4.3 自动 attestation。
 
 ### 0.4.1 持续推进、自修复与局部阻断
 
@@ -106,17 +107,47 @@ v1.6.1 是最终要实现的总架构，但不是当前实现证明。其目标�
 - 文档存在歧义、路径漂移或卡片细节与仓库事实不一致时，Agent MUST 按用户目标、v1.6.1 和最小变更原则选择可逆解释，记录 `assumption/impact/rollback`，同步修正文档或任务合同后继续。只有会改变产品语义、生产数据或不可逆边界的歧义才要求用户决定。
 - 工具、凭据、外部服务或 reviewer 暂不可用时，Agent MUST 继续所有不依赖该条件的本地代码、合同、fixture、静态检查、fake/隔离测试、文档和证据工作；可安全安装或供应本地工具时自行完成，可用兼容替代实现时采用并明确标记能力差异。不得把 mock/fake 冒充生产验证。
 - 一个 TASK 真正等待外部条件时，状态可为 `blocked`，但 coordinator MUST 立即选择下一个依赖已满足的安全任务；若严格 DAG 没有 ready task，则可创建不改变目标合同的 `repair/enabler` 子任务，先解决工具、脚本、fixture、路径或计划缺口。等待外部批准不得让 Agent 空转或反复请求同一信息。
-- `ready_for_review` 且机械门禁通过的候选，在 `local_provisional` 模式下可满足后续本地实现的依赖；它不等于 `accepted`。Agent MAY 创建本地 checkpoint 和不推送的 provisional integration，继续下一 Phase；任何远程推送、PR 合并、生产部署/写入、不可逆外部动作和 Release `accepted` 仍须正式 owner 批准。
+- `ready_for_review` 且机械门禁通过的候选，在 `local_provisional` 模式下可满足后续本地实现的依赖；它不等于 `accepted`。enterprise governance 下的远程 push、PR 合并、生产与 Release acceptance 仍须正式 owner 批准；本仓当前启用的 personal automated governance 则只按 §0.4.3 的候选绑定自动授权执行。
 - 依赖正式 BOOT-005 的本地 P00 入口可由 BOOT-003 native pass 暂代，缺失能力按任务补齐；依赖上一 Phase `999`/Release accepted 的下一 Phase 本地入口可由上一 Phase `990 ready_for_review + mechanical gates passed + provisional checkpoint OID` 暂代。该投影不改变正式集成依赖。
 - 只有所有剩余工作都依赖同一个无法由 Agent取得的外部授权/秘密，且没有安全的实现、测试、修复、模拟、文档或证据工作可继续时，才可暂停整次执行。暂停报告必须只列精确缺项、已完成的修复尝试、可立即执行的 owner 动作和恢复命令，不得笼统拒绝。
 
-正式治理采纳仍使用目标控制仓之外的只读 `governance-adoption-v1.json` 及预期 SHA-256。receipt 采用 `execplan.md §0.3.0` 的规范结构，绑定本文件、本计划、目标架构及 Architecture、Product、Security、Data 四个不同 `actor_id` 的真实决定；Agent 不得伪造批准。该 receipt 是以下动作的强制前置：向远程推送或创建/合并 PR、把 Phase/Release 标为 `accepted`、生产部署或生产数据写入、不可逆外部变更。它不是 clone、创建本地 control repo/worktree、本地实现、测试、修复或生成候选证据的前置。
+enterprise governance 的正式采纳仍使用目标控制仓之外的只读 `governance-adoption-v1.json` 及预期 SHA-256。receipt 采用 `execplan.md §0.3.0` 的规范结构，绑定本文件、本计划、目标架构及 Architecture、Product、Security、Data 四个不同 `actor_id` 的真实决定；Agent 不得伪造批准。本个人项目启用 §0.4.3 后不要求虚构这些互相独立的自然人；改由一次性 owner 授权、版本化 ADR、候选绑定的自动门禁 attestation 和完整机械证据承担同一审计职责。任何 profile 都不把 receipt 当作本地实现、测试、修复或候选证据的前置。
 
-未提供 receipt 时，BOOT-001 MUST 自动进入 `local_provisional`，校验并封存两份 guidance 与架构 docx 的实际 bytes/hash，创建控制仓和独立 worktree并继续；不得因缺少 `GovernanceReceiptPath` 或 `GovernanceReceiptSha256` 返回全局 `not_started`。receipt 后续可用时，BOOT-004 将其作为新增、不可覆盖的正式治理证据复核并把模式升级为 `formal_adopted`；升级不得改写此前 sealed bytes、base SHA 或机械测试历史。BOOT-004 未升级只会使正式合并/推送/生产/acceptance 保持 pending，不阻止本地工程推进。
+未提供 receipt 时，BOOT-001 MUST 自动进入 `local_provisional`，校验并封存两份 guidance 与架构 docx 的实际 bytes/hash，创建控制仓和独立 worktree并继续；不得因缺少 `GovernanceReceiptPath` 或 `GovernanceReceiptSha256` 返回全局 `not_started`。enterprise receipt 后续可用时，BOOT-004 将其作为新增、不可覆盖的正式治理证据复核并把 enterprise 模式升级为 `formal_adopted`；升级不得改写此前 sealed bytes、base SHA 或机械测试历史。BOOT-004 未升级只使 enterprise 的正式合并/推送/生产/acceptance 保持 pending；current personal profile 改由 §0.4.3 的 adoption/attestation 链解锁其明确动作，两种情形都不阻止安全本地工程推进。
 
 新控制仓的远程基线不假定已经包含本文件或 `execplan.md`。BOOT-001 必须把两份 guidance 和架构 docx 的已验证 bytes 原样、原子封存到 control repo `.git/gonow-bootstrap/inputs/`；`formal_adopted` 模式再追加 governance receipt，manifest 因而明确记录 `bootstrap_mode` 与 `sealed_input_count=3|4`。该目录不入 Git、禁止覆盖，只作为 BOOT 的 content-addressed 只读输入。BOOT-001/002 每一步必须可在进程中断后安全重入；冲突内容不得覆盖或删除，但 Agent 应先尝试复用完全一致状态、选择新的空任务路径或修复可验证的局部问题，只有用户文件、reparse point 或身份不明的外部对象无法安全避让时才暂停该动作。已形成 BOOT-001 receipt 后，所有重跑与 BOOT-002 使用其中固定 `base_sha`，不得因后续 `origin/main` 漂移改变基线。
 
 `TASK-BOOT-003` 是唯一 guidance materializer：它从 sealed manifest 读取两份 guidance bytes；目标不存在时以同目录临时文件、原子 rename 和写后 hash 逐字物化，目标已存在且 hash/size 完全相同时幂等 no-op，已存在但不同则保留文件、诊断来源并改用新的干净 worktree，不得覆盖用户内容。为防 Windows `core.autocrlf` 改变身份，BOOT-003 在根 `.gitattributes` 仅加入 `/AGENTS.md -text` 与 `/execplan.md -text`，并在 clean checkout 后再次证明 SHA-256 与 sealed manifest 相同。BOOT-005 的架构永久对象登记读取同一 sealed docx；该登记在本地 provisional 实施期间可 pending，但在正式 acceptance/发布前必须完成。
+
+### 0.4.2 根因优先与阶段推进补充
+
+本补充由用户明确指示，属于执行方式和阶段隔离的增强；不放宽任何 secret、跨租户、生产写、数据丢失、不可逆操作、独立审批或正式合并边界。
+
+- `1.5.0` 候选修订记录：增加根因优先闭环、无新信息时禁止重复小规模审查、第二次失败的 blocker 升级，以及每 Phase 新建干净 worktree/新分支和完成后的及时合并投影。它不改变产品能力、公共接口、运行时不变量或正式 owner 采纳要求；影响 `execplan.md` 的执行顺序、Phase 入口和 local/formal merge 语义，故两份 guidance 必须一同 reseal 后才可成为新的 bootstrap 输入。
+- `1.6.0` 候选修订记录：把 STAR 从阶段叙事升级为预先冻结口径的行为量化合同，增加可比 baseline/candidate、指标公式与分母、运行级 trace、失败分类、护栏和证据边界。每个 Phase 只需记录与本次改造直接相关且确有改善的指标，不要求凑齐所有维度；未测、不可比或无改善不得写成成果。该修订不改变产品能力、公共接口、运行时不变量或正式 owner 采纳要求，但影响 `execplan.md` 的 089/retrospective/phase-close 证据合同，故两份 guidance 必须一同 reseal 后才可成为新的 bootstrap 输入。
+- `1.7.0` 候选修订记录：仅细化 STAR 记录规范，把能力存在、行为改善和治理合规分开，增加“主要结果 + 诊断 + 护栏/红线”的精简计分结构、每成功任务成本及按实际模块启用的专项指标 profile。安全红线不得与普通指标平均抵消；RAG、Memory、Multi-Agent 或生产运行指标只在对应能力实际进入范围时适用。本修订不新增产品能力、基础设施、Phase/TASK、门禁阈值或发布权限；`execplan.md` 仅同步 STAR 收尾记录合同，两份 guidance 必须一同 reseal。
+
+- Agent MUST 以可验证根因为单位解决问题：先收集首个失败、最小复现、输入/环境/依赖和最近 diff，再一次性修复该根因影响的实现、合同、fixture、测试、文档和证据；不得把同一根因拆成无新诊断信息的连续小修、小审或重复审计。
+- 同一失败第二次出现、mandatory gate 无法立即修正、方案需要改变、外部依赖/授权阻塞或出现未知生产事实时，MUST 按 §12 建立 blocker；blocker 记录根因假设、已排除路径、影响面、完整修复方案、回滚和恢复条件。建档是为了推进，不是暂停其他 ready/repair 工作的理由。
+- 每次根因修复 MUST 先重跑最小受影响检查，再重跑受影响的回归集合；只有结果产生新的区分信号时才允许下一轮 repair。禁止通过反复重跑、拆分微小审查、忽略失败、降低阈值、skip/xfail 或只改报告来获得表面通过。
+- coordinator MUST 并行推进所有不依赖当前卡点的 ready 或 repair/enabler 工作；严格 DAG 暂无 ready TASK 时，MAY 创建最小、可逆且不改变目标合同的 enabler。只有 §0.4.1 列出的全局停止条件才允许停止整个工程。
+
+### 0.4.3 个人项目自动治理与授权 profile
+
+本仓当前 profile 固定为 `personal_automated`，决策记录为 `docs/architecture/adr/ADR-P10-001-personal-automated-release-governance.md`。仓库 owner 已在 `2026-08-02` 的本轮任务中明确授权：由自动门禁代替逐阶段人工签名，在全部适用 mandatory gate、压缩发布认证、回滚和证据完整性检查通过后，Agent MAY 自动把任务/Phase/Release 标为 `accepted`，push 当前 Phase 分支，把已认证树以保留历史的 merge 合入 `codex/gonow-agent-landing`，创建/更新 Release PR，并在 Release 门禁和托管平台 required checks 全绿后完成非强制合并。本授权不要求实施 Agent 冒充 Engineering/Security/Product 等多个自然人；自动 attestation 代表“预先授权条件已经机械满足”，不是伪造独立 reviewer。
+
+原 enterprise governance、§2.4 的独立 owner 记录以及 §9.2.1 的 `1% → 5% → 20% → 50% → 100%` 生产观察合同继续完整保留，可由未来 owner 通过新的 MAJOR 修订重新启用；在 `personal_automated` profile 下，它们不参与当前 Release B 的依赖解析、blocking、acceptance 或 push/merge 判定。任何报告都 MUST 清楚标记实际 profile，禁止把个人压缩认证写成“完成 31 天生产观察”或把 synthetic/staging 证据写成真实用户流量。
+
+自动 acceptance attestation 至少绑定：`profile`、完整 `candidate_head_oid`、Git object format、phase base/landing OID、AGENTS/execplan/架构 hash、锁文件与 Behavior digest、测试 manifest/dataset/seed/fault-plan/pricing hashes、逐门禁结构化结果、skip/xfail/flaky-rerun 计数、P0/P1 与安全红线计数、回滚结果、证据 manifest SHA-256、生成时间和 runner digest。以下条件必须同时成立：
+
+- 所有适用 mandatory gate、受影响回归、真实 PostgreSQL 边界测试和回滚演练通过；`skipped=0`、`xfailed=0`、`flaky_rerun_count=0`，不得以重复运行到绿替代修复。
+- `cross_tenant_leak_count=0`、`secret_or_pii_leak_count=0`、`unauthorized_write_count=0`、`duplicate_formal_side_effect_count=0`、`permanent_run_count=0`，无开放 P0/P1、数据丢失或不可回滚缺陷。
+- 候选 OID、依赖/配置/Behavior、测试输入和报告 hash 在认证后未改变；任何会影响产物或结论的变化立即使 attestation 失效并触发受影响认证重跑。
+- push/merge 只作用于计划中明确的 Phase/landing/Release refs；禁止 force-push、重写历史、直接把未认证工作树写入 `main`、删除远程分支证据或绕过 required checks。
+
+本 profile 对生产的自动授权仅限 `execplan.md` 明确列出的 owner-only canary：使用预配置的最小权限 canary identity、固定 feature flag、成本上限和同一个已认证构建；允许通过现有 typed API/Domain Command 创建、取消、拒绝或采用 owner 自有测试数据。它不授权任意 SQL、migration、跨租户查询、扩大到其他用户、删除未知数据、修改权限/secret、不可逆供应商操作或无上限消费。缺少 credential、生产 endpoint、canary identity、budget cap、kill switch 或审计接线时，只阻断 canary；不得伪造输入，也不得阻止其他本地认证工作。
+
+任何不可逆删除、force 操作、权限扩大、secret 轮换、付费上限外消费、全量生产分配或计划未列明的外部动作仍须新的明确用户授权。P0、secret/PII 暴露、跨租户访问、未授权正式写、数据丢失或 kill switch 失效时，自动授权立即撤销，allocation 必须归零并按 §5/§12 处置。
 
 ### 0.5 架构追踪
 
@@ -258,13 +289,14 @@ if ($CredentialLike.Count -ne 0) { throw 'Untracked credential-like filename fou
 
 ### 2.3 每阶段一分支
 
+- 每个 Phase MUST 在新的、干净且专属的 worktree 中开始，并从上一 Phase 的 formal accepted commit 或 local provisional checkpoint OID 创建新的 `codex/phase-XX-short-name` 分支；不得在上一 Phase worktree、分支或用户脏目录继续堆叠实现。worktree 路径、分支、base OID、创建前 clean status 和阶段入口 regression MUST 写入 phase runtime manifest。
 - `formal_adopted` 模式下，每个 Phase MUST 从“上一阶段已验收并合入 `codex/gonow-agent-landing` 的提交”创建新 `codex/phase-XX-short-name` 分支并记录 `phase_base_sha`。`local_provisional` 模式下，上一阶段机械门禁通过且状态为 `ready_for_review` 后，MAY 先建立不推送的 provisional integration/checkpoint，再从其 OID 创建下一 Phase；必须记录 `provisional_base_oid`，不得把它称为 accepted 或推送到远程。
 - 开始前 `git status --porcelain=v1` MUST 为空；阶段内只改任务卡 allowlist 中的文件。机会主义重构写成后续建议，不得搭车。
-- 新 Phase 分支的第一个 TASK MUST 在未做本阶段功能修改前，重跑所有已验收或 provisional-complete Phase 的可重放 mandatory regression suite；至少包括上一 Phase 的机械测试/gate suite、此前稳定 CT/安全边界和旧产品关键旅程。任一失败先执行 §0.4.1 的诊断与 bounded repair；受影响功能未修复前不得继续扩大，但不依赖该失败路径的代码、测试、fixture、文档和修复任务可以继续。30 天灰度、人工批准等不可即时重跑的观察证据在本地模式记录为 pending，不阻止实现，正式合并/发布前必须补齐。
-- 若完整历史 gate 因运行时长不适合作为每次提交检查，MAY 由 owner 批准一个版本化的 `phase-entry-regression` 聚合集；该聚合集仍 MUST 覆盖每个已验收 Phase 的至少一个关键旅程、全部已落地 Hard Constraint/CT 以及所有曾发生过的 P0/P1 回归。缩短集合不得改变各 Phase 自己的完整退出门禁。
+- 新 Phase 分支的第一个 TASK MUST 在未做本阶段功能修改前，重跑所有已验收或 provisional-complete Phase 的可重放 mandatory regression suite；至少包括上一 Phase 的机械测试/gate suite、此前稳定 CT/安全边界和旧产品关键旅程。任一失败先执行 §0.4.1 的诊断与 bounded repair；受影响功能未修复前不得继续扩大，但不依赖该失败路径的代码、测试、fixture、文档和修复任务可以继续。enterprise profile 的长期灰度/人工批准不可即时重跑时记录 pending；当前 personal profile 则必须重跑 §9.2.2 中可重放的受影响压缩认证，不得沿用旧候选结果。
+- 若完整历史 gate 因运行时长不适合作为每次提交检查，MAY 由适用 profile 接受一个版本化的 `phase-entry-regression` 聚合集；该聚合集仍 MUST 覆盖每个已验收 Phase 的至少一个关键旅程、全部已落地 Hard Constraint/CT 以及所有曾发生过的 P0/P1 回归。缩短集合不得改变各 Phase 自己的完整退出门禁。
 - 不得在上一阶段分支继续堆提交。提交信息 MUST 含 Phase 与 TASK ID，且每个提交可重放、可回滚。
-- 实施期间若 `origin/main` 前进，MUST 记录新旧 SHA 与差异；MUST NOT 静默 rebase。另建同步任务评估兼容性、重跑受影响门禁，经 owner 批准后才 merge/rebase。
-- 阶段 Agent 只能把状态标为 `in_progress`、`ready_for_review` 或 `blocked`；`accepted`/`rejected` 只由授权独立 reviewer 决定。
+- 实施期间若 `origin/main` 前进，MUST 记录新旧 SHA 与差异；MUST NOT 静默 rebase。另建同步任务评估兼容性、重跑受影响门禁，经适用 profile acceptance 后才 merge/rebase。
+- enterprise profile 中阶段 Agent 只能把状态标为 `in_progress`、`ready_for_review` 或 `blocked`；`accepted`/`rejected` 由授权独立 reviewer 决定。当前 personal profile 允许受版本控制的 runner 在 §0.4.3 全部条件成立时写入自动 `accepted` attestation，实施代码本身不得直接改状态或绕过 runner。
 
 ### 2.4 合并门禁
 
@@ -274,12 +306,14 @@ if ($CredentialLike.Count -ne 0) { throw 'Untracked credential-like filename fou
 - 未关闭的 P0/P1 安全、数据丢失、跨租户或不可回滚问题为零 `[硬约束]`。
 - `git diff --name-only $phase_base_sha...HEAD` 与任务 allowlist 一致，`git diff --check` 成功，无意外文件。
 - 结构化测试、安全、迁移、回滚演练和 `acceptance.md` 齐全，报告绑定 base/head Git OID、object format 和 artifact hash。
-- 工程 owner 与安全 owner 独立签署；涉及产品语义或数据用途时还需产品/数据 owner。Agent MUST NOT 自我批准。
+- enterprise profile 由工程/安全及适用产品/数据 owner 独立签署；current personal profile 由 §0.4.3 的候选绑定自动 attestation 代替，Agent 不能手写或伪造 attestation。
 - `execplan.md` 定义的逐任务 CAS 状态账本与证据同步；计划正文只保存获批计划和初始快照，不作为执行期共享状态文件。实时状态固定写入 `docs/execution/status/TASK-ID.json`，任何普通 TASK 都不得通过改写 `execplan.md` 报进度。
 
-验收后才 MAY 以 PR 或 `--no-ff` 合入长期集成分支。阶段 Agent 不得自行合并或推送。集成分支进入 `main` 只能走单独 Release PR；阶段中禁止直接改写 `main`。
+当阶段已完整解决其根因、所有 mandatory gate/回归/回滚证据通过、allowlist 清洁且无开放 P0/P1 时，MUST 立即形成可复现 checkpoint 和 `ready_for_review` 证据。enterprise profile 仍按独立 owner 批准合入；current personal profile 在自动 attestation 通过后 MUST 及时 push Phase 分支并以 PR 或 `--no-ff` 合入/push `codex/gonow-agent-landing`。集成分支进入 `main` 仍只能走单独 Release PR，但 personal profile 可在 Release gate 与 required checks 全绿后自动完成该 PR；阶段中禁止直接改写 `main`。
 
-#### Owner 批准操作规范
+#### Enterprise owner 批准操作规范
+
+本小节只适用于 `enterprise_governed` profile；current `personal_automated` profile 使用 §0.4.3 和下述自动 attestation。
 
 机器可读的单人批准角色固定为 `Engineering|Architecture|Security|Data|Product|Privacy|SRE|Eval|Domain|Compliance`。`Backend/API/Mobile/Search/Reliability/ReleaseEng` 等实施专长在批准记录中映射到上述责任角色，不能临时发明一个角色绕过 required owner。Engineering 与 Security 的独立批准必须由不同自然人完成；一人兼任多个角色时只计一个独立席位。
 
@@ -309,10 +343,14 @@ owner 直接提交批准记录时，`approval_record_oid` 必然晚于被批准�
 
 批准不可代理。口头同意、会议结论、即时通讯中的“可以”、仅写 `LGTM/approved`、由实施 Agent 代填，或没有绑定完整 OID 的签名均无效。即时通讯内容只有在 owner 亲自在 `acceptance.md` 确认其准确性后才可作为辅助证据。批准后若代码、迁移、依赖锁、gate 输入、报告计数或 artifact hash 改变，原批准自动失效；仅修正不影响证据的拼写也须由 reviewer 说明为何无需重签。超过 `valid_until`、条件未关闭或责任 owner 变化时 MUST 重新独立审核。
 
+#### Personal 自动 acceptance attestation
+
+personal profile 的 runner 只有在 §0.4.3 全部 predicate 成立时才可创建 `docs/execution/evidence/phase-XX/automated-acceptance-attestation.json` 并以 expected status SHA 做 CAS。该文件只记录机器事实、用户预授权 profile 和证据 hash；实现 Agent不能自行填写 `passed=true`。若 runner、Catalog、阈值、dataset、seed、fault plan、candidate tree 或证据发生变化，旧 attestation 自动失效。Phase/Release 的 `accepted` 状态必须引用 attestation SHA-256 和 candidate OID；缺任一绑定即为 blocked。
+
 #### 获批树与合并等价性
 
 - 合并前 `codex/gonow-agent-landing` 的当前 OID MUST 精确等于本 Phase 记录的 `phase_base_oid`；若 landing 漂移，停止合并，建立同步 TASK，重新跑受影响 gate/批准，不能在 merge 时临时解冲突。
-- `approval_tip_oid` 是最后一份有效 owner 批准记录所在的 source tip；若全部批准来自 PR review 且没有 approval commit，则等于 `candidate_head_oid`。Gate runner 必须证明 `candidate_head_oid..approval_tip_oid` 只含批准块/索引。
+- enterprise profile 的 `approval_tip_oid` 是最后一份有效 owner 批准记录所在的 source tip；若全部批准来自 PR review 且没有 approval commit，则等于 `candidate_head_oid`。personal profile 的 `approval_tip_oid=candidate_head_oid`，自动 attestation 作为后续 evidence-only commit 保存；两种模式都必须证明候选到 approval tip 没有运行时或合同漂移。
 - Phase 合并只允许产生保留历史的双亲 merge commit，不允许 squash/rebase merge。合并后机械断言：parent 1=`phase_base_oid`；parent 2=`approval_tip_oid`；`merge_oid^{tree}`=`approval_tip_oid^{tree}`。任一不等表示目标漂移、冲突解决或额外文件进入，merge 不是获批候选，必须停止、可审计 revert，并重新跑完整门禁与批准。
 - 校验结果保存为 `docs/execution/evidence/integration/<merge-oid>/merge-tree-verification.json`，包含 object format、三个 OID、各 tree OID、parent 数量、命令/退出码和 SHA-256；五分钟 smoke 只能在此校验通过后启动。
 
@@ -320,7 +358,7 @@ owner 直接提交批准记录时，`approval_record_oid` 必然晚于被批准�
 
 - 每个 Phase 的批准合并提交形成后，获授权的合并操作者 MUST 在 `5` 分钟内启动版本化 `integration-smoke`，其 wall-clock 上限也为 `5` 分钟。它验证“此前能启动和完成的最小关键路径仍能完成”，不是完整 mandatory suite 的替代品。
 - 套件 MUST 至少验证：集成分支 clean 且 merge OID 正确；已存在的进程可启动/优雅停止；健康与 readiness 语义；非法身份仍以稳定安全错误拒绝；每个已验收 Phase 至少一个关键旅程；旧 Flutter 普通聊天/导入/Auth/fallback 的最小兼容检查；所有曾发生的 P0/P1 canary。某能力尚未实现时只能记录 `not_applicable + 合同依据`。
-- 结果保存到 `docs/execution/evidence/integration/<merge-oid>/`，包含开始/结束时间、命令、退出码、结构化报告、工具版本和 artifact hash。超时、未运行或任一 mandatory smoke 失败都视为集成失败：立即停止后续 Phase/Release 分配，建立 blocker，并由 owner 选择 feature flag/route 回切或可审计的 revert commit；MUST NOT 用 reset、force-push 或删除证据处理。
+- 结果保存到 `docs/execution/evidence/integration/<merge-oid>/`，包含开始/结束时间、命令、退出码、结构化报告、工具版本和 artifact hash。超时、未运行或任一 mandatory smoke 失败都视为集成失败：立即停止后续 Phase/Release 分配并建立 blocker；enterprise 由 owner 选择回切，current personal 按预注册 rollback policy 自动执行 feature flag/route 回切或在回滚预检通过后形成可审计 revert commit。MUST NOT 用 reset、force-push 或删除证据处理。
 - 烟雾失败后的修复合并也必须重新跑同一套件。smoke 通过后，获授权操作者 MAY 提交只含 smoke、merge addendum 和预收尾索引的 `smoke_attestation_oid`；Gate runner 必须证明从 `merge_oid` 起没有可执行合同/代码变化。
 - 收尾链固定为 `merge_oid → smoke_attestation_oid → phase_close_oid`。`phase_close_oid` 在 §15 retrospective、适用 STAR、最终 versioned manifest 与 phase-close record 完成后形成，只允许这些治理路径；下一 Phase 只能从 `phase_close_oid` 分支。任一证据提交含代码、配置、lock、migration、`contracts/` 或运行时默认值变化，就成为新候选，原 smoke/批准失效并须完整重跑。
 
@@ -808,7 +846,7 @@ Release B 不实现 Memory，故 `CT-009/015` 必须标为 `contract_only:not_in
 - `commands.json` 至少包含 `schema_version/task_id/phase/executed_at/executor/git_object_format/head_oid`，以及逐步的 `step/description/command/exit_code/stdout_tail/stderr_tail/duration_seconds`。stdout/stderr 只保存脱敏末尾和 hash，默认上限 `200` 字符；含 secret/PII 的输出必须完全省略并记录 redaction reason。
 - `gate-results.json` 至少包含 `schema_version/task_id/gate_run_at/git_object_format/head_oid/phase_base_oid/tool_versions/results/overall_status`；每个 result 含稳定 `check_id`、`passed|failed|blocked|not_applicable`、detail、evidence path/hash。overall 只能由生成器按最坏结果计算，人工不得覆写。
 - `artifact-hashes.json` 至少包含 `schema_version/task_id/git_object_format/head_oid/artifacts[]`；每项含仓库相对路径或受控对象永久引用、`sha256`、`size_bytes`、MIME/type、`generated_by_step`、生成时间、敏感级别和保留期。路径、hash 或大小不一致即失败。
-- `task-status-v1.schema.json` MUST 固定 plan/catalog 版本与 hash、唯一 task/phase、合法状态边、CAS previous hash/sequence、完整 OID、owner/actor/独立 reviewer、evidence hash/path、blocker 和永久决策引用；`harness-status-fragment-v1.schema.json` MUST 固定 control/action、exact test path、S/I/D node、collection/JUnit hash、计数与绑定 head。二者同样 `additionalProperties: false`，并以正反 fixture 拒绝陈旧 CAS、非法转移、伪 node、skip/xfail 和缺独立批准。
+- `task-status-v1.schema.json` MUST 固定 plan/catalog 版本与 hash、唯一 task/phase、合法状态边、CAS previous hash/sequence、完整 OID、owner/actor、profile-specific acceptance、evidence hash/path、blocker 和永久决策引用；`harness-status-fragment-v1.schema.json` MUST 固定 control/action、exact test path、S/I/D node、collection/JUnit hash、计数与绑定 head。二者同样 `additionalProperties: false`，并以正反 fixture 拒绝陈旧 CAS、非法转移、伪 node、skip/xfail，以及 enterprise 缺独立批准或 personal 缺自动 attestation。
 - `task-gate-catalog-v2.schema.json` MUST 固定 Catalog 顶层键、153 个唯一 TASK、23 个 TaskGate mode、11 个 PhaseMerge mode、handler/capability/stage、任务 allowlist/work contract/approval/status/evidence 字段，并拒绝未知 mode、缺 handler、重复 status path、未解析 capability、环境变量 executable 与额外字段。
 - 六个 schema 均 MUST `additionalProperties: false`、版本化并有正反 schema tests；时间使用带时区 ISO 8601；`git_object_format` 与完整 Git OID 按 §16.4 记录；artifact SHA-256 使用 64 位小写十六进制。命令中的 secret 必须使用引用，不得把值序列化进证据。
 - CI MUST 消费 JUnit、JSON、SARIF 或 YAML 等结构化结果，不得用 `grep` 猜成功。Flutter adapter 尚不存在时必须在对应 Phase 创建并测试，不能手写结论 JSON。
@@ -838,7 +876,7 @@ Release B 不实现 Memory，故 `CT-009/015` 必须标为 `contract_only:not_in
 
 ### 7.6 回滚演练最低协议
 
-每个 Phase 在 `ready_for_review`、owner 批准前 MUST 在与生产拓扑和配置语义一致但不含生产 secret/用户数据的隔离环境实际演练。文档推演、只把 flag 值写回、删除新数据或口头说明都不算演练。
+每个 Phase 在 `ready_for_review`、适用 profile acceptance 前 MUST 在与生产拓扑和配置语义一致但不含生产 secret/用户数据的隔离环境实际演练。文档推演、只把 flag 值写回、删除新数据或口头说明都不算演练。
 
 1. **静止状态回滚**：没有进行中 Run 时，按 runbook 回切 feature flag、route、image、Behavior pointer、schema 兼容路径或 alias，验证旧关键旅程端到端与全部适用旧 mandatory gate `100%` 通过。
 2. **进行中工作回滚**：能力涉及 Run 时，至少启动 `N≥3` 个分别位于不同安全边界的 Run 后回切；已开始 Run 继续固定原 manifest，新 Run 走回退路径，最终全部收敛到 `succeeded|cancelled|failed|blocked` 中合同允许的终态，不能出现 `stuck/unknown` 或重复副作用。不涉及 Run 时必须写明不适用合同，并用至少三个可并发的在途操作演练等价边界。
@@ -894,7 +932,7 @@ Release B 不实现 Memory，故 `CT-009/015` 必须标为 `contract_only:not_in
 - 失败必须能定位到 Run、Behavior digest、model/tool version、route reason、first-bad-step 与 evidence 状态，不保存隐藏思维链。
 - 外部观察平台不可用时业务按设计降级；本地缓冲有界。LangSmith 只 MAY 用于脱敏协作与评测，不能成为运行事实源。
 - 没有生产流量时，成功率、p95、Token、人民币成本、采用率和人工节省均写 `unknown`。所有成本/质量/流量阈值除明确安全硬门外均标 `[初始假设，需上线校准]`。
-- Behavior 灰度顺序为 `1% → 5% → 20% → 50% → 100%` `[硬约束：发布序列]`；每档都要满足预先批准的样本量、观察窗、关键 slice、安全、错误预算与成本。任何 P0、越权/泄漏、结构成功率下降、核心质量下降 `>1pp` `[硬约束：回滚线]`，或 p95 成本上升 `>15%` 且没有经 owner 批准的质量收益 `[硬约束：回滚线]`，都立即停止新 Run 并回退 pointer；已经开始的 Run 不换版本。
+- enterprise profile 的 Behavior 灰度顺序为 `1% → 5% → 20% → 50% → 100%`；current personal profile 改按 §9.2.2 的 C1→C5→owner canary 顺序。两种 profile 都保留同一回滚线：任何 P0、越权/泄漏、结构成功率下降、核心质量下降 `>1pp`，或 p95 成本上升 `>15%` 且没有预注册的质量收益，立即停止新 Run 并回退 pointer；已经开始的 Run 不换版本。
 - kill switch、provider outage、Worker kill、Runtime PG 恢复、跨租户事件、secret rotation、RAG rollback 和 Memory deletion 必须各有 runbook；相关能力未启用时写 `not_applicable` 及原因。
 - 回滚切 flag、route、image、deployment pointer 或 index alias，不删除新数据；已开始 Run 保持原 manifest，旧 Behavior/Worker 保留到活跃 Run 排空或迁移。
 
@@ -975,7 +1013,9 @@ Schema validator MUST 显式启用 `date-time/uuid` format checking；仅加载 
 
 这里的 `compatibility-gateway` 是 §3 所述 Phase 0 兼容路径标识，`release-tooling` 是非运行时 CI/发布证据标识；二者不新增 Agent 常驻进程。Release B 的 Agent 物理边界仍只有 `agent-api` 与 `agent-worker` 两个进程 `[硬约束]`。
 
-### 9.2 Release B 灰度分段决策
+### 9.2 Release B 发布认证 profile
+
+#### 9.2.1 Enterprise 五档灰度分段决策（保留、当前不启用）
 
 每一档的阈值、样本量和观察窗必须在该档开始前写入 rollout manifest 并由对应 owner 批准，MUST NOT 在看到结果后回头定义。下表的质量/性能数字是 `[初始假设，需上线校准]`；§5 的泄漏/越权为零和 §9 的回滚线仍是 `[硬约束]`。
 
@@ -993,11 +1033,31 @@ Schema validator MUST 显式启用 `date-time/uuid` format checking；仅加载 
 
 rollout manifest 在每档开始前还 MUST 冻结统计合同：baseline/candidate 时间窗；纳入/排除条件；成功、失败、取消、重试在分子分母和成本中的处理；p95/质量 estimator；置信水平与 `alpha`；非劣/最小实际效应阈值；多 slice 校正；缺失值、异常值和低样本规则；价格快照。`p95 成本无统计显著上升` 只有在同一预注册方法下候选相对基线的置信区间满足批准的非劣阈值时才为真；字段缺失或样本不足只能延长/blocked，不能由人眼看曲线通过。
 
+#### 9.2.2 Personal 高密度压缩发布认证（当前启用）
+
+personal profile 把 31 天等待转化为状态空间、样本、故障、统计和真实依赖工程量。它提供“风险覆盖替代证据”，不提供“已经经历 31 天真实用户/基础设施漂移”的时间事实。C1–C5 使用互不重叠的 corpus/seed/fault-plan shard；独立 shard MAY 并行计算，但 acceptance 必须按 `C1 → C2 → C3 → C4 → C5 → owner_canary` 顺序聚合。预期总 wall-clock 为 `6–12h`、有界上限 `18h`，其中真实资源 soak 最低 `4h`；超时或资源不足为失败/blocked，不能跳过。
+
+| 门禁 | 风险面与最低工程量 | 机械通过条件 | 预计 wall-clock | 失败动作 |
+|---|---|---|---:|---|
+| `C1 correctness` | 当前完整 Python/unit/contract/Flutter 回归；E0 `≥200`；`≥50,000` 条生成式 Run/state/cancel/replay/idempotency/resume/SSE 序列 | mandatory `100%`；hard invariant `100%`；合成任务成功率单侧 `95%` 下界 `≥90%`；skip/xfail/flaky rerun 全为 `0` | `0.5–1h` | 建根因 BLK；修复后先复现 seed，再跑受影响族 |
+| `C2 security/performance/cost` | 锁定 PostgreSQL 的 tenant×principal×resource×action 矩阵；`≥100,000` 生成式 auth/RLS/Tool/SSRF/PII 请求；`≥10,000` 本地完整 Run；每个真实模型 route `≥200` 次调用和 usage receipt | 跨租户/越权/secret/PII/禁止 Tool=`0`；关键安全模块 mutation kill=`100%`、其他受影响模块 `≥90%`；API p95 的 `95%` 上界 `≤800ms`；每成功且采用任务成本上界 `≤预算×1.2`，p95 成本增幅上界 `≤15%` | `1–2h` | allocation 保持 `0`；成本或 live receipt 未知则仅本门 blocked |
+| `C3 quality slices` | E1 `≥1,000`；城市、语言、币种、预算、天数、无障碍、时间边界、Tool 故障、弱网、攻击和兼容切片；每个关键 slice `≥200` | baseline/candidate paired comparison；每个 slice 退化单侧 `95%` 上界 `≤1pp`，Holm 多重校正；硬约束/Schema/时间预算冲突 `100%`；变形关系全通过 | `1–3h` | 保存失败 slice/样本；禁止事后改分母/阈值 |
+| `C4 recovery/time/soak` | 所有已声明副作用 kill point × success/timeout/reject × `≥20` 独立调度；虚拟时钟推进 `≥90` 日并跨月/年/闰日/DST/NTP 前后跳；`≥100,000` fake-provider 生命周期；真实 wall-clock soak `≥4h`；Judge 固定标注 `≥400` 且主要 slice `≥50` | 旧 Worker 晚写全被 fence；重复正式副作用/重复计费/永久 Run=`0`；TTL/lease/deadline/retention/价格快照符合合同；预热后 RSS/handle/thread/连接/backlog 无持续正斜率且最终回基线容差；Judge 与机械分差 `≤5pp`，否则 Judge 仅 advisory | `4h`，可并行 | kill switch ready；资源斜率或任一未知终态失败即修复 |
+| `C5 rollback/operations` | `≥20` 类数据库/provider/Tool/Worker/SSE/outbox/lease/clock/预算/安全故障；静止和在途两类回滚；旧路径、trace、alert、runbook 演练 | 每个故障可由 trace/run/digest 定位；alert/runbook 首动作正确；kill switch `≤30s`；新 Run=`0`；旧路径 `100%`；数据丢失/重复写=`0`；回滚后 `5min` 高密度观察全绿 | `1–2h` | 自动 allocation=`0`；保留证据和 durable data |
+
+所有统计阈值必须在 `certification-manifest.json` 中预注册并绑定 candidate OID：纳入/排除、成功/失败/取消/重试分母、estimator、单侧置信水平、最小实际效应、多 slice 校正、缺失/异常处理、价格快照、平台矩阵和环境 digest。随机关键族在零失败时使用保守 `95%` 上界近似 `3/n`；要声称失败率低于 `0.1%`，该族至少 `3,000` 个独立样本且零失败。baseline/candidate 不可比或真实依赖缺失时写 blocked/unknown，禁止降低阈值。
+
+平台覆盖按实际 Release target 决定：Android MUST 在 minSdk、接近 targetSdk、targetSdk 三档模拟器执行 App background/process-kill/cold-start、网络切换、SSE、active-run、preview/reject/adopt/CAS 和 flag-off 等价；如果 iOS 是本次发布目标，则 macOS/iOS runner 同样 mandatory，Windows 本地结果不得替代。生产模型/地图/天气凭据只能经 Secret Provider 注入，命令和证据不得回显。
+
+C1–C5 全绿后才可执行最终 `owner_canary`：同一 candidate OID/Behavior/构建不得改变，feature allocation 从 `0` 只开放给预注册的 owner canary identity，执行 `10–20` 个成功、取消、断线恢复、拒绝、采用和 CAS 冲突旅程，连续 `30–60min`。canary 必须证明真实生产配置、权限、PostgreSQL、供应商、usage receipt、trace/alert、kill switch 和旧路径接线；它不承担质量/容量统计，也不得扩展到其他用户。任一安全红线、重复副作用、永久 Run、旧路径失败、成本 receipt 缺失或 candidate 漂移立即自动 allocation=`0` 并使 Release acceptance 失败。
+
+最终 `personal-release-certification.json` 至少聚合 `certification-manifest.json`、`regression-report.json`、`state-space-report.json`、`security-matrix.json`、`fault-injection-report.json`、`quality-slice-report.json`、`performance-cost-report.json`、`virtual-time-report.json`、`soak-report.json`、`rollback-operations-report.json`、`owner-canary-report.json` 和 `residual-risk.json` 的 SHA-256。必须记录 `production_observation_required=false`、`automated_gate_acceptance=true`、`evidence_type=personal_compressed_release_certification`、`residual_risk=not_validated_against_31_day_real_user_and_infrastructure_drift`；只有 §0.4.3 与本节全部 predicate 成立时才可自动标记 Release B accepted。
+
 ## 10. Phase 0–12 合同索引
 
 本章解决“每个阶段最低做什么、不能顺手做什么、用什么证据退出以及怎样回滚”的问题。
 
-Phase 是长期地图，不是自动连续施工清单。每个阶段只有在进入条件满足、独立验收完成且 owner 批准后才可启动下一阶段；详细 TASK、文件 allowlist、依赖和精确命令由 `execplan.md` 定义。
+Phase 是长期地图，不是无门禁连续施工清单。每个阶段只有在进入条件、mandatory gate、证据与适用 profile 的 acceptance 成立后才可启动下一阶段；enterprise profile 使用独立 owner，current personal profile 使用 §0.4.3 自动 attestation。详细 TASK、文件 allowlist、依赖和精确命令由 `execplan.md` 定义。
 
 | Phase | 做什么 | 明确不做 | 验收后可直接观察到的状态 | 验收判断基准来源 | 最低 mandatory gate | 回滚 |
 |---|---|---|---|---|---|---|
@@ -1011,11 +1071,11 @@ Phase 是长期地图，不是自动连续施工清单。每个阶段只有在�
 | **7 确定性验证与局部修复** | canonical validator；hard/warning/unverified；最多两轮 repair `[硬约束]`；no-progress；必要时独立进程 solver | 不让模型擦硬冲突，不把 failed-to-check 说成 verified | 相同输入得到相同问题分类；无法验证会显示 unverified 而非“通过”；repair 第三轮永不发生；solver 卡死时父进程杀掉而服务仍活 | Phase 1 批准的约束/fixture catalog、validator/repair deterministic vectors、CT-014（solver 启用时）和进程存活/终态 assertions | 批准的约束矩阵；始终可导入不破坏；repair 上限生效；solver 超时可硬 kill；每种失败有稳定降级 | 关 repair，保留验证；必要时旁路 solver |
 | **8 单 Agent 稳定与有界分支实验** | 默认单图；最多两个只读 Research Branch `[硬约束]`，只允许 offline/replay/Shadow A/B 且不向 active 用户输出，共享全局预算 | Release B 内不得生产启用 Multi-Agent，不允许分支借预算或产生正式写 | active 用户仍只看到 Phase 7 单图；flag-off 的事件/Candidate 与 Phase 7 等价；实验只产生脱敏证据且两分支总预算不超 | Phase 7 固定 replay hash、预注册 A/B manifest、CT-011、同一 E1 slice/成本/延迟 comparator；质量 `>3pp` 或 p95 时延 `>20%` 且成本合格仅是后续 Phase 12/Release C ADR 触发 `[初始假设]`；未提升的可信负结果同样可验收 | flag-off 与 Phase 7 等价；Research Branch 零 active 输出/正式写；共享预算不超；合并确定性；正负实验结果均按预注册方法完整归档 | flag 回单图并删除实验流量分配，不删除证据 |
 | **9 Flutter 最小接线** | OpenAPI→Dart；Run/SSE/resume/cancel；active-run persistence；Candidate preview/adopt；Domain Command/CAS/outbox；双路径 flag | 不删旧路径；不把基础采用链推迟到 Phase 12；无读性能证据不强建 CQRS | 用户可看到进行中状态、断网后恢复并预览 Candidate；只有明确采用才以 expected version 写正式数据；flag-off/旧 App 仍工作 | 同一 OpenAPI→Dart codegen digest、旧/新 App compatibility matrix、Flutter 三路径 E2E、Command receipt/CAS/outbox DB assertions | 普通聊天、导入、Auth、fallback 不变；断网恢复可见；旧 App 兼容；adopt 重新鉴权并 CAS；Flutter E2E 与后台恢复 | 切旧路径；兼容 adapter 按 §3 删除门禁保留 |
-| **10 可观测与 Release B 生产门禁** | OTel、SLO/alert、eval、Judge 校准、kill switch、§9.2 Shadow/Canary、成本与 runbook | 未校准 Judge 不阻断；不把小样本说成生产 | 值班人员可由 trace/run/digest 定位失败并按 runbook 关闭新路径；各灰度档有不可变决定；100% 稳定窗结束前不会宣称 Release B | §9 schema/canary、E1 holdout、价格快照、rollout manifest、每档样本/观察窗、§7.6 回滚与 kill-switch timing；基准必须在 1% 前批准 | 高危为零 `[硬约束]`；kill/replay/cancel/idempotency；关键 slice 不退化；成本在预算；完整顺序执行 §9.2 当前非重叠最低 `31` 天 `[硬约束]`；低流量延长；owner 双签 | kill switch/flag 立即回旧路径；旧 Behavior 可运行 |
+| **10 可观测与 Release B 生产门禁** | OTel、SLO/alert、eval、Judge 校准、kill switch、§9.2 profile、成本与 runbook | 未校准 Judge 不阻断；不把 synthetic/staging 写成生产观察；不删除 enterprise 合同 | 值班人员可由 trace/run/digest 定位失败并按 runbook 关闭新路径；current personal profile 的 C1–C5 与最终 owner canary 均有不可变证据 | §9 schema/canary、E1 holdout、价格快照、认证 manifest、互斥 corpus/seed/fault plan、真实 PG/live provider、§7.6 回滚、soak 与 kill-switch timing | 高危为零 `[硬约束]`；kill/replay/cancel/idempotency；关键 slice 非劣；成本在预算；完整顺序执行 §9.2.2 C1–C5；`≥4h` soak；`30–60min` owner-only canary；自动 attestation | kill switch/allocation=`0`，立即回旧路径；旧 Behavior 可运行；保留失败证据 |
 | **11 独立 RAG 工作包** | source/ACL/version/delete/outbox；pgvector + PostgreSQL FTS；确定融合、citation、Knowledge Release Package；实时信息仍走 Tool | 不同时启 Memory/Multi-Agent；不摄取无权内容；hard filter 不移到 Python | 仅当选择 RAG 时，Candidate 的稳定知识 claim 带可打开 citation；无 ACL 权限和删除后的内容检索不到；实时事实仍来自 Tool | Release B 失败 ledger 中“缺稳定知识”比例、预注册 RAG dataset/ACL corpus、manifest/alias hash、Recall/citation/p95 阈值与数据权属批准 | 启动前 `>20%` 触发 `[初始假设]` 与 ADR；Recall/citation、`ACL leakage=0` `[硬约束]`、删除、陈旧、p95、alias 回滚达批准值 | 独立 RAG flag 关闭；alias 回旧 manifest；旧 Behavior 不依赖新索引 |
 | **12 一次只扩一个经证明能力** | 只选显式结构化 Memory、成本路由强化、Domain Command 分点迁移或生产 Multi-Agent 中一个工作包 | 不并行上线多个新能力；不为“完整”引入 OpenSearch、Milvus、Temporal、Kubernetes 或动态 MCP 市场 | Release C 只有一个新能力获得流量；关闭其独立 flag 后系统与 Release B 等价；其他候选保持 dormant/零分配 | Release C 外层选择记录、所选 ADR、预注册专项 dataset、Release B 等价 replay、专项安全/隐私/成本/删除 gate | 独立 ADR、专项数据集、安全/隐私/删除、负载、成本、A/B、回滚全过；所有示例触发均 `[初始假设，需上线校准]` | 所选能力的独立 flag、manifest、route 或 index alias 回切 |
 
-所有 Phase 共同门禁：范围 allowlist、入口跨阶段回归、兼容、安全、真实数据库可靠性、目标 eval、脱敏观测、依赖供应链、成本、回滚、文档/知识转移、接受报告和 owner 批准。当前 Release 不涉及的门禁只能标 `not_applicable + reason`；涉及但工具未就绪则 `blocked`，不能标通过。
+所有 Phase 共同门禁：范围 allowlist、入口跨阶段回归、兼容、安全、真实数据库可靠性、目标 eval、脱敏观测、依赖供应链、成本、回滚、文档/知识转移、接受报告和 profile-specific acceptance。当前 Release 不涉及的门禁只能标 `not_applicable + reason`；涉及但工具未就绪则 `blocked`，不能标通过。
 
 每个 Phase 合并前还 MUST：
 
@@ -1034,7 +1094,7 @@ Phase 11 与 Phase 12 都以 Release B accepted 和各自量化触发为前提�
 | Release | 进入门禁 | 退出门禁 | 明确不做 | 回滚 | 证据 owner |
 |---|---|---|---|---|---|
 | **A 安全基线** | Phase 0 已授权；生产事实只读访问与 secret owner 到位 | 旧 key 失效；live/current/build/CI/network secret=0；历史 revoked occurrence 与批准 registry 精确相等且新增=0；服务端最小网关、schema/RLS 清单、旧体验与测试 baseline 获独立确认 | Agent 切流、RAG、Memory、Multi-Agent、队列 | 新网关整套关闭；保持安全旧路径，不恢复泄露 key | Engineering + Security + Data |
-| **B 可运营单 Agent** | Release A accepted；Phase 1 语义与 Phase 2–9 依次验收；§7.2 定义的 E0/E1 数据集和 Shadow/Canary 计划齐全 | Phase 10：跨租户/越权或禁止 Tool/未批准正式写/secret live/new-history 泄漏为零 `[硬约束]`；真实 PG kill/replay/cancel/幂等；关键 slice 不退化；每成功且采用任务成本在预算；完整顺序执行 §9.2 当前非重叠最低 `31` 天 `[硬约束]`；双签 | 多日行程外 Agent、RAG、隐式 Memory、生产 Multi-Agent、多供应商平台、Redis、自动正式写、重型平台 | flag 回旧规划；保留 Run/Candidate/新数据；旧 Behavior/客户端可用 | Engineering + Security；产品/数据按语义加入 |
+| **B 可运营单 Agent** | Release A accepted；Phase 1 语义与 Phase 2–9 依次验收；§7.2 数据集与 §9.2 profile manifest 齐全 | current personal profile：跨租户/越权、禁止 Tool、未授权正式写、secret/PII、重复副作用、永久 Run 为零；真实 PG kill/replay/cancel/幂等；C1–C5、成本、`≥4h` soak、`30–60min` owner-only canary 与自动 attestation 全过。enterprise profile 仍保留 §9.2.1 原五档合同 | 多日行程外 Agent、RAG、隐式 Memory、生产 Multi-Agent、多供应商平台、Redis、自动正式写、重型平台 | allocation=`0`/flag 回旧规划；保留 Run/Candidate/新数据；旧 Behavior/客户端可用 | personal 自动 gate；enterprise 为 Engineering + Security 及适用 owner |
 | **C 单一证据能力** | Release B 稳定且真实失败数据满足 Phase 11 或 12 的一个触发；专项 ADR/数据/删除/成本批准 | 仅所选工作包的安全、质量、性能、成本、运营和回滚门禁通过 | 不并行 RAG+Memory+Multi-Agent+智能路由，不自动上新平台 | 独立 flag/manifest/alias/route 回切，旧 Behavior 保持运行 | 对应 Engineering/Security/Product/Data owner |
 
 Release A/B/C 都必须有进入、退出和回滚证据，不能因“下一 Phase 已开工”反推前一发布 accepted。Release C 每次只允许一个能力工作包 `[硬约束]`。
@@ -1205,18 +1265,18 @@ P0/P1、疑似不可逆写或正在扩大的泄漏可以从任一层直接跳到
 - Harness 状态矩阵、CT ID 结果、blocker 清单与状态。
 - 回滚演练步骤、触发条件、耗时和结果；不删除新数据。
 - README、OpenAPI/Dart/Event/State 合同、API 说明、runbook、每 Phase 必有的威胁模型 review receipt/hash（无变化写 `model_changed=false`）与 `knowledge-transfer.md` reviewer 结论；文档必须描述实际 head，而不是计划中的能力。
-- 工程 owner、安全 owner 以及必要的产品/数据/隐私 owner 批准记录、时间与有效期。
+- profile-specific acceptance：enterprise 保存工程/安全及必要产品/数据/隐私 owner 批准、时间与有效期；current personal 保存各证据域结果、自动 attestation、runner digest 和 candidate/hash 绑定。
 - 合并目标、PR 和最终 merge commit；未合并时明确写 `pending`。
 
-报告 MUST NOT 包含真实 secret、敏感正文、大日志、完整 Prompt/响应或 reasoning。实施 Agent 只能提交证据，不能替 owner 写批准结论。
+报告 MUST NOT 包含真实 secret、敏感正文、大日志、完整 Prompt/响应或 reasoning。实施 Agent 只能提交证据；不能替 enterprise owner 写批准结论，也不能手改 personal 自动 attestation。
 
-独立 reviewer 只要看到以下任一项，MUST 强制 `rejected` 或保持 `ready_for_review/blocked`，不得协商：
+enterprise 独立 reviewer 或 current personal 自动接受 runner 只要看到以下任一项，MUST 强制 `rejected` 或保持 `ready_for_review/blocked`，不得协商：
 
 1. 任一 mandatory gate 退出码非零、未运行、超时、skip/xfail 或输入版本与批准基准不同。
 2. diff 含 TASK allowlist 外文件、生成物不能追到生成源、worktree 不 clean 或 `git diff --check` 失败。
 3. P0/P1 未关闭，P2 尚未在验收前关闭，跨租户/secret/PII/未批准正式写计数非零。
 4. §7.6 回滚演练没有实际执行、场景不全、依赖删除新数据、在途 Run 未收敛或观察窗出现新错误。
-5. owner 批准缺字段、SHA 不匹配、条件未关闭、超过 `valid_until`、由实施者代签或批准后证据已变化。
+5. profile-specific acceptance 缺字段、SHA 不匹配、条件未关闭或证据已变化；enterprise 还包括超过 `valid_until`/实施者代签，personal 还包括 runner digest/clean-environment/redline 缺失或 attestation 被手改。
 6. 任一 BLK 缺 `resolved|accepted_risk|superseded` 等最终状态、缺 owner/关闭证据，或 acceptance 遗漏本阶段 BLK。
 7. Phase 入口回归、依赖审计、Harness 到期用例、文档、runbook 或 knowledge transfer 任一适用项缺失。
 8. 报告计数由人工填写且无法从原始结构化结果重算，或只保留截图/绿色摘要而丢失首个失败。
@@ -1242,7 +1302,7 @@ P0/P1、疑似不可逆写或正在扩大的泄漏可以从任一层直接跳到
 - 任何引入/升级依赖的 TASK 都要把 §4 依赖审计作为显式子步骤和 DoD，并将 SBOM、许可证、CVE、维护/provenance 与 dependency diff 加入 artifact hash。
 - 每个 Phase 在验收 TASK 前设置独立 `TASK-PXX-089` 文档/知识转移 TASK（即 `TASK-P00-089` 至 `TASK-P12-089`），只允许更新受影响 README、`contracts/`、`docs/api/`、`docs/architecture/`、`docs/runbooks/` 与本 Phase 文档；另有两个严格受控例外：089 MAY 以旧 hash CAS 原子聚合 `docs/execution/schemas/harness-test-catalog.yaml`，且只能按已接受任务证据升级状态、不得降低或改规范字段；089 MAY 从逐任务 CAS 状态生成 `docs/execution/status/task-board.json` 与 `.md`，但派生看板不得成为第二事实源。由非实施者 reviewer 确认内容与实际代码/配置一致。ID 如已被旧计划占用，先经 ADR 迁移旧含义，不能静默换号。
 - 每个 Phase 明示“困难记录义务”：第二次失败、计划改变、外部依赖或 owner 等待在 24 小时内按 §12 建档；验收 TASK 汇总所有 BLK 和最终状态。
-- 每个 `PXX-990` 验收 TASK 直接列出 §13 的八项强制拒绝条件、owner 批准字段、knowledge transfer 和 §7.6 回滚证据；不能只写“记录验收结果”。
+- 每个 `PXX-990` 验收 TASK 直接列出 §13 的八项强制拒绝条件、profile-specific acceptance 字段、knowledge transfer 和 §7.6 回滚证据；不能只写“记录验收结果”。
 - 每个 `PXX-999` 合并 TASK 在获授权合并后立即运行 §2.4 的五分钟 integration smoke，回填 merge addendum，并按 §15 完成阶段清理/归档；实施 Agent 仍不得自行合并。
 - 每个 Phase 指定独立分支、进入门禁、接受门禁、owner 和合并动作。
 - 对当前 unavailable/unknown 的 Python、Supabase CLI、容器和数据库隔离环境，先建立工具供应任务；不得编造命令或跳过 mandatory gate。
@@ -1307,16 +1367,104 @@ docs/
 
 每个 Phase accepted 且产生 `merge_oid` 后 `48` 个连续小时内，MUST 完成 `retrospective.md` 并形成 `phase_close_oid`；下一 Phase 的入口回归不得在它缺失时通过。内容至少包括计划/实际人天与差值、本 Phase BLK 数量和最终状态、最耗时 blocker（存在时）及原因、flaky/返工/等待时间、估算或 gate 对下一 Phase 的具体调整、未关闭 P3 及 owner/期限、文档/KT 反馈。没有 blocker 时写精确计数 `0`，不得编造“最耗时问题”。
 
-凡声称“优化、提速、降本、质量提升、事故减少、恢复更快”或以该结果支持路由/Release 决策，MUST 创建独立 STAR 记录：
+STAR 的目的不是统计写了多少代码、接入多少框架或跑了多少命令，而是证明“原来哪里不行 → 本次承担什么可验收指标 → 哪些关键设计改变了行为 → 在可比条件下具体改善多少”。凡声称“优化、提速、降本、质量提升、事故减少、恢复更快”或以该结果支持路由/Release 决策，MUST 创建独立 STAR 记录。代码行数、模块数、框架名和测试条数只能作为实施规模或证据覆盖，不能单独作为系统行为改善。
 
-- **S — Situation（改前场景）**：哪个用户/系统问题、baseline SHA、环境、样本与时间窗。
-- **T — Task（要改变什么）**：预先批准的目标、约束和不能牺牲的指标。
-- **A — Action（实际动作）**：TASK/commit/ADR、关键改动与为什么这样做。
-- **R — Result（改后结果）**：同一方法、负载、dataset/evaluator 与价格快照上的 before/after 数值、分母、绝对差/相对差、置信范围、命令、结构化报告 hash 和 owner 结论。
+#### 15.3.1 指标选择与基线冻结
 
-结果数据不足时写 `unknown` 并停止“已经提升”的表述；相关观察可以作为 `[初始假设]`，不能伪造 STAR 的 R。每个 STAR 使用稳定 ID 存入本 Phase `improvements/`，由 retrospective 和 acceptance/Release 决策链接；不得把多个不相干优化塞进一个文件。
+在选择指标前，记录者 MUST 先区分 claim 类型，不能把三类证据混成同一个“提升百分比”：
 
-`TASK-PXX-089` 还 MUST 生成 `docs/execution/evidence/phase-XX/star-records.md` 机器可解析索引，每行包含 stable ID、独立 STAR 相对路径、SHA-256、对应 TASK/claim 和 `recorded|not_applicable`。没有可复验优化时必须有一条 `not_applicable + reason`，不能伪造 Result；该索引只负责发现性和完整性，MUST NOT 代替 `improvements/STAR-<stable-id>.md` 的独立 S/T/A/R 证据。
+| claim 类型 | 正确证明方式 | 是否进入 STAR 改善表 |
+|---|---|---|
+| `capability_presence`：能力是否存在，例如 Registry、状态机、migration、ADR、Threat Model | 文件/Schema、能力测试、gate 与 hash；在 change-summary/KT 说明 | 仅“已具备”本身不进入；若进一步证明可追溯率、回滚耗时或复现率改善，才建立 STAR |
+| `behavior_improvement`：系统效果、可靠性、成本或工程效率是否改善 | 同口径 baseline/candidate、分子分母、重复与结构化报告 | MUST 进入 STAR |
+| `governance_conformance`：是否满足批准、安全或审计要求 | pass/fail gate、owner receipt、红线计数与不可变证据 | 不折算成综合提升分；作为 STAR 护栏或独立治理证据 |
+
+每个 STAR 只选择与该改动存在直接因果关系、在实施前已定义且有可比证据的指标；不要求每个 Phase 同时改善所有维度。默认采用一个 `primary_result`（最终价值）、一个 `diagnostic`（解释机制）和一个 `guardrail`（防止以代价换指标）的结构，通常在 STAR 摘要保留 `2–4` 个数字；适用的安全 `redline` 不受这个数量限制且不得省略。偏离 `1+1+1` 时在 `metric_scope` 写理由。
+
+没有改善、与任务无关或当前不可测的维度无需进入成果表，但 MUST 在 `metric_scope` 中以 `not_applicable | not_measured | guardrail_only` 和一句理由如实登记，不得挑选有利结果后把其他已预注册指标静默删除。完整测量留在结构化评测报告，STAR 只提炼最能解释价值的少数指标，并链接完整报告。
+
+指标分四层选择；实际记录只取适用子集：
+
+| 层 | 角色 | 可选指标 |
+|---|---|---|
+| 最终任务结果 | 优先作为 `primary_result` | 端到端成功率、必要子任务覆盖率、显式约束遵守率、人工接管率、每成功任务成本、P95 完成延迟 |
+| Agent/模块行为 | 优先作为 `diagnostic` | 意图/约束提取、规划覆盖/回溯/重复、Tool 选择/参数/错误传播、输出 Schema/事实、适用的 RAG/Memory/Multi-Agent 专项指标 |
+| 系统可靠性与安全 | `primary_result`、`guardrail` 或不可抵消 `redline` | 恢复率/RTO、状态丢失、重复副作用、非法状态转换、取消后写入、越权/跨租户、审批绕过、secret/PII 泄漏、降级成功率 |
+| 工程成熟度 | 只有行为可测时作为结果，否则属于 capability evidence | 可重放率、历史版本复现率、回滚/定位/接入/回归耗时、回归缺陷率、同范围覆盖率、交接旅程成功率 |
+
+任何 Hard Constraint 红线一旦失败，STAR 的整体结论 MUST 为 `failed` 或 `blocked`，不得与成功率、成本或其他高分求平均后抵消。至少包括适用的：跨租户访问成功次数 `0`、未经审批的高风险正式写次数 `0`、重复正式副作用次数 `0`、secret 进入 Prompt/日志次数 `0`、已取消 Run 继续正式写入次数 `0`。安全改进同时 SHOULD 报告正常请求误拒绝率，避免以“拒绝一切”伪装安全提升。
+
+任何准备比较的指标 MUST 在候选实现测量前冻结以下内容，并由对应 TASK evidence/manifest 绑定 hash：baseline Git OID 与 candidate base、任务/场景清单及 dataset SHA-256、样本纳入/排除规则、指标名称/公式/单位/改善方向、成功和失败判定、模型/Prompt/Behavior/Tool/数据库版本、temperature/最大步骤/预算等适用参数、随机种子或重复次数、runner/硬件和时间窗，以及不可牺牲的安全、质量、成本或兼容护栏。对延迟、成本或随机模型结果的比较还 MUST 预先规定 estimator、重复次数、缺失值/异常值处理和适用置信范围；确定性穷举测试可写 `deterministic` 并免统计置信区间，但仍须给出精确分子、分母和范围。
+
+常用公式按下列口径执行；任务可以增加更具体的公式，但不得在看到候选结果后改口径：
+
+- `任务成功率 = 完全满足预先验收条件的任务数 / 总任务数`；“产生了回答”不等于成功。
+- `子任务覆盖率 = 正确完成的必要子任务数 / 必要子任务总数`。
+- `约束遵守率 = 满足的显式约束数 / 显式约束总数`。
+- `计划有效率 = 最终实际使用的规划步骤数 / 规划步骤总数`。
+- `重复步骤率 = 重复执行步骤数 / 总执行步骤数`。
+- `错误传播率 = 未被拦截且进入后续推理的错误 Tool 结果数 / 错误 Tool 结果总数`。
+- `无效调用率 = 未对验收结果产生有效贡献的模型或 Tool 调用数 / 总调用数`；“有效贡献”的判定规则必须预注册。
+- `每成功任务成本 = 对照集中全部任务的模型费用、Tool 费用和明确纳入的基础设施边际费用之和 / 成功完成任务数`；同时报告成功数/总数和价格快照。成功数为 `0` 时结果为 `undefined_fail_closed`，不得用单次调用成本替代。
+- `每成功任务 Token = 对照集中全部任务的输入与输出 Token 总和 / 成功完成任务数`；失败重试消耗必须计入，不能只统计最后一次成功运行。
+
+下表是专项 metric profile，不是新增能力清单；只有对应能力已经进入当前 Phase 范围时才适用：
+
+| 改进类型 | 建议主要结果 | 建议诊断 | 必须关注的护栏/红线 |
+|---|---|---|---|
+| 动态规划 | 端到端成功率 | 子任务遗漏率或回溯率 | 每成功任务 Token/成本不超预注册阈值 |
+| Tool 结果校验 | 错误传播率 | 异常识别率 | 正常结果误拦截率 |
+| Checkpoint/恢复 | 崩溃恢复成功率 | RTO/恢复步骤数 | 重复正式副作用次数 `0` |
+| 幂等/outbox | 重复副作用率或事件丢失率 | 重复请求一致响应率/同步延迟 | 正常正式写成功率不退化 |
+| 权限/HITL/安全 | 越权或未审批正式动作成功次数 `0` | 策略命中/攻击拦截率 | 正常请求误拒绝率、跨租户泄漏 `0` |
+| RAG（仅已启用时） | 有证据答案正确率 | Recall@K/nDCG/Citation Accuracy/Faithfulness 中与根因直接相关者 | 无权限/过期内容召回率、P95 检索延迟 |
+| Memory（仅已启用时） | 相对无 Memory 的任务成功净增益 | 正确召回/冲突识别率 | 错误记忆注入率、过期使用率、删除传播失败数 |
+| Multi-Agent（仅已启用时） | 相对同口径单 Agent 的复杂任务成功净增益 | 路由准确率/重复工作率/结论冲突率 | 每成功任务成本、延迟、跨 Agent 信息泄漏 |
+| 可观测性/运维 | 故障可定位率或 MTTR | trace/状态快照覆盖率、MTTD | 敏感字段泄漏 `0`、业务路径不因 exporter 故障失败 |
+
+Multi-Agent 的“净增益”不能只报告质量差值；MUST 同时给出单 Agent 对照的每成功任务成本、P95 延迟和失败分布。若质量变化小于预注册最小实际效应而成本/延迟明显增加，只能写 `no_demonstrated_net_benefit`，不得把“已使用多个 Agent”写成成果。
+
+百分率由 `X%` 变为 `Y%` 时，绝对变化写 `Y-X` 个百分点（`pp`），相对变化另按 `(Y-X)/X` 计算并明确标为 relative；不得把二者混写。计数、时间、Token 和成本必须带单位。baseline 为 `0` 时不得计算无穷或伪造相对改善，只报告绝对变化。
+
+#### 15.3.2 标准 STAR 内容
+
+每个 `improvements/STAR-<stable-id>.md` MUST 使用以下结构，允许增加小节但不得省略或合并 S/T/A/R：
+
+1. **S — Situation（基线问题）**：用最小篇幅写清用户/系统问题、任务规模与工程约束；列出 baseline OID、环境、样本/时间窗和改前数值。没有真实 baseline 时写 `baseline_unavailable + reason`，该记录只能作为观察或后续测量计划，不能声称提升。
+2. **T — Task（验收责任）**：写明确负责范围、claim 类型、预注册的 `primary_result + diagnostic + guardrail/redline`、目标方向和不能突破的护栏；禁止只写“负责开发/重构 Agent”。目标阈值属于 Initial Hypothesis 时必须标注，不得冒充已批准 SLO。
+3. **A — Action（关键决策）**：只保留对结果贡献最大的 `2–4` 个动作，逐项写“针对哪个根因 → 设计什么机制 → 为什么采用该机制”，并链接 TASK、commit、ADR/blocker 和回滚。不得用 LangGraph、RAG、Redis、MCP 等名词清单替代因果解释。
+4. **R — Result（同口径对照）**：先给一句结论，再给量化表、护栏结果、失败切片和证据边界。baseline/candidate MUST 使用相同任务集、模型和参数、Tool/数据库版本、判定规则和统计方法；不能相同时必须列出 confounder，并停止把差异归因于本改动。
+
+R 的最小表格列固定为：
+
+| metric_role | metric_id | 指标层 | 公式/单位 | 改善方向 | Baseline（分子/分母） | Candidate（分子/分母） | 绝对变化 | 相对变化 | 样本/重复/置信 | verdict/evidence |
+|---|---|---|---|---|---|---|---|---|---|---|
+
+成果表至少有 `1` 个真实改善指标；默认围绕一个主要结果、一个解释该结果的诊断指标和一个非退化护栏呈现，通常保留 `2–4` 个核心数字，无需为“全方位提升”凑数。适用 redline 和 T 中声明的每个护栏都 MUST 报告 candidate 数值和 `passed|failed|unknown`，即使它没有改善；redline/护栏失败时不得宣称整体成功。工程报告可以测量更多指标，但 STAR 摘要不得把它们无选择地全部复制，也不得隐藏不利的预注册结果。R 还 MUST 给出复现命令、执行 head OID、结构化原始报告路径/SHA-256、运行时间、owner 结论，以及“本结果不证明什么”（例如本地 synthetic 不等于生产流量、VM 不等于真实移动设备）。
+
+#### 15.3.3 运行级采集与失败分类
+
+为避免事后凭印象补数，纳入 STAR 对照的每次任务运行至少保存以下脱敏字段；不适用字段写 `not_applicable`，采集失败写 `unknown + reason`，不得省略后按零处理：
+
+```text
+task_id, run_id, baseline_or_candidate, git_oid, agent_version,
+behavior_digest, prompt_version, model, model_parameters, dataset_version,
+toolset_version, database_version, random_seed, start_time, end_time,
+input_tokens, output_tokens, model_call_count, tool_call_count,
+failed_tool_calls, retry_count, planned_steps, completed_steps,
+duplicate_steps, explicit_constraint_count, constraint_violations,
+human_intervention, final_success, failure_category, evaluator_version
+```
+
+这些字段遵守 §5/§7/§9 的最小化与脱敏边界，不得保存 secret、Prompt/response 正文、模型 reasoning 或不必要 PII。失败不能只分“成功/失败”；适用时至少从 `requirement_misread | planning_omission | ordering_error | tool_selection_error | tool_argument_error | bad_tool_result_unchecked | context_loss | goal_drift | duplicate_execution | output_schema_error | budget_exceeded | external_dependency_failure | security_or_policy_rejection | unknown` 中选择一个稳定类别。分类规则和 evaluator 版本必须冻结；修改分类法产生新版本，不能覆盖历史数据。
+
+#### 15.3.4 证据诚实、索引与过渡
+
+结果数据不足时写 `unknown` 并停止“已经提升”的表述；相关观察可以作为 `[Initial Hypothesis]`，不能伪造 STAR 的 R。只看到改后结果、仅使用不同数据集/参数、单次非确定性运行、没有分母、只报告最好一次、把 skip/失败移出分母、测试条数增加或代码量增加，都不足以证明行为改善。每个 STAR 使用稳定 ID 存入本 Phase `improvements/`，由 retrospective 和 acceptance/Release 决策链接；不得把多个无共同因果链的优化塞进一个文件。
+
+`TASK-PXX-089` 还 MUST 生成 `docs/execution/evidence/phase-XX/star-records.md` 机器可解析索引，每行沿用 stable ID、独立 STAR 相对路径、SHA-256、对应 TASK/claim 和 `recorded|not_applicable`，不得为本次修订擅自增加破坏现有 runner/schema 的状态值。`recorded` 行的独立 STAR 内必须列出改善 metric_id 与 guardrail metric_id；没有可复验优化时必须有一条 `not_applicable + reason`。baseline 已冻结但候选尚无足够样本时使用 `not_applicable + reason=measurement_pending:<exact_missing_evidence>`，不能虚构 Result。该索引只负责发现性和完整性，MUST NOT 代替独立 S/T/A/R 证据。
+
+`1.7.0` 生效前形成的 STAR 不得为了满足新模板而凭空回填数字。若保留的原始报告能够按同一口径重算，MAY 新建带新 stable ID 或 `supersedes` 引用的 revision，并保留旧文件/hash；否则旧记录标记为 `legacy_format`，所有不满足本节的改善声称降级为历史观察。`1.7.0` 生效后的当前及后续 Phase 必须使用本节格式。
 
 ### 15.4 阶段清理与证据封存
 
@@ -1351,7 +1499,7 @@ docs/
 
 ### 16.2 生命周期与批准
 
-ADR 文件名为 `docs/architecture/adr/ADR-NNNN-short-slug.md`，编号不可复用，状态只取 `proposed|accepted|rejected|superseded|deprecated`。`proposed` 期间 MAY 做不触碰生产/公共合同的隔离实验，但不得合并实施。`accepted` 必须绑定批准时的 AGENTS version、v1.6.1、完整 head OID、证据 hash 和 owner；Security/Data/Product/Privacy/SRE 按影响加入，Agent 不能自批。
+ADR 文件名为 `docs/architecture/adr/ADR-NNNN-short-slug.md`，编号不可复用，状态只取 `proposed|accepted|rejected|superseded|deprecated`。`proposed` 期间 MAY 做不触碰生产/公共合同的隔离实验，但不得合并实施。enterprise profile 的 `accepted` 必须绑定批准时的 AGENTS version、v1.6.1、完整 head OID、证据 hash 和适用 owner。current personal profile 中，本轮用户明确授权的 `2.0.0-personal` 治理 ADR可记录为 `accepted_by_owner_directive`；此后计划内、可逆且 mandatory gate 全过的 ADR MAY 由自动 attestation 接受，涉及新产品语义、权限扩大、不可逆数据/外部动作或本合同未列范围时仍须新的明确用户决定。Agent 不得伪造用户决定或测试通过。
 
 若决策改变 Hard Constraint，ADR 本身不构成放宽授权：必须先由用户/有权治理者明确批准并修订本文件的相应 MAJOR/MINOR 版本，再实施。ADR 被新决策替代时，旧文件保持不可变并通过 `superseded_by` 链接新 ADR；不得静默改写“当时为什么这样决定”。
 

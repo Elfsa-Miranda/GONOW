@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P11-001",
+  "mode": "Preflight",
+  "reason_code": "p11_atomic_formal_predecessor_required",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-03T22:46:58.0144692+08:00",
+  "final_state": "resolved",
+  "root_cause": "The P11 Preflight handler and remote-ref query retained formal/network assumptions after the outer local-provisional guard was repaired.",
+  "impact": "Only local P11 task entry was blocked; no business, database, remote, or production mutation occurred.",
+  "repair": "Accept the exact committed local projection for implementation tasks, retain formal-only P11-990/P11-999, and use cached remote-tracking refs for local XOR checks.",
+  "affected_regression": {
+    "taskgate_contract_exit_code": 0,
+    "p11_001_preflight_exit_code": 0,
+    "dependency_failures": 0,
+    "unexpected_phase12_ref_count": 0
+  },
+  "rollback": "Revert the REPAIR-P11-ENTRY-001 commits to restore the original formal-only implementation gate.",
+  "resolved_at": "2026-08-03T23:02:11.9491656+08:00"
+}

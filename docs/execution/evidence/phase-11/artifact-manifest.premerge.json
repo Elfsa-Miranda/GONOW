@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P11-089",
+  "phase": "Phase 11",
+  "candidate_head_oid": "2e1e699655d94d3c1a2747a47773638c7c10efd9",
+  "accepted_implementation_task_count": 0,
+  "projected_implementation_task_count": 10,
+  "implementation_terminal": true,
+  "production_write_count": 0,
+  "formal_acceptance_status": "pending_external",
+  "document_review": {
+    "status": "local_verified",
+    "actor_id": "codex-local-implementation-document-self-review",
+    "reviewer_is_implementer": true,
+    "independent_review_status": "pending_external"
+  },
+  "artifacts": [
+    {"path": "README.md", "sha256": "dd09d3514d54a786de09bb8cb14fd96459fc0c3ba09155a9815cc51d68a5d3a9", "size_bytes": 22561},
+    {"path": "docs/architecture/rag.md", "sha256": "bfbca16086b44d60f4ab3eaa522e06e7e8266b70aeeaa0c6694544ee1a1ae78d", "size_bytes": 3107},
+    {"path": "docs/runbooks/rag-rollback.md", "sha256": "7e3a41d9c6dcab860c0dfa6e5505f557861fc03d44c8fc94239cb69efe90ae81", "size_bytes": 1712},
+    {"path": "docs/runbooks/knowledge-deletion.md", "sha256": "6c7617546ecc2570e262b55467ea993dad25a188375bc0a8582d994ec28a4974", "size_bytes": 1395},
+    {"path": "docs/api/rag-citations.md", "sha256": "126d5bf736b9cff807c86cb0918e566cd0003c63da8bd390dfd2e3c0217fb017", "size_bytes": 1576},
+    {"path": "contracts/openapi/agent-api.yaml", "sha256": "01d924db5226a3302e789b6d248fa0c86eed2174ba9191b131153d9953c858d0", "size_bytes": 18065},
+    {"path": "contracts/knowledge/knowledge.schema.json", "sha256": "38f9392f2c11081128a323cf74988ba3b124a6e933cd9ac64d1be4ca69ce0881", "size_bytes": 2754},
+    {"path": "docs/architecture/threat-model/phase-11-review.json", "sha256": "5054e84eb3d5a1a8f949bf609b2faa788970a3eba55f67e4c87bf700b4859353", "size_bytes": 1501},
+    {"path": "docs/execution/evidence/phase-11/change-summary.md", "sha256": "f931f5ce875169bf2cac2856d9b36d28c078e7e635a87690f1ae04d61be47344", "size_bytes": 1511},
+    {"path": "docs/execution/evidence/phase-11/knowledge-transfer.md", "sha256": "e660db168b8111abda4feef76ab13bec9c838d1bd4b3ad894aca34874b90b0f7", "size_bytes": 2412},
+    {"path": "docs/execution/evidence/phase-11/star-records.md", "sha256": "7e87d196b4b9f89b189c8a83354b0779746dbc0842fa51fcb8a1e8d1a102f593", "size_bytes": 1405},
+    {"path": "docs/execution/evidence/phase-11/improvements/STAR-pgvector-toolchain.md", "sha256": "4c6b9d759fa069b783e7368c1a5fc6355a5bd05942fead6c722b28eeb0c955ed", "size_bytes": 1522}
+  ]
+}

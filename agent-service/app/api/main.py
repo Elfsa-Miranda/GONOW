@@ -8,33 +8,177 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.api.errors import SafeApiError, build_error_envelope, error_response_payload
+from app.api.health import DependencySnapshot, HealthService, create_health_router
+from app.api.routes.cancel import create_cancel_router
+from app.api.routes.candidates import create_candidates_router
+from app.api.routes.contracts import SchemaRegistry, create_contract_router
+from app.api.routes.events import create_events_router
+from app.api.routes.resume import create_resume_router
+from app.api.routes.runs import create_runs_router
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+SPECIFICATION_PATH = REPOSITORY_ROOT / "contracts" / "openapi" / "agent-api.yaml"
+
+
+class RuntimeDependencyUnavailable(RuntimeError):
+    code = "service.unavailable"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
+async def _unavailable_context(_: Request):
+    raise HTTPException(status_code=503, detail=RuntimeDependencyUnavailable.code)
+
+
+class _UnavailableService:
+    def __getattr__(self, _: str) -> Any:
+        def reject(*_args: Any, **_kwargs: Any) -> Any:
+            raise RuntimeDependencyUnavailable()
+
+        return reject
+
+
+async def _no_op_lifecycle() -> None:
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class ApiDependencies:
+    """All stateful adapters are explicit; the API process owns no hidden singleton."""
+
+    health: HealthService
+    contracts: SchemaRegistry
+    run_start: Any
+    candidate_read: Any
+    events: Any
+    resume_capabilities: Any
+    cancellation: Any
+    context_resolver: Any
+    resume_handler: Any
+    audit_receipt_resolver: Any
+    startup: Callable[[], Awaitable[None]] = _no_op_lifecycle
+    shutdown: Callable[[], Awaitable[None]] = _no_op_lifecycle
+
+    @classmethod
+    def unavailable(cls) -> "ApiDependencies":
+        unavailable = _UnavailableService()
+        return cls(
+            health=HealthService(
+                lambda: DependencySnapshot(
+                    jwks_ready=False,
+                    database_ready=False,
+                    clock_offset_seconds=0,
+                )
+            ),
+            contracts=SchemaRegistry(SPECIFICATION_PATH),
+            run_start=unavailable,
+            candidate_read=unavailable,
+            events=unavailable,
+            resume_capabilities=unavailable,
+            cancellation=unavailable,
+            context_resolver=_unavailable_context,
+            resume_handler=unavailable,
+            audit_receipt_resolver=unavailable,
+        )
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own API startup and shutdown without relying on module side effects."""
 
-    application.state.runtime_started = True
+    dependencies: ApiDependencies = application.state.dependencies
     try:
+        await dependencies.startup()
+        application.state.runtime_started = True
         yield
     finally:
         application.state.runtime_started = False
+        await dependencies.shutdown()
 
 
-def create_app() -> FastAPI:
-    """Build an isolated API application instance."""
+def create_app(dependencies: ApiDependencies | None = None) -> FastAPI:
+    """Build an isolated, fully routed API with explicit fail-closed adapters."""
 
+    selected = dependencies or ApiDependencies.unavailable()
     application = FastAPI(
         title="GoNow Agent Service",
         version="0.1.0",
         lifespan=lifespan,
     )
     application.state.runtime_started = False
+    application.state.dependencies = selected
+
+    def request_id(request: Request) -> str:
+        supplied = request.headers.get("x-trace-id", "")
+        return supplied if supplied else f"req-{uuid4()}"
+
+    @application.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, error: StarletteHTTPException) -> JSONResponse:
+        try:
+            safe_error: BaseException = SafeApiError(str(error.detail))
+        except ValueError:
+            safe_error = RuntimeError()
+        status, envelope = build_error_envelope(
+            safe_error,
+            request_id=request_id(request),
+            status_code=error.status_code,
+        )
+        return JSONResponse(status_code=status, content=error_response_payload(envelope))
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, _: RequestValidationError) -> JSONResponse:
+        status, envelope = build_error_envelope(
+            SafeApiError("context.invalid"),
+            request_id=request_id(request),
+        )
+        return JSONResponse(status_code=status, content=error_response_payload(envelope))
+
+    @application.exception_handler(Exception)
+    async def unhandled_error(request: Request, error: Exception) -> JSONResponse:
+        status, envelope = build_error_envelope(error, request_id=request_id(request))
+        return JSONResponse(status_code=status, content=error_response_payload(envelope))
+
+    application.include_router(create_health_router(selected.health))
+    application.include_router(create_contract_router(selected.contracts))
+    application.include_router(
+        create_runs_router(selected.run_start, selected.context_resolver)
+    )
+    application.include_router(
+        create_candidates_router(selected.candidate_read, selected.context_resolver)
+    )
+    application.include_router(
+        create_events_router(selected.events, selected.context_resolver)
+    )
+    application.include_router(
+        create_resume_router(
+            selected.resume_capabilities,
+            selected.context_resolver,
+            selected.resume_handler,
+        )
+    )
+    application.include_router(
+        create_cancel_router(
+            selected.cancellation,
+            selected.context_resolver,
+            selected.audit_receipt_resolver,
+        )
+    )
     return application
 
 
@@ -65,7 +209,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         asyncio.run(check_lifecycle())
         return 0
 
-    uvicorn.run(app, host=args.host, port=args.port, log_config=None)
+    from app.api.composition import build_api_dependencies_from_environment
+
+    production_app = create_app(build_api_dependencies_from_environment())
+    uvicorn.run(production_app, host=args.host, port=args.port, log_config=None)
     return 0
 
 

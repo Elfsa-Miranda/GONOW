@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P11-009",
+  "evaluation_kind": "synthetic_offline_single_agent_rag",
+  "execution_mode": "local_provisional",
+  "lifecycle": [
+    "curate",
+    "holdout",
+    "run",
+    "review",
+    "thresholds"
+  ],
+  "dataset": {
+    "manifest_path": "agent-service/tests/eval/datasets/rag/manifest-v01.json",
+    "manifest_sha256": "356c65a91aede11478bfb9962ebbac48ae5834ee3e2bd52c0fcd2e90a35ec4bf",
+    "dataset_sha256": "5dd19fe86998974a5c1e6fef16ed6d7f8d2b0d175ee305014da2d5807a2b0069",
+    "query_count": 9,
+    "scored_query_count": 8,
+    "deletion_case_count": 1,
+    "security_case_count": 2,
+    "data_classification": "synthetic_no_user_data"
+  },
+  "implementation": {
+    "test_path": "agent-service/tests/eval/test_rag_quality.py",
+    "test_sha256": "817d5c844afc7404fa0b5f56088d23688ee7b6a63345b0105767f88603402c1e",
+    "retrieval_pipeline": [
+      "authorization_filter",
+      "reciprocal_rank_fusion",
+      "deterministic_local_rerank",
+      "traceable_citation_assembly"
+    ],
+    "network_call_count": 0,
+    "model_call_count": 0,
+    "tool_call_count": 0,
+    "production_write_count": 0
+  },
+  "run": {
+    "runner": "pytest-9.1.1",
+    "jsonschema_version": "4.26.0",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "junit_path": "docs/execution/evidence/phase-11/P11-009/direct-pytest.xml",
+    "junit_sha256": "9ec1a3a0f7a1c4b15e0c4f4d092d962a2f95f003a86c93bc1f68859c5bdff0c2"
+  },
+  "observed_metrics": {
+    "recall_at_1": 1.0,
+    "recall_numerator": 8,
+    "recall_denominator": 8,
+    "citation_precision": 1.0,
+    "citation_numerator": 8,
+    "citation_denominator": 8,
+    "tenant_leak_count": 0,
+    "acl_leak_count": 0,
+    "rls_unexpected_allow_count": 0,
+    "stale_version_leak_count": 0,
+    "deletion_failure_count": 0,
+    "ssrf_escape_count": 0,
+    "unauthorized_tool_exec_count": 0,
+    "p95_latency_ms": 0.305,
+    "cost_usd_per_successful_query": 0.0
+  },
+  "threshold_result": {
+    "threshold_status": "local_provisional_frozen",
+    "all_local_thresholds_passed": true,
+    "formal_owner_approval": false,
+    "release_accepted": false
+  },
+  "rollback": {
+    "strategy": "reject candidate thresholds and retain the prior approved evaluation manifest",
+    "production_state_changed": false
+  }
+}

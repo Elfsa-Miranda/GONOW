@@ -4,6 +4,7 @@ param(
   [string]$Stage = 'All',
   [string]$UvPath = 'D:\GO_NOW-toolchain\bin\uv.exe',
   [string]$PythonVersion = '3.13.9',
+  [string]$DartPath = '',
   [string]$ReportRoot = ''
 )
 
@@ -20,6 +21,8 @@ $ReportRoot = if ([IO.Path]::IsPathRooted($ReportRoot)) {
 }
 New-Item -ItemType Directory -Path $ReportRoot -Force | Out-Null
 $Results = [Collections.Generic.List[object]]::new()
+$InitialRepositoryStatus = @(& git -C $RepoRoot status --porcelain=v1 --untracked-files=all)
+if ($LASTEXITCODE -ne 0) { throw 'Unable to capture the initial repository status' }
 
 function Invoke-CheckedNative {
   param(
@@ -43,6 +46,48 @@ function Write-Summary {
   }
   $Json = $Value | ConvertTo-Json -Depth 8 -Compress
   [IO.File]::WriteAllText((Join-Path $ReportRoot 'ci-summary.json'),$Json,[Text.UTF8Encoding]::new($false))
+}
+
+function Resolve-LockedDartPath {
+  $Candidate = $DartPath
+  if ([string]::IsNullOrWhiteSpace($Candidate)) {
+    $Candidate = [Environment]::GetEnvironmentVariable('GONOW_DART_EXECUTABLE','Process')
+  }
+  if ([string]::IsNullOrWhiteSpace($Candidate)) {
+    $ToolchainPath = Join-Path $RepoRoot 'docs\execution\supply-chain\phase-boot\BOOT-005\toolchain-lock.json'
+    if (Test-Path -LiteralPath $ToolchainPath -PathType Leaf) {
+      $Toolchain = Get-Content -LiteralPath $ToolchainPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+      $FlutterPath = [string]$Toolchain.flutter.executable
+      if (-not [string]::IsNullOrWhiteSpace($FlutterPath)) {
+        $LockedCandidate = Join-Path (Split-Path -Parent $FlutterPath) 'cache\dart-sdk\bin\dart.exe'
+        if (Test-Path -LiteralPath $LockedCandidate -PathType Leaf) { $Candidate = $LockedCandidate }
+      }
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($Candidate)) {
+    $DartCommand = Get-Command dart -ErrorAction SilentlyContinue
+    if ($null -ne $DartCommand) { $Candidate = $DartCommand.Source }
+  }
+  if ([string]::IsNullOrWhiteSpace($Candidate) -or -not (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+    throw 'Locked Dart executable is unavailable for the mandatory runtime journey'
+  }
+  $Resolved = (Resolve-Path -LiteralPath $Candidate).Path
+  $VersionOutput = @(& $Resolved --version 2>&1) -join "`n"
+  if ($LASTEXITCODE -ne 0 -or $VersionOutput -cnotmatch '(?m)^Dart SDK version:\s+3\.11\.5(?:\s|$)') {
+    throw 'Locked Dart version mismatch: expected 3.11.5'
+  }
+  return $Resolved
+}
+
+function Get-DefaultWritingReportEnvironmentNames {
+  # These three legacy tests write their canonical Phase 3 evidence when the
+  # variable is absent. Other report-producing tests deliberately require the
+  # canonical path and must remain unbound during an ordinary CI run.
+  return @(
+    'GONOW_P03_MANIFEST_REPORT'
+    'GONOW_P03_OUTBOX_REPORT'
+    'GONOW_P03_RLS_REPORT'
+  )
 }
 
 function Invoke-DeploymentClockSafety {
@@ -98,21 +143,58 @@ try {
       }
     }
 
-    if($Stage -in @('All','Unit')){
-      Invoke-CheckedNative 'unit' $Python @('-m','pytest','-q','tests','--strict-config','--strict-markers','--junitxml',(Join-Path $ReportRoot 'unit.xml'))
-      Invoke-CheckedNative 'unit-report' $Python @($Quality,'--mode','junit','--repo-root',$RepoRoot,'--input',(Join-Path $ReportRoot 'unit.xml'),'--output',(Join-Path $ReportRoot 'unit-report.json'))
+    $RunUnitTests = $Stage -in @('All','Unit')
+    $RunContractTests = $Stage -in @('All','Contract')
+    $InjectedReportEnvironmentNames = [Collections.Generic.List[string]]::new()
+    if($RunUnitTests -or $RunContractTests){
+      $TestSideEffectRoot = Join-Path $ReportRoot 'test-side-effects'
+      $null = New-Item -ItemType Directory -Path $TestSideEffectRoot -Force
+      foreach ($Name in Get-DefaultWritingReportEnvironmentNames) {
+        if ($null -eq [Environment]::GetEnvironmentVariable($Name,'Process')) {
+          $Target = Join-Path $TestSideEffectRoot ($Name.ToLowerInvariant()+'.json')
+          [Environment]::SetEnvironmentVariable($Name,$Target,'Process')
+          $InjectedReportEnvironmentNames.Add($Name)
+        }
+      }
+      $Results.Add([ordered]@{name='test-report-sandbox';exit_code=0;duration_ms=0;injected_environment_count=$InjectedReportEnvironmentNames.Count})
     }
-    if($Stage -in @('All','Contract')){
-      $ContractDirectory=Join-Path $ServiceRoot 'tests\contract'
-      if(Test-Path -LiteralPath $ContractDirectory -PathType Container){
-        Invoke-CheckedNative 'contract' $Python @('-m','pytest','-q','tests/contract','--strict-config','--strict-markers','--junitxml',(Join-Path $ReportRoot 'contract.xml'))
-      }else{
-        $Results.Add([ordered]@{name='contract-not-yet-materialized';exit_code=0;duration_ms=0;state='phase-2-pre-P02-007'})
+    try {
+      if($RunUnitTests){
+        $ResolvedDart = Resolve-LockedDartPath
+        $HadDart = Test-Path Env:\GONOW_DART_EXECUTABLE
+        $PreviousDart = $env:GONOW_DART_EXECUTABLE
+        try {
+          $env:GONOW_DART_EXECUTABLE = $ResolvedDart
+          $Results.Add([ordered]@{name='dart-toolchain';exit_code=0;duration_ms=0;version='3.11.5'})
+          Invoke-CheckedNative 'unit' $Python @('-m','pytest','-q','tests','--strict-config','--strict-markers','--junitxml',(Join-Path $ReportRoot 'unit.xml'))
+        } finally {
+          if ($HadDart) { $env:GONOW_DART_EXECUTABLE = $PreviousDart }
+          else { Remove-Item Env:\GONOW_DART_EXECUTABLE -ErrorAction SilentlyContinue }
+        }
+        Invoke-CheckedNative 'unit-report' $Python @($Quality,'--mode','junit','--repo-root',$RepoRoot,'--input',(Join-Path $ReportRoot 'unit.xml'),'--output',(Join-Path $ReportRoot 'unit-report.json'))
+      }
+      if($RunContractTests){
+        $ContractDirectory=Join-Path $ServiceRoot 'tests\contract'
+        if(Test-Path -LiteralPath $ContractDirectory -PathType Container){
+          Invoke-CheckedNative 'contract' $Python @('-m','pytest','-q','tests/contract','--strict-config','--strict-markers','--junitxml',(Join-Path $ReportRoot 'contract.xml'))
+        }else{
+          $Results.Add([ordered]@{name='contract-not-yet-materialized';exit_code=0;duration_ms=0;state='phase-2-pre-P02-007'})
+        }
+      }
+    } finally {
+      foreach ($Name in $InjectedReportEnvironmentNames) {
+        [Environment]::SetEnvironmentVariable($Name,$null,'Process')
       }
     }
     if($Stage -in @('All','Sca')){
       Invoke-CheckedNative 'sca' $UvPath @('audit','--locked','--all-groups')
       Invoke-CheckedNative 'licenses' $Python @($Quality,'--mode','licenses','--repo-root',$RepoRoot,'--output',(Join-Path $ReportRoot 'licenses.json'))
+    }
+    $FinalRepositoryStatus = @(& git -C $RepoRoot status --porcelain=v1 --untracked-files=all)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to capture the final repository status' }
+    $Results.Add([ordered]@{name='repository-clean';exit_code=0;duration_ms=0;initial_dirty_count=$InitialRepositoryStatus.Count;final_dirty_count=$FinalRepositoryStatus.Count;clean_precondition=($InitialRepositoryStatus.Count-eq0)})
+    if ($InitialRepositoryStatus.Count -eq 0 -and $FinalRepositoryStatus.Count -ne 0) {
+      throw 'Mandatory CI changed a clean repository worktree'
     }
   }
   finally { Pop-Location }

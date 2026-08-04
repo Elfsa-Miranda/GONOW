@@ -6,7 +6,7 @@
   "required": ["schema_version", "plan_version", "catalog_version", "task_id", "phase", "status", "previous_status", "transition_seq", "previous_record_sha256", "catalog_sha256", "git_object_format", "phase_base_oid", "head_oid", "owner_alias", "owner_role", "actor_id", "actor_role", "reviewer_independent", "updated_at", "evidence_sha256", "evidence_paths", "blocker_path", "decision_reference", "transition_reason"],
   "properties": {
     "schema_version": {"const": "1.0"},
-    "plan_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "plan_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"},
     "catalog_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
     "task_id": {"type": "string", "pattern": "^TASK-[A-Z0-9-]+$"},
     "phase": {"type": "string", "minLength": 1},
@@ -28,6 +28,9 @@
     "evidence_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
     "blocker_path": {"type": ["string", "null"]},
     "decision_reference": {"type": ["string", "null"]},
-    "transition_reason": {"type": "string", "minLength": 1}
+    "transition_reason": {"type": "string", "minLength": 1},
+    "governance_profile": {"enum": ["enterprise_governed", "personal_automated"]},
+    "acceptance_method": {"type": ["string", "null"], "enum": [null, "independent_owner_receipt", "automated_attestation"]},
+    "attestation_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
   }
 }

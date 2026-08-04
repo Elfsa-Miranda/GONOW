@@ -49,8 +49,18 @@ def _create_arguments() -> dict[str, object]:
 
 def test_05_idempotency_guard_s_result_marks_original_and_replay() -> None:
     run_id = uuid.uuid4()
-    original = RunCreateResult(run_id=run_id, state=RunState.QUEUED, replayed=False)
-    replay = RunCreateResult(run_id=run_id, state=RunState.QUEUED, replayed=True)
+    original = RunCreateResult(
+        run_id=run_id,
+        state=RunState.QUEUED,
+        replayed=False,
+        manifest_digest="2" * 64,
+    )
+    replay = RunCreateResult(
+        run_id=run_id,
+        state=RunState.QUEUED,
+        replayed=True,
+        manifest_digest="2" * 64,
+    )
     assert original.run_id == replay.run_id
     assert (original.replayed, replay.replayed) == (False, True)
 

@@ -11,15 +11,20 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 
-EXPECTED_OPENAPI_SHA256 = "ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed"
+EXPECTED_OPENAPI_SHA256 = "1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8"
 PUBLIC_ERROR_CODES = (
     "auth.forbidden",
     "auth.invalid_token",
+    "cancel.conflict",
     "context.invalid",
+    "idempotency.conflict",
     "internal.error",
     "rate.limit",
+    "resume.invalid_or_expired",
+    "run.start_rejected",
     "schema.unsupported",
     "service.unavailable",
+    "sse.last_event_id_invalid",
     "tenant.scope_missing",
 )
 
@@ -90,12 +95,12 @@ class SchemaRegistry:
             if (
                 specification.get("openapi") != "3.1.0"
                 or specification.get("x-contract-name") != name
-                or specification.get("info", {}).get("version") != "1.0.0"
+                or specification.get("info", {}).get("version") != "1.1.1"
                 or tuple(specification.get("x-error-codes", ())) != PUBLIC_ERROR_CODES
             ):
                 raise SchemaDigestMismatch()
             return SchemaCodec(
-                ContractDescriptor(name=name, major=major, version="1.0.0", spec_sha256=digest)
+                ContractDescriptor(name=name, major=major, version="1.1.1", spec_sha256=digest)
             )
         except (SchemaDigestMismatch, SchemaUnsupported):
             raise

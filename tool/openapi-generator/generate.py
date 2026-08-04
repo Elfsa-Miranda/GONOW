@@ -75,11 +75,13 @@ def _compatibility_errors(spec: dict[str, Any], baseline: dict[str, Any]) -> lis
 
 def _render_outputs(
     spec_sha256: str,
+    contract_version: str,
     generator_version: str,
     dart_executable: Path,
 ) -> dict[str, bytes]:
     replacements = {
         "@@SPEC_SHA256@@": spec_sha256,
+        "@@CONTRACT_VERSION@@": contract_version,
         "@@GENERATOR_VERSION@@": generator_version,
     }
     outputs: dict[str, bytes] = {}
@@ -160,6 +162,7 @@ def main() -> int:
 
     outputs = _render_outputs(
         spec_sha256,
+        spec["info"]["version"],
         lock["generator_version"],
         arguments.dart_executable,
     )

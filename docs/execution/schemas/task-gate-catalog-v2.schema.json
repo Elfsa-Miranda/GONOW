@@ -14,9 +14,9 @@
         "Native":{"type":"object","additionalProperties":{"$ref":"#/$defs/capability"}},
         "Locked":{"type":"object","additionalProperties":{"$ref":"#/$defs/capability"}}
       }},
-    "TaskGateModeContracts":{"type":"object","minProperties":23,"maxProperties":23,
-      "required":["AcceptancePreflight","ApprovalValidation","ArchitectureArtifactRegister","BootstrapEvidenceImport","BootstrapSelfTest","BootstrapToolchainRevalidation","BuildAcceptance","CatalogRevision","ClockSafety","DependencyAudit","Documentation","Evidence","HandoffVerification","HarnessCatalogAggregate","Preflight","Regression","RollbackDrill","RollbackVerify","Security","StatusBoardAggregate","Verify","WorkPreflight","WorksetVerify"],
-      "propertyNames":{"enum":["AcceptancePreflight","ApprovalValidation","ArchitectureArtifactRegister","BootstrapEvidenceImport","BootstrapSelfTest","BootstrapToolchainRevalidation","BuildAcceptance","CatalogRevision","ClockSafety","DependencyAudit","Documentation","Evidence","HandoffVerification","HarnessCatalogAggregate","Preflight","Regression","RollbackDrill","RollbackVerify","Security","StatusBoardAggregate","Verify","WorkPreflight","WorksetVerify"]},
+    "TaskGateModeContracts":{"type":"object","minProperties":24,"maxProperties":24,
+      "required":["AcceptancePreflight","ApprovalValidation","ArchitectureArtifactRegister","AutomatedAcceptancePreflight","BootstrapEvidenceImport","BootstrapSelfTest","BootstrapToolchainRevalidation","BuildAcceptance","CatalogRevision","ClockSafety","DependencyAudit","Documentation","Evidence","HandoffVerification","HarnessCatalogAggregate","Preflight","Regression","RollbackDrill","RollbackVerify","Security","StatusBoardAggregate","Verify","WorkPreflight","WorksetVerify"],
+      "propertyNames":{"enum":["AcceptancePreflight","ApprovalValidation","ArchitectureArtifactRegister","AutomatedAcceptancePreflight","BootstrapEvidenceImport","BootstrapSelfTest","BootstrapToolchainRevalidation","BuildAcceptance","CatalogRevision","ClockSafety","DependencyAudit","Documentation","Evidence","HandoffVerification","HarnessCatalogAggregate","Preflight","Regression","RollbackDrill","RollbackVerify","Security","StatusBoardAggregate","Verify","WorkPreflight","WorksetVerify"]},
       "additionalProperties":{"$ref":"#/$defs/modeContract"}},
     "PhaseMergeModeContracts":{"type":"object","minProperties":11,"maxProperties":11,
       "required":["Archive","Cleanup","CloseVerify","IntegrationSmoke","Merge","MergePreflight","MergeTreeVerification","PostMergeEvidence","Retrospective","RollbackVerify","Security"],
@@ -29,8 +29,9 @@
   "$defs":{
     "stringArray":{"type":"array","items":{"type":"string"},"uniqueItems":true},
     "stageArray":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["native","locked_pending_revalidation","locked_validated"]}},
-    "roleArray":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["Engineering","Architecture","Security","Data","Product","Privacy","SRE","Eval","Domain","Compliance"]}},
-    "taskGateModeArray":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["AcceptancePreflight","ApprovalValidation","ArchitectureArtifactRegister","BootstrapEvidenceImport","BootstrapSelfTest","BootstrapToolchainRevalidation","BuildAcceptance","CatalogRevision","ClockSafety","DependencyAudit","Documentation","Evidence","HandoffVerification","HarnessCatalogAggregate","Preflight","Regression","RollbackDrill","RollbackVerify","Security","StatusBoardAggregate","Verify","WorkPreflight","WorksetVerify"]}},
+    "roleValue":{"enum":["Engineering","Architecture","Security","Data","Product","Privacy","SRE","Eval","Domain","Compliance","Finance"]},
+    "roleArray":{"type":"array","minItems":1,"uniqueItems":true,"items":{"$ref":"#/$defs/roleValue"}},
+    "taskGateModeArray":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["AcceptancePreflight","ApprovalValidation","ArchitectureArtifactRegister","AutomatedAcceptancePreflight","BootstrapEvidenceImport","BootstrapSelfTest","BootstrapToolchainRevalidation","BuildAcceptance","CatalogRevision","ClockSafety","DependencyAudit","Documentation","Evidence","HandoffVerification","HarnessCatalogAggregate","Preflight","Regression","RollbackDrill","RollbackVerify","Security","StatusBoardAggregate","Verify","WorkPreflight","WorksetVerify"]}},
     "phaseMergeModeArray":{"type":"array","uniqueItems":true,"items":{"enum":["Archive","Cleanup","CloseVerify","IntegrationSmoke","Merge","MergePreflight","MergeTreeVerification","PostMergeEvidence","Retrospective","RollbackVerify","Security"]}},
     "capability":{"type":"object","additionalProperties":false,
       "required":["resolver_kind","source","required_after_stage"],
@@ -67,7 +68,7 @@
       "required":["repo_patch_targets","external_actions","read_only_queries","required_changes","forbidden_changes","postconditions"],
       "properties":{
         "repo_patch_targets":{"$ref":"#/$defs/stringArray"},
-        "external_actions":{"type":"array","items":{"$ref":"#/$defs/externalAction"}},
+        "external_actions":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/externalAction"},{"type":"string","minLength":1}]}},
         "read_only_queries":{"type":"array","items":{"$ref":"#/$defs/command"}},
         "required_changes":{"$ref":"#/$defs/stringArray"},
         "forbidden_changes":{"$ref":"#/$defs/stringArray"},
@@ -87,11 +88,15 @@
     "approvalPolicy":{"type":"object","additionalProperties":false,
       "required":["required_roles","minimum_approvals","independent_from_implementer","validity_rule"],
       "properties":{
-        "required_roles":{"$ref":"#/$defs/roleArray"},
-        "minimum_approvals":{"type":"integer","minimum":1},
-        "independent_from_implementer":{"const":true},
+        "required_roles":{"type":"array","uniqueItems":true,"items":{"$ref":"#/$defs/roleValue"}},
+        "minimum_approvals":{"type":"integer","minimum":0},
+        "independent_from_implementer":{"type":"boolean"},
         "validity_rule":{"type":"string","minLength":1}
-      }},
+      },
+      "oneOf":[
+        {"properties":{"validity_rule":{"const":"personal_automated_attestation_bound_to_exact_candidate"},"required_roles":{"maxItems":0},"minimum_approvals":{"const":0},"independent_from_implementer":{"const":false}}},
+        {"properties":{"validity_rule":{"not":{"const":"personal_automated_attestation_bound_to_exact_candidate"}},"required_roles":{"minItems":1},"minimum_approvals":{"minimum":1},"independent_from_implementer":{"const":true}}}
+      ]},
     "task":{"type":"object","additionalProperties":false,
       "required":["task_id","phase","catalog_version","owner_alias","owner_roles","reviewer_roles","approval_policy","required_bootstrap_stage","allowed_taskgate_modes","allowed_phase_merge_modes","file_allowlist","directory_allowlist","external_root_allowlist","read_only_inputs","evidence_outputs","status_file","status_schema","prerequisite_task_ids","phase_base_source_ref","phase_runtime_manifest_path","bootstrap_materialization_for","work_contract","work_preflight_commands","workset_verify_commands","verify_commands","security_check_ids","applicable_ct_ids","harness_controls_owned","harness_controls_extended","dependency_change","rollback_commands","expected_assertions","timeout_seconds","mutates_repo","evidence_schemas","catalog_revision"],
       "properties":{
@@ -106,7 +111,7 @@
         "allowed_taskgate_modes":{"$ref":"#/$defs/taskGateModeArray"},
         "allowed_phase_merge_modes":{"$ref":"#/$defs/phaseMergeModeArray"},
         "file_allowlist":{"$ref":"#/$defs/stringArray"},
-        "directory_allowlist":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["path","name_regex"],"properties":{"path":{"type":"string"},"name_regex":{"type":"string"}}}},
+        "directory_allowlist":{"type":"array","items":{"oneOf":[{"type":"string","minLength":1},{"type":"object","additionalProperties":false,"required":["path","name_regex"],"properties":{"path":{"type":"string","minLength":1},"name_regex":{"type":"string","minLength":1}}}]}},
         "external_root_allowlist":{"$ref":"#/$defs/stringArray"},
         "read_only_inputs":{"$ref":"#/$defs/stringArray"},
         "evidence_outputs":{"$ref":"#/$defs/stringArray"},

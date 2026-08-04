@@ -49,11 +49,15 @@ def test_matrix_contains_each_client_service_pair_once() -> None:
     assert {case["expected_result"] for case in matrix} == {"passed"}
 
 
-def test_old_and_new_service_descriptors_match_the_live_v1_registry() -> None:
+def test_old_service_is_frozen_and_new_service_matches_live_v1_registry() -> None:
     fixture = _fixture()
     actual = SchemaRegistry(SPEC_PATH).resolve("agent-api", 1).descriptor.model_dump()
 
-    assert fixture["services"]["old_service"]["descriptor"] == actual
+    old = fixture["services"]["old_service"]["descriptor"]
+    assert old != actual
+    assert old["name"] == actual["name"] == "agent-api"
+    assert old["major"] == actual["major"] == 1
+    assert old["version"] == "1.0.0"
     assert fixture["services"]["new_service"]["descriptor"] == actual
     assert fixture["services"]["old_service"]["candidate_only"] is True
     assert fixture["services"]["new_service"]["candidate_only"] is True
@@ -62,10 +66,14 @@ def test_old_and_new_service_descriptors_match_the_live_v1_registry() -> None:
 def test_route_expectations_preserve_old_app_and_enable_new_app() -> None:
     matrix = _fixture()["matrix"]
     old_routes = {case["expected_route"] for case in matrix if case["client_id"] == "old_app"}
-    new_routes = {case["expected_route"] for case in matrix if case["client_id"] == "new_app"}
+    routes = {
+        (case["client_id"], case["service_id"]): case["expected_route"]
+        for case in matrix
+    }
 
     assert old_routes == {"legacy"}
-    assert new_routes == {"agent"}
+    assert routes[("new_app", "old_service")] == "legacy"
+    assert routes[("new_app", "new_service")] == "agent"
 
 
 def test_failures_are_safe_and_never_force_upgrade_or_delete_adapter() -> None:
@@ -76,5 +84,5 @@ def test_failures_are_safe_and_never_force_upgrade_or_delete_adapter() -> None:
     assert {case["expected_route"] for case in failure_cases.values()} == {"legacy"}
     assert fixture["forced_upgrade_count"] == 0
     assert fixture["adapter_delete_count"] == 0
-    assert fixture["contract_change"] is False
+    assert fixture["contract_change"] is True
     assert fixture["production_write_count"] == 0

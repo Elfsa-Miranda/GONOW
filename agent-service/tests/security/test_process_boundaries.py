@@ -58,7 +58,7 @@ def test_service_does_not_spawn_child_processes() -> None:
     assert findings == []
 
 
-def test_public_contract_has_no_run_execution_route() -> None:
+def test_public_run_contract_is_the_exact_approved_additive_surface() -> None:
     specification = json.loads(
         (REPO_ROOT / "contracts" / "openapi" / "agent-api.yaml").read_text(encoding="utf-8")
     )
@@ -68,11 +68,12 @@ def test_public_contract_has_no_run_execution_route() -> None:
         if path.startswith("/v1/runs")
     }
     assert run_paths == {
+        "/v1/runs": {"post"},
         "/v1/runs/{run_id}/events": {"get"},
         "/v1/runs/{run_id}/resume": {"post"},
         "/v1/runs/{run_id}/cancel": {"post"},
+        "/v1/runs/{run_id}/candidate": {"get"},
     }
-    assert "/v1/runs" not in run_paths
     assert "/v1/contracts/{name}/{major}" in specification["paths"]
 
 
