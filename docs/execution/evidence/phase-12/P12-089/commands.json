@@ -23,7 +23,7 @@
       "description": "Run the provisional Phase 12 archive gate after root-cause normalization",
       "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1 -BaseOid 5c3031da4b0df7d1e97af47630e141726502894b",
       "exit_code": 0,
-      "result": "18/18 required artifacts present; 20 changed paths; formal artifacts, specialist refs/worktrees, implementation/public-contract changes, secret-like findings, unsafe commands, and production writes all zero"
+      "result": "archive gate passed before A/B/D package materialization; superseded by step 6"
     },
     {
       "step": 4,
@@ -38,9 +38,16 @@
       "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1 -BaseOid 5c3031da4b0df7d1e97af47630e141726502894b",
       "exit_code": 0,
       "result": "final receipt stored in archive-gate-runtime.json; formal task remains not_started and formal selection remains pending"
+    },
+    {
+      "step": 6,
+      "description": "Reconcile archive semantics after dormant A/B/D portfolio completion",
+      "command": "run ABD combined gate, then Verify-Phase12ArchitectureArchive.ps1 from the Phase 11 source checkpoint",
+      "exit_code": 0,
+      "result": "three dormant design packages pass; P12C/formal selection artifacts, specialist refs/worktrees, runtime/public-contract changes, and production writes remain zero"
     }
   ],
   "nonzero_exit_count": 0,
   "production_write_count": 0,
-  "recorded_at": "2026-08-04T13:47:44.5953793+08:00"
+  "recorded_at": "2026-08-04T14:35:00+08:00"
 }

@@ -7,6 +7,9 @@
   "formal_selection_status": "pending",
   "selected_count": 0,
   "formal_none_decision": false,
+  "design_ready_count": 3,
+  "atomic_task_count": 18,
+  "design_package_gate_passed_count": 3,
   "source_checkpoint_oid": "5c3031da4b0df7d1e97af47630e141726502894b",
   "candidate_disposition_coverage": {"numerator": 4, "denominator": 4},
   "runtime_change_count": 0,
@@ -23,5 +26,5 @@
   "xfailed": 0,
   "independent_review_status": "pending_external",
   "remote_merge_status": "not_authorized_by_this_receipt",
-  "recorded_at": "2026-08-04T13:47:44.5953793+08:00"
+  "recorded_at": "2026-08-04T14:35:00+08:00"
 }

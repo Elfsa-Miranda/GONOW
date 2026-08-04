@@ -3,7 +3,7 @@
     "gate_id":  "PHASE12-ABD-DORMANT-DESIGN",
     "task_id":  "ABD",
     "phase_base_oid":  "d850640325904c443a180ebb2dbb0462638ac293",
-    "head_oid":  "a974d1f649868cdd82abb54a33a985255a1cb22d",
+    "head_oid":  "da2d4449859e4d9748924bdd66bbfc1152e1cb4c",
     "checks":  {
                    "package_count":  3,
                    "expected_package_count":  3,
@@ -41,7 +41,7 @@
                    "formal_worktrees":  [
 
                                         ],
-                   "changed_path_count":  33,
+                   "changed_path_count":  50,
                    "unexpected_path_count":  0,
                    "unexpected_paths":  [
 
@@ -67,5 +67,5 @@
     "execution_mode":  "local_provisional_dormant_design",
     "formal_selection_status":  "pending",
     "independent_review_status":  "pending_external",
-    "recorded_at":  "2026-08-04T14:32:58.5707411+08:00"
+    "recorded_at":  "2026-08-04T14:47:37.7787038+08:00"
 }

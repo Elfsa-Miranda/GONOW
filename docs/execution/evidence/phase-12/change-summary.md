@@ -6,11 +6,13 @@ because Release B stable and an accepted REL-C XOR selection did not exist.
 
 After this documentation-only repair:
 
-- Memory, deterministic cost routing, and one Domain Command migration have complete dormant design
-  boundaries, activation prerequisites, degradation, and rollback paths in one common archive;
+- Memory, deterministic cost routing, and one Domain Command migration have complete dormant ADRs,
+  six-task atomic plans, local receipts/hashes, design gates, activation prerequisites, degradation,
+  and rollback paths;
 - Multi-Agent is explicitly deferred with no framework, runtime, task-plan, specialist ref/worktree,
   or traffic allocation;
-- the formal XOR sequence remains unchanged and no P12A/B/C/D formal artifact is materialized;
+- the formal XOR sequence remains unchanged; A/B/D are explicitly `dormant_only`, P12C and formal
+  P12-000/001/002 artifacts remain absent, and no specialist implementation branch exists;
 - operations can distinguish `selected_count=0` archive state from a formal `selection=none` owner
   decision;
 - a repository-owned gate checks required artifacts/markers, forbidden formal artifacts, specialist

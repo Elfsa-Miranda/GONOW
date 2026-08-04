@@ -4,6 +4,7 @@ archive_mode: local_provisional
 formal_selection_status: pending
 selected_count: 0
 formal_none_decision: false
+design_ready_count: 3
 runtime_change_count: 0
 public_contract_change_count: 0
 production_write_count: 0
@@ -27,12 +28,12 @@ new production boundary is introduced.
 
 | Candidate | Dormant architecture covered | Trigger still required | Present disposition |
 |---|---|---|---|
-| 12A explicit structured Memory | consent, provenance, conflict, deletion/export, restore guard | calibrated real failure ledger; the `>15%` value remains an initial hypothesis | reference only; no DDL, service, profile, branch, or cohort |
-| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | four comparable weeks of labelled cost/quality evidence; `1.5x` remains an initial hypothesis | reference only; no router, gateway, routing model, or cohort |
+| 12A explicit structured Memory | consent, provenance, conflict, deletion/export, restore guard | calibrated real failure ledger; the `>15%` value remains an initial hypothesis | dormant design ready; no DDL, service, profile, specialist branch, or cohort |
+| 12B deterministic cost router | certified-route policy, quality floor, budget ledger, fallback | four comparable weeks of labelled cost/quality evidence; `1.5x` remains an initial hypothesis | dormant design ready; no router, gateway, routing model, specialist branch, or cohort |
 | 12C production Multi-Agent | no framework design is opened by this archive | a separately approved positive trigger and full XOR cycle | explicitly deferred; no ADR, task plan, branch, runtime, or allocation |
-| 12D one Domain Command migration | principal, approval, CAS, idempotency, outbox, compatibility | one named legacy write point with real load/SLA and risk evidence | reference only; no write-path, schema, or migration change |
+| 12D one Domain Command migration | principal, approval, CAS, idempotency, outbox, compatibility | one named legacy write point with real load/SLA and risk evidence | dormant design ready; no named write point, write-path, schema, specialist branch, or migration change |
 
-Only one row may move out of `reference only` in a Release C cycle. A second capability requires a
+Only one row may move out of dormant design into formal selection in a Release C cycle. A second capability requires a
 new release cycle, evidence window, ADR, gate set, rollback exercise, and merge.
 
 ## 12A: explicit structured Memory

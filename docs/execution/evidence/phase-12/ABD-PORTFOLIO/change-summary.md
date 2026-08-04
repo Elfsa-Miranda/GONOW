@@ -31,8 +31,9 @@ or allocation. The Release B-compatible single-Agent path remains the only runti
 The first package exposed PowerShell single-element enumeration collapse in the gate. The repair
 normalizes the selected package set to an array and asserts exact package and minimum atomic-task
 counts. P12B then exposed that `git diff --check` does not inspect untracked files; the gate now scans
-all changed and untracked text for trailing whitespace and repeated terminal newlines. Both repairs
-were followed by the minimal affected package gate before continuing.
+newly added and untracked text for trailing whitespace and repeated terminal newlines, while tracked
+modifications use `git diff --check` on changed lines. Both repairs were followed by the minimal
+affected package gate before continuing.
 
 ## Rollback
 

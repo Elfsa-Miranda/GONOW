@@ -11,6 +11,7 @@ public_contract_change_count: 0
 schema_change_count: 0
 implementation_commit_count: 0
 production_write_count: 0
+design_ready_count: 3
 
 ## Governance record shape
 
@@ -40,7 +41,8 @@ valid approval by itself:
 
 The formal runner must reject missing or mismatched cycle, head, digest, evidence window, owner
 identity, or XOR reservation. `selected_count=0` in this provisional archive is not a formal
-`selection=none` receipt.
+`selection=none` receipt. `design_ready_count=3` means only that A/B/D plans and local evidence pass
+their design gates; it creates no API, selection, allocation, or implementation authority.
 
 ## Future internal ports, if selected
 

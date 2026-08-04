@@ -11,12 +11,12 @@ This archive introduces no dependency, process, data store, public interface, or
 
 ## Hardest item
 
-The formal P12-089 convergence gate intentionally rejects simultaneous candidate materialization and
-requires an accepted P12-002 XOR reservation. The user also requested completion of all non-Multi-
-Agent architecture before that external timing loop closes. The root fix was to archive all dormant
-candidate guardrails in the common P12-089 documentation area while leaving P12A/B/C/D ADRs, plans,
-statuses, branches, and worktrees absent. This preserves the formal runner's future ability to select
-exactly one candidate without treating documentation readiness as a decision.
+The formal P12-089 convergence gate intentionally rejects simultaneous candidate implementation and
+requires an accepted P12-002 XOR reservation. The user also requested complete A/B/D architecture
+before that external timing loop closes. The root fix separates `dormant_only` design readiness from
+formal selection: A/B/D now have ADRs, atomic plans, status/hashes and local gates, while P12C,
+P12-000/001/002, specialist implementation refs/worktrees, traffic and writes remain absent. This
+preserves future XOR selection without treating documentation readiness as a decision.
 
 ## Operations must know
 
@@ -36,8 +36,8 @@ counts remaining zero.
 
 ## Handoff verification
 
-Local self-review checks readability, cross-document markers, JSON parsing, absence of formal
-candidate materialization, changed-path scope, and safe rollback. It does not impersonate an
+Local self-review checks readability, cross-document markers, JSON parsing, A/B/D dormant status,
+absence of formal selection and P12C materialization, changed-path scope, and safe rollback. It does not impersonate an
 independent reviewer and cannot satisfy formal P12-089. Independent Security+Product+Data review and
 the formal XOR journey remain `pending_external`.
 

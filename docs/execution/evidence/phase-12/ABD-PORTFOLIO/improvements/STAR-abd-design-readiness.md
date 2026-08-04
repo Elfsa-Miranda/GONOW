@@ -24,8 +24,8 @@ and make zero runtime, contract, schema, dependency, allocation, or production-w
    formal boundaries, hash/size binding, forbidden P12C/formal materialization, ref/worktree absence,
    implementation diff, secrets, unsafe commands, whitespace, and production-write counts.
 4. Closed two gate defects by root cause: PowerShell scalar collapse was fixed with explicit array
-   normalization and exact counts; untracked whitespace blindness was fixed with content scanning over
-   the combined tracked/untracked path set.
+   normalization and exact counts; untracked whitespace blindness was fixed with content scanning for
+   added/untracked files while `git diff --check` covers tracked modifications.
 5. Re-ran the affected package gate after each repair, then ran the combined portfolio gate.
 
 ## Result
@@ -54,9 +54,15 @@ and asserted the expected 1-or-3 package count and six tasks per package; the P1
 
 The P12B pre-commit check then reported terminal blank lines although the earlier gate passed. Root
 cause was `git diff --check <base>` excluding untracked files, affecting every newly created package.
-The reversible fix removed both terminal blanks and added direct whitespace scanning over the gate's
-tracked-plus-untracked path set. The affected P12B gate passed afterward, and P12D was created under
-the repaired gate without recurrence.
+The reversible fix removed both terminal blanks and added direct whitespace scanning for added or
+untracked files, with `git diff --check` retaining changed-line coverage for tracked files. The
+affected P12B gate passed afterward, and P12D was created under the repaired gate without recurrence.
+
+During common-archive reconciliation, PowerShell 5.1 promoted Git's CRLF safe-conversion warning on
+generated runtime receipts to a native-command error even though the structured gate result passed.
+The fix disables `core.safecrlf` only for verifier-owned read-only Git invocations, including the
+central Git helper and `diff --check`; exit codes, changed-line checks, and added/untracked full-file
+checks remain enforced.
 
 ## Rollback and limitations
 

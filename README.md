@@ -312,15 +312,17 @@ branch, allocate production traffic, or write production data. The running targe
 high-quality single itinerary Agent with `agent-api` and `agent-worker` as its two processes.
 
 The archive covers three dormant non-Multi-Agent candidates: explicit structured Memory, a
-deterministic cost router, and migration of one legacy write entry to a typed Domain Command. Each
-candidate is separately activatable and reversible, but exactly one may be selected only after a
-stable Release B and real, calibrated failure/cost/load evidence. Multi-Agent remains explicitly
-deferred with zero implementation commits and zero allocation.
+deterministic cost router, and migration of one evidence-selected legacy write entry to a typed
+Domain Command. Their ADRs, six-task atomic plans, local status receipts, hashes, and automated design
+gates are complete (`design_ready_count=3`), but none is formally started or selected. Exactly one may
+be selected only after a stable Release B and real, calibrated failure/cost/load evidence. Multi-Agent
+remains explicitly deferred with zero implementation commits and zero allocation.
 
 There is nothing to enable from this archive. Keep every candidate allocation at zero and continue
 using the existing single-Agent path. If a later formal selection is authorized, follow the XOR
-governance runbook and create only the selected work-package artifacts; reverting this documentation
-commit removes the dormant archive without changing runtime behavior or data.
+governance runbook and create a clean implementation worktree only for the selected package; the
+unselected design packages remain dormant. Reverting these documentation commits changes no runtime
+behavior or data.
 
 See [Release C selection architecture](docs/architecture/release-c-selection.md),
 [governance and rollback](docs/runbooks/release-c-governance.md), and

@@ -15,7 +15,7 @@ try {
 
   function Invoke-GitLines {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
-    $raw = @(& git @Arguments 2>&1)
+    $raw = @(& git -c core.safecrlf=false @Arguments 2>&1)
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) { throw "git $($Arguments -join ' ') failed with exit $exitCode" }
     $lines = New-Object System.Collections.Generic.List[string]
@@ -198,7 +198,9 @@ try {
   $formalWorktrees = @($worktreeLines | Where-Object { $_ -cmatch '^branch refs/heads/codex/(release-c-governance|phase-12(?:[abcd])?(?:$|[-/]))' })
 
   $changedTracked = @(Invoke-GitLines @('diff','--name-only',$BaseOid,'--'))
+  $addedTracked = @(Invoke-GitLines @('diff','--diff-filter=A','--name-only',$BaseOid,'--'))
   $untracked = @(Invoke-GitLines @('ls-files','--others','--exclude-standard'))
+  $fullWhitespaceScanPaths = @(@($addedTracked)+@($untracked) | Sort-Object -Unique)
   $changed = @(@($changedTracked)+@($untracked) | Where-Object { $_ } | Sort-Object -Unique)
   $allowed = @($changed | Where-Object {
     $_ -ceq 'docs/execution/commands/Verify-Phase12DormantAbdPortfolio.ps1' -or
@@ -207,7 +209,7 @@ try {
     $_ -cmatch '^docs/execution/evidence/phase-12[abd]/P12[ABD]-000/' -or
     $_ -cmatch '^docs/execution/status/TASK-P12[ABD]-000\.json$' -or
     $_ -cmatch '^docs/execution/evidence/phase-12/ABD-PORTFOLIO/' -or
-    $_ -in @('README.md','docs/architecture/release-c-selection.md','docs/runbooks/release-c-governance.md','docs/api/release-c-selection.md','docs/architecture/threat-model/phase-12-review.json','docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1','docs/execution/evidence/phase-12/artifact-manifest.premerge.json','docs/execution/evidence/phase-12/P12-089/provisional-archive-status.json','docs/execution/evidence/phase-12/P12-089/handoff-verification.json','docs/execution/evidence/phase-12/P12-089/commands.json','docs/execution/evidence/phase-12/P12-089/gate-results.json','docs/execution/evidence/phase-12/P12-089/artifact-hashes.json')
+    $_ -in @('README.md','docs/architecture/release-c-selection.md','docs/runbooks/release-c-governance.md','docs/api/release-c-selection.md','docs/architecture/threat-model/phase-12-review.json','docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1','docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md','docs/execution/evidence/phase-12/change-summary.md','docs/execution/evidence/phase-12/knowledge-transfer.md','docs/execution/evidence/phase-12/star-records.md','docs/execution/evidence/phase-12/artifact-manifest.premerge.json','docs/execution/evidence/phase-12/P12-089/provisional-archive-status.json','docs/execution/evidence/phase-12/P12-089/handoff-verification.json','docs/execution/evidence/phase-12/P12-089/commands.json','docs/execution/evidence/phase-12/P12-089/gate-results.json','docs/execution/evidence/phase-12/P12-089/artifact-hashes.json','docs/execution/evidence/phase-12/P12-089/archive-gate-runtime.json')
   })
   $unexpected = @($changed | Where-Object { $_ -notin $allowed })
   $implementation = @($changed | Where-Object { $_ -cmatch '^(agent-service/|lib/|test/|integration_test/|contracts/|supabase/|android/|ios/|web/|pubspec\.(yaml|lock)$)' })
@@ -217,9 +219,9 @@ try {
     $text = Get-Content -LiteralPath $path -Raw -Encoding UTF8
     if ($text -match '(?i)sk-[a-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|bearer\s+eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+') { $contentFindings.Add("$path::secret_like") }
     if ($text -match '(?im)^\s*git\s+reset\s+--hard\b|^\s*git\s+clean\s+-[^\r\n]*f|^\s*(rm\s+-rf|Remove-Item\s+.+-Recurse.+-Force)\b') { $contentFindings.Add("$path::unsafe_command") }
-    if ($text -cmatch '(?m)[ \t]+$' -or $text -cmatch '(\r?\n){2}$') { $contentFindings.Add("$path::whitespace_error") }
+    if ($path -in $fullWhitespaceScanPaths -and ($text -cmatch '(?m)[ \t]+$' -or $text -cmatch '(\r?\n){2}$')) { $contentFindings.Add("$path::whitespace_error") }
   }
-  $diffOutput = @(& git diff --check $BaseOid -- 2>&1)
+  $diffOutput = @(& git -c core.safecrlf=false diff --check $BaseOid -- 2>&1)
   $diffExit = $LASTEXITCODE
 
   $checks = [ordered]@{

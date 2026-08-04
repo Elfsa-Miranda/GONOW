@@ -9,6 +9,8 @@
   "selected_count": 0,
   "formal_none_decision": false,
   "candidate_disposition_coverage": {"numerator": 4, "denominator": 4},
+  "design_ready_count": 3,
+  "atomic_task_count": 18,
   "runtime_change_count": 0,
   "public_contract_change_count": 0,
   "schema_change_count": 0,
@@ -17,17 +19,17 @@
   "production_write_count": 0,
   "independent_review_status": "pending_external",
   "artifacts": [
-    {"path": "README.md", "sha256": "a4ea8502c30d11c66b0d410063d061826cbd90e48885caffb1930b8599b6c53b", "size_bytes": 23767},
-    {"path": "docs/architecture/release-c-selection.md", "sha256": "4fdb73a3fc8aeb5b92a1227755c858b79a4e8adf7443e12b472015cd5c2a772f", "size_bytes": 8347},
-    {"path": "docs/runbooks/release-c-governance.md", "sha256": "24521ab9ea2eff105c3d7fbffe16393629f02b202d8f06c24f5c9253969d3968", "size_bytes": 4770},
-    {"path": "docs/api/release-c-selection.md", "sha256": "2c5b5edd67d030604eeb21e065c3148618c0f15ad08070d513b062c9ee0c1765", "size_bytes": 2889},
-    {"path": "docs/architecture/threat-model/phase-12-review.json", "sha256": "f7c2342216890f5583cbb822accadfb16ad5e4ab459af9f79724444095ac6c83", "size_bytes": 2909},
-    {"path": "docs/execution/evidence/phase-12/change-summary.md", "sha256": "10beb7c1cdc18664951336cc3b2a4ecb57adde77325ee27db09201aff07cbe58", "size_bytes": 1622},
-    {"path": "docs/execution/evidence/phase-12/knowledge-transfer.md", "sha256": "8a43602d6a4b1e8c03b5f41e2490864e1fe972fad3249349be1289874c5d351b", "size_bytes": 2877},
-    {"path": "docs/execution/evidence/phase-12/star-records.md", "sha256": "25f90f687da9f0bc45f9fb325a57139cc0c16822b5126fb32160a9f2ff38df5b", "size_bytes": 1434},
+    {"path": "README.md", "sha256": "26b07ad881586799edc5c85a62123c69ef9e8bfe54619005540e7b11a15b7918", "size_bytes": 23934},
+    {"path": "docs/architecture/release-c-selection.md", "sha256": "809e22d3c463382892f3ffd5007bbfa955c6b2ed81418b9ebaa479175b5e16b9", "size_bytes": 8475},
+    {"path": "docs/runbooks/release-c-governance.md", "sha256": "f1d37165246b343a4000c5e961014150994c37a003742c6b202f50f685cc16c9", "size_bytes": 4871},
+    {"path": "docs/api/release-c-selection.md", "sha256": "a09ccb2d56fc5d6d622201f2ad70ada1bbf49655d1215507362b4c836b232a91", "size_bytes": 3077},
+    {"path": "docs/architecture/threat-model/phase-12-review.json", "sha256": "2e2d181b8290192536c73c8d11b4d536d12c7f4a1d15c89d772e473da47eab66", "size_bytes": 2954},
+    {"path": "docs/execution/evidence/phase-12/change-summary.md", "sha256": "72cc8ca213f62814dcb8f15c2b2b1b1c1aaa71a379563c61263c1f0708f22338", "size_bytes": 1743},
+    {"path": "docs/execution/evidence/phase-12/knowledge-transfer.md", "sha256": "9e9d8e34bfbadfef8a4fc42e0a7f317fde8b588d0abcdb4702ff5afed9950ffe", "size_bytes": 2908},
+    {"path": "docs/execution/evidence/phase-12/star-records.md", "sha256": "09e1b0ba4487bd1ae0272c4e4447872ee500db63a3d990bc179aed861bf990e5", "size_bytes": 1727},
     {"path": "docs/execution/evidence/phase-12/improvements/STAR-xor-safe-architecture-archive.md", "sha256": "39e1ae990a5de383a3d315039fe490fddbc7c65354e0a745c7ab104652a18f47", "size_bytes": 2861},
-    {"path": "docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md", "sha256": "ab60997face72b1c9fb59728b186f4b0dcffadc9c0e47f3d0f5a604ba76abcfa", "size_bytes": 4472},
+    {"path": "docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md", "sha256": "7d86077fc0c5272809c4a9673a3f96d2d41ebd4be1551038386ad56e5d9abf3b", "size_bytes": 4542},
     {"path": "docs/execution/blockers/phase-12/BLK-P12-089-archive-gate-line-normalization.md", "sha256": "2f2a0cc5093e94060294275155f1a23adcf797b2fadd61bfb2e605986a86e6eb", "size_bytes": 5446},
-    {"path": "docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1", "sha256": "c50169f55714e3d51a044e78df8eb5d206de70b3f501f7af62434bae5f062716", "size_bytes": 17136}
+    {"path": "docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1", "sha256": "01b78936b1391efc2b3edf1e396a9440a9be151f8c73c2e78e663224f6a0f051", "size_bytes": 19533}
   ]
 }
