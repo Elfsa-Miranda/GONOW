@@ -1172,5 +1172,8 @@ if ($RunnerText -notmatch "\$Mode -ceq 'Verify'.*local-verification\.json" -and
     $RunnerText -notmatch 'LocalVerificationPath[\s\S]+Write-P02LocalProjectionEvidence') {
   throw 'negative: P02-990 Evidence must not hash summaries that are rewritten afterward'
 }
+$MainProtectionContracts = Join-Path $PSScriptRoot 'Invoke-GitHubMainProtection.Tests.ps1'
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $MainProtectionContracts
+if ($LASTEXITCODE -ne 0) { throw 'negative: GitHub main protection adapter contracts failed' }
 Write-Verbose 'stage=complete'
 exit 0
