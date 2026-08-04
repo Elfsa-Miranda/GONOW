@@ -9,6 +9,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$CredentialProviderPath = Join-Path $PSScriptRoot 'GitHubCredentialProvider.psm1'
+Import-Module -Name $CredentialProviderPath -Force -ErrorAction Stop
 $ApiVersion = '2026-03-10'
 
 function Get-Utf8Sha256 {
@@ -50,12 +52,7 @@ function New-DesiredLabelDefinitions {
 
 function Get-GitHubToken {
   param([switch]$Required)
-  foreach($Name in @('GH_TOKEN','GITHUB_TOKEN')){
-    $Value=[Environment]::GetEnvironmentVariable($Name,'Process')
-    if(-not[string]::IsNullOrWhiteSpace($Value)){return $Value}
-  }
-  if($Required){throw 'github_release_labels_token_missing'}
-  return $null
+  return Get-GitHubApiToken -Required:$Required -MissingErrorCode 'github_release_labels_token_missing'
 }
 
 function New-GitHubHeaders {

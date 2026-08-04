@@ -10,6 +10,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$CredentialProviderPath = Join-Path $PSScriptRoot 'GitHubCredentialProvider.psm1'
+Import-Module -Name $CredentialProviderPath -Force -ErrorAction Stop
 $ApiVersion = '2026-03-10'
 $RequiredCheckNames = @('agent-required','baseline-and-candidate','tracked-and-history')
 
@@ -48,12 +50,7 @@ function Test-ExactStringSet {
 
 function Get-GitHubToken {
   param([switch]$Required)
-  foreach ($Name in @('GH_TOKEN','GITHUB_TOKEN')) {
-    $Value = [Environment]::GetEnvironmentVariable($Name,'Process')
-    if (-not [string]::IsNullOrWhiteSpace($Value)) { return $Value }
-  }
-  if ($Required) { throw 'github_release_pr_token_missing' }
-  return $null
+  return Get-GitHubApiToken -Required:$Required -MissingErrorCode 'github_release_pr_token_missing'
 }
 
 function New-GitHubHeaders {
