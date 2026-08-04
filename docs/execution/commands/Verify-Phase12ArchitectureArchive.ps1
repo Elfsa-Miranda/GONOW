@@ -237,7 +237,7 @@ try {
     $_ -cnotmatch '^docs/execution/evidence/phase-12[abd]/P12[ABD]-000/' -and
     $_ -cnotmatch '^docs/execution/blockers/phase-12/BLK-P12-089-[a-z0-9-]+\.md$'
   })
-  $implementationPathPattern = '^(agent-service/|lib/|test/|integration_test/|contracts/|supabase/|android/|ios/|web/|pubspec\.(yaml|lock)$)'
+  $implementationPathPattern = '^(agent-service/|lib/|test/|integration_test/|contracts/|supabase/|android/|ios/|web/|linux/|macos/|windows/|pubspec\.(yaml|lock)$)'
   $implementationChanges = @($changedPaths | Where-Object { $_ -cmatch $implementationPathPattern })
   $publicContractChanges = @($changedPaths | Where-Object { $_ -cmatch '^(contracts/|lib/.+\.g\.dart$|docs/api/(?!release-c-selection\.md$))' })
 

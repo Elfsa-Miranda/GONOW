@@ -7,7 +7,7 @@
     "design_ready_count": 3,
     "atomic_task_count": 18,
     "task_gate_passed_count": 3,
-    "required_artifact_count": 29,
+    "required_artifact_count": 30,
     "missing_artifact_count": 0,
     "plan_error_count": 0,
     "status_error_count": 0,
@@ -16,6 +16,14 @@
     "unexpected_path_count": 0,
     "secret_or_unsafe_finding_count": 0,
     "diff_check_exit_code": 0,
+    "ci_gate_count": 15,
+    "python_unit_tests": 695,
+    "contract_tests": 182,
+    "flutter_tests": 110,
+    "combined_test_count": 987,
+    "test_failures": 0,
+    "test_skipped": 0,
+    "test_xfailed": 0,
     "formal_selected_count": 0,
     "formal_selection_asserted_count": 0,
     "p12c_artifact_count": 0,
@@ -28,5 +36,5 @@
     "production_write_count": 0
   },
   "independent_review_status": "pending_external",
-  "recorded_at": "2026-08-04T14:32:23+08:00"
+  "recorded_at": "2026-08-04T14:53:48+08:00"
 }

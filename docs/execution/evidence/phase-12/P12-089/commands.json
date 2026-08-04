@@ -45,9 +45,16 @@
       "command": "run ABD combined gate, then Verify-Phase12ArchitectureArchive.ps1 from the Phase 11 source checkpoint",
       "exit_code": 0,
       "result": "three dormant design packages pass; P12C/formal selection artifacts, specialist refs/worktrees, runtime/public-contract changes, and production writes remain zero"
+    },
+    {
+      "step": 7,
+      "description": "Run full affected regression at the reconciled ABD head",
+      "command": "agent-service/scripts/ci.ps1 -Stage All, then flutter test --reporter expanded",
+      "exit_code": 0,
+      "result": "15/15 CI gates; Python unit 695; contract 182; Flutter 110; combined 987; failures/skips/xfails zero"
     }
   ],
   "nonzero_exit_count": 0,
   "production_write_count": 0,
-  "recorded_at": "2026-08-04T14:35:00+08:00"
+  "recorded_at": "2026-08-04T14:53:48+08:00"
 }

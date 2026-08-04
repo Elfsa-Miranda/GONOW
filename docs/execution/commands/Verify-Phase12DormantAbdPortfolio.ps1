@@ -90,6 +90,7 @@ try {
   if ($TaskId -ceq 'ABD') {
     foreach ($path in @(
       'docs/execution/evidence/phase-12/ABD-PORTFOLIO/change-summary.md',
+      'docs/execution/evidence/phase-12/ABD-PORTFOLIO/affected-regression.json',
       'docs/execution/evidence/phase-12/ABD-PORTFOLIO/star-records.md',
       'docs/execution/evidence/phase-12/ABD-PORTFOLIO/improvements/STAR-abd-design-readiness.md',
       'docs/execution/evidence/phase-12/ABD-PORTFOLIO/commands.json',
@@ -212,7 +213,7 @@ try {
     $_ -in @('README.md','docs/architecture/release-c-selection.md','docs/runbooks/release-c-governance.md','docs/api/release-c-selection.md','docs/architecture/threat-model/phase-12-review.json','docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1','docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md','docs/execution/evidence/phase-12/change-summary.md','docs/execution/evidence/phase-12/knowledge-transfer.md','docs/execution/evidence/phase-12/star-records.md','docs/execution/evidence/phase-12/artifact-manifest.premerge.json','docs/execution/evidence/phase-12/P12-089/provisional-archive-status.json','docs/execution/evidence/phase-12/P12-089/handoff-verification.json','docs/execution/evidence/phase-12/P12-089/commands.json','docs/execution/evidence/phase-12/P12-089/gate-results.json','docs/execution/evidence/phase-12/P12-089/artifact-hashes.json','docs/execution/evidence/phase-12/P12-089/archive-gate-runtime.json')
   })
   $unexpected = @($changed | Where-Object { $_ -notin $allowed })
-  $implementation = @($changed | Where-Object { $_ -cmatch '^(agent-service/|lib/|test/|integration_test/|contracts/|supabase/|android/|ios/|web/|pubspec\.(yaml|lock)$)' })
+  $implementation = @($changed | Where-Object { $_ -cmatch '^(agent-service/|lib/|test/|integration_test/|contracts/|supabase/|android/|ios/|web/|linux/|macos/|windows/|pubspec\.(yaml|lock)$)' })
   $contentFindings = New-Object System.Collections.Generic.List[string]
   foreach ($path in $changed) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }

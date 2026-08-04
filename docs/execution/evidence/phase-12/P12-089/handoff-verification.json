@@ -18,10 +18,11 @@
   "accepted": false,
   "archive_gate_passed": true,
   "affected_regression_passed": true,
-  "tests": 877,
+  "tests": 987,
+  "flutter_tests": 110,
   "failures": 0,
   "errors": 0,
   "skipped": 0,
   "xfailed": 0,
-  "recorded_at": "2026-08-04T14:35:00+08:00"
+  "recorded_at": "2026-08-04T14:53:48+08:00"
 }

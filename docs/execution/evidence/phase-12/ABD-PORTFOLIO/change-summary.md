@@ -35,6 +35,11 @@ newly added and untracked text for trailing whitespace and repeated terminal new
 modifications use `git diff --check` on changed lines. Both repairs were followed by the minimal
 affected package gate before continuing.
 
+Flutter dependency resolution refreshed seven desktop plugin registrants' stat/line-ending state, but
+Git object hashes proved byte-equivalence and no cached diff remained after index refresh. The two
+gates now also classify Linux, macOS, and Windows paths as implementation scope, closing the prior
+mobile/web-only path-pattern gap.
+
 ## Rollback
 
 Revert the portfolio and its design-package commits. Because implementation, contracts, schema,

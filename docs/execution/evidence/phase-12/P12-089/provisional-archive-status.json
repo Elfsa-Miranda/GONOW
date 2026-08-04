@@ -21,10 +21,12 @@
   "ci_gate_count": 15,
   "python_unit_tests_passed": 695,
   "contract_tests_passed": 182,
+  "flutter_tests_passed": 110,
+  "combined_tests_passed": 987,
   "failed": 0,
   "skipped": 0,
   "xfailed": 0,
   "independent_review_status": "pending_external",
   "remote_merge_status": "not_authorized_by_this_receipt",
-  "recorded_at": "2026-08-04T14:35:00+08:00"
+  "recorded_at": "2026-08-04T14:53:48+08:00"
 }

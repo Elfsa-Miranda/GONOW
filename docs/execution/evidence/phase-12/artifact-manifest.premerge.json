@@ -30,6 +30,6 @@
     {"path": "docs/execution/evidence/phase-12/improvements/STAR-xor-safe-architecture-archive.md", "sha256": "39e1ae990a5de383a3d315039fe490fddbc7c65354e0a745c7ab104652a18f47", "size_bytes": 2861},
     {"path": "docs/execution/blockers/phase-12/BLK-P12-089-formal-xor-selection-pending.md", "sha256": "7d86077fc0c5272809c4a9673a3f96d2d41ebd4be1551038386ad56e5d9abf3b", "size_bytes": 4542},
     {"path": "docs/execution/blockers/phase-12/BLK-P12-089-archive-gate-line-normalization.md", "sha256": "2f2a0cc5093e94060294275155f1a23adcf797b2fadd61bfb2e605986a86e6eb", "size_bytes": 5446},
-    {"path": "docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1", "sha256": "01b78936b1391efc2b3edf1e396a9440a9be151f8c73c2e78e663224f6a0f051", "size_bytes": 19533}
+    {"path": "docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1", "sha256": "cd363cd4be77c04a2a9d8f71e504b90f0327e3b3dbbddd338a856bb3f3727ce3", "size_bytes": 19556}
   ]
 }

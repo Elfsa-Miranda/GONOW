@@ -29,6 +29,8 @@
     "ci_gate_failures": 0,
     "python_unit_tests": 695,
     "contract_tests": 182,
+    "flutter_tests": 110,
+    "combined_tests": 987,
     "test_failures": 0,
     "test_errors": 0,
     "test_skipped": 0,
@@ -43,5 +45,5 @@
     "multi_agent_implementation_count": 0
   },
   "production_write_count": 0,
-  "recorded_at": "2026-08-04T14:43:02+08:00"
+  "recorded_at": "2026-08-04T14:53:48+08:00"
 }

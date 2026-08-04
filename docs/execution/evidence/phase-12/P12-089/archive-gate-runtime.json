@@ -3,9 +3,9 @@
     "gate_id":  "PHASE12-PROVISIONAL-ARCHITECTURE-ARCHIVE",
     "execution_mode":  "full",
     "source_checkpoint_oid":  "5c3031da4b0df7d1e97af47630e141726502894b",
-    "head_oid":  "da2d4449859e4d9748924bdd66bbfc1152e1cb4c",
+    "head_oid":  "8d44fe1a088ff2b3e1516d6479c1163dbbd9ce31",
     "git_object_format":  "sha1",
-    "archive_content_sha256":  "f3a4caa518ba4260cda86f7d8362c19404391c2db62c1dad14b34a6855ca0f33",
+    "archive_content_sha256":  "ce793b13829901dd3e86044dba84dfe42cdb22971824018e9a13a4c51594e9b8",
     "artifacts":  [
                       {
                           "path":  "README.md",
@@ -64,12 +64,12 @@
                       },
                       {
                           "path":  "docs/execution/commands/Verify-Phase12ArchitectureArchive.ps1",
-                          "sha256":  "01b78936b1391efc2b3edf1e396a9440a9be151f8c73c2e78e663224f6a0f051",
-                          "size_bytes":  19533
+                          "sha256":  "cd363cd4be77c04a2a9d8f71e504b90f0327e3b3dbbddd338a856bb3f3727ce3",
+                          "size_bytes":  19556
                       },
                       {
                           "path":  "docs/execution/evidence/phase-12/artifact-manifest.premerge.json",
-                          "sha256":  "127cb0768248c53f0eb57d9141acfb20a7a7ede5c7aa35305341ed9fe3c63606",
+                          "sha256":  "f6abd7bf3d39a9d18d0cda7de1bce7b09577c646458da72816acbc49fbf20b4e",
                           "size_bytes":  2769
                       },
                       {
@@ -79,27 +79,27 @@
                       },
                       {
                           "path":  "docs/execution/evidence/phase-12/P12-089/provisional-archive-status.json",
-                          "sha256":  "c579ffd1ec1da3652083fe9cc214f10420516fecd3bc7395f102a959f5eb9002",
-                          "size_bytes":  1045
+                          "sha256":  "234522496fe5a621503051e09f875e23f4f12cd9e459f567e05a5cb6964bb94b",
+                          "size_bytes":  1108
                       },
                       {
                           "path":  "docs/execution/evidence/phase-12/P12-089/handoff-verification.json",
-                          "sha256":  "534eb1aff4500618f97fac90429b3c621b04fcb123513357b28b3a42aff9394e",
-                          "size_bytes":  854
+                          "sha256":  "ff8562051228ca396140bd2f099a966c924f0d758138e7051796c1882d83fcc9",
+                          "size_bytes":  878
                       },
                       {
                           "path":  "docs/execution/evidence/phase-12/P12-089/commands.json",
-                          "sha256":  "c38772222c3837484fdb958e926eac7603444e606c0f79ac6e3471d5c2079c26",
-                          "size_bytes":  2753
+                          "sha256":  "471998235602d0131c9e75cc876ed34abdaf6b8e8a2900f7e46a558990d9420a",
+                          "size_bytes":  3103
                       },
                       {
                           "path":  "docs/execution/evidence/phase-12/P12-089/gate-results.json",
-                          "sha256":  "455bd212fc6b669138c9a34983fe76feb8a860e4c360c70802e4ab1653452662",
-                          "size_bytes":  1506
+                          "sha256":  "c0d624fa942bdd373b03bbc94536902709d9e0bd3e972723c48a2c736d382d88",
+                          "size_bytes":  1559
                       },
                       {
                           "path":  "docs/execution/evidence/phase-12/P12-089/artifact-hashes.json",
-                          "sha256":  "2465be5f9ba79d9ebb443755a1b3b68af60e96b0cac639f9f8e4541f7d954077",
+                          "sha256":  "b13c3cdff96be0f86865a43980b73316031bb8444997ccedd921cbb2c69f3f5d",
                           "size_bytes":  3447
                       },
                       {
@@ -134,8 +134,8 @@
                       },
                       {
                           "path":  "docs/execution/evidence/phase-12/ABD-PORTFOLIO/gate-results.json",
-                          "sha256":  "34171df97d742f1fab5da10b66913ad49fbc03ffccd02f81acaf0f5d3e319695",
-                          "size_bytes":  993
+                          "sha256":  "54ec0e4d2ea60dd8b65f281431f4aab930ea46558611b444e5602ff347e40aa8",
+                          "size_bytes":  1203
                       }
                   ],
     "checks":  {
@@ -172,7 +172,7 @@
                    "specialist_worktrees":  [
 
                                             ],
-                   "changed_path_count":  53,
+                   "changed_path_count":  54,
                    "unexpected_path_count":  0,
                    "unexpected_paths":  [
 
@@ -215,5 +215,5 @@
     "formal_task_status":  "not_started",
     "formal_selection_status":  "pending",
     "independent_review_status":  "pending_external",
-    "recorded_at":  "2026-08-04T14:47:38.7790687+08:00"
+    "recorded_at":  "2026-08-04T14:59:08.5370502+08:00"
 }

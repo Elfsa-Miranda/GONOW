@@ -64,6 +64,11 @@ The fix disables `core.safecrlf` only for verifier-owned read-only Git invocatio
 central Git helper and `diff --check`; exit codes, changed-line checks, and added/untracked full-file
 checks remain enforced.
 
+The Flutter compatibility run also marked seven generated desktop plugin registrants modified even
+though their Git-cleaned object hashes exactly matched the index. Refreshing those exact paths left no
+cached diff. Because the document gates' implementation patterns had omitted Linux, macOS, and
+Windows, both patterns were expanded so a future real desktop implementation diff fails closed.
+
 ## Rollback and limitations
 
 Revert the document and gate commits. No database, runtime, traffic, external provider, public
