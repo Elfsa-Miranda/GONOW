@@ -5,6 +5,38 @@
 - Scope: final owner-only production canary and dependent Release B acceptance
 - Production actions performed: `0`
 
+## 2026-08-04 local enabler update
+
+The installable portion of this blocker is now closed on the post-candidate repair branch.
+`Invoke-OwnerCanaryHttpsAdapter.ps1` supplies one measured, tracked executable for all seven
+logical adapter slots, and `Invoke-PersonalOwnerCanary.ps1` installs that path into any adapter
+slot that has no explicit deployment override. The adapter uses one fixed authenticated HTTPS
+relay path, refuses HTTP, loopback/IP-literal endpoints, redirects, TLS bypasses, unknown fields,
+unmeasured credential providers, expired credentials, non-PostgreSQL claims, and secret/Prompt/
+reasoning fields in a response. Receipt operations remain logically distinct and bind the exact
+adapter environment name and source digest.
+
+The credential provider is also supplied as
+`Get-OwnerCanarySecretManagementCredential.ps1`. The host has the official
+`Microsoft.PowerShell.SecretManagement 1.1.2` and
+`Microsoft.PowerShell.SecretStore 1.0.6` modules installed in CurrentUser scope. No vault,
+credential, token, endpoint, identity, or budget value was created or guessed. The remaining
+missing inputs are therefore the four real deployment references, not seven locally absent
+executables:
+
+- `GONOW_AGENT_API_URL`
+- `GONOW_OWNER_CANARY_IDENTITY_REF`
+- `GONOW_OWNER_CANARY_CREDENTIAL_PROVIDER`
+- `GONOW_RELEASE_B_BUDGET_CAP_REF`
+
+Name-only validation after this repair reports `adapter_count=7`, `valid_adapter_count=7`,
+`distinct_adapter_digests=1`, `secret_value_read_count=0`, and `production_write_count=0`.
+It still exits `3` until the four real references above exist, which is the intended fail-closed
+boundary. The standard relay expects the deployment-private endpoint
+`/.well-known/gonow-owner-canary/v1/adapter`; it does not claim that the frozen candidate's public
+OpenAPI exposes that route. A deployment that lacks the private control endpoint remains an
+external deployment blocker and must not be represented by a local fake.
+
 ## Reproduction
 
 A name-presence-only inventory in the frozen Phase 10 worktree found no production
@@ -56,7 +88,9 @@ invalidate P10-009 C1–C5 evidence or authorize traffic to another user.
 ## Exact recovery references
 
 Only presence and immutable identity are recorded; values must remain in the deployment
-or secret provider:
+or secret provider. The first four are genuine deployment inputs. The seven adapter variables
+are now automatically supplied by the tracked HTTPS adapter unless a measured deployment-specific
+executable is explicitly configured:
 
 - `GONOW_AGENT_API_URL`
 - `GONOW_OWNER_CANARY_IDENTITY_REF`
