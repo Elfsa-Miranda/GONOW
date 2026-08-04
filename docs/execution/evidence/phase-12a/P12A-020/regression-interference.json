@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12A-020",
+  "classification": "local_test_environment_interference",
+  "root_cause": "A pre-existing landing c2-live certification and the P12A regression used the same loopback PostgreSQL port 55432. Concurrent schema lifecycle operations produced PostgreSQL 40P01 deadlocks and transient RLS failures.",
+  "candidate_behavior_regression": false,
+  "repair": "The P12A RealPG fixture now creates only missing roles, grants no production role membership to the migrator, probes RLS through the isolated bootstrap administrator with SET LOCAL ROLE, and drops only roles it created after schema cleanup.",
+  "negative_evidence": [
+    {"path": "D:/GO_NOW-p12a-full-regression-20260805-retry1/ci/ci-summary.json", "sha256": "e197b044e3ced75f65d614cf1598a8171d0f643ec62064b76126d13fd78d28fe"},
+    {"path": "D:/GO_NOW-p12a-full-regression-20260805-retry1/ci/contract.xml", "sha256": "fb27b49c1d3719636c2783eff175155269d22b782fc1e9b5dce9f4ea9ec99ff3"},
+    {"path": "D:/GO_NOW-p12a-full-regression-20260805-repair/memory-then-p12d.xml", "sha256": "e6bdb0ab8a20586289fd7d03e358a6a5680a576533b7dfd830502f926d702c85"}
+  ],
+  "distinguishing_evidence": [
+    {"path": "D:/GO_NOW-p12a-full-regression-20260805-repair/p12d-normal-minrepro.xml", "sha256": "4a9b7f789f48243622a89a38c0dba3afbea93f389478c3139d6310e8c3a544ab", "result": "1 passed without the Memory predecessor"},
+    {"path": "D:/GO_NOW-p12a-full-regression-20260805-repair/memory-then-p12d-exclusive.xml", "sha256": "8b2ab57feb268749ec44aa4d7a4461b0d9ac62c944be1e9ae93f75e704bc2297", "result": "7 passed after the concurrent certification ended"},
+    {"path": "D:/GO_NOW-p12a-full-regression-20260805-repair/memory-affected-final.xml", "sha256": "95e0b2d0016a99313aee107d8b6fca504f435fad8b3016b5b9b9ce11fa90742b", "result": "65 passed"}
+  ],
+  "skipped": 0,
+  "xfailed": 0,
+  "production_fact_claim": false
+}

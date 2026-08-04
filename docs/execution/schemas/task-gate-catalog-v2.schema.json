@@ -22,7 +22,7 @@
       "required":["Archive","Cleanup","CloseVerify","IntegrationSmoke","Merge","MergePreflight","MergeTreeVerification","PostMergeEvidence","Push","Retrospective","RollbackVerify","Security"],
       "propertyNames":{"enum":["Archive","Cleanup","CloseVerify","IntegrationSmoke","Merge","MergePreflight","MergeTreeVerification","PostMergeEvidence","Push","Retrospective","RollbackVerify","Security"]},
       "additionalProperties":{"$ref":"#/$defs/modeContract"}},
-    "Tasks":{"type":"object","minProperties":153,"maxProperties":169,
+    "Tasks":{"type":"object","minProperties":153,"maxProperties":177,
       "propertyNames":{"pattern":"^TASK-[A-Z0-9-]+$"},
       "additionalProperties":{"$ref":"#/$defs/task"}}
   },

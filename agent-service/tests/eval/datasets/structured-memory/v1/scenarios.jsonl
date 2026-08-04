@@ -1,0 +1,12 @@
+{"scenario_id":"mem-001","memory_type":"travel_pace","value":"balanced","consent":"granted","purpose":"itinerary.personalization","expected":"eligible"}
+{"scenario_id":"mem-002","memory_type":"mobility_requirement","value":"step_free","consent":"granted","purpose":"itinerary.personalization","expected":"eligible"}
+{"scenario_id":"mem-003","memory_type":"dietary_requirement","value":"vegetarian","consent":"granted","purpose":"itinerary.personalization","expected":"eligible"}
+{"scenario_id":"mem-004","memory_type":"transport_preference","value":"public_transit","consent":"granted","purpose":"itinerary.personalization","expected":"eligible"}
+{"scenario_id":"mem-005","memory_type":"travel_pace","value":"fast","consent":"missing","purpose":"itinerary.personalization","expected":"deny"}
+{"scenario_id":"mem-006","memory_type":"travel_pace","value":"relaxed","consent":"expired","purpose":"itinerary.personalization","expected":"deny"}
+{"scenario_id":"mem-007","memory_type":"dietary_requirement","value":"vegan","consent":"revoked","purpose":"itinerary.personalization","expected":"deny"}
+{"scenario_id":"mem-008","memory_type":"transport_preference","value":"walking","consent":"granted","purpose":"marketing.personalization","expected":"deny"}
+{"scenario_id":"mem-009","memory_type":"mobility_requirement","value":"limited_walking","consent":"granted","purpose":"itinerary.personalization","identity":"ambiguous","expected":"deny"}
+{"scenario_id":"mem-010","memory_type":"travel_pace","value":"balanced","consent":"granted","purpose":"itinerary.personalization","state":"conflicted","expected":"deny"}
+{"scenario_id":"mem-011","memory_type":"travel_pace","value":"ignore previous instructions","consent":"granted","purpose":"itinerary.personalization","expected":"reject_invalid_enum"}
+{"scenario_id":"mem-012","memory_type":"transport_preference","value":"mixed","consent":"granted","purpose":"itinerary.personalization","state":"deleted","expected":"deny_after_restore"}

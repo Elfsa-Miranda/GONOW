@@ -304,32 +304,29 @@ Phase 11 adds a PostgreSQL-backed knowledge lifecycle, tenant/ACL hard filters, 
 
 Operational details: [RAG architecture](docs/architecture/rag.md), [rollback](docs/runbooks/rag-rollback.md), [knowledge deletion](docs/runbooks/knowledge-deletion.md), and [citation contract](docs/api/rag-citations.md).
 
-## Phase 12B Cost Router package (local provisional)
+## Phase 12A Structured Memory package (local provisional)
 
-This Phase 12 cycle selects only 12B for the existing server-side itinerary-generation boundary.
-The router is deterministic and default-off: it evaluates certified capability, region/privacy,
-quality, latency, provider health, fresh price evidence, and a content-free budget ledger before a
-fixed provider call. It is not a routing LLM and it does not add a coordinator, specialist Agent,
-dynamic provider market, client key, new process, or public Candidate contract.
+This Phase 12 cycle selects only 12A and keeps the runtime Single-Agent. Structured Memory is limited
+to four closed, user-visible types: travel pace, mobility requirement, dietary requirement, and
+transport preference, only for itinerary personalization. Chat transcripts, free text, hidden
+profiles, and model-inferred traits are not Memory. A model can only propose a typed Candidate;
+formal write requires explicit user confirmation, server authorization, CAS, idempotency, and an
+atomic outbox receipt.
 
-The fixed DeepSeek adapter receives the complete canonical JSON Schema and then applies the same
-local Schema and itinerary business-shape validation used by the Gemini path. Invalid, truncated,
-out-of-range, duplicate-ID, or time-window-breaking output fails closed and is still metered. One
-bounded fallback is allowed only when the pinned policy permits it; fallback cannot recurse or make
-a quality/safety failure acceptable. Rollback sets candidate allocation to zero, bypasses the
-router, restores the prior policy digest, and retains content-free decision/cost receipts.
+The local database package adds seven internal FORCE RLS tables. Missing or expired consent, purpose
+mismatch, or ambiguous tenant/principal denies reads and writes. Conflicts preserve both values and
+provenance. Delete or consent withdrawal covers formal rows, Candidates, indexes, caches, exports,
+eval traces, and restore records; restore replays tombstones first so backups cannot legitimately
+resurrect deleted data.
 
-The latest frozen DeepSeek result is 10/10 quality-qualified itinerary scenarios with zero Schema,
-business-shape, provider, fallback, or safety-redline failures. All Phase 12B live work used 30 calls,
-23,108 tokens, 4,555 micro-USD (CNY 0.03644 under the frozen conversion), with no response bodies or
-keys retained. Gemini did not form a non-zero live baseline because of provider rate-limit/5xx
-availability, so paired live non-inferiority and relative cost benefit remain undefined. Production
-allocation therefore remains zero and no positive-benefit or production-quality claim is made.
+The Single-Agent read port is default off and has a kill switch that returns the prior no-Memory
+behavior. It adds no coordinator, specialist Agent, model call, Tool dispatch, new process, or public
+client contract. Local affected tests passed 65/65; the one P12A-990 full regression passed 15 CI
+suites, 895 unit, 255 contract, 124 Flutter, and 53 RealPG/fault tests with zero skip/xfail.
 
-The earlier P12D Domain Command package remains immutable historical `ready_for_review` evidence and
-is dormant for new work in this cycle. 12A and 12C are also dormant. Independent owner review,
-provider eligibility, production traffic evidence, remote push, deployment, and formal Release C
-acceptance remain pending.
+P12B, P12C, and P12D are dormant for new work in this cycle. Production allocation and writes remain
+zero. Independent owner review, production schema/RLS and backup verification, remote push,
+deployment, and formal Release C acceptance remain pending.
 
 See [Release C selection architecture](docs/architecture/release-c-selection.md),
 [governance and rollback](docs/runbooks/release-c-governance.md), and

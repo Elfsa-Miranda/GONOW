@@ -15255,16 +15255,16 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 - commit subject：`phase-12(TASK-P12-002): record planned deliverable`
 - 提交前：gate、`git diff --check`、allowlist。
 
-#### Phase 12A：显式结构化 Memory
-### TASK-P12A-000：设计休眠的显式 Memory 工作包
+#### Phase 12A：显式结构化 Memory（本轮 XOR 唯一选择）
+### TASK-P12A-000：激活显式 Memory 本地 provisional 工作包
 
-**状态：** `not_started`
+**状态：** `local_provisional_selected`
 **所属阶段：** Phase 12A
-**阶段分支：** `codex/release-c-governance`（不创建专项分支）
+**阶段分支：** `codex/phase-12a-structured-memory`
 **执行顺序：** 12A.000
 **owner：** Memory
 **独立 reviewer：** Product+Security+Privacy+Data
-**依赖：** TASK-P12-002（XOR 结论选中 12A）
+**依赖：** 用户本轮直接 XOR 唯一选择 P12A；正式 owner acceptance 仍 pending_external
 **指向规范：** AGENTS.md §5,§10 P12；v1.6.1 §14.6–§14.14
 **估算：** 2–4 人天，仅用于排序与容量规划，不是交付承诺
 **允许修改：** `docs/architecture/adr/ADR-P12A-000-memory-work-package.md`；`docs/execution/evidence/phase-12/P12A-000/task-plan.md`；`docs/execution/evidence/phase-12a/P12A-000/`；`docs/execution/status/TASK-P12A-000.json`
@@ -15272,15 +15272,15 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **目标：**
 
-把已校准触发和 Memory 约束拆成待批准原子 TASK；本卡不实现能力。
+把本轮直接选择和最小 Memory 合同物化为 010–060、990、999 的可执行 DAG；本卡不实现运行时能力。
 
 **非目标：**
 
-- 不建分支，不写 DDL/service，不开 cohort。
+- 本卡不写 DDL/service，不开生产 cohort，不调用模型，不改变 P12B/C/D。
 
 **输入与前置证据：**
 
-- >15% 假设的校准数据、XOR 结论、ADR 与 owner。
+- landing `3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104`、用户本轮 XOR 指令、既有 ADR/任务计划；生产触发与 schema/RLS 事实保持 unknown。
 
 **实施步骤：**
 
@@ -15340,10 +15340,32 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 **提交要求：**
 
-- commit subject：`phase-12a(TASK-P12A-000): record planned deliverable`
+- commit subject：`phase-12a(TASK-P12A-000): activate executable memory package`
 - 提交前：gate、`git diff --check`、allowlist。
 
-#### Phase 12B：成本路由强化（本轮 XOR 唯一选择）
+### P12A activated local-provisional DAG
+
+The exact executable contract is `docs/execution/evidence/phase-12a/P12A-000/proposed-execution-contract.json`
+and Catalog 2.5.0. All cards use `codex/phase-12a-structured-memory`, keep production allocation and
+writes at zero, prohibit model API calls in local tests, and forbid Multi-Agent implementation.
+
+| Task | Dependency | Literal scope | Mandatory affected gate | Commit subject |
+|---|---|---|---|---|
+| TASK-P12A-010 | P12A-000 | frozen enum/purpose/consent/lifecycle scope plus synthetic fixture | scope/dataset hash; no runtime/model call/production claim | `phase-12a(TASK-P12A-010): freeze structured memory scope` |
+| TASK-P12A-020 | P12A-010 | typed contracts, isolated migration, RLS, tombstones and outbox | unit contracts + migration/restore + RLS; skip/xfail=0 | `phase-12a(TASK-P12A-020): add typed memory persistence` |
+| TASK-P12A-030 | P12A-020 | Candidate confirmation and authorized CAS/idempotency/outbox command | consent/authorization/command tests; skip/xfail=0 | `phase-12a(TASK-P12A-030): implement authorized memory commands` |
+| TASK-P12A-040 | P12A-030 | explicit conflict/provenance and poisoning quarantine | conflict/injection/Single-Agent contract; skip/xfail=0 | `phase-12a(TASK-P12A-040): enforce conflict and poisoning policy` |
+| TASK-P12A-050 | P12A-040 | delete/withdraw/export/restore fanout | CT-015 lifecycle + restore; skip/xfail=0 | `phase-12a(TASK-P12A-050): close deletion and restore lifecycle` |
+| TASK-P12A-060 | P12A-050 | default-off principal-aware Single-Agent read port and rollback | CT-009/015 + fixture eval + compatibility; skip/xfail=0 | `phase-12a(TASK-P12A-060): add default-off single-agent memory port` |
+| TASK-P12A-990 | P12A-060 | acceptance evidence only | exactly one full regression; ready_for_review | `phase-12a(TASK-P12A-990): record local provisional acceptance` |
+| TASK-P12A-999 | P12A-990 + TASK-P12-089 | local landing merge evidence only | tree equality + exactly one focused smoke; no push | `phase-12a(TASK-P12A-999): record local landing merge` |
+
+The task-local exact file allowlists, forbidden changes, evidence outputs and assertions are the
+Catalog entries and selected execution contract. `TASK-P12-089` depends on P12A-990 for this cycle.
+Production schema/RLS, production trigger/value and independent owner acceptance remain unknown or
+pending_external and cannot be converted into passes by local fixtures.
+
+#### Phase 12B：成本路由强化（历史 local provisional；本轮 dormant）
 ### TASK-P12B-000：激活唯一候选 Cost Router 工作包
 
 **状态：** `local_provisional_selected`

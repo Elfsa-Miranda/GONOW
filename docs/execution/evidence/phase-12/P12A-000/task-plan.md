@@ -1,12 +1,12 @@
-# P12A dormant Memory implementation plan
+# P12A selected local-provisional structured Memory implementation plan
 
 Task: TASK-P12A-000
 Selection candidate: 12A
-Portfolio mode: dormant_design_ready
-Formal dependency status: pending
-Formal selection asserted: false
-Cycle: pending_formal_selection
-P12-002 head: pending
+Portfolio mode: selected_local_provisional
+Formal dependency status: pending_external
+Local selection asserted: true
+Cycle: p12a-local-provisional-20260805
+Phase base: 3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104
 Implementation commit count: 0
 Contract change: false
 Production write count: 0
@@ -25,9 +25,9 @@ Merge task: TASK-P12A-999
   `docs/execution/evidence/phase-12a/P12A-000/proposed-execution-contract.json`.
 - STAR pre-registration:
   `docs/execution/evidence/phase-12a/P12A-000/metrics-preregistration.json`.
-- These candidate files do not supersede `TaskGateCatalog.psd1`. Formal activation requires an
-  approved `execplan.md` and Catalog revision with exact `required_changes[]`, `file_allowlist`,
-  commands, evidence schemas and merge IDs. Empty future allowlists fail closed.
+- The user's direct XOR instruction activates exact `execplan.md` and Catalog allowlists for local
+  provisional work. Formal acceptance, production schema/RLS facts and production use remain
+  pending/unknown and cannot be inferred from this activation.
 
 ADR triggers: §16.1 items 2 (Memory data/RLS/deletion/restore), 3 (consent/privacy/injection),
 4 (Phase gate activation), 6 (Release C scope) and 7 (Candidate/Domain Command/CAS/outbox/runtime
@@ -41,13 +41,14 @@ regressions, not redefined Memory tests. CT-011 remains out of scope because thi
 Single-Agent and has no parallel specialist branches. New candidate-only cases use the `P12A-ME-*`
 namespace; those IDs cannot enter the stable CT catalog until an approved plan/Catalog amendment.
 
-Before TASK-P12A-010 evidence is accepted, the exact accepted Release B manifest must replay all
-implemented mandatory CT/gates, kill/replay, cross-tenant=0, flag-off Behavior Package digest
-equivalence, Phase 4 E0 parity and legacy critical journeys with `skip=0; xfail=0`.
+At entry this cycle reuses the user-provided stable landing evidence: 15 CI, 830 unit, 233 contract,
+124 Flutter and 53 RealPG/fault tests, skip/xfail zero, plus P12B post-merge smoke 98/98. It does not
+rerun the full suite. Atomic tasks run only affected Memory tests; P12A-990 runs the single full
+regression and P12A-999 runs one post-merge focused smoke.
 
 ## Pre-registered STAR contract
 
-This plan makes no improvement claim while dormant. TASK-P12A-010 must freeze the exact Release B
+This plan makes no production improvement claim. TASK-P12A-010 must freeze the exact landing
 OID, candidate base, dataset hash, eligible/excluded rules, evaluator, model/parameters, tool/database
 versions, seeds/repeats, hardware, time window and owner-approved decision margins before candidate
 measurement. The pre-registered roles are:
@@ -76,13 +77,20 @@ power, bindings or comparability is missing, `TASK-P12-089` records
 
 ## Entry and scope
 
-Entry requires an accepted Release B head, accepted P12-002 selecting 12A, a calibrated real trigger,
-and owner-approved data purpose. Until then every task below is dormant and has no implementation
-branch. The selected package remains inside the existing Agent codebase and the two-process
+The user's current instruction is the unique local-provisional XOR selection. A calibrated real
+production trigger and owner-approved production data purpose remain `unknown/pending`; local work
+uses synthetic/de-identified fixtures only. The selected package remains inside the existing Agent codebase and the two-process
 `agent-api`/`agent-worker` boundary; no multi-agent coordinator, Redis, queue, dynamic MCP market, or
 new production service is permitted.
 
-## Proposed atomic tasks
+The minimum scope is four closed-enum, user-visible preference types—travel pace, mobility
+requirement, dietary requirement and transport preference—for the sole purpose
+`itinerary.personalization`. Free text, transcripts, hidden profiles and model inference are
+excluded; retention is at most 365 days. Missing/invalid consent, ambiguous identity, tenant
+mismatch, conflict, quarantine or deletion denies reads and writes. Delete/withdraw covers record,
+Candidate, index, cache, export, eval trace and restore ledger; restore applies tombstones first.
+
+## Activated atomic tasks
 
 Atomic task: TASK-P12A-010
 
@@ -143,9 +151,8 @@ Atomic task: TASK-P12A-060
 ## Dependency and merge DAG
 
 `010 -> 020 -> 030 -> 040 -> 050 -> 060 -> P12A-990 -> TASK-P12-089 -> P12A-999`.
-Implementation tasks require a plan change that freezes exact file allowlists, commands, datasets,
-thresholds, owner identities, and merge IDs. A design-ready receipt is not a substitute for that
-change. `TASK-P12-089` is the single Phase 12 documentation/knowledge-transfer task required by
+Exact file allowlists and merge IDs are frozen by Catalog 2.5.0 and the selected execution contract.
+`TASK-P12-089` is the single Phase 12 documentation/knowledge-transfer task required by
 AGENTS.md §14; no candidate-specific `P12A-089` is created. P12A cannot run in the same Release C
 cycle as P12B, P12C, or P12D.
 

@@ -1,0 +1,7 @@
+{"schema_version":"1.0","task_id":"TASK-P12A-060","artifacts":[
+{"path_or_reference":"agent-service/app/memory/single_agent.py","sha256":"5eabfcac2e8503b89292f3bc712efc33f1e705a17ff1b65aa14971741b30bad6","size_bytes":2052},
+{"path_or_reference":"agent-service/tests/contract/test_memory_single_agent.py","sha256":"41145404ba2d2037c553c38337b6400d64f2fbed078bc588f4a4d7db7b9095b1","size_bytes":2987},
+{"path_or_reference":"agent-service/tests/eval/test_memory_value.py","sha256":"d787caabd285d6ac3926383e0e173974673f955515d9996fdd946e017c781bed","size_bytes":1415},
+{"path_or_reference":"docs/runbooks/structured-memory.md","sha256":"960cf5648d13a906a5b7e68bb020b3dac70ae610c2509ea1734140e4e9c772ef","size_bytes":1964},
+{"path_or_reference":"docs/execution/evidence/phase-12a/P12A-060/star-evaluation.json","sha256":"cfafef01b3f4daac4a3cf208dc09a7621e00c9b03fda15347453f39d3af45c6f","size_bytes":595},
+{"path_or_reference":"docs/execution/evidence/phase-12a/P12A-060/rollback-drill.json","sha256":"a1899d9ded08ff821eb00df24e0a8ae0e2a6b972e0e706c33b446730c82f6890","size_bytes":416}]}

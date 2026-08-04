@@ -129,8 +129,8 @@ def main() -> int:
         catalog_task = catalog_tasks.get(task.get("task_id"), {})
         if catalog_task.get("file_allowlist") != task.get("file_allowlist"):
             errors.append(f"exact allowlist mismatch: {task.get('task_id')}")
-    if catalog_tasks.get("TASK-P12-089", {}).get("prerequisite_task_ids") != ["TASK-P12B-990"]:
-        errors.append("global P12-089 does not depend exactly on P12B-990")
+    if catalog_tasks.get("TASK-P12-089", {}).get("prerequisite_task_ids") != ["TASK-P12A-990"]:
+        errors.append("global P12-089 does not depend exactly on the current P12A-990 cycle")
     if catalog_tasks.get("TASK-P12B-999", {}).get("prerequisite_task_ids") != ["TASK-P12B-990", "TASK-P12-089"]:
         errors.append("P12B-999 dependency order is invalid")
     if "Push" in catalog_tasks.get("TASK-P12B-999", {}).get("allowed_phase_merge_modes", []):

@@ -1,53 +1,51 @@
-# Phase 12B Cost Router knowledge transfer
+# Phase 12A Structured Memory knowledge transfer
 
-hardest_item_count: 2
+## Purpose and ownership
 
-## Responsibilities and dependency choices
+P12A supplies explicit user-visible Memory to the existing Single-Agent itinerary path. Product and
+Data own the four allowed types, purpose, consent, retention, export, and deletion semantics.
+Security owns authorization, RLS, poisoning boundaries, and redlines. Engineering owns migrations,
+CAS/idempotency/outbox, the default-off read port, tests, and rollback mechanics. Local evidence does
+not substitute for independent approval.
 
-The package keeps one Agent codebase with `agent-api`, `agent-worker`, PostgreSQL, and static internal
-tools. Model Platform owns the deterministic router/adapters/ledger; Eval, Finance, Privacy, and
-Security own the remaining independent review. No central model gateway, routing model, dynamic
-provider market, new process, database migration, or Multi-Agent framework was introduced.
+## Data and authority model
 
-## Hardest items
+Memory is limited to travel pace, mobility requirement, dietary requirement, and transport
+preference for `itinerary.personalization`. A record binds tenant, principal, current consent,
+provenance, retention, version, and deletion identity. Absence, expiry, purpose mismatch, or ambiguous
+identity denies reads and writes. A model can propose only a typed Candidate; explicit user
+confirmation and server authorization precede CAS/idempotent formal write and atomic outbox.
 
-The first hard boundary was proving that provider-side structured-output configuration is not local
-output validity. DeepSeek now receives the complete canonical JSON Schema, Gemini receives its
-provider-compatible projection, and both outputs pass the same local Schema and itinerary business
-rules. Every JSON primitive is covered; booleans are not accepted as numbers and non-finite numbers
-fail. Invalid bodies are not stored or echoed.
+## Runtime path
 
-The second hard boundary was improving model behavior without relaxing quality. The first live
-result was preserved. Failure codes isolated daylight, late-night, and globally unique item-ID
-semantics. Exact minute boundaries and deterministic cross-day IDs were added to the prompt contract,
-then each repair was checked on captured/fake data before the smallest useful live scenario. The
-latest frozen DeepSeek set is 10/10 qualified.
+Seven local PostgreSQL tables are protected by FORCE RLS using tenant plus principal context. The
+Worker cannot directly mutate formal rows. The Single-Agent runtime reads only pre-authorized typed
+Memory through a narrow default-off port. The port never calls a model or Tool and adds no
+coordinator or specialist Agent. Its kill switch returns the old no-Memory behavior.
 
-## Operations must know
+## Conflict, delete, export, and restore
 
-- Candidate allocation is zero and the router is default-off.
-- First inspect policy/price/Schema digests, provider certification/health, route reason, reservation,
-  physical attempts, validation code, and fallback depth.
-- Fallback depth may not exceed one. Quality, privacy, region, Schema, safety, or budget failure
-  cannot be compensated by cost.
-- Never log API keys, prompts, response bodies, tenant/user identity, or hidden reasoning.
-- Gemini rate-limit/5xx is an external availability blocker. Do not repeat calls without a new signal.
-- Rollback bypasses the router, restores the prior policy digest, retains content-free receipts, and
-  does not remove historical negative evidence.
+Conflicts preserve both typed values and provenance until an authorized expected-version resolution.
+Retrieved content is untrusted and cannot change instructions or grant authority. Delete and consent
+withdrawal tombstone the record and suppress Candidate, index, cache, export, eval trace, and restore
+ledger materialization. Restore must replay tombstones first; deletion is not undone by rollback.
+Export is restricted to the authenticated principal and allowed purpose.
 
-## Evidence and estimate comparison
+## Operations and troubleshooting
 
-The latest DeepSeek set contains ten distinct frozen scenarios. Across all P12B live work there were
-30 calls, 23,108 tokens, and CNY 0.03644 of frozen-price cost. The bounded certification sequence
-used 14 DeepSeek calls, 16,100 tokens, and CNY 0.022832. Those figures are actual local experiment
-counts, not a production bill forecast. The offline replay's lower candidate cost is diagnostic only
-because Gemini has no non-zero comparable live baseline.
+First inspect identity, tenant, purpose, consent version/expiry, record version, idempotency key, RLS
+context, and tombstone. Reproduce the smallest authorization or lifecycle failure, repair that root
+cause, then run affected Memory/RLS/conflict/delete/restore and compatibility tests. Never bypass
+consent, remove FORCE RLS, rewrite versions, or drop negative evidence to recover service.
 
-## Handoff verification and known risks
+Disable by setting allocation to zero, turning off proposals and reads, or activating the Memory kill
+switch. Preserve rows, receipts, outbox, audit, and tombstones. A disabled Memory path safely returns
+to the previous Single-Agent behavior.
 
-Local verification covers routing determinism, eligibility, complete Schema delivery, canonical and
-business validation, metering, concurrency, one-hop fallback, rollback, redlines, replay, bounded
-live quality, and the complete regression. It does not impersonate an independent reviewer.
-Production provider eligibility, traffic mix, stable Gemini availability, cost, latency, incidents,
-and quality remain unknown or pending. Formal Eval/Finance/Privacy/Security review and Release C
-acceptance remain `pending_external`.
+## Evidence and remaining work
+
+P12A-990 records the one full regression: 15 CI suites, 895 unit, 255 contract, 124 Flutter, and 53
+RealPG/fault tests, all passing with zero skip/xfail. Local PostgreSQL and fake/fixture tests used no
+model API. Before production use, owners must inventory the actual schema/RLS/grants/triggers and
+backup path, run real deletion/export/restore drills, approve consent and retention, establish
+monitoring and rollout authority, and independently review the exact candidate and merge OIDs.

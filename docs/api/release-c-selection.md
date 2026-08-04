@@ -2,75 +2,67 @@
 
 ## Public API status
 
-Phase 12B changes only the existing Worker model boundary for itinerary generation. The Cost Router,
-DeepSeek adapter, cost ledger, and validation are internal Python components. Published OpenAPI,
-Event/State/Candidate/SSE schemas, Flutter/Dart contracts, database schema, and process topology are
-unchanged.
+Phase 12A adds an internal Structured Memory domain and a default-off Single-Agent read port. It does
+not change published OpenAPI, Event/State/Candidate/SSE, Flutter/Dart, or process-topology contracts.
+It adds one local database migration for seven internal tables and FORCE RLS policies; production
+database equivalence is not claimed.
 
 runtime_change_count: 1
 public_contract_change_count: 0
-schema_change_count: 0
+schema_change_count: 1
 production_write_count: 0
 selected_count: 1
 candidate_allocation: 0
 
-## Governance record shape
+## Closed data contract
 
-The following is a documentation model for later evidence, not a network API or an approval:
+| Field | Rule |
+|---|---|
+| type | one of `travel_pace`, `mobility_requirement`, `dietary_requirement`, `transport_preference` |
+| value | closed typed value for that type; no free text or transcript |
+| purpose | exactly `itinerary.personalization` |
+| subject | authenticated tenant and principal |
+| consent | current, purpose-specific, versioned, and unexpired |
+| provenance | explicit user source and Candidate/confirmation lineage |
+| retention | explicit expiry, no more than 365 days |
+| version | compare-and-swap version for mutation and conflict resolution |
+| deletion identity | stable identifier bound to tombstone and restore suppression |
+
+Missing, expired, mismatched, or ambiguous authority denies read and write. Model output is only a
+Candidate. Formal mutation requires explicit user confirmation, server authorization, CAS,
+idempotency, and an atomic outbox record.
+
+## Internal operations
+
+- `propose`: validates a typed Candidate but performs no formal write.
+- `confirm`: reauthorizes the user and purpose, verifies consent and CAS, then writes the formal row,
+  receipt, and outbox atomically.
+- `read`: returns only typed values already authorized for the exact tenant, principal, and purpose.
+- `resolve_conflict`: preserves both claims and provenance until an authorized expected-version
+  decision succeeds.
+- `delete` / `withdraw_consent`: tombstones and suppresses record, Candidate, index, cache, export,
+  eval trace, and restore ledger materialization.
+- `export`: returns only user-visible Memory for the authenticated subject and allowed purpose.
+- `restore`: replays tombstones before materializing backup data.
+
+These are internal domain contracts, not newly published network endpoints. The Worker has no direct
+formal-write authority. The Single-Agent read port is default off and contains no coordinator,
+specialist, model call, or Tool dispatch.
+
+## Governance record shape
 
 ```json
 {
   "schema_version": "1.0",
-  "cycle_id": "owner-issued immutable identifier",
-  "release_b_head_oid": "full Git object ID",
-  "route_scope": "server:itinerary_generation",
-  "policy_digest": "sha256",
-  "price_snapshot_digest": "sha256",
-  "schema_digest": "sha256",
-  "selection": "12A|12B|12C|12D|none",
+  "cycle_id": "p12a-local-provisional-20260805",
+  "selection": "memory",
   "selected_count": 1,
+  "selected_task": "TASK-P12A-990",
   "candidate_allocation": 0,
-  "owner_decision_references": [],
+  "formal_acceptance": false,
   "production_write_count": 0
 }
 ```
 
-The formal runner must reject a missing or mismatched cycle, head, digest, owner identity, evidence
-window, or XOR reservation. `selected_count=1` records the user's local 12B choice; it does not grant
-production allocation or replace independent approval.
-
-## Internal route and output contract
-
-The router input is a closed typed request containing task class, required capabilities, region,
-privacy class, quality floor, latency budget, policy/price/Schema digests, provider-health snapshot,
-and remaining budget. Prompt, response, reasoning, secret, credential, tenant, user, and principal
-content are not route factors. Route reasons are finite codes.
-
-The DeepSeek request contains the complete canonical JSON Schema in its system instruction. The
-Gemini request uses its provider-compatible Schema projection. Both returned payloads then pass the
-same local canonical Schema validator and itinerary business-shape validator. Supported JSON
-primitives include object, array, string, integer, number, boolean, and null; numeric validation
-rejects booleans and non-finite values. Validation failure returns only a finite code and never the
-response body.
-
-The internal result remains the existing typed itinerary Candidate. No provider response can bypass
-Schema/business validation, authorize a Tool or domain write, or change routing policy.
-
-## Cost, fallback, and failure semantics
-
-Budget is reserved before a physical call and reconciled from actual input/output token counts after
-every success, rejection, timeout, invalid output, retry, or fallback. Cost per successful task is
-total billed attempt cost divided only by quality-qualified successes; zero successes is
-`undefined_fail_closed`.
-
-Fallback depth is at most one and cannot recurse. Quality/safety redlines, region/privacy mismatch,
-missing certification, stale prices, exhausted budget, invalid Schema/business shape, or an
-unapproved provider fail closed under the pinned policy. Rollback sets allocation to zero, bypasses
-the router, restores the previous policy digest, and retains content-free receipts.
-
-## Evidence boundary
-
-The latest DeepSeek scenario set is 10/10 quality-qualified, but Gemini has no non-zero live baseline
-because its classified live calls hit external rate-limit/5xx availability. Paired live quality
-non-inferiority and relative cost benefit are therefore undefined. Candidate allocation stays zero;
-no production-quality, savings, eligibility, latency, or acceptance claim follows from local tests.
+This record is local evidence, not an approval or public API. Production schema/RLS/grants, backup
+tombstone replay, traffic, consent population, and product impact remain `unknown/pending`.
