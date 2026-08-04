@@ -1,0 +1,71 @@
+{
+    "schema_version":  "1.0",
+    "gate_id":  "PHASE12-ABD-DORMANT-DESIGN",
+    "task_id":  "ABD",
+    "phase_base_oid":  "d850640325904c443a180ebb2dbb0462638ac293",
+    "head_oid":  "a974d1f649868cdd82abb54a33a985255a1cb22d",
+    "checks":  {
+                   "package_count":  3,
+                   "expected_package_count":  3,
+                   "required_artifact_count":  29,
+                   "missing_artifact_count":  0,
+                   "missing_artifacts":  [
+
+                                         ],
+                   "plan_error_count":  0,
+                   "plan_errors":  [
+
+                                   ],
+                   "status_error_count":  0,
+                   "status_errors":  [
+
+                                     ],
+                   "json_error_count":  0,
+                   "json_errors":  [
+
+                                   ],
+                   "hash_error_count":  0,
+                   "hash_errors":  [
+
+                                   ],
+                   "atomic_task_count":  18,
+                   "forbidden_materialized_count":  0,
+                   "forbidden_materialized":  [
+
+                                              ],
+                   "formal_ref_count":  0,
+                   "formal_refs":  [
+
+                                   ],
+                   "formal_worktree_count":  0,
+                   "formal_worktrees":  [
+
+                                        ],
+                   "changed_path_count":  33,
+                   "unexpected_path_count":  0,
+                   "unexpected_paths":  [
+
+                                        ],
+                   "implementation_file_change_count":  0,
+                   "implementation_file_changes":  [
+
+                                                   ],
+                   "secret_or_unsafe_finding_count":  0,
+                   "secret_or_unsafe_findings":  [
+
+                                                 ],
+                   "diff_check_exit_code":  0,
+                   "design_ready_count":  3,
+                   "formal_selected_count":  0,
+                   "formal_selection_asserted_count":  0,
+                   "implementation_commit_count":  0,
+                   "contract_change_count":  0,
+                   "multi_agent_implementation_count":  0,
+                   "production_write_count":  0
+               },
+    "overall_status":  "passed",
+    "execution_mode":  "local_provisional_dormant_design",
+    "formal_selection_status":  "pending",
+    "independent_review_status":  "pending_external",
+    "recorded_at":  "2026-08-04T14:32:58.5707411+08:00"
+}
