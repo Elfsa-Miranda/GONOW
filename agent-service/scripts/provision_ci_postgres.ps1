@@ -98,7 +98,7 @@ function Install-LockedPgvectorIfMissing {
     }
 
     $BuildCommand = 'call "{0}" && set "PGROOT={1}" && cd /d "{2}" && nmake /NOLOGO /F Makefile.win && nmake /NOLOGO /F Makefile.win install' -f $VcVars, $PostgresRoot, $BuildRoot
-    & $env:ComSpec /d /s /c "`"$BuildCommand`""
+    & $env:ComSpec /d /s /c $BuildCommand
     if ($LASTEXITCODE -ne 0) { throw 'Locked pgvector source build or install failed' }
     if (-not (Test-Path -LiteralPath $VectorControl -PathType Leaf)) {
       throw 'pgvector control file is unavailable after installation'
