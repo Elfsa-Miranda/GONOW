@@ -40,6 +40,8 @@ jobs:
     name: agent-required
     runs-on: windows-2025
     timeout-minutes: 25
+    env:
+      PUB_HOSTED_URL: https://pub.flutter-io.cn
     steps:
       - name: Checkout immutable revision
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

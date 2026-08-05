@@ -76,6 +76,7 @@ def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:
     assert install_flutter < resolve_packages < provision < mandatory < cleanup
     assert "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2" in workflow
     assert 'flutter-version: "3.41.7"' in workflow
+    assert "PUB_HOSTED_URL: https://pub.flutter-io.cn" in workflow
     assert "dart pub get --enforce-lockfile" in workflow
     assert "Package resolution changed tracked files" in workflow
     assert "-DartPath (Get-Command dart).Source" in workflow

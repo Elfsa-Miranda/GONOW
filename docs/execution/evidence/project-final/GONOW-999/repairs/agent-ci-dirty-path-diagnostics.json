@@ -16,7 +16,7 @@
     "contract_failed": 0,
     "final_dirty_count": 1
   },
-  "root_cause_status": "not_yet_distinguishable_without_dirty_path",
+  "root_cause_status": "confirmed_hosted_package_origin_drift",
   "excluded_by_prior_signal": [
     "git_application_resolution",
     "pgvector_cmd_invocation",
@@ -34,12 +34,33 @@
     "production_write_count": 0,
     "rollback": "Revert this enabler after the side effect is repaired; do not remove or weaken the repository-clean gate."
   },
+  "diagnostic_result": {
+    "workflow_run_id": 30994667774,
+    "summary_sha256": "93d9c683fdc8e4aed85352433106c3af61dc1498934d3aca7049b387d2098eb2",
+    "initial_dirty_count": 0,
+    "final_dirty_count": 1,
+    "final_dirty_paths": [
+      "pubspec.lock"
+    ]
+  },
+  "repair": {
+    "implementation": "Bind the Agent CI job environment to the sole hosted origin already present in every pubspec.lock package entry.",
+    "pub_host": "https://pub.flutter-io.cn",
+    "lockfile_ignored_or_restored": false,
+    "repository_clean_gate_changed": false,
+    "dependency_name_or_version_changed": false,
+    "production_write_count": 0,
+    "rollback": "Revert this repair only together with a reviewed lockfile origin migration; do not ignore pubspec.lock drift."
+  },
   "focused_validation": {
     "first_test_selector_exit_code": 4,
     "first_test_selector_classification": "nonexistent_test_node_id",
     "corrected_contract_exit_code": 0,
     "corrected_contract_passed": 1,
     "powershell_parse_errors": 0,
+    "agent_workflow_yaml_parse_exit_code": 0,
+    "job_level_pub_host_binding": true,
+    "lockfile_drift_bypass_present": false,
     "failed": 0,
     "skipped": 0,
     "xfailed": 0
