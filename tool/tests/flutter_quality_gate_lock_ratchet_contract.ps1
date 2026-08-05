@@ -30,4 +30,9 @@ if ($PrimaryStart -lt 0 -or $ReportStart -le $PrimaryStart) { throw 'primary rat
 $PrimaryText = $Text.Substring($PrimaryStart,$ReportStart-$PrimaryStart)
 if ($PrimaryText -match '\$LockHashMatch') { throw 'primary ratchet still requires cross-revision lock equality' }
 if ($PrimaryText -notmatch '\$NewErrors\.Count -eq 0' -or $PrimaryText -notmatch '\$NewFailures\.Count -eq 0' -or $PrimaryText -notmatch '\$NewSkips\.Count -eq 0') { throw 'analyzer/test/skip ratchets were weakened' }
-[ordered]@{schema_version='1.0';parse_errors=0;per_revision_frozen_lock=$true;cross_revision_lock_equality_required=$false;analyzer_failure_skip_ratchets_preserved=$true;production_write_count=0}|ConvertTo-Json -Compress
+if ($PrimaryText -notmatch '\$BaselineBuildAccepted' -or $PrimaryText -notmatch '\$CandidateResult\.build\.exit_code -eq 0') { throw 'candidate build or bounded baseline build requirement is missing' }
+if ($Text -notmatch [regex]::Escape("`$ImmutableBaselineHead = '142abfc339f003ede8d85d9534336923b5610252'")) { throw 'immutable baseline identity is not pinned' }
+if ($Text -notmatch 'LibraryVariantBuilderImpl' -or $Text -notmatch 'amap_flutter_\(base\|map\)-3\\\.0\\\.0' -or $Text -notmatch "The method 'hashValues' isn't defined") { throw 'known immutable baseline failure fingerprint is incomplete' }
+if ($Text -notmatch "'unexpected_failure'") { throw 'unknown baseline build failures do not fail closed' }
+if ($Text -notmatch 'known_immutable_baseline_build_failure = \$KnownImmutableBaselineBuildFailure' -or $Text -notmatch 'candidate_build_required = \$true') { throw 'baseline exception or candidate build evidence is missing' }
+[ordered]@{schema_version='1.0';parse_errors=0;per_revision_frozen_lock=$true;cross_revision_lock_equality_required=$false;analyzer_failure_skip_ratchets_preserved=$true;candidate_build_required=$true;known_baseline_exception_fingerprint_count=3;unknown_baseline_fail_closed=$true;production_write_count=0}|ConvertTo-Json -Compress

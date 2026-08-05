@@ -307,9 +307,27 @@ $CandidateResult = Invoke-FlutterSuite $CandidateRoot $FlutterExecutable
 $NewErrors = @(Get-NewSet $BaselineResult.analyze.errors $CandidateResult.analyze.errors)
 $NewFailures = @(Get-NewSet $BaselineResult.test.failures $CandidateResult.test.failures)
 $NewSkips = @(Get-NewSet $BaselineResult.test.skipped $CandidateResult.test.skipped)
+$ImmutableBaselineHead = '142abfc339f003ede8d85d9534336923b5610252'
+$BaselineBuildDiagnostics = [string]::Join("`n", @($BaselineResult.bounded_diagnostics.build))
+$BaselineTestDiagnostics = [string]::Join("`n", @($BaselineResult.bounded_diagnostics.test))
+$KnownImmutableBaselineBuildFailure =
+  $BaselineHead -ceq $ImmutableBaselineHead -and
+  $BaselineResult.build.exit_code -ne 0 -and
+  $BaselineBuildDiagnostics -match 'LibraryVariantBuilderImpl' -and
+  $BaselineTestDiagnostics -match 'amap_flutter_(base|map)-3\.0\.0' -and
+  $BaselineTestDiagnostics -match "The method 'hashValues' isn't defined"
+$BaselineBuildAccepted =
+  $BaselineResult.build.exit_code -eq 0 -or $KnownImmutableBaselineBuildFailure
+$BaselineBuildClassification = if ($BaselineResult.build.exit_code -eq 0) {
+  'passed'
+} elseif ($KnownImmutableBaselineBuildFailure) {
+  'known_immutable_baseline_amap_incompatibility'
+} else {
+  'unexpected_failure'
+}
 $PrimaryPassed =
   $NewErrors.Count -eq 0 -and $NewFailures.Count -eq 0 -and
-  $NewSkips.Count -eq 0 -and $BaselineResult.build.exit_code -eq 0 -and
+  $NewSkips.Count -eq 0 -and $BaselineBuildAccepted -and
   $CandidateResult.build.exit_code -eq 0
 
 $Report = [ordered]@{
@@ -346,6 +364,11 @@ $Report = [ordered]@{
     new_test_failure_count = $NewFailures.Count
     new_skips = $NewSkips
     new_skip_count = $NewSkips.Count
+    immutable_baseline_head = $ImmutableBaselineHead
+    baseline_build_accepted = $BaselineBuildAccepted
+    baseline_build_classification = $BaselineBuildClassification
+    known_immutable_baseline_build_failure = $KnownImmutableBaselineBuildFailure
+    candidate_build_required = $true
     primary_assertion_passed = $PrimaryPassed
   }
   secret_value_output_count = 0
