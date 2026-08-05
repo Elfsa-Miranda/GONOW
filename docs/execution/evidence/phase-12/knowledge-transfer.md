@@ -1,8 +1,9 @@
-# Phase 12A Structured Memory knowledge transfer
+# Phase 12 cumulative Release C knowledge transfer
 
 ## Purpose and ownership
 
-P12A supplies explicit user-visible Memory to the existing Single-Agent itinerary path. Product and
+Phase 12 cumulatively supplies P12D Domain Command, P12B Cost Router, and P12A Structured Memory to
+the existing Single-Agent itinerary path. P12C stays dormant. Product and
 Data own the four allowed types, purpose, consent, retention, export, and deletion semantics.
 Security owns authorization, RLS, poisoning boundaries, and redlines. Engineering owns migrations,
 CAS/idempotency/outbox, the default-off read port, tests, and rollback mechanics. Local evidence does
@@ -17,6 +18,11 @@ identity denies reads and writes. A model can propose only a typed Candidate; ex
 confirmation and server authorization precede CAS/idempotent formal write and atomic outbox.
 
 ## Runtime path
+
+P12D owns the default-off typed Basic Info write path; disable its flag or kill switch to return to
+the legacy write path without deleting command receipts or outbox evidence. P12B owns deterministic
+provider routing and cost ledger mechanics; allocation remains zero and disabling it returns to the
+previous provider path. Neither package authorizes production use from local evidence.
 
 Seven local PostgreSQL tables are protected by FORCE RLS using tenant plus principal context. The
 Worker cannot directly mutate formal rows. The Single-Agent runtime reads only pre-authorized typed
@@ -44,8 +50,11 @@ to the previous Single-Agent behavior.
 
 ## Evidence and remaining work
 
-P12A-990 records the one full regression: 15 CI suites, 895 unit, 255 contract, 124 Flutter, and 53
+P12D records 15 CI, 736 unit, 183 contract, 124 Flutter, and 52 RealPG/fault passes, with its later
+test-only drift revalidated 2/2. P12B records 15 CI, 830 unit, 233 contract, 124 Flutter, 53
+RealPG/fault, and 98/98 focused-smoke passes; relative live benefit remains undefined. P12A-990
+records the one P12A full regression: 15 CI suites, 895 unit, 255 contract, 124 Flutter, and 53
 RealPG/fault tests, all passing with zero skip/xfail. Local PostgreSQL and fake/fixture tests used no
-model API. Before production use, owners must inventory the actual schema/RLS/grants/triggers and
+model API during acceptance. Before production use, owners must inventory the actual schema/RLS/grants/triggers and
 backup path, run real deletion/export/restore drills, approve consent and retention, establish
 monitoring and rollout authority, and independently review the exact candidate and merge OIDs.

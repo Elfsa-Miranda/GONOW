@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12-GOV-000",
+  "base_landing_oid": "811b38cb96c51e0807de9de9fc00dc36c2b096ea",
+  "profile": "personal_automated",
+  "change": "activate the fixed cumulative Phase 12 close for P12D, P12B, and P12A while P12C remains dormant",
+  "catalog": {
+    "version": "3.0.0",
+    "task_count": 180,
+    "work_contract_count": 154,
+    "taskgate_mode_count": 24,
+    "phase_merge_mode_count": 12,
+    "sha256": "7c6d1b5a1bf6298a300bf61a71607459345ed89dddeecd1281e51ab452e9c22b"
+  },
+  "checks": {
+    "powershell_parse_errors": 0,
+    "phase12a_contract_validator_total": 1,
+    "phase12a_contract_validator_passed": 1,
+    "taskgate_contract_suite_total": 1,
+    "taskgate_contract_suite_passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "secret_finding_count": 0,
+    "model_api_call_count": 0,
+    "production_write_count": 0,
+    "force_update_count": 0,
+    "direct_main_push_count": 0
+  },
+  "document_hashes": {
+    "AGENTS.md": "b11f0bfea43ec08ca5fe7941e663e0b8fcd73176a9b21566209058a0980e4201",
+    "execplan.md": "a54d2fc820879d2b796351dc6f513f5a5fb0a3856d202fbc4e82292205475287",
+    "docs/architecture/adr/ADR-P12-003-cumulative-release-c-close.md": "b9ea44b13c4c0b204fc5ece413b70fea356e7babac2e323ee9a2b8d57cca28df"
+  },
+  "architecture": {
+    "single_agent": true,
+    "multi_agent_component_count": 0,
+    "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+    "p12c_status": "dormant"
+  },
+  "production_facts_status": "unknown",
+  "recorded_at": "2026-08-05T13:30:00+08:00"
+}

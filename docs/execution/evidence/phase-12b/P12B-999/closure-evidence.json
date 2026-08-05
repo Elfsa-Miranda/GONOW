@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-999",
+  "profile": "personal_automated",
+  "overall_status": "passed",
+  "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+  "p12c_status": "dormant",
+  "single_agent_architecture": true,
+  "candidate_head_oid": "1dbca43516cdebe35cb132f131106964396a31e4",
+  "candidate_tree_oid": "38f0dd1c739cab7fc6ff4b1b05a7bfc28c1d28e7",
+  "historical_merge": {"parent_count": 2, "tree_mismatch_count": 0, "conflict_count": 0, "method": "no_ff"},
+  "historical_focused_smoke": {"tests": 98, "passed": 98, "failed": 0, "skipped": 0, "xfailed": 0, "live_call_count": 0},
+  "positive_benefit_claim": false,
+  "production_facts_status": "unknown",
+  "proofs": [
+    {"path": "docs/execution/evidence/phase-12b/merge.json", "sha256": "8cbc38b3a99e949158d53a277d8dda2e489df127ee31eb3003e51218a874060e", "size_bytes": 1559},
+    {"path": "docs/execution/evidence/phase-12b/P12B-990/cumulative-acceptance-attestation.json", "sha256": "40052f965f621da4c174a112bc23ecb7c3b0b546bd4703dd71db743a992981d2", "size_bytes": 2668},
+    {"path": "docs/execution/status/TASK-P12B-990.json", "sha256": "6f38a635964683c73c8fd95d46557c1dd46d16ff9ab229fd7e3b3d50f9206e1b", "size_bytes": 1230}
+  ],
+  "checks": {
+    "mandatory_gate_failures": 0,
+    "artifact_drift": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "flaky_rerun_passes": 0,
+    "redline_failures": 0,
+    "open_p0_p1": 0,
+    "security_failures": 0,
+    "model_api_call_count": 0,
+    "multi_agent_component_count": 0,
+    "production_write_count": 0,
+    "production_allocation": 0,
+    "force_update_count": 0,
+    "direct_main_push_count": 0
+  },
+  "recorded_at": "2026-08-05T15:12:00+08:00"
+}

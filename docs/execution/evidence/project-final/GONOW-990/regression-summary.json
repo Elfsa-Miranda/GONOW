@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-990",
+  "candidate_head_oid": "cdcb8f9f4b6bb26d126f22d133c7e190986ac79d",
+  "candidate_tree_oid": "07a7e2f5966008afae388232948123a8846eb585",
+  "checks": {
+    "ci_suites": 15,
+    "ci_suites_passed": 15,
+    "unit_tests": 911,
+    "contract_tests": 255,
+    "flutter_tests": 124,
+    "p12d_realpg_fault_tests": 53,
+    "taskgate_contract_suite_passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "mandatory_skip_count": 0,
+    "redline_failure_count": 0,
+    "model_api_call_count": 0,
+    "multi_agent_component_count": 0,
+    "production_write_count": 0
+  },
+  "ci_gate_names": ["lock-check","frozen-sync","format","lint","type","secret","clock-contract","test-report-sandbox","dart-toolchain","unit","unit-report","contract","sca","licenses","repository-clean"],
+  "diagnostic_name_profiles": {
+    "note": "Overlapping name-based diagnostics, not independent test denominators.",
+    "memory": 87,
+    "rls_or_tenant": 60,
+    "cas_idempotency_or_conflict": 67,
+    "delete_tombstone_restore_or_backup": 49,
+    "legacy_compatibility_or_fallback": 57,
+    "security_authorization_consent_secret_or_pii": 182
+  },
+  "durations_seconds": {
+    "ci_all": 548.6,
+    "flutter_all": 79.5,
+    "p12d_affected_test_body": 166.85,
+    "taskgate_contracts": 87.0
+  },
+  "external_evidence": {
+    "orchestration_summary": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-complete/orchestration-summary.json","sha256":"01b7f2ff1adbe3bc1bb64c2ecc9fffeae1d71fd26871b91c3d2ba9da5c3223d7","size_bytes":1709},
+    "ci_summary": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-complete/ci/ci-summary.json","sha256":"f0f347ffc2d4f88168a1d3892ffa5f040c9732ec160710ee4b3f39a4f55ee7df","size_bytes":1063},
+    "unit_junit": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-complete/ci/unit.xml","sha256":"9fc94726ef8351b50e51d3e480adec99b92fe43c25a7465e6116a85981d8d0ad","size_bytes":130010},
+    "contract_junit": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-complete/ci/contract.xml","sha256":"6b5c728299282342b253482fc74c42fffab7a5881d90e7d42534adf0199b52fa","size_bytes":37525},
+    "flutter_machine": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-complete/flutter/flutter-machine.jsonl","sha256":"2b86d9e7b7fb105127ebc247b38670b2fc52ed9ca0ad0170d7289a4de65f446d","size_bytes":69420,"public_tests":124},
+    "taskgate_contracts": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-complete/governance/taskgate-contracts.log","sha256":"cb7fa3a6f1eb97c710b8b9d847d2078169001488215311bde9b5049f6e26e354","size_bytes":144},
+    "p12d_affected_summary": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-p12d-repair/summary.json","sha256":"51119c9a001cc113b15ca677dd47d05741bdbc48b2b7e02e7d2f176c08370a47","size_bytes":408},
+    "p12d_affected_log": {"path":"D:/Temp/gonow-final-regression-cdcb8f9-p12d-repair/p12d-failure-matrix.log","sha256":"d9c34cf7a74f06d0dfc88463790fe05ec42315adeecbbdd775d198d5fb21672e","size_bytes":58250}
+  },
+  "database": {
+    "engine": "PostgreSQL 17.10 with locked pgvector 0.8.1",
+    "network": "127.0.0.1:55432",
+    "task_owned": true,
+    "stopped_after_run": true,
+    "post_run_pg_isready": "no response"
+  },
+  "claim_scope": "repository_contracts_and_isolated_local_mechanics",
+  "production_facts_status": "unknown",
+  "production_improvement_claim": false,
+  "recorded_at": "2026-08-05T15:50:00+08:00"
+}

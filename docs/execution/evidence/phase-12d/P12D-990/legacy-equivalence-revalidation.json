@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-990",
+  "reason": "The historical premerge manifest reported one later change in the P12D legacy-equivalence test; product and persistence artifacts did not drift.",
+  "historical_manifest": {
+    "path": "docs/execution/evidence/phase-12d/artifact-manifest.premerge.json",
+    "recorded_test_sha256": "256315f72e8860c50b45c07830eefbba4be2bd3e280fb1dfa59d0250fea246f2",
+    "recorded_size_bytes": 10998,
+    "historical_candidate_head_oid": "88c538b1461be6a825d77dbd636b828767e8e898"
+  },
+  "current_test": {
+    "path": "agent-service/tests/contract/test_p12d_legacy_equivalence.py",
+    "sha256": "55e6e460aba647de7e6873e3c9080d752c10bfae5a32468f8da013543542b700",
+    "size_bytes": 27383,
+    "change_commit_oid": "a475ff5bdf489bf5c89bb3231bac4614de408114",
+    "change_scope": "add frozen statistical bounds, run records, and a normal-write equivalence profile"
+  },
+  "isolated_test": {
+    "command": "pytest -q tests/contract/test_p12d_legacy_equivalence.py --maxfail=1",
+    "postgresql_distribution": "locked pgvector PostgreSQL 17 toolchain",
+    "tests": 2,
+    "passed": 2,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "duration_seconds": 176.481,
+    "junit_sha256": "900cbce2b6863fb4d5e2b0894d0dac88aebf822cbb1e0d84b88909e9af39659e",
+    "junit_size_bytes": 570,
+    "external_temp_path": "D:\\Temp\\gonow-p12d-revalidation-ca5f1e9860884e35a79b4c793cc69811\\report\\p12d-legacy-equivalence.xml",
+    "postgres_stopped_after_test": true
+  },
+  "checks": {
+    "historical_manifest_drift_count": 1,
+    "product_artifact_drift_count": 0,
+    "affected_revalidation_failure_count": 0,
+    "remaining_unresolved_drift_count": 0,
+    "model_api_call_count": 0,
+    "production_write_count": 0
+  },
+  "production_facts_status": "unknown",
+  "recorded_at": "2026-08-05T15:15:00+08:00"
+}

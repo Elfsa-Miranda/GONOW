@@ -1,7 +1,7 @@
 # GoNow 可执行交付计划
 
-> 计划版本：`2.0.0-personal`
-> 规范：`AGENTS.md 2.0.0-personal`
+> 计划版本：`3.0.0-personal`
+> 规范：`AGENTS.md 3.0.0-personal`
 > 目标架构：`GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx`
 > 目标架构 SHA-256：`644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6`
 > 指定远程：`https://github.com/Elfsa-Miranda/GO_NOW.git`
@@ -30,7 +30,7 @@
 
 - Release A：Phase 0 的安全基线；不接 Agent。
 - Release B：Phase 1–10 的可运营单 Agent；只有多日行程规划、一个 Behavior、一张 Graph、最多三类只读 Tool。
-- Conditional Release C：Release B 真实数据触发后，只选 Phase 11 或 Phase 12A–D 中一个能力。
+- Conditional Release C：本轮固定 path=`phase12`，累计认证已经依次进入 landing 的 P12D、P12B、P12A；P12C dormant，运行时保持 Single-Agent，生产 allocation=0。
 
 铁律：
 
@@ -75,6 +75,42 @@
 对同一根因，执行者必须完成“最小复现 → 影响面分析 → 最小可逆根因修复 → 受影响回归”的闭环；第二次失败或无新诊断信息时立即按 `AGENTS.md` §12 建 blocker，禁止把同一问题拆成反复的小规模审查或重复重跑。卡点只阻断受影响动作，其他 ready/repair 工作继续推进。
 
 Phase 的完成投影固定为：全部实施 TASK `ready_for_review`、机械 mandatory gate 通过、无开放 P0/P1、回滚证据和 checkpoint OID 齐全。enterprise 模式按独立 owner 批准；current personal 模式由自动 attestation 接受后立即 push Phase 分支并合入/push landing，再从 phase-close OID 建立下一 Phase 的干净 worktree/branch。
+
+### 0.2.2.1 Phase 12 累计 Release C 收口覆盖
+
+本节依据 `AGENTS.md §0.4.4` 与 `ADR-P12-003-cumulative-release-c-close.md`，只覆盖旧计划中 Phase 12 的 XOR、单能力 Release C、`selected_count=1` 和“未选路径 commit_count=0”语义；未冲突的安全、测试、回滚、证据和任务原子性要求继续有效。不得借本覆盖启用 P12C、Multi-Agent、生产部署、生产写或流量分配。
+
+固定累计集合及顺序：
+
+```text
+cumulative_capabilities=[P12D,P12B,P12A]
+P12C=dormant
+runtime_architecture=Single-Agent
+production_allocation=0
+```
+
+实际 DAG：
+
+```text
+P12B-990 acceptance -> P12B-999 acceptance
+P12D-990 acceptance -> P12D-999 acceptance
+                         |
+P12A-990/999 accepted ---+
+                         v
+P12-000 -> P12-001 -> P12-002 -> P12-089 -> REL-C-000 -> REL-C-001
+                                                        |
+                                                        v
+GONOW-089 -> GONOW-990 -> GONOW-999 -> protected landing-to-main PR
+```
+
+- P12A 已 accepted，禁止重复实现或完整回归。
+- P12B/P12D 只消费未漂移的原始 candidate、990 regression、999 merge tree 和 focused smoke；若发现真实漂移，只跑最小受影响检查并新增解释证据，不改写原始 manifest。
+- P12-000 登记累计集合；P12-001 登记本轮授权、ADR、风险和回滚；P12-002 冻结三个能力在 landing 内的祖先/顺序、独立开关和零生产分配。
+- P12-089 对 A/B/D 做累计文档、handoff、Harness Catalog、状态和 artifact manifest 聚合；其既有 A-only acceptance 保留为历史，新累计 attestation 追加而不倒签。
+- REL-C-000 固定 path=`phase12`；REL-C-001 只完成累计候选验证和发布准备，实际 PR/main 合并由工程级 999 唯一执行。
+- 工程级任务 ID 固定为 `TASK-GONOW-089`、`TASK-GONOW-990`、`TASK-GONOW-999`。089 汇总 BOOT–P12/Release B/C；990 在候选冻结后只执行一次全工程回归；999 验证测试树、合 landing、跑一次 focused smoke、非强制 push、创建受保护 PR，并在 required checks 全绿后以 merge commit 非强制合入 main。合并后再执行一次项目级 focused smoke，最终 receipt 可保存在 Git common directory 的只读外部证据区，避免为记录已发生的 main OID 再制造第二个 PR。
+
+工程级完整回归的 mandatory 分母必须来自同一次候选运行，至少覆盖 CI、Python unit、contract、Flutter、RealPG/故障、RLS、CAS、删除恢复、安全和旧路径兼容；`failed=0;skipped=0;xfailed=0;redline_failure_count=0;model_api_call_count=0;production_write_count=0`。既有阶段回归只用于证明历史和决定受影响补测范围，不替代本次唯一全工程回归。
 
 ### 0.2.3 STAR 行为量化记录合同
 
@@ -14952,23 +14988,23 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 2. 关闭新 flag/route/image，保留兼容数据与审计；不恢复泄露 secret。
 3. 重跑旧路；仍不确定则 `blocked` 并升级 rollback owner。
 
-## 15. Phase 12：按阈值一次只启动一个规模化子计划
+## 15. Phase 12：累计认证已完成的 P12D、P12B、P12A
 
-**状态：** `not_started`
+**状态：** `cumulative_close_in_progress`
 **发布归属：** Conditional Release C
 **阶段分支：** `codex/release-c-governance`（由 TASK-REL-C-000 创建；非实现分支）
 **从何处分支：** `codex/gonow-agent-landing@[Release B accepted integration SHA]`
-**目标：** 汇总真实失败，选择一个能力或不扩展
+**目标：** 保留历史地累计收口 P12D、P12B、P12A，P12C dormant，并形成唯一工程 Release C 候选
 **用户影响：** 选择前无用户影响
-**明确不做：** 四项不是并行包，不为完整性上重平台
+**明确不做：** 不建设 Multi-Agent，不启用生产流量，不删除或改写 A/B/D 历史，不为完整性上重平台
 
 ### 白话说明
 
 规模化方向尚未由真实数据证明，提前搭平台会制造长期负担。
 
-本阶段只从 Memory、成本路由、多 Agent、领域命令中选一项或不选。
+本阶段按 §0.2.2.1 固定累计 Domain Command、成本路由和 Structured Memory；Multi-Agent 保持 dormant。
 
-验收的是选择与设计归档；实施必须由后续获批计划另行展开。
+验收的是三个既有实现的累计兼容、证据、回滚和发布候选；不重复阶段实现。
 
 用户和生产无变化；owner 能看到选择依据、排除理由和退出条件。
 
@@ -14992,7 +15028,7 @@ git diff --check; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
 
 ### 任务顺序
 
-`000→001→002→exactly one of {12A,12B,12C,12D}-000 or none→089；089 只关闭设计归档，不代表实现完成`
+`P12B/P12D 990→999 acceptance（P12A 已 accepted）→000→001→002→089→REL-C-000→REL-C-001→GONOW-089→GONOW-990→GONOW-999`
 ### TASK-P12-000：汇总数据并选择或不扩展
 
 **状态：** `not_started`
@@ -16584,15 +16620,38 @@ mandatory连续失败、外部权限缺失、生产风险、架构冲突、不�
 | `TASK-P11-089` | `not_started` | TASK-P11-010 | Search | `docs/execution/evidence/phase-11/P11-089/commands.json` |
 | `TASK-P11-990` | `not_started` | TASK-P11-089 | Search | `docs/execution/evidence/phase-11/acceptance.md` |
 | `TASK-P11-999` | `not_started` | TASK-P11-990 accepted | ReleaseEng | `docs/execution/evidence/phase-11/merge.json` |
-| `TASK-P12-000` | `not_started` | TASK-REL-C-000（path=`phase12`）；Release B stable | Product | `docs/execution/evidence/phase-12/P12-000/commands.json` |
-| `TASK-P12-001` | `not_started` | TASK-P12-000 | Architecture | `docs/execution/evidence/phase-12/P12-001/commands.json` |
-| `TASK-P12-002` | `not_started` | TASK-P12-001 accepted | ReleaseEng | `docs/execution/evidence/phase-12/P12-002.json` |
-| `TASK-P12A-000` | `not_started` | TASK-P12-002（XOR 结论选中 12A） | Memory | `docs/execution/evidence/phase-12a/P12A-000/commands.json` |
-| `TASK-P12B-000` | `not_started` | TASK-P12-002（XOR 结论选中 12B） | ModelPlatform | `docs/execution/evidence/phase-12b/P12B-000/commands.json` |
-| `TASK-P12C-000` | `not_started` | TASK-P12-002（XOR 结论选中 12C） | AgentEng | `docs/execution/evidence/phase-12c/P12C-000/commands.json` |
-| `TASK-P12D-000` | `not_started` | TASK-P12-002（XOR 结论选中 12D） | DomainPlatform | `docs/execution/evidence/phase-12d/P12D-000/commands.json` |
-| `TASK-P12-089` | `not_started` | TASK-P12-002 AND selected_count=0 OR exactly one of TASK-P12A-000,TASK-P12B-000,TASK-P12C-000,TASK-P12D-000 accepted | Architecture | `docs/execution/evidence/phase-12/P12-089/commands.json` |
-| `TASK-REL-C-001` | `not_started` | （TASK-REL-C-000 path=`phase11` 且 TASK-P11-999）XOR（path=`phase12` 且 TASK-P12-089 accepted 且获批计划登记的唯一实施 merge task accepted） | Release Engineering | `docs/execution/evidence/releases/REL-C-001/commands.json` |
+| `TASK-P12-000` | `not_started` | P12A/P12B/P12D 999 evidence available | Product | `docs/execution/evidence/phase-12/P12-000/commands.json` |
+| `TASK-P12-001` | `not_started` | TASK-P12-000 accepted | Architecture | `docs/execution/evidence/phase-12/P12-001/commands.json` |
+| `TASK-P12-002` | `not_started` | TASK-P12-001 accepted | ReleaseEng | `docs/execution/evidence/phase-12/P12-002/commands.json` |
+| `TASK-P12A-000` | `ready_for_review` | 历史已实现；累计成员 | Memory | `docs/execution/evidence/phase-12a/P12A-000/commands.json` |
+| `TASK-P12B-000` | `ready_for_review` | 历史已实现；累计成员 | ModelPlatform | `docs/execution/evidence/phase-12b/P12B-000/commands.json` |
+| `TASK-P12C-000` | `not_started` | dormant；不得激活 | AgentEng | `docs/execution/evidence/phase-12c/P12C-000/commands.json` |
+| `TASK-P12D-000` | `ready_for_review` | 历史已实现；累计成员 | DomainPlatform | `docs/execution/evidence/phase-12d/P12D-000/commands.json` |
+| `TASK-P12-089` | `accepted_revalidation_pending` | TASK-P12-002 + P12A/P12B/P12D 999 accepted | Architecture | `docs/execution/evidence/phase-12/P12-089/commands.json` |
+| `TASK-REL-C-001` | `not_started` | TASK-REL-C-000 path=`phase12` + TASK-P12-089 cumulative attestation | Release Engineering | `docs/execution/evidence/releases/REL-C-001/commands.json` |
+| `TASK-GONOW-089` | `not_started` | TASK-REL-C-001 accepted | Architecture | `docs/execution/evidence/project-final/GONOW-089/commands.json` |
+| `TASK-GONOW-990` | `not_started` | TASK-GONOW-089 accepted | Release Engineering | `docs/execution/evidence/project-final/GONOW-990/commands.json` |
+| `TASK-GONOW-999` | `not_started` | TASK-GONOW-990 accepted | Release Engineering | `docs/execution/evidence/project-final/GONOW-999/commands.json` |
+
+### 18.2.1 工程级最终 089/990/999
+
+#### TASK-GONOW-089：全工程文档与证据归档
+
+**依赖：** `TASK-REL-C-001 accepted`。**允许修改：** `README.md`、`docs/architecture/final-release.md`、`docs/runbooks/final-release.md`、`docs/execution/evidence/project-final/GONOW-089/`、最终 task board、知识转移、release notes 和非自引用 artifact manifest。**禁止：** 业务实现、数据库、生产或远端动作。
+
+本卡汇总 BOOT–P12、Release B/C、P12D/P12B/P12A、迁移/RLS/CAS/删除恢复、回滚、测试、风险与 unknown。DoD：文档链接和 hash 缺失为 0；P12C dormant；Single-Agent；生产写/流量分配为 0；历史失败和 unknown 不被覆盖。commit subject：`docs(TASK-GONOW-089): archive final project handoff`。
+
+#### TASK-GONOW-990：冻结候选并执行唯一全工程回归
+
+**依赖：** `TASK-GONOW-089 accepted`。**允许修改：** `docs/execution/evidence/project-final/GONOW-990/` 与 `docs/execution/status/TASK-GONOW-990.json`。**禁止：** 运行时实现变化、第二次完整回归、真实模型 API、生产动作。
+
+先冻结 exact candidate OID/tree，再执行一次完整回归；外部报告必须绑定同一候选。DoD：CI、unit、contract、Flutter、RealPG/故障、RLS、CAS、删除恢复、安全、旧路径兼容全部运行；`failed=0;skipped=0;xfailed=0;redline_failure_count=0;model_api_call_count=0;production_write_count=0`，自动 attestation 绑定所有报告 hash。commit subject：`release(TASK-GONOW-990): accept final project candidate`。
+
+#### TASK-GONOW-999：landing、受保护 PR 与 main 发布合并
+
+**依赖：** `TASK-GONOW-990 accepted`。**允许修改：** `docs/execution/evidence/project-final/GONOW-999/`、`docs/execution/status/TASK-GONOW-999.json`、`codex/gonow-agent-landing`、一个 head=`codex/gonow-agent-landing`/base=`main` 的 GitHub PR，以及由保护规则产生的 main merge commit。**禁止：** direct push main、force、squash/rebase、绕过 required checks、第二个 PR、生产部署/写/流量。
+
+以 `--no-ff` 把 exact 990 候选合入 landing，证明 parent/tree 与测试候选的运行时树一致，执行一次 pre-PR focused smoke 并非强制 push。复用或创建唯一 PR；required checks、attestation 与 tree equality 全过后使用 merge commit 非强制合入 main。合并后执行一次 focused smoke，并把 GitHub PR URL、head/base/merge OID、checks、smoke、回滚和 `production_write_count=0` 保存为最终 receipt。commit subject：`release(TASK-GONOW-999): publish accepted GoNow candidate`。
 
 ### 18.3 证据索引
 
@@ -16611,7 +16670,7 @@ mandatory连续失败、外部权限缺失、生产风险、架构冲突、不�
 |---|---|---|---|---|---|---|
 | A | unknown | P00 accepted；旧key/scan/schema/legacy gates | 不适用 | 当前fetch/worktree blocker；Engineering/Security/Data | 关新网关，不恢复泄露key | unknown |
 | B | unknown | P01–P10 accepted；§13总门禁 | personal：C1–C5+4h soak+30–60min owner canary；enterprise：§9.2.1 五档31天 | residual-risk.json；personal自动attestation或enterprise Release Board | kill/allocation=0/flag回旧规划，保留数据 | unknown |
-| C | unknown | outer选P11/P12/none；P12内选四项/none；仅一个专项 accepted+merged 才开PR | 专项shadow/cohort | unknown；专项owners | 独立flag/manifest/alias/route | unknown |
+| C | unknown | path=`phase12`；累计 P12D/P12B/P12A；P12C dormant；工程级 089/990/999 | 本轮不分配生产流量 | 生产 schema/RLS/backup/traffic/value unknown | 三个独立 flag/route/read port；受保护 PR revert | pending final close |
 
 ### 18.5 阶段合并与最终自检
 
@@ -16625,6 +16684,6 @@ mandatory连续失败、外部权限缺失、生产风险、架构冲突、不�
 - [ ] 每卡步骤不超过10，allowlist/禁止/DoD/evidence/rollback/blocker齐全。
 - [ ] mandatory无skip/xfail/忽略exit；CT延期状态符合§16.1。
 - [ ] Release B无RAG/隐式Memory/生产Multi-Agent/Redis/自动正式写。
-- [ ] REL-C-000只选P11/P12/none；P11/P12同级互不依赖；P12只选四项/none；未选分支不存在。
+- [ ] REL-C-000 固定 path=`phase12`；累计集合精确为 P12D/P12B/P12A；P12C dormant；Single-Agent 和零生产分配成立。
 - [ ] 报告不含secret、JWT、PII、完整Prompt/response/reasoning。
 - [ ] 阶段只合 landing；Release PR 独立进入 main，personal profile 仅在 exact attestation/required checks/tree equality 全过时自动非强制合并。

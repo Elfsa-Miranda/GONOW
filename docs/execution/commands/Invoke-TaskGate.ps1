@@ -54,7 +54,7 @@ function Get-PhaseBaseOid {
 }
 
 function Get-GovernanceProfileState {
-  $AdoptionRelativePath = 'docs/execution/evidence/governance/personal-automation-adoption-v2.json'
+  $AdoptionRelativePath = 'docs/execution/evidence/governance/personal-automation-adoption-v3.json'
   $AdoptionPath = Join-Path $script:RepositoryRoot $AdoptionRelativePath
   $Checks = [ordered]@{
     adoption_receipt_missing = 0
@@ -107,7 +107,7 @@ function Get-GovernanceProfileState {
   return [ordered]@{
     passed = ($FailureCount -eq 0)
     profile = if ($FailureCount -eq 0) { 'personal_automated' } else { 'unknown' }
-    plan_version = '2.0.0-personal'
+    plan_version = '3.0.0-personal'
     adoption_path = $AdoptionRelativePath
     adoption_sha256 = if (Test-Path -LiteralPath $AdoptionPath -PathType Leaf) { Get-Sha256 -LiteralPath $AdoptionPath } else { $ZeroHash }
     architecture_sha256 = if ($null -ne $Adoption) { [string]$Adoption.documents.architecture.sha256 } else { $ZeroHash }
@@ -324,6 +324,9 @@ function Get-TaskEvidenceDirectory {
   if ($TaskIdValue -ceq 'TASK-REL-C-001') {
     return Join-Path $RepositoryRoot 'docs\execution\evidence\releases\REL-C-001'
   }
+  if ($TaskIdValue -cmatch '^TASK-GONOW-(089|990|999)$') {
+    return Join-Path $RepositoryRoot "docs\execution\evidence\project-final\GONOW-$($Matches[1])"
+  }
   if ($TaskIdValue -cmatch '^TASK-P(\d{2}[A-D]?)-(.+)$') {
     return Join-Path $RepositoryRoot "docs\execution\evidence\phase-$($Matches[1].ToLowerInvariant())\P$($Matches[1])-$($Matches[2])"
   }
@@ -337,8 +340,8 @@ function Get-ConditionalTaskRunnerRegistryState {
   $StandardWorkModes=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
   $AcceptanceWorkModes=@($StandardWorkModes+@('AcceptancePreflight','Regression','RollbackDrill'))
   $Registry=@{
-    'TASK-REL-C-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
-    'TASK-REL-C-001'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
+    'TASK-REL-C-000'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
+    'TASK-REL-C-001'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
     'TASK-P11-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P11-001'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P11-002'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
@@ -353,9 +356,9 @@ function Get-ConditionalTaskRunnerRegistryState {
     'TASK-P11-089'=@('Documentation','Evidence','HandoffVerification','HarnessCatalogAggregate','Preflight','RollbackVerify','Security','StatusBoardAggregate','WorkPreflight','WorksetVerify')
     'TASK-P11-990'=@('AcceptancePreflight','ApprovalValidation','BuildAcceptance','Documentation','Evidence','Regression','RollbackDrill','RollbackVerify','Security','Verify')
     'TASK-P11-999'=@('Evidence')
-    'TASK-P12-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
-    'TASK-P12-001'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
-    'TASK-P12-002'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
+    'TASK-P12-000'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
+    'TASK-P12-001'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
+    'TASK-P12-002'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
     'TASK-P12A-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12A-010'=$StandardWorkModes
     'TASK-P12A-020'=$StandardWorkModes
@@ -372,8 +375,8 @@ function Get-ConditionalTaskRunnerRegistryState {
     'TASK-P12B-040'=$StandardWorkModes
     'TASK-P12B-050'=$StandardWorkModes
     'TASK-P12B-060'=$StandardWorkModes
-    'TASK-P12B-990'=$AcceptanceWorkModes
-    'TASK-P12B-999'=$StandardWorkModes
+    'TASK-P12B-990'=@($AcceptanceWorkModes+@('AutomatedAcceptancePreflight'))
+    'TASK-P12B-999'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
     'TASK-P12C-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12D-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12D-010'=$StandardWorkModes
@@ -382,8 +385,8 @@ function Get-ConditionalTaskRunnerRegistryState {
     'TASK-P12D-040'=$StandardWorkModes
     'TASK-P12D-050'=$StandardWorkModes
     'TASK-P12D-060'=$StandardWorkModes
-    'TASK-P12D-990'=$AcceptanceWorkModes
-    'TASK-P12D-999'=$StandardWorkModes
+    'TASK-P12D-990'=@($AcceptanceWorkModes+@('AutomatedAcceptancePreflight'))
+    'TASK-P12D-999'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
     'TASK-P12-089'=@('AutomatedAcceptancePreflight','Documentation','Evidence','HandoffVerification','HarnessCatalogAggregate','Preflight','RollbackVerify','Security','StatusBoardAggregate','WorkPreflight','WorksetVerify')
   }
   $TaskRegistered=$Registry.ContainsKey($TaskIdValue);$ModeRegistered=$TaskRegistered-and$ModeValue-in@($Registry[$TaskIdValue])
@@ -2079,6 +2082,8 @@ function Update-P12APersonalAcceptedTaskBoard {
   [IO.File]::WriteAllText($MarkdownPath,($Markdown-join"`n")+"`n",[Text.UTF8Encoding]::new($false))
 }
 
+. (Join-Path $PSScriptRoot 'CumulativeFinalClose.ps1')
+
 function Write-P10011PersonalAcceptanceAttestation {
   if (-not (Test-PersonalAutomatedFormalExecution)) { throw 'P10-011 automated attestation requires formal personal execution' }
   $Dependency=Get-P10011DependencyState;$Modes=Get-P10011GateModeState;$ReleasePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/releases/B.json';$Release=Read-JsonEvidenceOrNull $ReleasePath
@@ -2315,9 +2320,9 @@ function Invoke-ModeBootstrapSelfTest {
     schema_parse_errors = $SchemaErrors; yaml_native_errors = $YamlNativeErrors; self_test_failures = $TestFailures
     full_schema_yaml_validation = 'pending_boot005'
   }
-  $Passed = $TaskCount -eq 177 -and $WorkContracts -eq 151 -and
-    @($StatusPaths | Sort-Object -Unique).Count -eq 177 -and
-    $TaskModes.Count -eq 24 -and $MergeModes.Count -eq 11 -and
+  $Passed = $TaskCount -eq 180 -and $WorkContracts -eq 154 -and
+    @($StatusPaths | Sort-Object -Unique).Count -eq 180 -and
+    $TaskModes.Count -eq 24 -and $MergeModes.Count -eq 12 -and
     $MissingHandlers -eq 0 -and $DuplicateHandlers -eq 0 -and
     $SchemaErrors -eq 0 -and $YamlNativeErrors -eq 0 -and $TestFailures -eq 0 -and
     [bool]$Checks.guidance_materialization_valid
@@ -15163,7 +15168,34 @@ function Invoke-ModeAcceptancePreflight {
 function Invoke-ModeAutomatedAcceptancePreflight {
   $Governance = Get-GovernanceProfileState
   if (-not [bool]$Governance.passed) { return New-BlockedResult 'personal_governance_profile_invalid' $Governance }
-  if ($TaskId -in @('TASK-P12A-990','TASK-P12-089','TASK-P12A-999')) {
+  if (Test-CumulativeFinalCloseTask -TaskIdValue $TaskId) {
+    $State=Get-CumulativeFinalCloseState -TaskIdValue $TaskId
+    $Checks=[ordered]@{
+      personal_profile=([string]$State.governance.profile-ceq'personal_automated')
+      cumulative_capability_count=if([int]$State.checks.capability_set_invalid-eq0){3}else{0}
+      p12c_dormant=([int]$State.checks.p12c_not_dormant-eq0)
+      single_agent_architecture=([int]$State.checks.single_agent_invalid-eq0)
+      candidate_drift=[int]$State.checks.candidate_invalid+[int]$State.checks.candidate_not_ancestor+[int]$State.checks.artifact_drift
+      mandatory_gate_failures=[int]$State.checks.mandatory_gate_failures+[int]$State.checks.dependency_failure_count+[int]$State.checks.closure_evidence_missing+[int]$State.checks.closure_schema_invalid+[int]$State.checks.proof_missing_count+[int]$State.checks.proof_hash_mismatch_count+[int]$State.checks.proof_size_mismatch_count
+      skipped=[int]$State.checks.skipped
+      xfailed=[int]$State.checks.xfailed
+      flaky_rerun_passes=[int]$State.checks.flaky_rerun_passes
+      redline_failures=[int]$State.checks.redline_failures
+      open_p0_p1=[int]$State.checks.open_p0_p1
+      security_failures=[int]$State.checks.security_failures
+      model_api_call_count=[int]$State.checks.model_api_call_count
+      multi_agent_component_count=[int]$State.checks.multi_agent_component_count
+      production_observation_required=$false
+      production_schema_rls_backup_status='unknown'
+      production_write_count=[int]$State.checks.production_write_count
+      production_allocation=[int]$State.checks.production_allocation
+      force_update_count=[int]$State.checks.force_update_count
+      direct_main_push_count=[int]$State.checks.direct_main_push_count
+    }
+    if(-not[bool]$State.passed){return New-BlockedResult 'cumulative_final_close_automated_acceptance_preflight_failed' $Checks}
+    return New-PassedResult $Checks
+  }
+  if ($TaskId -in @('TASK-P12A-990','TASK-P12A-999')) {
     $State=Get-P12APersonalAcceptanceState -TaskIdValue $TaskId
     $Checks=[ordered]@{
       personal_profile=[bool]$State.checks.personal_profile
@@ -16390,7 +16422,7 @@ function Invoke-ModeStatusBoardAggregate {
   }
   if ($TaskId -ceq 'TASK-P12-089') {
     $Dependency=Get-P12089DependencyState
-    if(-not[bool]$Dependency.passed){return New-BlockedResult 'p12_089_status_board_dependency_failed' ([ordered]@{task_count=177;dependency_failures=1;selection=[string]$Dependency.selection;selected_count=[int]$Dependency.selected_count;production_write_count=0})}
+    if(-not[bool]$Dependency.passed){return New-BlockedResult 'p12_089_status_board_dependency_failed' ([ordered]@{task_count=180;dependency_failures=1;selection='cumulative:P12D,P12B,P12A';selected_count=3;production_write_count=0})}
   }
   if ($TaskId -notin @('TASK-P01-089','TASK-P02-089','TASK-P03-089','TASK-P04-089','TASK-P05-089','TASK-P06-089','TASK-P07-089','TASK-P08-089','TASK-P09-089','TASK-P10-089','TASK-P11-089','TASK-P12-089')) { return Invoke-PendingMode 'StatusBoardAggregate' }
   $Rows=@()
@@ -16405,13 +16437,13 @@ function Invoke-ModeStatusBoardAggregate {
     }
   }
   $JsonPath=Join-Path $script:RepositoryRoot 'docs\execution\status\task-board.json'
-  Write-AtomicJson -LiteralPath $JsonPath -Value ([ordered]@{schema_version='1.0';plan_version='1.4.0';task_count=$Rows.Count;tasks=$Rows;generated_at=[DateTimeOffset]::Now.ToString('o')})
-  $JsonRoundTripFailure=0;try{$RoundTrip=Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;if([int]$RoundTrip.task_count-ne177-or@($RoundTrip.tasks).Count-ne177){$JsonRoundTripFailure=1}}catch{$JsonRoundTripFailure=1}
-  $Markdown=@('# Task board','','Generated from the 1.4.0 TaskGate Catalog and per-task status records.','','| Task | Phase | Status |','|---|---|---|')
+  Write-AtomicJson -LiteralPath $JsonPath -Value ([ordered]@{schema_version='1.0';plan_version='3.0.0-personal';task_count=$Rows.Count;tasks=$Rows;generated_at=[DateTimeOffset]::Now.ToString('o')})
+  $JsonRoundTripFailure=0;try{$RoundTrip=Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop;if([int]$RoundTrip.task_count-ne180-or@($RoundTrip.tasks).Count-ne180){$JsonRoundTripFailure=1}}catch{$JsonRoundTripFailure=1}
+  $Markdown=@('# Task board','','Generated from the 3.0.0 TaskGate Catalog and per-task status records.','','| Task | Phase | Status |','|---|---|---|')
   foreach($Row in $Rows){$Markdown+="| $($Row.task_id) | $($Row.phase) | $($Row.status) |"}
   [IO.File]::WriteAllText((Join-Path $script:RepositoryRoot 'docs\execution\status\task-board.md'),($Markdown-join"`n")+"`n",[Text.UTF8Encoding]::new($false))
   $Checks=[ordered]@{task_count=$Rows.Count;duplicate_task_id=0;status_split_brain=0;invalid_transition=0;source_hash_missing=0;json_roundtrip_failure_count=$JsonRoundTripFailure;execplan_changed=$false;production_write_count=0}
-  if($Rows.Count-ne177-or$JsonRoundTripFailure-ne0){return New-BlockedResult 'task_board_catalog_count_or_json_mismatch' $Checks}
+  if($Rows.Count-ne180-or$JsonRoundTripFailure-ne0){return New-BlockedResult 'task_board_catalog_count_or_json_mismatch' $Checks}
   return New-PassedResult $Checks
 }
 function Invoke-ModeHarnessCatalogAggregate {
@@ -16679,7 +16711,7 @@ if($TaskId-ceq'TASK-P11-999'-and$ExecutionMode-cne'formal_adopted'){[Console]::E
 if($TaskId-ceq'TASK-REL-C-001'-and$ExecutionMode-cne'formal_adopted'){[Console]::Error.WriteLine("rel_c_001_formal_predecessor_required:${TaskId}:$Mode");exit 2}
 $RepositoryRoot = Resolve-RepositoryRoot
 $script:RepositoryRoot = $RepositoryRoot
-if($TaskId-ceq'TASK-REL-C-001'){$StartState=Get-RelC001OuterState;if(-not[bool]$StartState.passed){[Console]::Error.WriteLine("$([string]$StartState.reason_code):${TaskId}:$Mode");exit 2}}
+if($TaskId-ceq'TASK-REL-C-001'-and-not(Test-CumulativeFinalCloseTask -TaskIdValue $TaskId)){$StartState=Get-RelC001OuterState;if(-not[bool]$StartState.passed){[Console]::Error.WriteLine("$([string]$StartState.reason_code):${TaskId}:$Mode");exit 2}}
 $CommonGitDirectory = Resolve-CommonGitDirectory -RepositoryRoot $RepositoryRoot
 $TaskEvidenceDirectory = Get-TaskEvidenceDirectory -RepositoryRoot $RepositoryRoot -TaskIdValue $TaskId
 if ($TaskId -cne 'TASK-P11-999' -and -not (Test-Path -LiteralPath $TaskEvidenceDirectory)) { New-Item -ItemType Directory -Path $TaskEvidenceDirectory -Force | Out-Null }
@@ -16710,7 +16742,20 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -in @('TASK-P12A-990','TASK-P12-089','TASK-P12A-999')) {
+  if (Test-CumulativeFinalCloseTask -TaskIdValue $TaskId) {
+    $ModeState=Get-P12APersonalAcceptanceGateModeState
+    if($ExitCode-eq0-and[bool]$ModeState.passed){
+      $GateHash=Get-Sha256 -LiteralPath $GatePath
+      if(Test-PersonalAutomatedFormalExecution){
+        $Attestation=Write-CumulativeFinalCloseAttestation -TaskIdValue $TaskId
+        Set-CumulativeAutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)
+        Update-CumulativeFinalTaskBoard
+      }else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}
+    }elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){
+      $BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'cumulative_final_close_gate_incomplete'})
+      Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath
+    }
+  } elseif ($TaskId -in @('TASK-P12A-990','TASK-P12A-999')) {
     $ModeState=Get-P12APersonalAcceptanceGateModeState
     if($ExitCode-eq0-and[bool]$ModeState.passed){
       $GateHash=Get-Sha256 -LiteralPath $GatePath

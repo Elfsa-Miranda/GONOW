@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-990",
+  "profile": "personal_automated",
+  "overall_status": "passed",
+  "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+  "p12c_status": "dormant",
+  "single_agent_architecture": true,
+  "candidate_head_oid": "8c3ddfc532133bb9794dd61495c156eee9789cf1",
+  "candidate_tree_oid": "a2c2ec0fd412b81e6be3f2f585651cedcf52a63d",
+  "historical_candidate_head_oid": "88c538b1461be6a825d77dbd636b828767e8e898",
+  "historical_complete_regression": {"ci": "15/15", "unit": 736, "contract": 183, "flutter": 124, "realpg_fault": 52, "failed": 0, "skipped": 0, "xfailed": 0},
+  "historical_manifest_drift_count": 1,
+  "affected_revalidation": {"tests": 2, "passed": 2, "failed": 0, "skipped": 0, "xfailed": 0},
+  "production_improvement_claim": false,
+  "production_facts_status": "unknown",
+  "proofs": [
+    {"path": "docs/execution/evidence/phase-12d/acceptance.md", "sha256": "49250e5907a1f23e1f8e0a05a9c11de376b01b382c6214f52c1fa7f4b1faef0f", "size_bytes": 2344},
+    {"path": "docs/execution/evidence/phase-12d/artifact-manifest.premerge.json", "sha256": "1964d66b678e0b50e6c304cdcafd5a1f99e54d867f282e983c9d9f55d0538dc7", "size_bytes": 3152},
+    {"path": "docs/execution/evidence/phase-12d/P12D-990/regression-summary.json", "sha256": "f10fd29026bfdb6f7afadb4406c6c3c757387924e371ae255be2eeed04500914", "size_bytes": 2274},
+    {"path": "docs/execution/evidence/phase-12d/P12D-060/rollback-drill.json", "sha256": "a83d46fc651e4dc0e9a0bff2bc9e9bb5d9122370f9f0b3d05dbe547eedaa2078", "size_bytes": 1731},
+    {"path": "docs/execution/evidence/phase-12d/P12D-990/legacy-equivalence-revalidation.json", "sha256": "63844dadbde2cff18f8aa84cf9505fae73966442a783c5357343d17175129e89", "size_bytes": 1876}
+  ],
+  "checks": {
+    "mandatory_gate_failures": 0,
+    "artifact_drift": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "flaky_rerun_passes": 0,
+    "redline_failures": 0,
+    "open_p0_p1": 0,
+    "security_failures": 0,
+    "model_api_call_count": 0,
+    "multi_agent_component_count": 0,
+    "production_write_count": 0,
+    "production_allocation": 0,
+    "force_update_count": 0,
+    "direct_main_push_count": 0
+  },
+  "recorded_at": "2026-08-05T15:16:00+08:00"
+}
