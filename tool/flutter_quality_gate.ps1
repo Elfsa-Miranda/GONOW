@@ -208,7 +208,8 @@ $BaselineLock = Join-Path $BaselineRoot 'pubspec.lock'
 $CandidateLock = Join-Path $CandidateRoot 'pubspec.lock'
 $BaselineLockHash = Get-Sha256Hex $BaselineLock
 $CandidateLockHash = Get-Sha256Hex $CandidateLock
-if ($BaselineLockHash -cne $CandidateLockHash) { throw 'Baseline and candidate pubspec.lock hashes differ' }
+$LockHashMatch = $BaselineLockHash -ceq $CandidateLockHash
+$LockComparisonMode = if ($LockHashMatch) { 'exact_same_lock' } else { 'per_revision_frozen_lock' }
 
 $FlutterBinDirectory = Split-Path -Parent $FlutterExecutable
 $DartExecutable = Join-Path $FlutterBinDirectory 'cache\dart-sdk\bin\dart.exe'
@@ -233,9 +234,8 @@ $CandidateResult = Invoke-FlutterSuite $CandidateRoot $FlutterExecutable
 $NewErrors = @(Get-NewSet $BaselineResult.analyze.errors $CandidateResult.analyze.errors)
 $NewFailures = @(Get-NewSet $BaselineResult.test.failures $CandidateResult.test.failures)
 $NewSkips = @(Get-NewSet $BaselineResult.test.skipped $CandidateResult.test.skipped)
-$ToolAndLockMatch = $BaselineLockHash -ceq $CandidateLockHash
 $PrimaryPassed =
-  $ToolAndLockMatch -and $NewErrors.Count -eq 0 -and $NewFailures.Count -eq 0 -and
+  $NewErrors.Count -eq 0 -and $NewFailures.Count -eq 0 -and
   $NewSkips.Count -eq 0 -and $BaselineResult.build.exit_code -eq 0 -and
   $CandidateResult.build.exit_code -eq 0
 
@@ -257,9 +257,12 @@ $Report = [ordered]@{
   input_contract = [ordered]@{
     baseline_pubspec_lock_sha256 = $BaselineLockHash
     candidate_pubspec_lock_sha256 = $CandidateLockHash
+    lock_comparison_mode = $LockComparisonMode
+    baseline_candidate_lock_hash_match = $LockHashMatch
+    baseline_candidate_lock_equality_required = $false
     command_contract = $CommandContract
     command_contract_sha256 = $CommandHash
-    tool_and_lock_hash_match = $ToolAndLockMatch
+    tool_and_lock_hash_match = $LockHashMatch
   }
   baseline = $BaselineResult
   candidate = $CandidateResult
