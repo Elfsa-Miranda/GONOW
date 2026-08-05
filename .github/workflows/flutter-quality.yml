@@ -43,3 +43,12 @@ jobs:
           if ([int]$result.ratchet.new_error_count -ne 0) { throw 'New analyzer error' }
           if ([int]$result.ratchet.new_test_failure_count -ne 0) { throw 'New test failure' }
           if ([int]$result.ratchet.new_skip_count -ne 0) { throw 'New skipped test' }
+
+      - name: Upload bounded Flutter ratchet report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flutter-quality-ratchet-${{ github.run_id }}
+          path: ${{ runner.temp }}/gonow-flutter-quality.json
+          if-no-files-found: error
+          retention-days: 14
