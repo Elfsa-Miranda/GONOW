@@ -18,6 +18,30 @@ function Get-CumulativeAttestationRelativePath {
   return "$RelativeDirectory/$Name"
 }
 
+function Test-CumulativeProvisionalTerminal {
+  param(
+    [Parameter(Mandatory=$true)][string]$AcceptanceTaskId,
+    [Parameter(Mandatory=$true)][string]$PrerequisiteTaskId,
+    [Parameter(Mandatory=$true)][object]$Status,
+    [Parameter(Mandatory=$true)][string]$CurrentHeadOid
+  )
+  $Allowed=[ordered]@{
+    'TASK-P12B-990'=[ordered]@{task_id='TASK-P12B-060';gate='docs/execution/evidence/phase-12b/P12B-060/gate-results.json'}
+    'TASK-P12D-990'=[ordered]@{task_id='TASK-P12D-060';gate='docs/execution/evidence/phase-12d/P12D-060/gate-results.json'}
+  }
+  if(-not$Allowed.Contains($AcceptanceTaskId)){return $false}
+  $Expected=$Allowed[$AcceptanceTaskId]
+  if([string]$Expected.task_id-cne$PrerequisiteTaskId-or[string]$Status.status-cne'ready_for_review'){return $false}
+  $GatePath=Join-Path $script:RepositoryRoot ([string]$Expected.gate)
+  if(-not(Test-Path -LiteralPath $GatePath -PathType Leaf)-or[string]$Status.evidence_sha256-cne(Get-Sha256 -LiteralPath $GatePath)){return $false}
+  $Gate=Read-JsonEvidenceOrNull $GatePath
+  if($null-eq$Gate-or[string]$Gate.overall_status-cne'passed'-or@($Gate.results|Where-Object{[string]$_.status-cne'passed'}).Count-ne0){return $false}
+  $PrerequisiteHead=[string]$Status.head_oid
+  if($PrerequisiteHead-cnotmatch'^[a-f0-9]{40,64}$'){return $false}
+  & git -C $script:RepositoryRoot merge-base --is-ancestor $PrerequisiteHead $CurrentHeadOid 2>$null
+  return $LASTEXITCODE-eq0
+}
+
 function Get-CumulativeFinalCloseState {
   param([Parameter(Mandatory=$true)][string]$TaskIdValue)
   $ClosurePath=Join-Path $script:TaskEvidenceDirectory 'closure-evidence.json'
@@ -75,6 +99,7 @@ function Get-CumulativeFinalCloseState {
     $StatusPath=Join-Path $script:RepositoryRoot "docs/execution/status/$Prerequisite.json"
     if(-not(Test-Path -LiteralPath $StatusPath -PathType Leaf)){$Checks.dependency_failure_count++;continue}
     $Status=Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
+    if(Test-CumulativeProvisionalTerminal -AcceptanceTaskId $TaskIdValue -PrerequisiteTaskId $Prerequisite -Status $Status -CurrentHeadOid $Head){continue}
     if([string]$Status.status-cne'accepted'-or[string]$Status.acceptance_method-cne'automated_attestation'-or[string]$Status.attestation_sha256-cnotmatch'^[a-f0-9]{64}$'){$Checks.dependency_failure_count++;continue}
     $Decision=[string]$Status.decision_reference;$DecisionPath=Join-Path $script:RepositoryRoot $Decision
     if([string]::IsNullOrWhiteSpace($Decision)-or-not(Test-Path -LiteralPath $DecisionPath -PathType Leaf)-or(Get-Sha256 -LiteralPath $DecisionPath)-cne[string]$Status.attestation_sha256){$Checks.dependency_failure_count++}
