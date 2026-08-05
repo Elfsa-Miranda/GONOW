@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P10-009",
+  "repair_id": "REPAIR-P10-009-C2-DEEPSEEK-V1",
+  "status": "frozen_pre_live",
+  "candidate_head_oid": "254603e5c813833e5c5ff81ffaf4fc027b6a55f5",
+  "repair_base_oid": "3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104",
+  "branch": "codex/repair-phase10-c2-deepseek",
+  "provider_id": "deepseek-api",
+  "model_id": "deepseek-v4-flash",
+  "api_origin": "https://api.deepseek.com",
+  "api_path": "/chat/completions",
+  "response_schema": {
+    "path": "agent-service/tests/certification/deepseek-c2-itinerary-response-v1.schema.json",
+    "sha256": "f91ef09266edc913eb8adfad48907682c6fe8c90da3d03fb7d2c76db8fe084ee",
+    "complete_schema_delivered_to_model": true,
+    "complete_local_schema_validation": true,
+    "local_business_rule_validation": true
+  },
+  "fixed_parameters": {
+    "thinking": {
+      "type": "disabled"
+    },
+    "response_format": {
+      "type": "json_object"
+    },
+    "temperature": 0,
+    "top_p": "omitted",
+    "presence_penalty": "omitted",
+    "frequency_penalty": "omitted",
+    "stream": false,
+    "maximum_input_tokens_per_call": 2048,
+    "maximum_output_tokens_per_call": 512,
+    "requests_per_minute": 20
+  },
+  "pricing": {
+    "currency": "USD",
+    "unit": "per_million_tokens",
+    "input_cache_hit": 0.0028,
+    "input_cache_miss": 0.14,
+    "output": 0.28,
+    "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
+    "configured_retrieval_date": "2026-08-05",
+    "fresh_source_response_hash_required_at_live_run": true
+  },
+  "budget": {
+    "projected_maximum_cost_usd": 0.172032,
+    "hard_cap_usd": 0.25,
+    "maximum_cost_to_budget_ratio": 1.2,
+    "maximum_p95_cost_increase": 0.15
+  },
+  "failure_denominator": {
+    "logical_routes": [
+      "economic",
+      "capability"
+    ],
+    "model_per_route": "deepseek-v4-flash",
+    "attempted_slots_per_route": 200,
+    "successful_calls_required_per_route": 200,
+    "total_slots": 400,
+    "failed_calls_remain_in_denominator": true,
+    "circuit_open_slots_remain_in_denominator": true,
+    "cross_candidate_aggregation": false,
+    "cross_configuration_aggregation": false,
+    "same_as_gemini_v1": true
+  },
+  "unchanged_thresholds": {
+    "schema_and_business_validation_success_rate": 1.0,
+    "secret_or_pii_leak_count": 0,
+    "request_body_record_count": 0,
+    "response_body_record_count": 0,
+    "production_write_count": 0,
+    "local_api_p95_upper_ms": 800,
+    "critical_mutation_kill_rate": 1.0,
+    "changed_mutation_kill_rate": 0.9
+  },
+  "artifacts": [
+    {
+      "path": "agent-service/tests/certification/deepseek-c2-live-provider-v1.json",
+      "sha256": "e71bbd5628c116953b23f3082fb92e729967962d0606f095c683af4c50ad978c",
+      "size_bytes": 2145
+    },
+    {
+      "path": "agent-service/tests/certification/deepseek-c2-itinerary-response-v1.schema.json",
+      "sha256": "f91ef09266edc913eb8adfad48907682c6fe8c90da3d03fb7d2c76db8fe084ee",
+      "size_bytes": 1937
+    },
+    {
+      "path": "agent-service/tests/certification/live_provider_deepseek.py",
+      "sha256": "86c22ff09fc2c954e494924885a551b0fb12b47fd4be4a7da839d81d60dd9c0c",
+      "size_bytes": 29347
+    },
+    {
+      "path": "agent-service/tests/certification/fixtures/deepseek-c2-captured-response-v1.json",
+      "sha256": "aecd3fea412444f9b33db83fb8efc268e9b766dfb56d7082811df3e8406d0143",
+      "size_bytes": 1395
+    },
+    {
+      "path": "docs/architecture/adr/ADR-P10-005-c2-deepseek-test-model.md",
+      "sha256": "935739c77202828aac96e37809c90809149992eb82b617408924da3176ac3d9d",
+      "size_bytes": 4561
+    }
+  ],
+  "historical_gemini_evidence": {
+    "preservation_policy": "read_only_no_overwrite",
+    "overwrite_count": 0,
+    "artifacts": [
+      {
+        "path": "agent-service/tests/certification/live_provider_gemini.py",
+        "sha256": "33724073d4581b6fa681e2d60976c4f8da738d1d972288309784f045cf9e4734",
+        "size_bytes": 20614
+      },
+      {
+        "path": "agent-service/tests/certification/gemini-live-provider-v1.json",
+        "sha256": "fa3030857490640a01bd5370acf4fa64b8b0855a712d118f27983dc8ee99c395",
+        "size_bytes": 903
+      },
+      {
+        "path": "docs/architecture/adr/ADR-P10-003-gemini-certified-routes.md",
+        "sha256": "2bdf47002589ba9998471a6248325ccdfa789fc79d029f6622de2b868f79cb21",
+        "size_bytes": 5304
+      },
+      {
+        "path": "docs/execution/evidence/phase-10/P10-009/C2-live-route-budget-repair.md",
+        "sha256": "17a5b76e6abf91dbd992d81f9c510e00044ae87f25566e964db763e54cb57aa3",
+        "size_bytes": 4408
+      }
+    ]
+  },
+  "production_allocation": 0,
+  "production_write_count": 0,
+  "frozen_at": "2026-08-05T02:19:47.2020849+08:00"
+}

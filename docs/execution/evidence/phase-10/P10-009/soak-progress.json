@@ -1,0 +1,9 @@
+{
+  "completed_at": "2026-08-05T00:53:47.085452+00:00",
+  "real_soak_seconds": 14400.000223,
+  "report_sha256": "9b5a203854efff8e94674be0fc9c344ac23d884f38faa10c342ff7d49fa478bd",
+  "schema_version": "1.0",
+  "started_at": "2026-08-04T20:53:47.085232+00:00",
+  "status": "passed",
+  "target_seconds": 14400
+}

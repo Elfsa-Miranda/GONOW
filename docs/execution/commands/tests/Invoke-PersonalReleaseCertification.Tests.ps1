@@ -9,6 +9,7 @@ $Profile = $Data.Profiles.ReleaseBDeep
 if ((@($Profile.OrderedGates) -join ',') -cne 'C1,C2,C3,C4,C5') { throw 'gate order is not C1..C5' }
 if ([int]$Profile.MinimumRealSoakSeconds -ne 14400 -or [int]$Profile.MaximumWallClockSeconds -ne 64800) { throw 'soak or wall-clock contract drifted' }
 if ([bool]$Profile.ProductionObservationRequired -or -not [bool]$Profile.AutomatedGateAcceptance) { throw 'personal evidence boundary drifted' }
+if ((@($Profile.SupportingReports.C2) -join ',') -cne 'security-matrix.json,performance-cost-report.json,c2-postgresql-load.json,deepseek-v3/live-provider-receipts.json,deepseek-v3/pricing-snapshot.json') { throw 'C2 executable source binding drifted' }
 $SchemaDocument = Get-Content -LiteralPath $Schema -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
 if ([bool]$SchemaDocument.additionalProperties -or [string]$SchemaDocument.properties.production_observation_required.const -ne 'False') { throw 'schema is not fail closed' }
 $Candidate = (& git -C $Root rev-parse HEAD).Trim()

@@ -1,0 +1,58 @@
+{
+  "blocker_codes": [],
+  "candidate_head_oid": "3d339d57f99ad54112271fb5f2439cc7f1c5e9e4",
+  "flaky_rerun_count": 0,
+  "gate_id": "C2",
+  "governance_profile": "personal_automated",
+  "mandatory_skip_count": 0,
+  "metrics": {
+    "api_p95_upper_ms": 11.2689,
+    "arbitrary_sql_executor_count": 0,
+    "changed_mutation_kill_rate": 1.0,
+    "cost_to_budget_ratio_upper": 0.04780160000000036,
+    "critical_mutation_kill_rate": 1.0,
+    "cross_tenant_leak_count": 0,
+    "forbidden_tool_execution_count": 0,
+    "generated_security_attempt_count": 100000,
+    "live_provider": true,
+    "local_complete_run_count": 10000,
+    "minimum_live_calls_per_route": 200,
+    "missing_audit_receipt_count": 0,
+    "p95_cost_increase_upper": 0.0,
+    "real_postgresql": true,
+    "secret_or_pii_leak_count": 0,
+    "unauthorized_write_count": 0
+  },
+  "production_write_count": 0,
+  "redline_failure_count": 0,
+  "schema_version": "1.0",
+  "source_artifacts": [
+    {
+      "path": "security-matrix.json",
+      "sha256": "ab120336b6b30603f6f7eb0cb8506d2b8c7ee732683df601bb98beeb91d97895",
+      "size_bytes": 1883
+    },
+    {
+      "path": "performance-cost-report.json",
+      "sha256": "fc5c1a390e0a5ce9d8d80d98d17d16bc38957436c69c58b89e0083114caa0496",
+      "size_bytes": 644
+    },
+    {
+      "path": "c2-postgresql-load.json",
+      "sha256": "952787950129aafa77893eef4934724b7076690a4c8d1cbae8bdad5ae29fb809",
+      "size_bytes": 849
+    },
+    {
+      "path": "deepseek-v3/live-provider-receipts.json",
+      "sha256": "453546633e0781fb9896ce0105d00216001470eb345abc07c8ea3452ce129bce",
+      "size_bytes": 3423
+    },
+    {
+      "path": "deepseek-v3/pricing-snapshot.json",
+      "sha256": "fa31122c435b8cb9bf9d6c25213a92007a917585367bd1b2062b3dd6b86b6e23",
+      "size_bytes": 1075
+    }
+  ],
+  "status": "passed",
+  "xfail_count": 0
+}

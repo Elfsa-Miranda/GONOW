@@ -1,0 +1,76 @@
+{
+  "arbitrary_sql_executor_count": 0,
+  "attempts_per_family": 25000,
+  "changed_mutation_kill_rate": 1.0,
+  "corpus_id": "c2-security-generated-v1",
+  "critical_mutation_kill_rate": 1.0,
+  "cross_tenant_leak_count": 0,
+  "duration_seconds": 0.440533,
+  "failure_count": 0,
+  "family_count": 4,
+  "family_results_sha256": "4a6c442584d30e09ab108425251eb0337fbf19edc75a5915f530c116cf4acfac",
+  "forbidden_tool_execution_count": 0,
+  "gate_id": "C2",
+  "generated_security_attempt_count": 100000,
+  "missing_audit_receipt_count": 0,
+  "mutation": {
+    "kill_rate": 1.0,
+    "killed_count": 12,
+    "method": "frozen fail-open operator mutants evaluated against boundary witnesses",
+    "mutation_count": 12,
+    "mutations": [
+      {
+        "killed": true,
+        "mutation": "authorize_ignore_tenant"
+      },
+      {
+        "killed": true,
+        "mutation": "authorize_ignore_permission"
+      },
+      {
+        "killed": true,
+        "mutation": "authorize_ignore_approval"
+      },
+      {
+        "killed": true,
+        "mutation": "authorize_ignore_fields"
+      },
+      {
+        "killed": true,
+        "mutation": "tool_allow_unknown"
+      },
+      {
+        "killed": true,
+        "mutation": "tool_allow_url"
+      },
+      {
+        "killed": true,
+        "mutation": "tool_allow_sql"
+      },
+      {
+        "killed": true,
+        "mutation": "tool_allow_tenant_arg"
+      },
+      {
+        "killed": true,
+        "mutation": "redactor_keep_email"
+      },
+      {
+        "killed": true,
+        "mutation": "redactor_keep_credential"
+      },
+      {
+        "killed": true,
+        "mutation": "context_allow_tenant_header"
+      },
+      {
+        "killed": true,
+        "mutation": "context_allow_missing_trace"
+      }
+    ]
+  },
+  "production": false,
+  "schema_version": "1.0",
+  "secret_or_pii_leak_count": 0,
+  "unauthorized_write_count": 0
+}

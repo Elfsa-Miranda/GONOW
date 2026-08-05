@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P10-009",
+  "repair_id": "REPAIR-P10-009-C2-DEEPSEEK-V1",
+  "candidate_head_oid": "254603e5c813833e5c5ff81ffaf4fc027b6a55f5",
+  "status": "passed",
+  "live_call_count": 0,
+  "checks": [
+    {
+      "check_id": "python_compile",
+      "status": "passed",
+      "exit_code": 0,
+      "files_checked": 4
+    },
+    {
+      "check_id": "deepseek_fake_capture_adapter_contracts_initial",
+      "status": "passed",
+      "exit_code": 0,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0
+    },
+    {
+      "check_id": "existing_c2_live_affected_contracts",
+      "status": "passed",
+      "exit_code": 0,
+      "passed": 10,
+      "deselected": 12,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0
+    },
+    {
+      "check_id": "personal_release_certification_runner_contract",
+      "status": "passed",
+      "exit_code": 0,
+      "positive_fixture": true,
+      "negative_fixture_count": 10,
+      "gate_order": "C1,C2,C3,C4,C5",
+      "minimum_real_soak_seconds": 14400,
+      "production_write_count": 0
+    },
+    {
+      "check_id": "deepseek_aggregate_and_redaction_affected_contracts_final",
+      "status": "passed",
+      "exit_code": 0,
+      "passed": 35,
+      "deselected": 12,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0
+    },
+    {
+      "check_id": "gemini_tracked_artifact_diff",
+      "status": "passed",
+      "exit_code": 0,
+      "changed_artifact_count": 0
+    }
+  ],
+  "captured_response_boundary": {
+    "fixture_path": "agent-service/tests/certification/fixtures/deepseek-c2-captured-response-v1.json",
+    "fixture_sha256": "aecd3fea412444f9b33db83fb8efc268e9b766dfb56d7082811df3e8406d0143",
+    "capture_kind": "content-free-live-envelope-derived_safe_fixture",
+    "raw_provider_content_preserved": false,
+    "safe_payload_source": "synthetic_schema_equivalent",
+    "misrepresented_as_raw_capture": false
+  },
+  "guardrails": {
+    "complete_json_schema_delivered": true,
+    "local_schema_validation": true,
+    "local_business_rule_validation": true,
+    "strict_model_and_parameter_freeze": true,
+    "strict_price_and_budget_freeze": true,
+    "same_failure_denominator": true,
+    "provider_error_body_redaction": true,
+    "historical_gemini_evidence_preserved": true,
+    "secret_material_persisted": 0,
+    "production_write_count": 0
+  },
+  "verified_at": "2026-08-05T02:19:47.2020849+08:00"
+}

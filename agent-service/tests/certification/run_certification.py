@@ -39,7 +39,7 @@ from harness_common import (  # noqa: E402
     write_atomic_json,
     write_atomic_text,
 )
-from live_provider_gemini import run_gemini_live  # noqa: E402
+from live_provider_deepseek import run_deepseek_live  # noqa: E402
 
 
 def _run(
@@ -132,6 +132,16 @@ def _flutter_counts(machine_output: str) -> dict[str, Any]:
     }
 
 
+def _locked_pythonpath() -> str:
+    site_packages = (Path(sys.prefix) / "Lib" / "site-packages").resolve()
+    if not site_packages.is_dir():
+        raise CertificationFailure("c1.locked_python_site_packages_missing")
+    inherited = os.environ.get("PYTHONPATH", "")
+    return os.pathsep.join(
+        value for value in (str(SERVICE_ROOT), str(site_packages), inherited) if value
+    )
+
+
 def run_regressions(
     evidence_root: Path,
     *,
@@ -160,7 +170,12 @@ def run_regressions(
                 flutter_executable.with_name(
                     "dart.bat" if flutter_executable.suffix.lower() == ".bat" else "dart"
                 )
-            )
+            ),
+            # Process-kill replay probes intentionally start the base Python
+            # executable. Propagate the selected locked environment's packages
+            # so a clean Phase worktree does not silently fall back to Anaconda
+            # or another globally installed dependency set.
+            "PYTHONPATH": _locked_pythonpath(),
         },
     )
     if not python_junit.is_file():
@@ -292,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
             database_url=arguments.database_url,
         )
     elif arguments.action == "c2-live":
-        result = run_gemini_live(evidence_root, candidate_oid=candidate)
+        result = run_deepseek_live(evidence_root, candidate_oid=candidate)
     elif arguments.action == "c2-aggregate":
         result = aggregate_c2(evidence_root, candidate_oid=candidate)
     elif arguments.action == "c3":

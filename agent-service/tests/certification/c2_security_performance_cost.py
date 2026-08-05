@@ -70,6 +70,15 @@ from harness_common import (
 )
 
 
+DEEPSEEK_LIVE_EVIDENCE_DIRECTORY = "deepseek-v3"
+DEEPSEEK_LIVE_CONFIG_PATH = Path(__file__).with_name(
+    "deepseek-c2-live-provider-v2.json"
+)
+DEEPSEEK_LIVE_SCHEMA_PATH = Path(__file__).with_name(
+    "deepseek-c2-itinerary-response-v1.schema.json"
+)
+
+
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY_ROOT = SERVICE_ROOT.parent
 ALEMBIC_INI = SERVICE_ROOT / "alembic.ini"
@@ -78,9 +87,8 @@ VERSION_SCHEMA = "p10_c2_certification"
 DEFAULT_DATABASE_URL = (
     "postgresql+pg8000://gonow_migrator_test@127.0.0.1:55432/gonow_p03_test"
 )
-ADMIN_DATABASE_URL = (
-    "postgresql+pg8000://gonow_bootstrap_admin@127.0.0.1:55432/gonow_p03_test"
-)
+C2_DEDICATED_DATABASE_PORT = 55433
+C2_ALLOWED_DATABASE_PORTS = frozenset({55432, C2_DEDICATED_DATABASE_PORT})
 PRINCIPALS_SQL = SERVICE_ROOT / "tests" / "security" / "fixtures" / "rls_principals.sql"
 ROLES = (
     "gonow_agent_api",
@@ -184,26 +192,26 @@ class _DatabaseEnvironment:
     worker_factory: sessionmaker[Session]
 
 
-def _validate_database_url(database_url: str) -> None:
+def _admin_database_url(database_url: str) -> str:
     parsed = make_url(database_url)
-    actual = (
-        parsed.drivername,
-        parsed.host,
-        parsed.port,
-        parsed.username,
-        parsed.database,
-        parsed.password,
-    )
-    expected = (
-        "postgresql+pg8000",
-        "127.0.0.1",
-        55432,
-        "gonow_migrator_test",
-        "gonow_p03_test",
-        None,
-    )
-    if actual != expected:
+    if (
+        parsed.drivername != "postgresql+pg8000"
+        or parsed.host != "127.0.0.1"
+        or parsed.port not in C2_ALLOWED_DATABASE_PORTS
+        or parsed.username != "gonow_migrator_test"
+        or parsed.database != "gonow_p03_test"
+        or parsed.password is not None
+        or bool(parsed.query)
+    ):
         raise CertificationFailure("c2.database_not_task_owned")
+    return parsed.set(
+        username="gonow_bootstrap_admin",
+        password=None,
+    ).render_as_string(hide_password=False)
+
+
+def _validate_database_url(database_url: str) -> None:
+    _admin_database_url(database_url)
 
 
 def _drop_schemas(engine: Engine) -> None:
@@ -229,7 +237,7 @@ def _database(database_url: str) -> Iterator[_DatabaseEnvironment]:
     os.environ["GONOW_DATABASE_URL"] = database_url
     os.environ["GONOW_ALEMBIC_VERSION_SCHEMA"] = VERSION_SCHEMA
     owner_engine = create_engine(database_url, pool_pre_ping=True)
-    admin_engine = create_engine(ADMIN_DATABASE_URL, pool_pre_ping=True)
+    admin_engine = create_engine(_admin_database_url(database_url), pool_pre_ping=True)
     try:
         _drop_schemas(owner_engine)
         with owner_engine.begin() as connection:
@@ -724,7 +732,11 @@ def _load_live_provider_receipt(
     *,
     expected_candidate_oid: str,
 ) -> tuple[dict[str, Any] | None, list[str]]:
-    path = evidence_root / "live-provider-receipts.json"
+    path = (
+        evidence_root
+        / DEEPSEEK_LIVE_EVIDENCE_DIRECTORY
+        / "live-provider-receipts.json"
+    )
     if not path.is_file():
         return None, ["c2.live_provider_receipts_missing"]
     try:
@@ -732,15 +744,27 @@ def _load_live_provider_receipt(
     except (OSError, ValueError):
         return None, ["c2.live_provider_receipts_invalid"]
     required = {
+        "schema_version",
         "candidate_head_oid",
         "executor",
         "status",
         "provider_id",
+        "model_id",
         "pricing_snapshot_sha256",
+        "frozen_config_sha256",
+        "response_schema_sha256",
         "budget_cap_usd",
+        "actual_total_cost_usd",
         "route_receipts",
+        "successful_call_count",
+        "failed_call_count",
+        "failure_denominator_count",
         "cost_to_budget_ratio_upper",
         "p95_cost_increase_upper",
+        "complete_json_schema_delivered",
+        "local_schema_and_business_validation",
+        "same_failure_denominator_as_gemini_v1",
+        "historical_gemini_evidence_overwrite_count",
         "credential_value_recorded",
         "request_body_record_count",
         "response_body_record_count",
@@ -749,11 +773,33 @@ def _load_live_provider_receipt(
     }
     if set(report) < required:
         return None, ["c2.live_provider_receipts_invalid"]
-    pricing_path = evidence_root / "pricing-snapshot.json"
+    pricing_path = (
+        evidence_root / DEEPSEEK_LIVE_EVIDENCE_DIRECTORY / "pricing-snapshot.json"
+    )
+    try:
+        pricing = json.loads(pricing_path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return None, ["c2.live_provider_receipts_invalid"]
     if (
-        report["candidate_head_oid"] != expected_candidate_oid
-        or report["executor"] != "repository_owned_gemini_live_v1"
+        report["schema_version"] != "2.1"
+        or report["candidate_head_oid"] != expected_candidate_oid
+        or report["executor"] != "repository_owned_deepseek_live_v1"
         or report["status"] != "passed"
+        or report["provider_id"] != "deepseek-api"
+        or report["model_id"] != "deepseek-v4-flash"
+        or report["frozen_config_sha256"] != sha256_file(
+            DEEPSEEK_LIVE_CONFIG_PATH
+        )
+        or report["response_schema_sha256"] != sha256_file(
+            DEEPSEEK_LIVE_SCHEMA_PATH
+        )
+        or int(report["successful_call_count"]) != 400
+        or int(report["failed_call_count"]) != 0
+        or int(report["failure_denominator_count"]) != 400
+        or report["complete_json_schema_delivered"] is not True
+        or report["local_schema_and_business_validation"] is not True
+        or report["same_failure_denominator_as_gemini_v1"] is not True
+        or int(report["historical_gemini_evidence_overwrite_count"]) != 0
         or report["credential_value_recorded"] is not False
         or int(report["request_body_record_count"]) != 0
         or int(report["response_body_record_count"]) != 0
@@ -761,13 +807,38 @@ def _load_live_provider_receipt(
         or int(report["production_write_count"]) != 0
         or not pricing_path.is_file()
         or str(report["pricing_snapshot_sha256"]) != sha256_file(pricing_path)
+        or pricing.get("provider_id") != "deepseek-api"
+        or pricing.get("model_id") != "deepseek-v4-flash"
+        or pricing.get("frozen_config_sha256") != sha256_file(
+            DEEPSEEK_LIVE_CONFIG_PATH
+        )
+        or pricing.get("response_schema_sha256") != sha256_file(
+            DEEPSEEK_LIVE_SCHEMA_PATH
+        )
+        or float(report["actual_total_cost_usd"])
+        > float(report["budget_cap_usd"])
+        or float(report["cost_to_budget_ratio_upper"]) > 1.2
+        or float(report["p95_cost_increase_upper"]) > 0.15
     ):
         return None, ["c2.live_provider_receipts_invalid"]
     route_receipts = report["route_receipts"]
     if (
         not isinstance(route_receipts, list)
-        or not route_receipts
-        or any(int(row.get("call_count", 0)) < 200 for row in route_receipts)
+        or len(route_receipts) != 2
+        or {row.get("route_id") for row in route_receipts}
+        != {"economic", "capability"}
+        or any(row.get("model_id") != "deepseek-v4-flash" for row in route_receipts)
+        or any(int(row.get("attempted_slot_count", 0)) != 200 for row in route_receipts)
+        or any(int(row.get("call_count", 0)) != 200 for row in route_receipts)
+        or any(int(row.get("failure_count", -1)) != 0 for row in route_receipts)
+        or any(
+            int(row.get("failure_denominator_count", 0)) != 200
+            for row in route_receipts
+        )
+        or any(
+            int(row.get("schema_and_business_rule_failure_count", -1)) != 0
+            for row in route_receipts
+        )
         or any(not row.get("usage_receipts_sha256") for row in route_receipts)
     ):
         return None, ["c2.live_provider_route_sample_incomplete"]
@@ -873,8 +944,18 @@ def aggregate_c2(
         source_artifact(evidence_root, "c2-postgresql-load.json"),
     ]
     if live is not None:
-        sources.append(source_artifact(evidence_root, "live-provider-receipts.json"))
-        sources.append(source_artifact(evidence_root, "pricing-snapshot.json"))
+        sources.append(
+            source_artifact(
+                evidence_root,
+                f"{DEEPSEEK_LIVE_EVIDENCE_DIRECTORY}/live-provider-receipts.json",
+            )
+        )
+        sources.append(
+            source_artifact(
+                evidence_root,
+                f"{DEEPSEEK_LIVE_EVIDENCE_DIRECTORY}/pricing-snapshot.json",
+            )
+        )
     status = "passed" if local_passed and live_passed else "blocked" if local_passed else "failed"
     report = gate_report(
         gate_id="C2",
