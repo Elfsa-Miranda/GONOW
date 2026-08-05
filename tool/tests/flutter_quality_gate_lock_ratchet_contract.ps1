@@ -9,6 +9,11 @@ if ($Text -match "throw 'Baseline and candidate pubspec\.lock hashes differ'") {
 if ($Text -notmatch "'per_revision_frozen_lock'") { throw 'per-revision frozen lock mode is missing' }
 if ($Text -notmatch 'baseline_candidate_lock_hash_match = \$LockHashMatch') { throw 'lock hash difference is not preserved in evidence' }
 if ($Text -notmatch 'baseline_candidate_lock_equality_required = \$false') { throw 'lock equality policy is not explicit' }
+if ($Text -notmatch 'function Convert-FlutterMachineVersion') { throw 'Flutter machine version parser is missing' }
+if ($Text -notmatch "IndexOf\('\{'\)" -or $Text -notmatch "LastIndexOf\('\}'\)") { throw 'Flutter machine version parser does not bound the JSON object' }
+foreach ($RequiredProperty in @('frameworkVersion','channel','frameworkRevision','dartSdkVersion')) {
+  if ($Text -notmatch [regex]::Escape("'$RequiredProperty'")) { throw "Flutter machine version property contract is missing: $RequiredProperty" }
+}
 $PrimaryStart = $Text.IndexOf('$PrimaryPassed =',[StringComparison]::Ordinal)
 $ReportStart = $Text.IndexOf('$Report =',[StringComparison]::Ordinal)
 if ($PrimaryStart -lt 0 -or $ReportStart -le $PrimaryStart) { throw 'primary ratchet expression not found' }

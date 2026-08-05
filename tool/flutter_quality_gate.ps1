@@ -33,6 +33,22 @@ function Get-TextSha256 {
   finally { $Hasher.Dispose() }
 }
 
+function Convert-FlutterMachineVersion {
+  param([string[]]$Lines)
+  $Text = [string]::Join("`n", $Lines)
+  $Start = $Text.IndexOf('{')
+  $End = $Text.LastIndexOf('}')
+  if ($Start -lt 0 -or $End -lt $Start) { throw 'Flutter machine version JSON object was not found' }
+  try { $Version = $Text.Substring($Start, $End - $Start + 1) | ConvertFrom-Json -ErrorAction Stop }
+  catch { throw 'Unable to parse Flutter machine version JSON' }
+  foreach ($RequiredProperty in @('frameworkVersion','channel','frameworkRevision','dartSdkVersion')) {
+    if ([string]::IsNullOrWhiteSpace([string]$Version.$RequiredProperty)) {
+      throw "Flutter machine version property is missing: $RequiredProperty"
+    }
+  }
+  return $Version
+}
+
 function Invoke-Captured {
   param([string]$Executable, [string[]]$Arguments, [string]$WorkingDirectory)
   $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -216,9 +232,7 @@ $DartExecutable = Join-Path $FlutterBinDirectory 'cache\dart-sdk\bin\dart.exe'
 if (-not (Test-Path -LiteralPath $DartExecutable -PathType Leaf)) { throw 'Pinned Dart executable was not found beside Flutter' }
 $VersionRaw = Invoke-Captured $FlutterExecutable @('--version','--machine') $CandidateRoot
 if ($VersionRaw.exit_code -ne 0) { throw 'flutter --version --machine failed' }
-$VersionJson = [string]::Join("`n", $VersionRaw.lines)
-try { $Version = $VersionJson | ConvertFrom-Json -ErrorAction Stop }
-catch { throw 'Unable to parse Flutter machine version JSON' }
+$Version = Convert-FlutterMachineVersion $VersionRaw.lines
 
 $CommandContract = @(
   'flutter pub get',
