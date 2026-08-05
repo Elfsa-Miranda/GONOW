@@ -147,7 +147,7 @@ Generated from TaskGate Catalog 2.5.2 and per-task status records.
 | TASK-P11-990 | Phase 11 | ready_for_review |
 | TASK-P11-999 | Phase 11 | not_started |
 | TASK-P12-000 | Phase 12 | accepted |
-| TASK-P12-001 | Phase 12 | not_started |
+| TASK-P12-001 | Phase 12 | accepted |
 | TASK-P12-002 | Phase 12 | not_started |
 | TASK-P12-089 | Phase 12 | accepted |
 | TASK-P12A-000 | Phase 12A | ready_for_review |
