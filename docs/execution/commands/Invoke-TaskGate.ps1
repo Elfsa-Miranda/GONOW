@@ -324,6 +324,9 @@ function Get-TaskEvidenceDirectory {
   if ($TaskIdValue -ceq 'TASK-REL-C-001') {
     return Join-Path $RepositoryRoot 'docs\execution\evidence\releases\REL-C-001'
   }
+  if ($TaskIdValue -cmatch '^TASK-GONOW-(089|990|999)$') {
+    return Join-Path $RepositoryRoot "docs\execution\evidence\project-final\GONOW-$($Matches[1])"
+  }
   if ($TaskIdValue -cmatch '^TASK-P(\d{2}[A-D]?)-(.+)$') {
     return Join-Path $RepositoryRoot "docs\execution\evidence\phase-$($Matches[1].ToLowerInvariant())\P$($Matches[1])-$($Matches[2])"
   }
@@ -16708,7 +16711,7 @@ if($TaskId-ceq'TASK-P11-999'-and$ExecutionMode-cne'formal_adopted'){[Console]::E
 if($TaskId-ceq'TASK-REL-C-001'-and$ExecutionMode-cne'formal_adopted'){[Console]::Error.WriteLine("rel_c_001_formal_predecessor_required:${TaskId}:$Mode");exit 2}
 $RepositoryRoot = Resolve-RepositoryRoot
 $script:RepositoryRoot = $RepositoryRoot
-if($TaskId-ceq'TASK-REL-C-001'){$StartState=Get-RelC001OuterState;if(-not[bool]$StartState.passed){[Console]::Error.WriteLine("$([string]$StartState.reason_code):${TaskId}:$Mode");exit 2}}
+if($TaskId-ceq'TASK-REL-C-001'-and-not(Test-CumulativeFinalCloseTask -TaskIdValue $TaskId)){$StartState=Get-RelC001OuterState;if(-not[bool]$StartState.passed){[Console]::Error.WriteLine("$([string]$StartState.reason_code):${TaskId}:$Mode");exit 2}}
 $CommonGitDirectory = Resolve-CommonGitDirectory -RepositoryRoot $RepositoryRoot
 $TaskEvidenceDirectory = Get-TaskEvidenceDirectory -RepositoryRoot $RepositoryRoot -TaskIdValue $TaskId
 if ($TaskId -cne 'TASK-P11-999' -and -not (Test-Path -LiteralPath $TaskEvidenceDirectory)) { New-Item -ItemType Directory -Path $TaskEvidenceDirectory -Force | Out-Null }
