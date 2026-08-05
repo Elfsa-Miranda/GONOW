@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-999",
+  "github_pull_request": 1,
+  "workflow_run_id": 30994667931,
+  "job_id": 92268757081,
+  "diagnostic_report_sha256": "928e8f28e07c5f0020b43586de2b316b09de6df0929ad138cbe8d6142873a069",
+  "root_causes": [
+    {
+      "classification": "hosted_package_origin_drift",
+      "evidence": "Every hosted entry in pubspec.lock binds https://pub.flutter-io.cn, whose locked amap_flutter_base/map 3.0.0 content uses Object.hash. The unbound CI resolution used pub.dev content of the same version that still calls removed hashValues APIs.",
+      "affected_test_loading_path": "test/itinerary_agent/feature_flag_routing_test.dart"
+    },
+    {
+      "classification": "gradle_distribution_mirror_timeout",
+      "evidence": "Both baseline and candidate wrappers requested Gradle 8.13 from mirrors.cloud.tencent.com and failed with java.net.ConnectException before compilation.",
+      "baseline_build_exit_code": 1,
+      "candidate_build_exit_code": 1
+    }
+  ],
+  "repair": {
+    "pub_host": "https://pub.flutter-io.cn",
+    "pub_host_matches_every_lock_entry": true,
+    "pub_get_enforce_lockfile": true,
+    "dependency_name_or_version_changed": false,
+    "gradle_version_changed": false,
+    "gradle_distribution_url": "https://services.gradle.org/distributions/gradle-8.13-all.zip",
+    "gradle_distribution_sha256": "fba8464465835e74f7270bbf43d6d8a8d7709ab0a43ce1aa3323f73e9aa0c612",
+    "wrapper_override_scope": "baseline_and_candidate_build_only",
+    "wrapper_original_bytes_restored_in_finally": true,
+    "apk_gate_changed": false,
+    "production_write_count": 0,
+    "rollback": "Revert this repair commit; do not relax dependency identity, test compilation or the two-APK requirement."
+  },
+  "focused_validation": {
+    "lock_host_unique_value": "https://pub.flutter-io.cn",
+    "locked_amap_base_package_root_host": "pub.flutter-io.cn",
+    "locked_amap_map_package_root_host": "pub.flutter-io.cn",
+    "affected_test_observed_pass_count": 15,
+    "affected_test_observed_failure_count": 0,
+    "local_wrapper_exit_code": 124,
+    "local_wrapper_classification": "orchestrator_timeout_after_all_tests_passed_output",
+    "local_wrapper_timeout_seconds": 180,
+    "tracked_worktree_drift_count": 0,
+    "gradle_override_function_parse_errors": 0,
+    "official_url_applied": true,
+    "official_checksum_applied": true,
+    "original_wrapper_bytes_restored": true,
+    "flutter_workflow_yaml_parse_exit_code": 0,
+    "job_level_pub_host_binding": true,
+    "flutter_gate_contract_exit_code": 0
+  },
+  "sources": [
+    "https://pub.dev/packages/amap_flutter_map_plus_x/changelog",
+    "https://services.gradle.org/distributions/gradle-8.13-all.zip.sha256"
+  ],
+  "recorded_at": "2026-08-05T18:02:00+08:00"
+}

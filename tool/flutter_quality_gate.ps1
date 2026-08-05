@@ -17,6 +17,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ExpectedBaseSha = '142abfc339f003ede8d85d9534336923b5610252'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$OfficialGradleDistributionUrl = 'https\://services.gradle.org/distributions/gradle-8.13-all.zip'
+$OfficialGradleDistributionSha256 = 'fba8464465835e74f7270bbf43d6d8a8d7709ab0a43ce1aa3323f73e9aa0c612'
 
 function Get-Sha256Hex {
   param([string]$Path)
@@ -143,6 +145,35 @@ function Get-BoundedDiagnosticLines {
   return @($Selected | Select-Object -Last 80)
 }
 
+function Set-OfficialGradleDistribution {
+  param([string]$Repository)
+  $PropertiesPath = Join-Path $Repository 'android\gradle\wrapper\gradle-wrapper.properties'
+  if (-not (Test-Path -LiteralPath $PropertiesPath -PathType Leaf)) { throw 'Gradle wrapper properties are unavailable' }
+  $OriginalBytes = [System.IO.File]::ReadAllBytes($PropertiesPath)
+  $Text = $Utf8NoBom.GetString($OriginalBytes)
+  $DistributionMatch = [regex]::Match($Text, '(?m)^distributionUrl=(.+)$')
+  if (-not $DistributionMatch.Success -or $DistributionMatch.Groups[1].Value -notmatch 'gradle-8\.13-all\.zip\s*$') {
+    throw 'Gradle wrapper is not pinned to gradle-8.13-all.zip'
+  }
+  $Effective = [regex]::Replace($Text, '(?m)^distributionUrl=.+$', "distributionUrl=$OfficialGradleDistributionUrl")
+  $Effective = [regex]::Replace($Effective, '(?m)^distributionSha256Sum=.+(?:\r?\n)?', '')
+  if (-not $Effective.EndsWith("`n")) { $Effective += "`n" }
+  $Effective += "distributionSha256Sum=$OfficialGradleDistributionSha256`n"
+  [System.IO.File]::WriteAllText($PropertiesPath, $Effective, $Utf8NoBom)
+  return [pscustomobject]@{
+    path = $PropertiesPath
+    original_base64 = [Convert]::ToBase64String($OriginalBytes)
+    override_applied = $true
+    effective_url = $OfficialGradleDistributionUrl.Replace('\:', ':')
+    distribution_sha256 = $OfficialGradleDistributionSha256
+  }
+}
+
+function Restore-GradleDistribution {
+  param([object]$Receipt)
+  [System.IO.File]::WriteAllBytes([string]$Receipt.path, [Convert]::FromBase64String([string]$Receipt.original_base64))
+}
+
 function Convert-AnalyzerResult {
   param([object]$Result, [string]$Repository)
   $Errors = New-Object System.Collections.Generic.List[string]
@@ -197,12 +228,14 @@ function Convert-TestResult {
 function Invoke-FlutterSuite {
   param([string]$Repository, [string]$FlutterExecutable)
   $BeforePaths = @(Get-TrackedDirtyPaths $Repository)
-  $PubGet = Invoke-Captured $FlutterExecutable @('pub','get') $Repository
+  $PubGet = Invoke-Captured $FlutterExecutable @('pub','get','--enforce-lockfile') $Repository
   if ($PubGet.exit_code -ne 0) { throw "flutter pub get failed with exit $($PubGet.exit_code)" }
   $RestoredPaths = @(Restore-ToolGeneratedDrift $Repository $BeforePaths)
   $AnalyzeRaw = Invoke-Captured $FlutterExecutable @('analyze','--machine') $Repository
   $TestRaw = Invoke-Captured $FlutterExecutable @('test','--machine') $Repository
-  $BuildRaw = Invoke-Captured $FlutterExecutable @('build','apk','--debug','--no-pub') $Repository
+  $GradleReceipt = Set-OfficialGradleDistribution $Repository
+  try { $BuildRaw = Invoke-Captured $FlutterExecutable @('build','apk','--debug','--no-pub') $Repository }
+  finally { Restore-GradleDistribution $GradleReceipt }
   $ApkPath = Join-Path $Repository 'build\app\outputs\flutter-apk\app-debug.apk'
   $PostSuiteRestoredPaths = @(Restore-ToolGeneratedDrift $Repository $BeforePaths)
   return [pscustomobject]@{
@@ -222,6 +255,9 @@ function Invoke-FlutterSuite {
       apk_present = (Test-Path -LiteralPath $ApkPath -PathType Leaf)
       apk_size_bytes = if (Test-Path -LiteralPath $ApkPath -PathType Leaf) { (Get-Item -LiteralPath $ApkPath).Length } else { $null }
       apk_sha256 = if (Test-Path -LiteralPath $ApkPath -PathType Leaf) { Get-Sha256Hex $ApkPath } else { $null }
+      gradle_transport_override_applied = [bool]$GradleReceipt.override_applied
+      gradle_distribution_url = [string]$GradleReceipt.effective_url
+      gradle_distribution_sha256 = [string]$GradleReceipt.distribution_sha256
     }
     bounded_diagnostics = [ordered]@{
       test = if ($TestRaw.exit_code -ne 0) { @(Get-BoundedDiagnosticLines $TestRaw $Repository) } else { @() }
@@ -258,7 +294,7 @@ if ($VersionRaw.exit_code -ne 0) { throw 'flutter --version --machine failed' }
 $Version = Convert-FlutterMachineVersion $VersionRaw.lines
 
 $CommandContract = @(
-  'flutter pub get',
+  'flutter pub get --enforce-lockfile',
   'git restore --worktree -- <tool-generated-tracked-drift>',
   'flutter analyze --machine',
   'flutter test --machine',

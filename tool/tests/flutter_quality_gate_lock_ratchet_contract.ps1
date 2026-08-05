@@ -20,6 +20,10 @@ if ($Text -notmatch 'Substring\(0, 500\)') { throw 'Flutter failure diagnostic c
 foreach ($Redaction in @('Bearer <redacted>','<redacted-access-token>','<redacted-provider-key>','<redacted-private-key-header>')) {
   if ($Text -notmatch [regex]::Escape($Redaction)) { throw "Flutter failure diagnostic redaction is missing: $Redaction" }
 }
+if ($Text -notmatch "@\('pub','get','--enforce-lockfile'\)") { throw 'Flutter pub lock enforcement is missing' }
+if ($Text -notmatch 'function Set-OfficialGradleDistribution' -or $Text -notmatch 'function Restore-GradleDistribution') { throw 'bounded Gradle transport override is missing' }
+if ($Text -notmatch 'gradle-8\.13-all\.zip' -or $Text -notmatch 'fba8464465835e74f7270bbf43d6d8a8d7709ab0a43ce1aa3323f73e9aa0c612') { throw 'official Gradle distribution identity is not pinned' }
+if ($Text -notmatch 'finally \{ Restore-GradleDistribution \$GradleReceipt \}') { throw 'Gradle wrapper restoration is not fail-safe' }
 $PrimaryStart = $Text.IndexOf('$PrimaryPassed =',[StringComparison]::Ordinal)
 $ReportStart = $Text.IndexOf('$Report =',[StringComparison]::Ordinal)
 if ($PrimaryStart -lt 0 -or $ReportStart -le $PrimaryStart) { throw 'primary ratchet expression not found' }
