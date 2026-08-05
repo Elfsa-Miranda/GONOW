@@ -54,7 +54,7 @@ function Get-PhaseBaseOid {
 }
 
 function Get-GovernanceProfileState {
-  $AdoptionRelativePath = 'docs/execution/evidence/governance/personal-automation-adoption-v1.json'
+  $AdoptionRelativePath = 'docs/execution/evidence/governance/personal-automation-adoption-v2.json'
   $AdoptionPath = Join-Path $script:RepositoryRoot $AdoptionRelativePath
   $Checks = [ordered]@{
     adoption_receipt_missing = 0

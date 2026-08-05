@@ -49,7 +49,7 @@ def main() -> int:
     catalog = export_catalog(root)
     tasks = catalog.get("Tasks", {})
 
-    if catalog.get("CatalogVersion") != "2.5.1" or len(tasks) != 177:
+    if catalog.get("CatalogVersion") != "2.5.2" or len(tasks) != 177:
         errors.append("Catalog version/count mismatch")
     if contract.get("activation_state") != "selected_local_provisional":
         errors.append("P12A is not selected local provisional")
