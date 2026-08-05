@@ -180,4 +180,4 @@ Generated from TaskGate Catalog 2.5.2 and per-task status records.
 | TASK-P12D-999 | Phase 12D | accepted |
 | TASK-REL-A-001 | Release A | not_started |
 | TASK-REL-C-000 | Conditional Release C Governance | accepted |
-| TASK-REL-C-001 | Conditional Release C | not_started |
+| TASK-REL-C-001 | Conditional Release C | accepted |
