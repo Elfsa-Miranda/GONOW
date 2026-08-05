@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "profile": "personal_automated",
+  "status": "adopted_by_repository_owner_directive",
+  "directive_observed_at": "2026-08-05T13:30:00+08:00",
+  "supersedes": {
+    "path": "docs/execution/evidence/governance/personal-automation-adoption-v2.json",
+    "sha256": "8065f3b6fcb400179106ebac79b1d7098a1ff61d548880b35ba84b6b0a41fc8a",
+    "reason": "The repository owner explicitly expanded the close from the already completed P12A local flow to the fixed cumulative P12D, P12B, and P12A Release C and whole-project final close; v1 and v2 remain immutable history."
+  },
+  "decision_source": {
+    "type": "current_codex_thread_user_directive",
+    "actor": "repository_owner_current_user",
+    "directive": "complete all remaining tasks, push the result to codex/gonow-agent-landing, and continue the total Phase 12 and project close from the already verified local landing HEAD",
+    "identity_assurance": "authenticated_session_context_not_an_independent_organization_signature",
+    "permanent_reference_status": "bound_to_governance_content_commit",
+    "governance_content_commit_oid": "3e60bf785ecef1006cf76d32c236911b32f05a5b"
+  },
+  "repository": {
+    "remote": "https://github.com/Elfsa-Miranda/GO_NOW.git",
+    "base_branch": "main",
+    "landing_branch": "codex/gonow-agent-landing",
+    "decision_base_oid": "3e60bf785ecef1006cf76d32c236911b32f05a5b",
+    "local_landing_base_oid": "811b38cb96c51e0807de9de9fc00dc36c2b096ea",
+    "git_object_format": "sha1"
+  },
+  "documents": {
+    "agents": {
+      "path": "AGENTS.md",
+      "version": "3.0.0-personal",
+      "sha256": "b11f0bfea43ec08ca5fe7941e663e0b8fcd73176a9b21566209058a0980e4201"
+    },
+    "execplan": {
+      "path": "execplan.md",
+      "version": "3.0.0-personal",
+      "sha256": "a54d2fc820879d2b796351dc6f513f5a5fb0a3856d202fbc4e82292205475287"
+    },
+    "architecture": {
+      "version": "1.6.1",
+      "canonical_locator": "D:\\gonow\\deliverables\\GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx",
+      "sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6"
+    },
+    "decision_adr": {
+      "path": "docs/architecture/adr/ADR-P12-003-cumulative-release-c-close.md",
+      "sha256": "b9ea44b13c4c0b204fc5ece413b70fea356e7babac2e323ee9a2b8d57cca28df"
+    }
+  },
+  "selected_scope": {
+    "release": "C",
+    "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+    "p12c_status": "dormant",
+    "single_agent_architecture": true,
+    "multi_agent_component_count": 0,
+    "production_allocation": 0
+  },
+  "authorized_when_exact_attestation_is_valid": [
+    "accept_task_p12b_990_and_999_from_preserved_exact_evidence",
+    "accept_task_p12d_990_and_999_from_preserved_exact_evidence",
+    "accept_task_p12_000_001_002_089_for_the_fixed_cumulative_close",
+    "accept_task_rel_c_000_and_001_for_the_fixed_cumulative_close",
+    "accept_task_gonow_089_990_and_999_for_the_whole_project_close",
+    "merge_exact_accepted_candidate_to_codex_gonow_agent_landing_with_history",
+    "push_codex_gonow_agent_landing_non_force",
+    "create_one_ready_landing_to_main_pull_request",
+    "merge_the_exact_pull_request_through_github_branch_protection_after_required_checks",
+    "run_one_post_main_focused_smoke"
+  ],
+  "always_prohibited": [
+    "force_push_or_history_rewrite",
+    "direct_push_main",
+    "merge_before_required_checks",
+    "arbitrary_sql_or_unlisted_migration",
+    "permission_expansion_or_secret_rotation",
+    "cross_tenant_access",
+    "unknown_or_irreversible_data_deletion",
+    "production_deployment",
+    "production_allocation",
+    "production_write",
+    "unbounded_external_spend"
+  ],
+  "acceptance_predicates": {
+    "mandatory_failures": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "flaky_rerun_passes": 0,
+    "open_p0_p1": 0,
+    "security_redline_failures": 0,
+    "candidate_drift": 0,
+    "rollback_passed": true,
+    "exact_candidate_and_evidence_hash_binding_required": true,
+    "complete_regression_count_after_project_candidate_freeze": 1,
+    "pre_pull_request_focused_smoke_count": 1,
+    "post_main_focused_smoke_count": 1
+  },
+  "evidence_boundary": {
+    "this_receipt_proves_profile_scope_and_current_guidance_adoption_only": true,
+    "this_receipt_does_not_prove_tests_passed": true,
+    "this_receipt_does_not_prove_production_schema_rls_grants_backup_restore_or_traffic": true,
+    "this_receipt_does_not_authorize_production_writes": true,
+    "candidate_commit_oid": "3e60bf785ecef1006cf76d32c236911b32f05a5b",
+    "candidate_commit_binding_status": "bound_to_governance_content_commit"
+  }
+}
