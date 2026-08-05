@@ -20,8 +20,25 @@
       "production_write_count": 0,
       "main_write_count": 0,
       "recorded_at": "2026-08-05T12:14:27+08:00"
+    },
+    {
+      "attempt": 2,
+      "head_oid": "edd51db7b2f04b6dd8460497813f758be89eddaa",
+      "mode": "AutomatedAcceptancePreflight",
+      "execution_mode": "formal_adopted",
+      "result": "interrupted_after_attestation",
+      "reason_code": "legacy_status_optional_property_missing",
+      "root_cause": "The legacy ready_for_review status predates the optional blocker_path field; Set-ReadyForReviewStatus attempted direct assignment instead of adding the absent property.",
+      "gate_results_sha256": "fd395ce97afcebb52730bda12fa3a8858df9c46799c39d645a35e42ca3010182",
+      "commands_sha256": "8e8c20864da7740cf4623e1aa4eda3c7abdd7c08ad4e1e08ed30d4f5a4726d88",
+      "provisional_attestation_path": "docs/execution/evidence/phase-12a/P12A-990/personal-acceptance-attestation.attempt-2.json",
+      "provisional_attestation_sha256": "df94f2095e7962479353f9d301d50ec6ff3bf2f77c2221cefa70efd4df56a612",
+      "status_mutation_count": 0,
+      "production_write_count": 0,
+      "main_write_count": 0,
+      "recorded_at": "2026-08-05T12:20:00+08:00"
     }
   ],
-  "next_action": "Preserve v1, add a superseding current-guidance receipt bound to the explicit repository-owner directive, then rerun only the affected automated acceptance mode.",
+  "next_action": "Add the missing optional status property compatibly, retain this attempt, and rerun only the affected automated acceptance mode.",
   "production_write_count": 0
 }
