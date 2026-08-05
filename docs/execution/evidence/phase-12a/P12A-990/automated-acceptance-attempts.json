@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12A-990",
+  "attempts": [
+    {
+      "attempt": 1,
+      "head_oid": "9ebc55b053066f2623841451b318a1a5a897d7aa",
+      "mode": "AutomatedAcceptancePreflight",
+      "execution_mode": "formal_adopted",
+      "result": "blocked",
+      "reason_code": "personal_governance_profile_invalid",
+      "root_cause": "The append-only personal governance receipt still binds the pre-P12A execplan SHA-256, while the current P12A-selected execplan has a later legitimate hash.",
+      "expected_execplan_sha256": "94217c013ae1b84be05ae69c72cd235f1b63c908092377e287281a7a464da859",
+      "actual_execplan_sha256": "336a1ccb4bc33ae30f7d1ca08a5dc4a86533fe72d50244084073fb2ea129c709",
+      "source_adoption_receipt_sha256": "1ce225072741c63c534c43e692ee7f3cb5e31b22faf9843a3e01285dade260c8",
+      "gate_results_sha256": "459d4d2e04449547832ad78f8542eb8665466371663fbfab2b70e4f40c9082ac",
+      "commands_sha256": "516f244ebfa601c6933f4fe47a58516edcb85c4a3d44daac851765475c8f7ffd",
+      "blocker_sha256": "7b0e765faa899eca6b34684f5c94dc9013115ac743561fc0b08bc0ca67bc9013",
+      "status_mutation_count": 0,
+      "production_write_count": 0,
+      "main_write_count": 0,
+      "recorded_at": "2026-08-05T12:14:27+08:00"
+    }
+  ],
+  "next_action": "Preserve v1, add a superseding current-guidance receipt bound to the explicit repository-owner directive, then rerun only the affected automated acceptance mode.",
+  "production_write_count": 0
+}
