@@ -1,7 +1,7 @@
 # GoNow 仓库级执行宪章
 
 > 文档：`AGENTS.md`  
-> 版本：`2.0.0-personal`
+> 版本：`3.0.0-personal`
 > 目标架构：`GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx`  
 > 目标架构 canonical locator：`D:\gonow\deliverables\GoNow_Industrial_Multi-Agent_and_Database_RAG_Architecture_Design_Remote_Main_v1.6.1.docx`（用户提供的本轮只读输入；路径本身不构成不可变身份）  
 > 目标架构 artifact SHA-256：`644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6`  
@@ -11,7 +11,7 @@
 > 本次核验 `BASE_SHA`（固定远程基线的不可变提交）：`142abfc339f003ede8d85d9534336923b5610252`  
 > 基线提交：`2026-07-18T23:33:34+08:00`，`Update README.md`  
 > 生成时间：`2026-07-31T01:11:04+08:00`  
-> 本次执行治理修订：`2026-08-02T14:42:24+08:00`
+> 本次执行治理修订：`2026-08-05T13:30:00+08:00`
 > 采纳状态：`active_personal_automated_governance`；仓库 owner 已在本轮明确授权 §0.4.3 的个人项目自动门禁、阶段 push/merge、owner-only canary 与机械 acceptance。所有授权仍受候选 OID、最小权限、成本上限、kill switch、零安全红线和可逆性约束
 > 默认时区：`Asia/Shanghai`
 
@@ -96,6 +96,7 @@ v1.6.1 是最终要实现的总架构，但不是当前实现证明。其目标�
 - `1.3.0` 候选修订记录：消除 BOOT 工具先后循环，增加 Gate/PhaseMerge mode 注册与 Catalog 结构校验，明确治理采纳 receipt 的可执行解锁输入与 BOOT-001/002 内容寻址断点续跑，并移除未供应的 `ConvertFrom-Yaml` 隐含依赖；这是兼容性执行门禁增强，不改变 v1.6.1 产品能力、Release 范围或生产数据用途。`1.3.0` 重新冻结后，任何旧版本采纳 receipt 均不得沿用。
 - `1.4.0` 候选修订记录：把治理采纳从“创建控制仓前的全局锁”调整为“正式合并、推送、生产写和 Release acceptance 前的治理门”，增加本地 provisional bootstrap、机械证据依赖、自诊断/自修复、替代路径和局部阻断规则。该修订不放宽 secret、跨租户、生产写、数据丢失、不可逆操作等 Hard Constraint；它只消除等待外部批准或工具时对全部安全本地工作的无差别停工。
 - `2.0.0-personal` 修订记录：在完整保留原 enterprise governance、五档生产观察和独立 owner 审批合同的同时，为本个人项目启用 §0.4.3 的自动治理 profile；以 C1–C5 高密度压缩认证加最终 owner-only production canary 替代 Release B 的 31 天日历等待，并允许门禁通过后自动 accepted、阶段 push/merge 和受限 Release 操作。该修订改变 Release acceptance、批准与灰度时间硬约束，属于 `MAJOR`；不放宽 secret/PII、跨租户、任意 SQL/Tool、未经 Domain Command 的正式写、数据丢失、不可逆删除、force-push 或安全红线。
+- `3.0.0-personal` 修订记录：仅对当前已进入 landing 的 Phase 12D、12B、12A 建立一次累计 Release C 收口例外，按 `P12D → P12B → P12A` 保留历史和证据并作为同一候选接受；P12C 继续 dormant。该修订以 `ADR-P12-003-cumulative-release-c-close.md` 和仓库 owner 本轮明确授权为依据，取代旧 P12 XOR/单能力发布限制，属于 `MAJOR`。它不授权 Multi-Agent、生产部署、生产数据写入、流量分配、force-push、直接 push main 或弱化 RLS/CAS/删除恢复/安全红线。
 - 子目录未来可以有更严格的 `AGENTS.md`，但 MUST NOT 放宽本文件。根文件是唯一仓库级权威。
 - 批准本文件表示认可实施合同，不表示任何 Phase 已完成；完成状态只能由对应提交、机器证据、回滚演练和适用 profile 的 acceptance 共同证明：enterprise 使用独立 owner，current personal 使用 §0.4.3 自动 attestation。
 
@@ -148,6 +149,16 @@ enterprise governance 的正式采纳仍使用目标控制仓之外的只读 `go
 本 profile 对生产的自动授权仅限 `execplan.md` 明确列出的 owner-only canary：使用预配置的最小权限 canary identity、固定 feature flag、成本上限和同一个已认证构建；允许通过现有 typed API/Domain Command 创建、取消、拒绝或采用 owner 自有测试数据。它不授权任意 SQL、migration、跨租户查询、扩大到其他用户、删除未知数据、修改权限/secret、不可逆供应商操作或无上限消费。缺少 credential、生产 endpoint、canary identity、budget cap、kill switch 或审计接线时，只阻断 canary；不得伪造输入，也不得阻止其他本地认证工作。
 
 任何不可逆删除、force 操作、权限扩大、secret 轮换、付费上限外消费、全量生产分配或计划未列明的外部动作仍须新的明确用户授权。P0、secret/PII 暴露、跨租户访问、未授权正式写、数据丢失或 kill switch 失效时，自动授权立即撤销，allocation 必须归零并按 §5/§12 处置。
+
+### 0.4.4 Phase 12 累计 Release C 收口例外
+
+本小节是当前 `personal_automated` 收口周期对旧 §10/§11 P12 XOR 约束的唯一、窄化覆盖。累计能力集合固定为 `cumulative_capabilities=[P12D,P12B,P12A]`，顺序固定为 Domain Command 单写链、确定性 Cost Router、显式 Structured Memory；三者已经以保留历史的 local provisional merge 进入 `codex/gonow-agent-landing`，不得删除、重写、squash、rebase 或倒签其历史和证据。`P12C=dormant`，Multi-Agent 实现数和流量分配必须为 0。
+
+累计不等于同时启用生产流量。工程候选仍保持产品运行时 Single-Agent；P12D、P12B、P12A 的独立 flag/route/read port 默认关闭或 allocation=0。Release C 本轮只认证累计代码与合同在关闭状态下可共存、回滚和恢复，不证明真实生产 schema/RLS/grants、备份链、流量或业务改善。生产部署、生产写和流量分配不在本轮授权内。
+
+累计收口必须满足：三个能力各自 990/999 的 exact candidate、完整回归、merge tree 和 focused smoke 证据无未解释漂移；P12-000/001/002 依次登记集合、授权/ADR/风险/回滚和拓扑；P12-089 聚合文档、handoff、Harness Catalog 与状态；`REL-C-000` 固定 path=`phase12`；`REL-C-001` 只完成候选验证和发布准备。之后工程级 089/990/999 才能冻结唯一 landing candidate、执行一次全工程回归、focused smoke、非强制 push、受保护 PR 和非强制 main 合并。
+
+若任一累计能力出现安全红线、无法解释的产物漂移、跨租户/未授权写、删除恢复失败或旧路径不兼容，累计 acceptance 必须 fail closed；回滚按能力独立关闭 flag/route/read port，必要时通过受保护 PR revert 精确 Release C merge，任何情况下都不 reset、force 或删除耐久证据。
 
 ### 0.5 架构追踪
 
@@ -1073,7 +1084,7 @@ Phase 是长期地图，不是无门禁连续施工清单。每个阶段只有�
 | **9 Flutter 最小接线** | OpenAPI→Dart；Run/SSE/resume/cancel；active-run persistence；Candidate preview/adopt；Domain Command/CAS/outbox；双路径 flag | 不删旧路径；不把基础采用链推迟到 Phase 12；无读性能证据不强建 CQRS | 用户可看到进行中状态、断网后恢复并预览 Candidate；只有明确采用才以 expected version 写正式数据；flag-off/旧 App 仍工作 | 同一 OpenAPI→Dart codegen digest、旧/新 App compatibility matrix、Flutter 三路径 E2E、Command receipt/CAS/outbox DB assertions | 普通聊天、导入、Auth、fallback 不变；断网恢复可见；旧 App 兼容；adopt 重新鉴权并 CAS；Flutter E2E 与后台恢复 | 切旧路径；兼容 adapter 按 §3 删除门禁保留 |
 | **10 可观测与 Release B 生产门禁** | OTel、SLO/alert、eval、Judge 校准、kill switch、§9.2 profile、成本与 runbook | 未校准 Judge 不阻断；不把 synthetic/staging 写成生产观察；不删除 enterprise 合同 | 值班人员可由 trace/run/digest 定位失败并按 runbook 关闭新路径；current personal profile 的 C1–C5 与最终 owner canary 均有不可变证据 | §9 schema/canary、E1 holdout、价格快照、认证 manifest、互斥 corpus/seed/fault plan、真实 PG/live provider、§7.6 回滚、soak 与 kill-switch timing | 高危为零 `[硬约束]`；kill/replay/cancel/idempotency；关键 slice 非劣；成本在预算；完整顺序执行 §9.2.2 C1–C5；`≥4h` soak；`30–60min` owner-only canary；自动 attestation | kill switch/allocation=`0`，立即回旧路径；旧 Behavior 可运行；保留失败证据 |
 | **11 独立 RAG 工作包** | source/ACL/version/delete/outbox；pgvector + PostgreSQL FTS；确定融合、citation、Knowledge Release Package；实时信息仍走 Tool | 不同时启 Memory/Multi-Agent；不摄取无权内容；hard filter 不移到 Python | 仅当选择 RAG 时，Candidate 的稳定知识 claim 带可打开 citation；无 ACL 权限和删除后的内容检索不到；实时事实仍来自 Tool | Release B 失败 ledger 中“缺稳定知识”比例、预注册 RAG dataset/ACL corpus、manifest/alias hash、Recall/citation/p95 阈值与数据权属批准 | 启动前 `>20%` 触发 `[初始假设]` 与 ADR；Recall/citation、`ACL leakage=0` `[硬约束]`、删除、陈旧、p95、alias 回滚达批准值 | 独立 RAG flag 关闭；alias 回旧 manifest；旧 Behavior 不依赖新索引 |
-| **12 一次只扩一个经证明能力** | 只选显式结构化 Memory、成本路由强化、Domain Command 分点迁移或生产 Multi-Agent 中一个工作包 | 不并行上线多个新能力；不为“完整”引入 OpenSearch、Milvus、Temporal、Kubernetes 或动态 MCP 市场 | Release C 只有一个新能力获得流量；关闭其独立 flag 后系统与 Release B 等价；其他候选保持 dormant/零分配 | Release C 外层选择记录、所选 ADR、预注册专项 dataset、Release B 等价 replay、专项安全/隐私/成本/删除 gate | 独立 ADR、专项数据集、安全/隐私/删除、负载、成本、A/B、回滚全过；所有示例触发均 `[初始假设，需上线校准]` | 所选能力的独立 flag、manifest、route 或 index alias 回切 |
+| **12 累计认证三个已完成能力** | 本轮仅累计已进入 landing 的 P12D、P12B、P12A；P12C dormant | 不建设 Multi-Agent，不删除/重写历史，不据此启用生产流量，不为“完整”引入新平台 | Release C 候选包含三个默认关闭/零分配能力；逐能力关闭后旧路径仍可用，产品运行时保持 Single-Agent | 三个能力原始 990/999、完整回归、merge tree、focused smoke、累计拓扑、工程级 089/990/999 | 产物漂移已解释并补受影响验证；全工程回归与安全/RLS/CAS/删除恢复/旧路径兼容全过；生产事实未知不冒充通过 | 分别关闭 Memory read port、Cost Router route、Domain Command flag；必要时通过受保护 PR revert Release C merge |
 
 所有 Phase 共同门禁：范围 allowlist、入口跨阶段回归、兼容、安全、真实数据库可靠性、目标 eval、脱敏观测、依赖供应链、成本、回滚、文档/知识转移、接受报告和 profile-specific acceptance。当前 Release 不涉及的门禁只能标 `not_applicable + reason`；涉及但工具未就绪则 `blocked`，不能标通过。
 
@@ -1085,7 +1096,7 @@ Phase 是长期地图，不是无门禁连续施工清单。每个阶段只有�
 
 困难记录是主动义务：同一步骤第二次失败、需要修改最初计划、依赖外部系统、等待 owner 决定，或发现任何未知生产事实时，MUST 在 `24` 小时内按 §12 建 BLK；P0/P1 服从更短的 §5.3 时限。Phase acceptance 必须列出全部 BLK，而不是只列仍未解决者。
 
-Phase 11 与 Phase 12 都以 Release B accepted 和各自量化触发为前提；它们不是自动连续关系。若 Release C 选择 RAG，则执行 Phase 11；若数据支持另一个单能力包，则可执行相应 Phase 12 工作包而不先造 RAG。未来若还要增加第二项能力，必须作为新的独立发布重新走 ADR、门禁和回滚，不能借同一 Release C 并行施工。
+Phase 11 与 Phase 12 都以可复验的 Release B 机械证据和各自触发为前提；它们不是自动连续关系。本轮按 §0.4.4 固定走 Phase 12，并累计认证已经依次完成的 P12D、P12B、P12A；这不是并行施工或生产同时分配。未来新增任何第四项能力或启用 P12C/Multi-Agent，仍必须作为新的独立发布重新走 ADR、门禁和回滚。
 
 ## 11. Release A/B/C 关系
 
@@ -1097,7 +1108,7 @@ Phase 11 与 Phase 12 都以 Release B accepted 和各自量化触发为前提�
 | **B 可运营单 Agent** | Release A accepted；Phase 1 语义与 Phase 2–9 依次验收；§7.2 数据集与 §9.2 profile manifest 齐全 | current personal profile：跨租户/越权、禁止 Tool、未授权正式写、secret/PII、重复副作用、永久 Run 为零；真实 PG kill/replay/cancel/幂等；C1–C5、成本、`≥4h` soak、`30–60min` owner-only canary 与自动 attestation 全过。enterprise profile 仍保留 §9.2.1 原五档合同 | 多日行程外 Agent、RAG、隐式 Memory、生产 Multi-Agent、多供应商平台、Redis、自动正式写、重型平台 | allocation=`0`/flag 回旧规划；保留 Run/Candidate/新数据；旧 Behavior/客户端可用 | personal 自动 gate；enterprise 为 Engineering + Security 及适用 owner |
 | **C 单一证据能力** | Release B 稳定且真实失败数据满足 Phase 11 或 12 的一个触发；专项 ADR/数据/删除/成本批准 | 仅所选工作包的安全、质量、性能、成本、运营和回滚门禁通过 | 不并行 RAG+Memory+Multi-Agent+智能路由，不自动上新平台 | 独立 flag/manifest/alias/route 回切，旧 Behavior 保持运行 | 对应 Engineering/Security/Product/Data owner |
 
-Release A/B/C 都必须有进入、退出和回滚证据，不能因“下一 Phase 已开工”反推前一发布 accepted。Release C 每次只允许一个能力工作包 `[硬约束]`。
+Release A/B/C 都必须有进入、退出和回滚证据，不能因“下一 Phase 已开工”反推前一发布 accepted。当前 Release C 仅允许 §0.4.4 固定的 P12D/P12B/P12A 累计集合；该集合之外仍禁止追加能力，P12C 必须 dormant `[硬约束]`。
 
 ## 12. 困难、卡点与逐级升级日志
 
