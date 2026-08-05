@@ -7,8 +7,8 @@
   "files": [
     {
       "path": "tool/security/secret-scan/Invoke-SecretScan.ps1",
-      "size": 12965,
-      "sha256": "0dec41921f54976ea407066667c7534ed2c1920177b0fe9530aa3f71fc12ed8c"
+      "size": 12950,
+      "sha256": "d4e6ed74ef173687e65e7dd87195e26610b9065fe1648bb7479c88e6d1a78658"
     },
     {
       "path": "tool/security/secret-scan/rules.toml",

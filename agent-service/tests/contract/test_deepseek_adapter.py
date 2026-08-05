@@ -109,7 +109,7 @@ def test_adapter_uses_one_literal_origin_model_non_thinking_json_request() -> No
     finally:
         client.close()
     assert observed[0]["url"] == API_ORIGIN + API_PATH
-    assert observed[0]["authorization"] == "Bearer synthetic-deepseek-credential"
+    assert observed[0]["authorization"] == "Bearer " + CREDENTIAL.secret_value
     body = observed[0]["body"]
     assert body["model"] == MODEL_ID  # type: ignore[index]
     assert body["thinking"] == {"type": "disabled"}  # type: ignore[index]

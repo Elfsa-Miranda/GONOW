@@ -34,7 +34,7 @@ function Get-Sha256Hex {
 
 function Get-FileSha256Hex {
   param([string]$Path)
-  return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+  return Get-Sha256Hex -Bytes ([System.IO.File]::ReadAllBytes($Path))
 }
 
 function Get-RuleSet {
