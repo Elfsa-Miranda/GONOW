@@ -192,7 +192,10 @@ try {
     }
     $FinalRepositoryStatus = @(& git -C $RepoRoot status --porcelain=v1 --untracked-files=all)
     if ($LASTEXITCODE -ne 0) { throw 'Unable to capture the final repository status' }
-    $Results.Add([ordered]@{name='repository-clean';exit_code=0;duration_ms=0;initial_dirty_count=$InitialRepositoryStatus.Count;final_dirty_count=$FinalRepositoryStatus.Count;clean_precondition=($InitialRepositoryStatus.Count-eq0)})
+    $FinalDirtyPaths = @($FinalRepositoryStatus | ForEach-Object {
+      if ([string]$_ -match '^..\s+(.+)$') { [string]$Matches[1] } else { '<unparseable-status-entry>' }
+    })
+    $Results.Add([ordered]@{name='repository-clean';exit_code=0;duration_ms=0;initial_dirty_count=$InitialRepositoryStatus.Count;final_dirty_count=$FinalRepositoryStatus.Count;final_dirty_paths=$FinalDirtyPaths;clean_precondition=($InitialRepositoryStatus.Count-eq0)})
     if ($InitialRepositoryStatus.Count -eq 0 -and $FinalRepositoryStatus.Count -ne 0) {
       throw 'Mandatory CI changed a clean repository worktree'
     }

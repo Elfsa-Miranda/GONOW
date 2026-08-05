@@ -56,6 +56,8 @@ def test_ci_wrapper_resolves_dart_and_sandboxes_reports() -> None:
     assert wrapper.index("try {\n      if($RunUnitTests)") < wrapper.index("if($RunContractTests)")
     assert wrapper.index("if($RunContractTests)") < wrapper.index("foreach ($Name in $InjectedReportEnvironmentNames)", wrapper.index("if($RunContractTests)"))
     assert "Mandatory CI changed a clean repository worktree" in wrapper
+    assert "final_dirty_paths=$FinalDirtyPaths" in wrapper
+    assert "<unparseable-status-entry>" in wrapper
 
 
 def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:

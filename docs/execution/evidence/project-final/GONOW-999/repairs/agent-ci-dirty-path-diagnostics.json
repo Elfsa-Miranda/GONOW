@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-999",
+  "github_pull_request": 1,
+  "workflow_run_ids": [
+    30993115225,
+    30993112349
+  ],
+  "first_failure": {
+    "workflow": "Agent CI",
+    "step": "Run every mandatory Agent gate",
+    "classification": "post_gate_repository_dirty_path_unknown",
+    "unit_passed": 911,
+    "contract_passed": 255,
+    "unit_failed": 0,
+    "contract_failed": 0,
+    "final_dirty_count": 1
+  },
+  "root_cause_status": "not_yet_distinguishable_without_dirty_path",
+  "excluded_by_prior_signal": [
+    "git_application_resolution",
+    "pgvector_cmd_invocation",
+    "pgvector_build_or_install",
+    "postgresql_initialization",
+    "unit_or_contract_test_failure",
+    "dependency_audit_failure",
+    "license_gate_failure"
+  ],
+  "enabler": {
+    "implementation": "Add only parsed dirty path names to the existing CI summary; never record file contents.",
+    "clean_gate_changed": false,
+    "test_commands_changed": false,
+    "threshold_changed": false,
+    "production_write_count": 0,
+    "rollback": "Revert this enabler after the side effect is repaired; do not remove or weaken the repository-clean gate."
+  },
+  "focused_validation": {
+    "first_test_selector_exit_code": 4,
+    "first_test_selector_classification": "nonexistent_test_node_id",
+    "corrected_contract_exit_code": 0,
+    "corrected_contract_passed": 1,
+    "powershell_parse_errors": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "recorded_at": "2026-08-05T17:45:00+08:00"
+}
