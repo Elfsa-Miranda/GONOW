@@ -12,13 +12,13 @@
     },
     {
       "path": "tool/security/secret-scan/rules.toml",
-      "size": 519,
-      "sha256": "6d51bdf11ce515af24b95dd3eeaf81e95c699e56044273ea7a95f57caadb770e"
+      "size": 550,
+      "sha256": "011ce342a319b7b8558f973f143040873c1ec52978e53cfc58fd5605a049529e"
     },
     {
       "path": "tool/security/secret-scan/test_secret_scan.py",
-      "size": 4431,
-      "sha256": "9c7925b9129692816699e85f7af1344325a94e4a4284f6613a3454cc9ec9ebd7"
+      "size": 5394,
+      "sha256": "4c5a0ad1e049ea66d969e1d425cd8cdf6fc4564a45505cb8ebd68448fa12537e"
     },
     {
       "path": "tool/security/secret-scan/README.md",

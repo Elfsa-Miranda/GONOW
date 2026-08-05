@@ -102,6 +102,25 @@ class SecretScannerTests(unittest.TestCase):
         self.assertEqual(report["complete_private_key_block_count"], 0)
         self.assertEqual(report["valid_secret_finding_count"], 0)
 
+    def test_synthetic_bearer_namespace_does_not_hide_other_bearers(self) -> None:
+        temporary, root = self._repo()
+        self.addCleanup(temporary.cleanup)
+        synthetic = "Bearer " + "synthetic-" + "D" * 24
+        sentinel = "Bearer " + "secret-sentinel-" + "F" * 24
+        plausible = "Bearer " + "opaque-" + "E" * 24
+        artifact = root / "bearers.zip"
+        with zipfile.ZipFile(artifact, "w") as archive:
+            archive.writestr("bearers.txt", synthetic + "\n" + sentinel + "\n" + plausible)
+
+        report = self._scan(root, "artifact", "-Artifact", str(artifact))
+
+        self.assertEqual(report["finding_count"], 1)
+        self.assertEqual(report["valid_secret_finding_count"], 1)
+        self.assertEqual(report["findings"][0]["rule_id"], "generic-bearer")
+        self.assertNotIn(synthetic, json.dumps(report))
+        self.assertNotIn(sentinel, json.dumps(report))
+        self.assertNotIn(plausible, json.dumps(report))
+
     def test_log_directory_is_scanned_without_value_output(self) -> None:
         temporary, root = self._repo()
         self.addCleanup(temporary.cleanup)

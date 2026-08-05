@@ -12,7 +12,7 @@ classification = 'access_token'
 
 [[rule]]
 id = 'generic-bearer'
-pattern = '\bBearer\s+[A-Za-z0-9._~-]{20,}\b'
+pattern = '\bBearer\s+(?!synthetic-|secret-sentinel-)[A-Za-z0-9._~-]{20,}\b'
 classification = 'bearer_credential'
 ignore_case = true
 
