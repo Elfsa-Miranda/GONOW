@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-060",
+  "phase": "Phase 12B",
+  "executed_at": "2026-08-04T23:23:25+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "c24cdf96e3d77324cf91f92999ca21e3f66c9bc0",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Run missing-key, MockTransport pilot/resume, cap and no-secret calibration contracts",
+      "command": "locked-python -m pytest -q tests/contract/test_p12b_live_calibration_contract.py",
+      "exit_code": 0,
+      "stdout_tail": "5 passed in 0.38s",
+      "stderr_tail": "",
+      "stdout_sha256": "82749f247c463e2e2c365fec330a7e79cca9270a41860f031a0f6a2e8fcf822b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only aggregate offline contract counts and duration are retained.",
+      "duration_seconds": 1.8
+    },
+    {
+      "step": 2,
+      "description": "Load the user-scoped DeepSeek key into only the subprocess and run the four-scenario live pilot once",
+      "command": "presence-only environment checks; locked-python run_p12b_live_calibration.py --cohort pilot --output <external-checkpoint>; remove subprocess environment value",
+      "exit_code": 0,
+      "stdout_tail": "{\"cohort\":\"pilot\",\"expansion_allowed\":false,\"live_call_count\":8,\"redline_failure_count\":0,\"secret_material_persisted\":0,\"status\":\"pilot_complete\",\"task_count\":4,\"total_cost_microusd\":1044,\"total_tokens\":4005}",
+      "stderr_tail": "",
+      "stdout_sha256": "9e8646a49f3171ef40c7c4794eef03e7b18a7220f834ebcea5f7e587d80ee76a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only allowlisted count, token, estimated cost, redline and expansion fields are retained; no key, prompt or response was output.",
+      "duration_seconds": 29.4
+    },
+    {
+      "step": 3,
+      "description": "Inspect the sanitized checkpoint and apply the preregistered no-signal stop rule",
+      "command": "read and hash external checkpoint; emit allowlisted arm aggregates, failure classes, tasks and attempts",
+      "exit_code": 0,
+      "stdout_tail": "baseline_success=0 candidate_success=0 baseline_failures=4 candidate_failures=4 ratio=null quality=false cost=false latency=false fallback=true expansion=false",
+      "stderr_tail": "",
+      "stdout_sha256": "17cff2917db25456e05fabb0327cd3bc8eee37268015349f9169502cf1eadf20",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only content-free finite results are retained.",
+      "duration_seconds": 0.6
+    },
+    {
+      "step": 4,
+      "description": "Correct the zero-success non-inferiority formula without new live calls and rerun all calibration contracts",
+      "command": "apply_patch quality_non_inferior nonzero-baseline rule; locked-python -m pytest -q tests/contract/test_p12b_live_calibration_contract.py",
+      "exit_code": 0,
+      "stdout_tail": "6 passed in 0.35s",
+      "stderr_tail": "",
+      "stdout_sha256": "e6d48c937aee07f10920a1ca5e72c8a980d8792d44befed20d3bbbe78bd27afa",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only aggregate offline contract counts and duration are retained.",
+      "duration_seconds": 1.8
+    },
+    {
+      "step": 5,
+      "description": "Exercise allocation-zero, router-bypass and subprocess-key rollback checks",
+      "command": "locked-python pytest default/bypass focused cases; process environment presence and runtime flag checks",
+      "exit_code": 0,
+      "stdout_tail": "3 passed, 2 deselected in 0.30s; process_deepseek_key_present=false runtime_router_flag_enabled=False",
+      "stderr_tail": "",
+      "stdout_sha256": "173c07b79648d99434c9654be179c4425124a3ebe695ac9ea465f217b8589c77",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only aggregate rollback results and boolean presence are retained.",
+      "duration_seconds": 1.9
+    },
+    {
+      "step": 6,
+      "description": "Validate live evidence derivation, P12B contract, artifact hashes, status binding and patch whitespace",
+      "command": "locked-python P12B-060 evidence validator; validate_phase12b_contracts.py --task P12B-060; git diff --check",
+      "exit_code": 0,
+      "stdout_tail": "evidence_mismatches=0; execution_contract_errors=0; artifact_hash_mismatches=0; status_binding=1",
+      "stderr_tail": "",
+      "stdout_sha256": "798501ac8311f06662d983ee6c586e206d4f366118cbc67a2acc0ea2bc4cb0ba",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only aggregate validation counts are retained.",
+      "duration_seconds": 1.564
+    }
+  ]
+}

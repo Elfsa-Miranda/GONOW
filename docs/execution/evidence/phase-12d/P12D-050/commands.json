@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-050",
+  "phase": "Phase 12D",
+  "executed_at": "2026-08-04T18:06:15+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "43e6ca154e86a0c3ba9ea02def6d3472ff286de6",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Reproduce the concurrent same-key race against isolated RealPG",
+      "command": ".venv/Scripts/python.exe -m pytest -q tests/integration/test_p12d_failure_matrix.py --maxfail=1",
+      "exit_code": 1,
+      "stdout_tail": "concurrent same-key request surfaced PostgreSQL unique-key IntegrityError",
+      "duration_seconds": null,
+      "redaction_reason": "The root failure classification is retained without database row content."
+    },
+    {
+      "step": 2,
+      "description": "Verify the bounded concurrency and deterministic fault repair",
+      "command": ".venv/Scripts/python.exe -m pytest -q tests/integration/test_p12d_failure_matrix.py --maxfail=1",
+      "exit_code": 0,
+      "stdout_tail": "8 passed in 5.38s",
+      "duration_seconds": 5.38,
+      "redaction_reason": "Only passing counts and duration are retained."
+    },
+    {
+      "step": 3,
+      "description": "Run the first controlled 10k baseline and 10k candidate profile",
+      "command": ".venv/Scripts/python.exe -m pytest -q -s tests/contract/test_p12d_legacy_equivalence.py",
+      "exit_code": 0,
+      "stdout_tail": "1 passed in 66.31s; diagnostic profile later replaced because the legacy arm compressed its sequence",
+      "duration_seconds": 66.31,
+      "redaction_reason": "The successful diagnostic run is retained but is not used for the final claim."
+    },
+    {
+      "step": 4,
+      "description": "Run the exact P12D-050 RealPG, failure, security, restore and equivalence set",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_p12d_failure_matrix.ps1",
+      "exit_code": 0,
+      "stdout_tail": "52 passed in 98.40s; P12D050_EXIT=0",
+      "duration_seconds": 100.1,
+      "redaction_reason": "Only passing counts, profile values and duration are retained."
+    },
+    {
+      "step": 5,
+      "description": "Compile the changed Python files, validate the PowerShell parser and selected execution contract",
+      "command": "py_compile changed P12D-050 files; parse run_p12d_failure_matrix.ps1; validate_phase12d_contracts.py --task P12D-050",
+      "exit_code": 0,
+      "stdout_tail": "p12d-050-static-and-contract:passed; catalog_task_count=161; error_count=0",
+      "duration_seconds": 2.6,
+      "redaction_reason": "Only bounded validation counts are retained."
+    }
+  ]
+}

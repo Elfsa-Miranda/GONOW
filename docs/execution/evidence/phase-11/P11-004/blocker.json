@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P11-004",
+  "mode": "Verify",
+  "reason_code": "p11_004_index_plan_fixture_and_shape_repaired",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-03T23:45:00+08:00",
+  "resolved_at": "2026-08-03T23:59:42+08:00",
+  "final_state": "resolved",
+  "root_causes": [
+    "The initial tiny corpus did not provide PostgreSQL planner statistics or a cost crossover that could discriminate HNSW and GIN eligibility.",
+    "A standalone search_vector GIN competed with a tenant/dictionary B-tree in the RLS-protected joined query shape instead of covering the authorization and lexical predicates together.",
+    "The bounded planner fixture used colon-prefixed SQL string literals that SQLAlchemy text parsing treated as bind names.",
+    "The multi-tenant regression fixture reused one globally unique embedding model UUID across tenants."
+  ],
+  "excluded_paths": [
+    "pgvector extension load failure",
+    "migration or RLS failure",
+    "vector or lexical result mismatch before planner-only corpus inflation",
+    "arbitrary SQL execution",
+    "production write"
+  ],
+  "impact_surface": [
+    "P11-004 query-plan evidence",
+    "tenant-scoped lexical index design",
+    "deterministic integration fixtures"
+  ],
+  "repair": [
+    "Add bounded deterministic planner data and refresh statistics after the build.",
+    "Use a composite tenant_id/dictionary_version/search_vector GIN backed by PostgreSQL btree_gin, while retaining the B-tree for non-FTS tenant operations.",
+    "Keep the GIN eligibility probe separate from normal retrieval, restore planner settings after EXPLAIN, and benchmark the unforced production query.",
+    "Replace ambiguous colon literals and derive stable per-tenant model UUIDs."
+  ],
+  "dependency_provenance": {
+    "postgresql": {
+      "version": "17.10",
+      "btree_gin_version": "1.3"
+    },
+    "pgvector": {
+      "version": "0.8.1",
+      "build": "h326dbc6_0",
+      "channel": "https://repo.anaconda.com/pkgs/main/win-64",
+      "package_sha256": "d191addfbf2795217351db26787bddfccdb02cb4564fbddd5ed2d80b0c540469",
+      "license": "PostgreSQL",
+      "vector_dll_sha256": "ca9408d4a4ecff89898675aecfed123cf5b069e6412cd172ecd31055db2eb910",
+      "installation": "38 previously absent extension files copied into the isolated local PostgreSQL 17 installation; no existing file was overwritten"
+    }
+  },
+  "rollback": "Revert the P11-004 files and remove only the hash-verified extension files added to the isolated local test installation; schema and production state remain unchanged.",
+  "recovery_evidence": {
+    "minimal_index_plan_test": "1 passed",
+    "affected_regression": "3 passed",
+    "format_failure_count": 0,
+    "lint_failure_count": 0,
+    "type_failure_count": 0,
+    "hnsw_index": "ix_knowledge_embeddings_hnsw_cosine",
+    "fts_index": "ix_knowledge_lexical_gin"
+  }
+}

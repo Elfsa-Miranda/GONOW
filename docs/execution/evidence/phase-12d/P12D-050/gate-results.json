@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-050",
+  "gate_run_at": "2026-08-04T18:06:15+08:00",
+  "git_object_format": "sha1",
+  "head_oid": "43e6ca154e86a0c3ba9ea02def6d3472ff286de6",
+  "phase_base_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "tool_versions": {
+    "catalog": "2.3.0",
+    "python": "3.13.9",
+    "postgresql": "17.10"
+  },
+  "results": [
+    {
+      "check_id": "ControlledComparableProfile",
+      "status": "passed",
+      "detail": "baseline=10000/10000; candidate=0/10000; identical workload SHA-256 and fixed seed; all failed intents retained",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-050/fault-and-replay-results.json"
+    },
+    {
+      "check_id": "DeterministicFailureMatrix",
+      "status": "passed",
+      "detail": "four precommit cut points roll back all effects; postcommit response loss resolves by receipt; relay reclaims with a new fence",
+      "evidence_path": "agent-service/tests/integration/test_p12d_failure_matrix.py"
+    },
+    {
+      "check_id": "ConcurrentIdempotency",
+      "status": "passed",
+      "detail": "two same-key same-body requests converge to one business mutation, one receipt and one outbox event",
+      "evidence_path": "agent-service/app/persistence/repositories/itinerary_basic_info_commands.py"
+    },
+    {
+      "check_id": "RestoreAndSecurity",
+      "status": "passed",
+      "detail": "migration/restore, RLS, cross-tenant and command security checks are included in the exact affected suite",
+      "evidence_path": "agent-service/scripts/run_p12d_failure_matrix.ps1"
+    },
+    {
+      "check_id": "FocusedAffectedSuite",
+      "status": "passed",
+      "detail": "passed=52; failed=0; skipped=0; xfailed=0; duration=98.40s",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-050/commands.json"
+    },
+    {
+      "check_id": "RedlineAndClaimBoundary",
+      "status": "passed",
+      "detail": "duplicate=0; unauthorized/cross-tenant=0; mutation/outbox divergence=0; loss/ambiguous=0; data loss=0; production claim=false",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-050/fault-and-replay-results.json"
+    }
+  ],
+  "overall_status": "passed"
+}

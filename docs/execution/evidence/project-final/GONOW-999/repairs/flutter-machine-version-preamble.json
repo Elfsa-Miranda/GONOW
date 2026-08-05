@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-999",
+  "github_pull_request": 1,
+  "workflow_run_id": 30989244067,
+  "job_id": 92251176503,
+  "first_failure": {
+    "workflow": "flutter-quality-ratchet",
+    "step": "Run baseline and candidate ratchet",
+    "classification": "flutter_machine_version_non_json_preamble",
+    "baseline_or_candidate_suite_executed": false
+  },
+  "root_cause": "On the clean Windows runner, the first flutter --version --machine invocation emitted tool bootstrap text around its JSON object. The gate attempted to parse the complete captured stream as JSON and failed before either revision suite ran.",
+  "impact": {
+    "ratchet_threshold_changed": false,
+    "lock_policy_changed": false,
+    "flutter_or_dart_version_changed": false,
+    "runtime_product_code_changed": false,
+    "production_write_count": 0
+  },
+  "repair": {
+    "implementation": "Parse only the bounded JSON object in the captured machine-version stream, then require all four version identity properties before running the unchanged baseline/candidate suites.",
+    "required_properties": [
+      "frameworkVersion",
+      "channel",
+      "frameworkRevision",
+      "dartSdkVersion"
+    ],
+    "analyzer_test_skip_and_build_ratchets_unchanged": true,
+    "rollback": "Revert this repair commit; do not bypass Flutter tool identity capture or any quality ratchet."
+  },
+  "focused_validation": {
+    "lock_ratchet_contract_exit_code": 0,
+    "powershell_parse_errors": 0,
+    "synthetic_preamble_parse_exit_code": 0,
+    "required_property_count": 4,
+    "missing_json_rejected": true,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "recorded_at": "2026-08-05T16:47:00+08:00"
+}

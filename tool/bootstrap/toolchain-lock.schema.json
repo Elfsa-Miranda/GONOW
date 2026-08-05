@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:gonow:toolchain-lock-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "python",
+    "uv",
+    "flutter",
+    "postgres",
+    "supabase_cli",
+    "object_storage_adapter",
+    "scanners",
+    "container_or_isolation"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "python": {"$ref": "#/$defs/python"},
+    "uv": {"$ref": "#/$defs/tool"},
+    "flutter": {"$ref": "#/$defs/tool"},
+    "postgres": {"$ref": "#/$defs/postgres"},
+    "supabase_cli": {"$ref": "#/$defs/tool"},
+    "object_storage_adapter": {"$ref": "#/$defs/tool"},
+    "scanners": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/tool"}},
+    "container_or_isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "root", "network_binding", "production", "auth_mode", "capability_difference"],
+      "properties": {
+        "kind": {"const": "isolated_process"},
+        "root": {"type": "string"},
+        "network_binding": {"const": "127.0.0.1:55432"},
+        "production": {"const": false},
+        "auth_mode": {"const": "trust"},
+        "capability_difference": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable", "version", "sha256", "source", "license", "expected_exit_codes"],
+      "properties": {
+        "executable": {"type": "string"},
+        "version": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source": {"type": "string"},
+        "license": {"type": "string"},
+        "expected_exit_codes": {"type": "array", "items": {"type": "integer"}}
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable", "executable_root", "version", "sha256", "source", "license", "expected_exit_codes"],
+      "properties": {
+        "executable": {"type": "string"},
+        "executable_root": {"type": "string"},
+        "version": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source": {"type": "string"},
+        "license": {"type": "string"},
+        "expected_exit_codes": {"type": "array", "items": {"type": "integer"}}
+      }
+    },
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executable",
+        "version",
+        "sha256",
+        "source",
+        "license",
+        "expected_exit_codes",
+        "source_executable",
+        "source_sha256",
+        "packages"
+      ],
+      "properties": {
+        "executable": {"type": "string"},
+        "version": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source": {"type": "string"},
+        "license": {"type": "string"},
+        "expected_exit_codes": {"type": "array", "items": {"type": "integer"}},
+        "source_executable": {"type": "string"},
+        "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "packages": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version", "metadata_path", "metadata_sha256", "source", "license"],
+            "properties": {
+              "name": {"type": "string"},
+              "version": {"type": "string"},
+              "metadata_path": {"type": "string"},
+              "metadata_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "source": {"type": "string"},
+              "license": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

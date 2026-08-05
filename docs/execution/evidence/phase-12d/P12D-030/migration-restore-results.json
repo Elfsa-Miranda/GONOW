@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-030",
+  "environment": "isolated_test_postgres",
+  "database_endpoint": "127.0.0.1:55432/gonow_p03_test",
+  "database_role_under_test": "gonow_command_service",
+  "backup_restore_role": "isolated_test_bootstrap_admin",
+  "postgres_server_version": "PostgreSQL 17.10",
+  "pg_dump_version": "pg_dump (PostgreSQL) 17.10",
+  "migration_revision": "p12d_001_commands",
+  "migration_schema": "domain_command",
+  "migration_schema_sha256": "7a0769b270086f01e78e2ba4bb9bb27042a1352d637633a9374a5e9ad19a80de",
+  "fixture_profile": "p12d-command-persistence-v1",
+  "fixture_sha256": "43782829074633a6da493061d69007821cbcc6a5adda06a85b6e349b304866da",
+  "fixed_random_seed": 12040010,
+  "production_schema_equivalence": "unknown",
+  "production_claim_allowed": false,
+  "business_table_schema_guessed": false,
+  "business_table_changed": false,
+  "tables_created": [
+    "domain_command.itinerary_basic_info_attempts",
+    "domain_command.itinerary_basic_info_outbox",
+    "domain_command.itinerary_basic_info_receipts"
+  ],
+  "expand_only": {
+    "destructive_step_count": 0,
+    "downgrade_mode": "forward_fix_only",
+    "forward_fix_rejection_count": 1,
+    "route_allocation": 0
+  },
+  "restore": {
+    "snapshot_sha256": "96f85dba6506ae91d2b6c826b0b21628aebf05031ca9ab14976ca9a461019afd",
+    "snapshot_size_bytes": 30200,
+    "logical_hash_before": "1a75dfe0319b7bbe930682f976f404aaadc2ec2aafce1477a071ae65ab98732f",
+    "logical_hash_after_restore": "1a75dfe0319b7bbe930682f976f404aaadc2ec2aafce1477a071ae65ab98732f",
+    "logical_row_count_before": 6,
+    "logical_row_count_after_restore": 6,
+    "restore_mismatch_count": 0,
+    "object_owner_restored_to_non_bypass_migrator": true
+  },
+  "rls_and_grants": {
+    "tenant_table_count": 3,
+    "policy_count": 3,
+    "force_rls_table_count": 3,
+    "cross_tenant_allow_count": 0,
+    "unset_context_visible_row_count": 0,
+    "public_grant_count": 0,
+    "role_bypass_count": 0,
+    "unexpected_runtime_role_grant_count": 0,
+    "observer_write_grant_count": 0,
+    "command_delete_grant_count": 0,
+    "least_privilege_gap_count": 0,
+    "receipt_mutation_allow_count": 0,
+    "attempt_delete_allow_count": 0
+  },
+  "focused_test_result": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "duration_seconds": 3.63
+  },
+  "diagnostic_runs": [
+    {
+      "sequence": 1,
+      "status": "failed",
+      "failure": "pg_dump subject to FORCE RLS without tenant context",
+      "root_cause": "the first restore harness used the non-bypass migration identity for a full-tenant backup",
+      "repair": "restrict dump/restore to the isolated bootstrap identity and explicitly return restored object ownership to the non-bypass migrator"
+    },
+    {
+      "sequence": 2,
+      "status": "failed",
+      "failure": "tool version assertion expected the server-version string format",
+      "root_cause": "pg_dump reports 'pg_dump (PostgreSQL) 17.x' while the assertion expected 'PostgreSQL 17'",
+      "repair": "bind the assertion to the actual pg_dump version format"
+    },
+    {
+      "sequence": 3,
+      "status": "passed",
+      "result": "5 passed in 3.63s"
+    }
+  ],
+  "claim_scope": "local_controlled_mechanism",
+  "production_improvement_claim": false,
+  "production_measurement_status": "measurement_pending",
+  "production_write_count": 0
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V3-DEEPSEEK",
+  "failed_outputs":[
+    {"scenario_id":"CR-V1-003","output_sha256":"372fb1fc883640f18f51b3a8a54428929392091112be70a9eb217b7bfe5c7d81","rule_codes":["quality.daylight_only"]},
+    {"scenario_id":"CR-V1-008","output_sha256":"1a4d354611805dc3d3729b6f038a9225a33b85248f928c101295d0647af465ff","rule_codes":["quality.daylight_only","quality.unique_item_ids"]},
+    {"scenario_id":"CR-V1-009","output_sha256":"d386ecf7c26dd3dfb69a4f3c60ae5c41cac7b70a53c4d01e262f3fdad2604e9b","rule_codes":["quality.no_late_night"]}
+  ],
+  "shared_root_cause":"The prompt named opaque hard-constraint codes but did not state their minute-boundary semantics, and did not state that item_id uniqueness is global across all days.",
+  "excluded_causes":{"schema_delivery":true,"json_shape":true,"provider_availability":true,"output_token_cap":true},
+  "repair":"Render deterministic, content-free semantics for each active constraint into the model prompt and explicitly require global item_id uniqueness; retain the same fail-closed validators.",
+  "response_body_persisted":false,
+  "secret_material_persisted":0
+}

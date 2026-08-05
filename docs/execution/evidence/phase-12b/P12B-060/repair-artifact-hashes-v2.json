@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "enabler_id": "REPAIR-P12B-060-V2",
+  "algorithm": "sha256",
+  "artifacts": [
+    {"path":"agent-service/app/models/json_schema.py","sha256":"0f0ff9d56e5b7dd027942d47a4646d7ec99bf99fdd3ab237d99843e78966e312","size_bytes":6121},
+    {"path":"agent-service/app/models/gateway.py","sha256":"33a2551e18cf14309b6db2244cc38c80b4105b8a4cf92aa2d7de2f362c8226c7","size_bytes":9094},
+    {"path":"agent-service/app/models/gemini.py","sha256":"6d4d24af4011f14bedbaa36cff7492a4c9a3c00aa706f3bd552ae3e910531570","size_bytes":10987},
+    {"path":"agent-service/app/models/deepseek.py","sha256":"c68e0a3f2ede0f49d0427f0876651ff185c2cbc9922fc4f37b1c409c6c50889e","size_bytes":11933},
+    {"path":"agent-service/app/worker/itinerary_processor.py","sha256":"29da30861e3e9a46e88ff39e82b849b3f3ce43d22f15599afdfaecffda8b7728","size_bytes":17718},
+    {"path":"agent-service/scripts/run_p12b_live_calibration.py","sha256":"11abb66df555b4dce9a86882df1305586f4be9f3abf7cd94854751747fb1beb5","size_bytes":34168},
+    {"path":"agent-service/tests/contract/test_deepseek_adapter.py","sha256":"84027c9aa5520ec6f6e430a8c8c37575288aba10433c1d5c16345aee0ff67b83","size_bytes":9627},
+    {"path":"agent-service/tests/contract/test_gemini_itinerary_processor.py","sha256":"9d4efeb844e9398eed4919f0d0e7af7d65ae8f241d96153289cbbd19f00632f3","size_bytes":9027},
+    {"path":"agent-service/tests/contract/test_p12b_live_calibration_contract.py","sha256":"b2b495845b49ec32354dac158a0abb85014e974bce35abfbffac10fe8e264398","size_bytes":13262},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/repair-enabler-v2.json","sha256":"4a696a246ee75e00f5c2f3bbb13b5bd7bfdc426f32a25b975ba809b2b4d9a999","size_bytes":2746},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/v1-quality-rule-code-gap.json","sha256":"cd0623c414648cb59d0d336b31c164b0a5f2f35e3908fad67061f0779011408a","size_bytes":1417},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/repair-v2-plan.json","sha256":"a5f29ae0469408bd5cf4b0de7e8a32e482f0e954d9ec9c3b3b6623a050a267ae","size_bytes":2045},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/repair-offline-verification.json","sha256":"62a785b8087491e89218187fd4b9a623845b2419bac342775a4c9816e959b21b","size_bytes":2235},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/repair-commands-v2.json","sha256":"e7444b13473e70a9ff4f42f54c81e2a9c6c550189919d8ae404ef704275b547f","size_bytes":2050}
+  ],
+  "v1_evidence_hash_mismatch_count": 0,
+  "secret_material_persisted": 0
+}

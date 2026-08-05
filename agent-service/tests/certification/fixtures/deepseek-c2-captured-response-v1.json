@@ -1,0 +1,35 @@
+{
+  "fixture_schema_version": "1.0",
+  "provenance": {
+    "capture_kind": "content-free-live-envelope-derived_safe_fixture",
+    "source_evidence_path": "docs/execution/evidence/phase-12b/P12B-060/deepseek-quality-final.json",
+    "source_evidence_sha256": "67e310e198157bc7e6c03c5670c4f6b4b3dfac3d2aafa3d2dc92b9810141a5a6",
+    "source_model_id": "deepseek-v4-flash",
+    "raw_provider_content_preserved": false,
+    "safe_payload_source": "synthetic_schema_equivalent",
+    "reason": "The earlier live run intentionally retained only hashes, metering, latency, and stable rule codes. This fixture preserves the observed API envelope and usage fields while using non-sensitive deterministic content."
+  },
+  "provider_response": {
+    "id": "capture-redacted",
+    "object": "chat.completion",
+    "created": 0,
+    "model": "deepseek-v4-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"title\":\"C2 contract probe\",\"days\":[{\"day_number\":1,\"items\":[{\"item_id\":\"item_c2_probe\",\"title\":\"Morning walk\",\"start_minute\":480,\"duration_minutes\":60}]}]}"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 742,
+      "completion_tokens": 81,
+      "total_tokens": 823,
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 230
+    }
+  }
+}

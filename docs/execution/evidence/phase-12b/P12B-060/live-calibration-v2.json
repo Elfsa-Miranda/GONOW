@@ -1,0 +1,76 @@
+{
+  "schema_version": "2.0",
+  "task_id": "TASK-P12B-060",
+  "enabler_id": "REPAIR-P12B-060-V2",
+  "status": "repair_required_not_comparable",
+  "cohort": "repair-v2",
+  "source_checkpoint": {
+    "external_reference": "control-repo-git-metadata:p12b-live/repair-v2-20260804.json",
+    "sha256": "3f35f824895e13fba5597aac23e452d397cb5ff787cb4ba7d4375251cbbc97fa",
+    "size_bytes": 8712,
+    "secret_material_persisted": 0
+  },
+  "bindings": {
+    "manifest_sha256": "84e4b409dc8f66fd34e2ac3458e0c50e1d65ecc0f04bb996ff35a88a1e5b9344",
+    "dataset_sha256": "653297b4c18c28757d085490e524c5dbfc92a7ee7f75d7ca88ecc296ae4c1049",
+    "price_snapshot_sha256": "a209e6da00317149c5baf8b292cfa162d4c3b5b7e84e3331f8cee55751a63a06",
+    "response_schema_sha256": "2e165ba4b4bb1c1a52cc6bc0576a2f50c23210469cb00325085008e8452123f0",
+    "same_user_prompt_sha256": true,
+    "same_max_output_tokens": true,
+    "one_attempt_per_arm": true
+  },
+  "limits": {"max_tasks":4,"max_calls":8,"max_total_tokens":40000,"max_cost_microusd":500000},
+  "raw_totals": {
+    "task_count": 4,
+    "paired_arm_task_count": 8,
+    "live_call_count": 8,
+    "total_tokens": 3003,
+    "total_cost_microusd": 657,
+    "total_cost_usd_estimate": 0.000657,
+    "total_cost_cny_at_policy_rate": 0.005256,
+    "p12b_cumulative_live_calls_v1_v2": 16,
+    "p12b_cumulative_tokens_v1_v2": 7008,
+    "p12b_cumulative_cost_microusd_v1_v2": 1701,
+    "p12b_cumulative_cost_cny_at_policy_rate": 0.013608,
+    "actual_invoice_cost": "unknown",
+    "production_write_count": 0
+  },
+  "arms": {
+    "baseline": {
+      "denominator":4,"attempt_count":4,"qualified_success_count":0,"failure_count":4,
+      "total_tokens":0,"total_cost_microusd":0,"cost_per_qualified_success_microusd":null,
+      "p95_latency_ms":2270,
+      "failure_classes":{"llm.provider_unavailable":1,"llm.rate_limited":2,"llm.request_invalid":1},
+      "quality_rule_failures":{},"fallback_count":0,"maximum_fallback_depth":0
+    },
+    "candidate": {
+      "denominator":4,"attempt_count":4,"qualified_success_count":2,"failure_count":2,
+      "total_input_tokens":938,"total_output_tokens":2065,"total_tokens":3003,"total_cost_microusd":657,
+      "cost_per_qualified_success_microusd":328.5,"p95_latency_ms":45307,
+      "failure_classes":{"llm.provider_unavailable":1,"llm.timeout":1},
+      "quality_rule_failures":{},"fallback_count":0,"maximum_fallback_depth":0
+    }
+  },
+  "tasks": [
+    {"scenario_id":"CR-V1-001","arm":"baseline","status":"failed","failure_class":"llm.provider_unavailable","quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":2270,"output_sha256":null},
+    {"scenario_id":"CR-V1-001","arm":"candidate","status":"failed","failure_class":"llm.provider_unavailable","quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":425,"output_sha256":null},
+    {"scenario_id":"CR-V1-007","arm":"baseline","status":"failed","failure_class":"llm.rate_limited","quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":1163,"output_sha256":null},
+    {"scenario_id":"CR-V1-007","arm":"candidate","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":6236,"output_sha256":"68ccb542de9885e48ae1a102b003d2693a716bb2dac26661975bfe88a612795d"},
+    {"scenario_id":"CR-V1-008","arm":"baseline","status":"failed","failure_class":"llm.request_invalid","quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":633,"output_sha256":null},
+    {"scenario_id":"CR-V1-008","arm":"candidate","status":"failed","failure_class":"llm.timeout","quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":45307,"output_sha256":null},
+    {"scenario_id":"CR-V1-010","arm":"baseline","status":"failed","failure_class":"llm.rate_limited","quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":553,"output_sha256":null},
+    {"scenario_id":"CR-V1-010","arm":"candidate","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"fallback_used":false,"latency_ms":8344,"output_sha256":"8dd9308ffe990ea5f5002aa017f25d6205556bb643c439ef0369f50ab141a478"}
+  ],
+  "guardrails": {
+    "quality_non_inferior":false,"cost_signal":false,"latency":false,"fallback":true,"safety_redlines":true
+  },
+  "redlines": {
+    "task_cap_exceeded":0,"call_cap_exceeded":0,"token_cap_exceeded":0,"cost_cap_exceeded":0,
+    "paired_input_mismatch":0,"fallback_depth_gt_1":0,"secret_or_content_evidence_field":0,"production_write":0
+  },
+  "redline_failure_count": 0,
+  "benefit_claim_eligible": false,
+  "candidate_allocation": 0,
+  "allocation_change_authorized": false,
+  "claim_boundary": "v2 proves two DeepSeek outputs satisfy the complete adapter contract, but provider failures and zero Gemini successes make quality, latency and cost benefit non-comparable."
+}

@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0.0",
+  "task_id": "TASK-P00-001",
+  "inventory_kind": "locked_dependencies",
+  "generated_at": "2026-07-31T17:00:00+08:00",
+  "application": {
+    "name": "gonow",
+    "version": "1.0.0+1",
+    "declared_dart_constraint": "^3.11.5",
+    "locked_dart_constraint": ">=3.11.5 <4.0.0",
+    "locked_flutter_constraint": ">=3.38.4"
+  },
+  "lock_summary": {
+    "package_count": 181,
+    "hosted_package_count": 176,
+    "sdk_package_count": 5,
+    "direct_main_count": 26,
+    "direct_dev_count": 4,
+    "dependency_override_count": 0,
+    "manifest_lock_mismatch_count": 0
+  },
+  "direct_main": [
+    {"name": "amap_flutter_base", "declared": "^3.0.0", "locked": "3.0.0", "source": "hosted"},
+    {"name": "amap_flutter_location", "declared": "^3.0.0", "locked": "3.0.0", "source": "hosted"},
+    {"name": "amap_flutter_map", "declared": "^3.0.0", "locked": "3.0.0", "source": "hosted"},
+    {"name": "app_links", "declared": "^7.0.0", "locked": "7.0.0", "source": "hosted"},
+    {"name": "cached_network_image", "declared": "^3.4.1", "locked": "3.4.1", "source": "hosted"},
+    {"name": "cupertino_icons", "declared": "^1.0.8", "locked": "1.0.9", "source": "hosted"},
+    {"name": "flutter", "declared": "sdk", "locked": "0.0.0", "source": "sdk"},
+    {"name": "flutter_image_compress", "declared": "^2.3.0", "locked": "2.4.0", "source": "hosted"},
+    {"name": "flutter_local_notifications", "declared": "^17.2.0", "locked": "17.2.4", "source": "hosted"},
+    {"name": "flutter_localizations", "declared": "sdk", "locked": "0.0.0", "source": "sdk"},
+    {"name": "flutter_markdown", "declared": "^0.7.7+1", "locked": "0.7.7+1", "source": "hosted"},
+    {"name": "flutter_staggered_grid_view", "declared": "^0.7.0", "locked": "0.7.0", "source": "hosted"},
+    {"name": "geolocator", "declared": "^14.0.2", "locked": "14.0.2", "source": "hosted"},
+    {"name": "google_maps_flutter", "declared": "^2.17.0", "locked": "2.17.0", "source": "hosted"},
+    {"name": "http", "declared": "^1.6.0", "locked": "1.6.0", "source": "hosted"},
+    {"name": "image_picker", "declared": "^1.2.2", "locked": "1.2.2", "source": "hosted"},
+    {"name": "path_provider", "declared": "^2.1.1", "locked": "2.1.5", "source": "hosted"},
+    {"name": "provider", "declared": "^6.1.5+1", "locked": "6.1.5+1", "source": "hosted"},
+    {"name": "reorderable_grid_view", "declared": "^2.2.8", "locked": "2.2.8", "source": "hosted"},
+    {"name": "share_plus", "declared": "^7.2.2", "locked": "7.2.2", "source": "hosted"},
+    {"name": "shared_preferences", "declared": "^2.2.3", "locked": "2.5.5", "source": "hosted"},
+    {"name": "supabase_flutter", "declared": "^2.12.4", "locked": "2.12.4", "source": "hosted"},
+    {"name": "syncfusion_flutter_maps", "declared": "^33.2.4", "locked": "33.2.4", "source": "hosted"},
+    {"name": "timezone", "declared": "^0.9.4", "locked": "0.9.4", "source": "hosted"},
+    {"name": "url_launcher", "declared": "^6.3.2", "locked": "6.3.2", "source": "hosted"},
+    {"name": "uuid", "declared": "^4.5.1", "locked": "4.5.3", "source": "hosted"}
+  ],
+  "direct_dev": [
+    {"name": "flutter_launcher_icons", "declared": "^0.13.1", "locked": "0.13.1", "source": "hosted"},
+    {"name": "flutter_lints", "declared": "^6.0.0", "locked": "6.0.0", "source": "hosted"},
+    {"name": "flutter_native_splash", "declared": "^2.3.6", "locked": "2.4.7", "source": "hosted"},
+    {"name": "flutter_test", "declared": "sdk", "locked": "0.0.0", "source": "sdk"}
+  ],
+  "bootstrap_toolchain": [
+    {
+      "name": "python",
+      "version": "3.13.9",
+      "sha256": "ff99d4c33c02f530d2a1fadadfa3c0175a616310f5895d72eafd755e89d97e16"
+    },
+    {
+      "name": "uv",
+      "version": "0.10.9",
+      "sha256": "06af7e6262fbde2f782ee2035f3943f1e8ecf107fb1cb15eb735dc0cd9b85dc6"
+    },
+    {
+      "name": "flutter",
+      "version": "3.41.7",
+      "bundled_dart_version": "3.11.5",
+      "sha256": "f83bfed7ecd10fd1afd8ce19c0b0119d2c80e24fbf26f4ff4f63c1cc5f75dcd5"
+    },
+    {
+      "name": "postgresql",
+      "version": "17.10",
+      "sha256": "882a5a073a88817f6c6d4c8827df1e4269ff226d52cf6f47c9883e91088c6345"
+    },
+    {
+      "name": "supabase_cli",
+      "version": "2.110.0",
+      "sha256": "14814afa6fe59081eb9f24709fc077226bf89bc25cf77ee3bcb19565f3ef8899"
+    }
+  ],
+  "bootstrap_audit_projection": {
+    "toolchain_lock_sha256": "e76f05426f264748e933b55a61b93b502096404e2d0a0310998af565b140d3db",
+    "revalidation_sha256": "7e5c3b61849170997997e75dc1fc46e2df4828a3e4570979ec970c7ea1998b2f",
+    "python_dependency_count": 32,
+    "critical_or_high_cve_count": 0,
+    "unknown_license_count": 0,
+    "unapproved_license_count": 0,
+    "stale_lock_count": 0
+  },
+  "primary_assertion_passed": true,
+  "pending_formal_inputs": [
+    "independent_security_review",
+    "independent_data_review"
+  ]
+}

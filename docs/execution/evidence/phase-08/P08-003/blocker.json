@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P08-003",
+  "mode": "Security",
+  "reason_code": "p08_003_security_failed",
+  "status": "resolved_local",
+  "minimal_reproduction": "Run P08-003 Security with merge-report.json in the scan set; the audit counter field router_llm_call_count is mistaken for an invocation.",
+  "root_cause": "The scanner matched an evidence field name instead of checking executable implementation imports and call sites.",
+  "impact_surface": ["P08-003 security reporting only"],
+  "repair": "Scan merge.py for model-client imports and invocation forms while retaining the report counter as a required zero assertion.",
+  "rollback": "Restore the former scanner expression; no runtime or data change is involved.",
+  "affected_regression": {"mandatory_modes": 7, "failed": 0, "merge_tests": 6, "router_llm_call_count": 0},
+  "recovery_condition": "Security and all P08-003 modes pass while merge-report keeps router_llm_call_count=0.",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "production_write_count": 0
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-010",
+  "selection_cycle": "p12b-local-provisional-20260804",
+  "local_activation_basis": "direct_user_xor_selection",
+  "local_implementation_authorized": true,
+  "formal_governance_adoption": "pending_external",
+  "production_four_week_window": {
+    "status": "unknown",
+    "week_count_verified": 0,
+    "traffic_sample_count": 0,
+    "invoice_sample_count": 0,
+    "production_quality_sample_count": 0,
+    "claim_made": false
+  },
+  "decision": "Proceed with default-off local implementation, fakes, replay and the bounded synthetic live calibration only; do not claim a production trigger or enable production allocation.",
+  "credentials": {
+    "source_contract": "environment_variable_only",
+    "deepseek_variable_name": "DEEPSEEK_API_KEY",
+    "value_read_or_recorded_by_task_010": false,
+    "repository_or_log_write_allowed": false
+  },
+  "unknown_production_facts": ["traffic","quality","latency","provider_invoice","regional_approval","data_use_approval"],
+  "production_fact_claim_count": 0,
+  "live_call_count": 0,
+  "token_count": 0,
+  "cost_usd": 0.0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T22:20:00+08:00"
+}

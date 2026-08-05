@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-040",
+  "phase": "Phase 12B",
+  "executed_at": "2026-08-04T22:55:00+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "9e483e44e99a9f2241a7f197fe323533a67ae239",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Run focused local budget ledger semantics and concurrency contracts",
+      "command": "locked-python -m pytest -q tests/unit/models/test_cost_ledger.py",
+      "exit_code": 0,
+      "stdout_tail": "12 passed in 0.05s",
+      "stderr_tail": "",
+      "stdout_sha256": "e17c36a99d13dd6deab6a04dbc4f1f619c3982aff738843db0f99eda307859b0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only aggregate synthetic test counts and duration are retained.",
+      "duration_seconds": 1.3
+    },
+    {
+      "step": 2,
+      "description": "Validate JSON artifacts, immutable evidence hashes, task status binding and patch whitespace",
+      "command": "locked-python evidence validator; validate_phase12b_contracts.py --task P12B-040; git diff --check",
+      "exit_code": 0,
+      "stdout_tail": "execution_contract_errors=0; artifact_hash_mismatches=0; status_binding=1",
+      "stderr_tail": "",
+      "stdout_sha256": "c7e6b875f09f31a5290ec12dd554f7ced72c1104bf2a509cf44e173a2c411f05",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction_reason": "Only aggregate validation counts are retained.",
+      "duration_seconds": 1.435
+    }
+  ]
+}

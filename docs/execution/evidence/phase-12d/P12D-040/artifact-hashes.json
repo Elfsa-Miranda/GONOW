@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-040",
+  "git_object_format": "sha1",
+  "head_oid": "3ca13fd1783c53294709cc2d73b8a03891121dca",
+  "artifacts": [
+    {
+      "path_or_reference": "agent-service/app/persistence/repositories/itinerary_basic_info_commands.py",
+      "sha256": "8f47b40096f8fcdeeb0d2a98de2dc79f6fb6edf855d9ec886ecd435010359f9d",
+      "size_bytes": 24325,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Implementation",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "agent-service/app/api/routes/itinerary_commands.py",
+      "sha256": "f4e7c1776a674d52b0eac158601388cec1215ead215e36ab5d560f15f2032f99",
+      "size_bytes": 5394,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Implementation",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "agent-service/app/api/main.py",
+      "sha256": "40381fc2c81d4b946b9b6117b998250262708ec57001c482f9cc1c6d3a3b4884",
+      "size_bytes": 8313,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Composition",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "agent-service/app/api/composition.py",
+      "sha256": "72aec5be63f8b16b7dd75b133f81b6bff5c46f4f337adcebe373155d97f97651",
+      "size_bytes": 9755,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Composition",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "agent-service/tests/integration/test_p12d_domain_command.py",
+      "sha256": "a002fa5237409d5ca0f93b44baf1312b458d0dd8793b0da08fe99a1989c87fb8",
+      "size_bytes": 13063,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:RealPgTest",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "agent-service/tests/security/test_p12d_command_service.py",
+      "sha256": "f9ab99cdb26852c8094fb5d8e26d65f8b8969b6e2ed276fb1e14f557c0388267",
+      "size_bytes": 7128,
+      "mime_type": "text/x-python",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:SecurityTest",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-040/BLK-P12D-040-json-transport-boundary.md",
+      "sha256": "e84d8330cc1bf8c66ed2e204b5afe1e95abde64f582d2e1d4ed2c74910ac044e",
+      "size_bytes": 1257,
+      "mime_type": "text/markdown",
+      "artifact_type": "p12d-resolved-blocker",
+      "generated_by_step": "TASK-P12D-040:RootCause",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-040/handler-outbox-results.json",
+      "sha256": "a1cabebd255ac0d0f3e3ae7b1440b5aee1c14314bd53459272e51670e7581d41",
+      "size_bytes": 3899,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Evidence",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-040/commands.json",
+      "sha256": "3e1df92ee84cc5266b088156f84dd44d489c864086e8352d71c7c07ccda03bd4",
+      "size_bytes": 6007,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Evidence",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/evidence/phase-12d/P12D-040/gate-results.json",
+      "sha256": "0741c18ac113d27c5b23a4dd3b885a57afb11c7994094bca78b66d149ac608b5",
+      "size_bytes": 2841,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Evidence",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    },
+    {
+      "path_or_reference": "docs/execution/status/TASK-P12D-040.json",
+      "sha256": "1e0f14865073a186aa56b5d084d05777c93964562d46387d50cdce072fe7d9a8",
+      "size_bytes": 1811,
+      "mime_type": "application/json",
+      "artifact_type": "p12d-atomic-command-handler",
+      "generated_by_step": "TASK-P12D-040:Evidence",
+      "generated_at": "2026-08-04T17:42:06+08:00",
+      "sensitivity": "internal",
+      "retention": "repository-governance"
+    }
+  ]
+}

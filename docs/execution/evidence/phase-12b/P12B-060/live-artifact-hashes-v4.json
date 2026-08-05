@@ -1,0 +1,13 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-060",
+  "cohort":"deepseek-targeted-v4",
+  "source_checkpoint":{"external_reference":"control-repo-git-metadata:p12b-live/deepseek-targeted-v4-20260805.json","sha256":"804c3f160ffd9145c3e78f8eb752b57ec76cfc18979eeeea0f6ee49389c925c5","size_bytes":4432},
+  "immutable_predecessors":[
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/live-calibration.json","sha256":"71879579baffb66a41a79e295278da3aa5b7d8ddfda23622d9db1ec115676cb2"},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/star-evaluation.json","sha256":"77aa7a3fe4c796b31d17591e471d4d03b405b226606cc011e7441ac8c045477f"},
+    {"path":"docs/execution/evidence/phase-12b/P12B-060/rollback-drill.json","sha256":"72d663e3c904580d326c14e261b56f4cc43d999c71d66752e29eb977e60cd8bc"}
+  ],
+  "response_body_persisted":false,
+  "secret_material_persisted":0
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-990",
+  "candidate_head_oid":"e926e1b88063a10b1bba808e2a5f64b4c7b87d80",
+  "checks":{"ci_suites":15,"ci_suites_passed":15,"unit_tests":830,"contract_tests":233,"flutter_tests":124,"p12d_realpg_fault_tests":53,"failed":0,"skipped":0,"xfailed":0,"mandatory_skip_count":0,"redline_failure_count":0,"production_write_count":0,"live_provider_call_count":0},
+  "ci_gate_names":["lock-check","frozen-sync","format","lint","type","secret","clock-contract","test-report-sandbox","dart-toolchain","unit","unit-report","contract","sca","licenses","repository-clean"],
+  "durations_seconds":{"ci_total":618.8,"unit":348.8,"contract":262.88,"flutter":114.1,"p12d_realpg_fault":276.9},
+  "external_ci_evidence":{"reference":"control-repo-git-metadata:p12b-ci-990-complete-e926e1b","summary_sha256":"b3a4e6b3e77ff8f12c60e9ecba9c3cb41fdd7b3561d76b59399f270d18a7f0b6","unit_junit_sha256":"2101e7faf1e5867c3360a62c56e8d3abd3a385dc9ef50b6e5309d22e530c42ac","contract_junit_sha256":"cd0e0dded3987a51bb5438d385e43dc9241d636e6ef87ab645a140d4ba147824"},
+  "p12b_quality":{"deepseek_scenario_count":10,"deepseek_qualified_success_count":10,"deepseek_quality_rule_failure_count":0,"deepseek_provider_failure_count":0,"deepseek_successful_task_p95_latency_ms":8400,"deepseek_certification_cost_per_success_microusd":285.4,"gemini_live_qualified_success_count":0,"relative_cost_per_success":"undefined","candidate_allocation":0,"positive_benefit_claim":false},
+  "p12b_live_budget":{"live_call_count":30,"total_tokens":23108,"total_cost_microusd":4555,"total_cost_cny_at_policy_rate":0.03644,"user_cap_cny":10.0,"cap_exceeded":false},
+  "p12d_controlled_guardrail":{"stale_conflict":{"workload_sha256":"782ecc553fe26a081732f2bed69cfd765ffbc88e14e6513fdefb9657fd8f1cb7","fixture_sha256":"f6cff467b744667132da2de65a0a6f409bde02b9425417c20c64ac728b860c73","fixed_random_seed":12040010,"baseline_denominator":10000,"candidate_denominator":10000,"baseline_rate_per_10k":10000.0,"candidate_rate_per_10k":0.0,"excluded_failure_count":0},"normal_write":{"baseline_denominator":10000,"candidate_denominator":10000,"baseline_success_count":10000,"candidate_success_count":10000,"fixed_fixture_success_difference_pp":0.0,"excluded_failure_count":0}},
+  "redlines":{"cost_router_allocation_above_zero":0,"quality_or_safety_tradeoff":0,"fallback_depth_above_one":0,"budget_cap_exceeded":0,"secret_or_response_body_persisted":0,"duplicate_formal_write_count":0,"unauthorized_or_cross_tenant_write_count":0,"mutation_outbox_divergence_count":0,"lost_or_ambiguous_committed_outcome_count":0,"data_loss_count":0},
+  "diagnostic_attempts":[{"sequence":1,"status":"failed_incomplete","candidate_head_oid":"ee51dbeda3f3b2b6b70dddcac9574570edaa6cd3","passed_before_failure":823,"failed":3,"failure_code":"schema.type_unsupported","repair":"add boolean, finite number and null to the local JSON Schema primitive type dispatcher","affected_regression_passed":38,"counted_as_complete_regression":false},{"sequence":2,"status":"passed_complete","candidate_head_oid":"e926e1b88063a10b1bba808e2a5f64b4c7b87d80","counted_as_complete_regression":true}],
+  "claim_scope":"local_provisional_mechanics_and_deepseek_quality",
+  "production_improvement_claim":false,
+  "production_measurement_status":"unknown",
+  "recorded_at":"2026-08-05T01:03:00+08:00"
+}

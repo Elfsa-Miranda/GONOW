@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P00-006",
+  "execution_mode": "local_provisional",
+  "recorded_at": "2026-08-01T00:52:24.1180179+08:00",
+  "base_head_oid": "7839b5e9b9bdaeca789ec7405be50991d9b098e2",
+  "primary_assertion_passed": true,
+  "primary_assertion": "synthetic canary leak count is zero and each legacy sink remains locatable by a fixed feature event",
+  "checks": {
+    "known_baseline_analyzer_error_count": 3,
+    "new_analyzer_error_count": 0,
+    "redaction_test_count": 3,
+    "redaction_test_failures": 0,
+    "raw_debug_sink_count": 0,
+    "safe_wrapper_definition_count": 3,
+    "safe_wrapper_call_count": 78,
+    "valid_secret_finding_count": 0,
+    "pii_canary_leak_count": 0,
+    "prompt_or_response_log_count": 0,
+    "stack_trace_log_count": 0,
+    "production_write_count": 0
+  },
+  "commands": [
+    {
+      "capability": "flutter analyze --machine ratchet",
+      "scope": "repository root compared with the frozen P00-007 analyzer error set",
+      "exit_code": 1,
+      "known_baseline_errors": 3,
+      "new_errors": 0,
+      "evidence_note": "two parser-only retries repaired machine-output and Windows PowerShell 5.1 path normalization; neither changed product code"
+    },
+    {
+      "capability": "flutter test",
+      "scope": "test/security/log_redaction_test.dart",
+      "exit_code": 0,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "artifact_paths": [
+    "lib/core/services/safe_logger.dart",
+    "lib/features/ai_custom/presentation/screens/ai_custom_screen.dart",
+    "lib/features/itinerary/data/itinerary_provider.dart",
+    "lib/features/diary/data/diary_provider.dart",
+    "test/security/log_redaction_test.dart",
+    "docs/execution/evidence/phase-00/P00-006/local-verification.json"
+  ],
+  "assumption": "Legacy call sites keep their business behavior; their free-form debug message is deliberately discarded at the local wrapper and replaced by a fixed low-cardinality source event.",
+  "impact": "URLs, identifiers, user content, exception messages, prompts, responses, tokens, and stack traces no longer reach these sinks.",
+  "rollback": "Revert call-site wiring only if needed, while keeping raw sensitive logging disabled.",
+  "production_activation_allowed": false
+}

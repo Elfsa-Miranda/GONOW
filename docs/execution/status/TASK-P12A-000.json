@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "plan_version": "2.0.0-personal",
+  "task_id": "TASK-P12A-000",
+  "phase": "Phase 12A",
+  "status": "ready_for_review",
+  "design_scope": "selected_local_provisional",
+  "formal_task_status": "pending_external",
+  "formal_dependency_status": "pending_external",
+  "formal_selection_asserted": false,
+  "selected": true,
+  "source_checkpoint_oid": "3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104",
+  "implementation_commit_count": 0,
+  "contract_change": false,
+  "production_write_count": 0,
+  "formal_acceptance": false,
+  "reviewer_independent": false,
+  "independent_review_status": "pending_external",
+  "rollback": "revert the activation commit; keep Memory allocation zero and preserve the Release B Single-Agent path",
+  "updated_at": "2026-08-05T00:00:00+08:00"
+}

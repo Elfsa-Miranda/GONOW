@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12-GOV-003",
+  "repair_scope": "cumulative_final_close_task_routing",
+  "root_cause": "The historical REL-C-001 XOR start guard queried the dormant codex/release-c-governance ref before the v3 cumulative final-close handler could evaluate its repository-only closure evidence.",
+  "impact": {
+    "affected_tasks": ["TASK-REL-C-001", "TASK-GONOW-089", "TASK-GONOW-990", "TASK-GONOW-999"],
+    "runtime_product_code_changed": false,
+    "catalog_contract_changed": false,
+    "production_write_count": 0
+  },
+  "repair": {
+    "legacy_rel_c_xor_functions_retained": true,
+    "legacy_guard_retained_for_non_cumulative_contract": true,
+    "cumulative_rel_c_001_bypasses_legacy_guard": true,
+    "project_final_evidence_namespace_added": true,
+    "rollback": "Revert this commit to restore the prior routing and start-guard behavior."
+  },
+  "validation": {
+    "powershell_parser_files": 2,
+    "powershell_parser_errors": 0,
+    "git_diff_check_exit_code": 0,
+    "contract_suite_valid_run": {
+      "runtime": "Windows PowerShell 5.1",
+      "exit_code": 0,
+      "duration_seconds": 88.8,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0
+    },
+    "non_test_attempts": [
+      {
+        "classification": "tool_timeout",
+        "detail": "A one-second shell timeout terminated the first process before a test result existed."
+      },
+      {
+        "classification": "wrong_runtime",
+        "detail": "PowerShell 7 rejected the existing dynamic PSD1 import before contract assertions."
+      },
+      {
+        "classification": "detached_child_environment",
+        "detail": "The hidden Start-Process environment did not expose Get-FileHash; no contract assertion ran."
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "docs/execution/commands/Invoke-TaskGate.ps1",
+      "sha256": "d94b999b69bf84bfc5e57521e3e700f36dda6e9c7de6ffc02c69c8da94c3ec23",
+      "size_bytes": 2652536
+    },
+    {
+      "path": "docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1",
+      "sha256": "f642c597117787f9b901b1c9c0176585a7fb953a6e7626e70a815a0e0f4f3bc4",
+      "size_bytes": 214530
+    }
+  ],
+  "recorded_at": "2026-08-05T15:55:00+08:00"
+}

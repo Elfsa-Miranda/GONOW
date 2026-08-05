@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-060",
+  "phase": "Phase 12D",
+  "executed_at": "2026-08-04T18:25:17+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "cc5a69e77c97182ae62b628a037bfb8fad1e7605",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Run the initial focused command-client and routing suite",
+      "command": "flutter test test/itinerary_agent/itinerary_basic_info_command_test.dart test/itinerary_agent/feature_flag_routing_test.dart --reporter expanded",
+      "exit_code": 0,
+      "stdout_tail": "20 tests passed",
+      "duration_seconds": 34.1,
+      "redaction_reason": "Dependency notices and metadata-only SafeLogger events are omitted."
+    },
+    {
+      "step": 2,
+      "description": "Analyze only the five changed Flutter files",
+      "command": "flutter analyze five P12D-060 allowlist files",
+      "exit_code": 1,
+      "stdout_tail": "6 issues: 5 pre-existing provider lints and 1 new invalid_return_type_for_catch_error",
+      "duration_seconds": 112.1,
+      "redaction_reason": "The full diagnostic classification is retained without dependency download noise."
+    },
+    {
+      "step": 3,
+      "description": "Repair the only new analyzer issue and verify the affected analyzer delta",
+      "command": "flutter analyze five P12D-060 allowlist files",
+      "exit_code": 1,
+      "stdout_tail": "5 pre-existing provider issues; new_issue_count=0",
+      "duration_seconds": 2.0,
+      "redaction_reason": "The nonzero exit is retained; no pre-existing lint was hidden or waived."
+    },
+    {
+      "step": 4,
+      "description": "Run the final focused command-client, routing and rollback suite",
+      "command": "flutter test test/itinerary_agent/itinerary_basic_info_command_test.dart test/itinerary_agent/feature_flag_routing_test.dart --reporter expanded",
+      "exit_code": 0,
+      "stdout_tail": "22 tests passed",
+      "duration_seconds": 6.5,
+      "redaction_reason": "Dependency notices and metadata-only SafeLogger events are omitted."
+    },
+    {
+      "step": 5,
+      "description": "Validate the activated task contract and patch whitespace",
+      "command": "validate_phase12d_contracts.py --task P12D-060; git diff --check",
+      "exit_code": 0,
+      "stdout_tail": "catalog_task_count=161; error_count=0; diff_check=passed",
+      "duration_seconds": 2.7,
+      "redaction_reason": "Only bounded validation counts are retained."
+    }
+  ]
+}

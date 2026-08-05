@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 12A",
+  "execution_mode": "local_provisional",
+  "worktree": "D:\\GO_NOW-phase-12a-structured-memory",
+  "branch": "codex/phase-12a-structured-memory",
+  "phase_base_oid": "3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104",
+  "landing_ref": "codex/gonow-agent-landing",
+  "landing_oid_at_creation": "3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104",
+  "remote_url": "https://github.com/Elfsa-Miranda/GO_NOW.git",
+  "worktree_clean_before_start": true,
+  "entry_regression_reused": true,
+  "entry_regression_source": "15 CI, 830 unit, 233 contract, 124 Flutter, 53 RealPG/fault, skipped=0, xfailed=0; P12B post-merge focused smoke 98/98",
+  "entry_full_regression_rerun": false,
+  "single_agent_architecture": true,
+  "multi_agent_framework_allowed": false,
+  "production_schema_rls_status": "unknown",
+  "production_write_count": 0,
+  "remote_write_count": 0,
+  "created_at": "2026-08-05T00:00:00+08:00"
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "enabler_id": "REPAIR-P12B-060-V2",
+  "executed_at": "2026-08-04T23:57:56+08:00",
+  "executor": "codex-local-single-agent",
+  "commands": [
+    {
+      "step":1,
+      "description":"Check only environment-variable presence for both providers",
+      "result":"deepseek_user_present=true; gemini_process_present=true; gemini_user_present=true",
+      "exit_code":0,
+      "secret_value_output_count":0
+    },
+    {
+      "step":2,
+      "description":"Load the user-scoped DeepSeek key into one subprocess and run the preregistered repair-v2 cohort",
+      "command":"locked-python run_p12b_live_calibration.py --cohort repair-v2 --output <external-checkpoint>",
+      "result":"task_count=4; live_call_count=8; total_tokens=3003; total_cost_microusd=657; redline_failure_count=0; secret_material_persisted=0",
+      "exit_code":0,
+      "secret_value_output_count":0
+    },
+    {
+      "step":3,
+      "description":"Read only content-free arm counts, provider/rule codes, hashes, tokens, costs and latency from the checkpoint",
+      "result":"baseline_success=0; candidate_success=2; benefit_claim_eligible=false; allocation=0",
+      "exit_code":0,
+      "response_body_output_count":0
+    }
+  ],
+  "secret_material_persisted":0,
+  "production_write_count":0
+}

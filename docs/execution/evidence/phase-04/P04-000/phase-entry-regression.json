@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P04-000",
+  "execution_mode": "local_provisional",
+  "phase_base_oid": "41194ca7e67ca87fc9cc71ec1c76fcbdbc601818",
+  "candidate_head_oid": "41194ca7e67ca87fc9cc71ec1c76fcbdbc601818",
+  "agent_ci": {
+    "gate_count": 12,
+    "unit_tests": 215,
+    "contract_tests": 44,
+    "failed": 0,
+    "not_run": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "flutter_regression": {
+    "tests": 14,
+    "failed": 0,
+    "not_run": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "pub_mode": "offline_locked_resolve_then_no_pub_test",
+    "journeys": [
+      "release_a_gateway",
+      "validation_semantics",
+      "log_redaction",
+      "behavior_digest"
+    ],
+    "generated_plugin_content_drift_count": 0
+  },
+  "runner_contract_exit_code": 0,
+  "failure_count": 0,
+  "production_write_count": 0,
+  "remote_push_count": 0,
+  "merge_count": 0
+}

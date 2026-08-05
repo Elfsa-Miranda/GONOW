@@ -1,0 +1,41 @@
+{
+  "schema_version":"3.0",
+  "task_id":"TASK-P12B-060",
+  "enabler_id":"REPAIR-P12B-060-V3-DEEPSEEK",
+  "status":"repair_required_three_business_failures",
+  "cohort":"deepseek-quality-v3",
+  "source_checkpoint":{"external_reference":"control-repo-git-metadata:p12b-live/deepseek-quality-v3-20260805.json","sha256":"c50835d167f813c2ad0d6b260fec0eb27e1da074d27808facce93aee4dea926c","size_bytes":11261,"secret_material_persisted":0},
+  "limits":{"max_tasks":10,"max_calls":14,"max_total_tokens":60000,"max_cost_microusd":500000,"max_retryable_retries":4},
+  "raw_totals":{"task_count":10,"live_call_count":10,"retry_count":0,"qualified_success_count":7,"quality_rule_failure_count":3,"provider_failure_count":0,"total_tokens":11350,"total_cost_microusd":2014,"total_cost_usd_estimate":0.002014,"total_cost_cny_at_policy_rate":0.016112,"cost_per_qualified_success_microusd":287.7142857142857,"successful_task_p95_latency_ms":8400,"production_write_count":0},
+  "p12b_cumulative_v1_v2_v3":{"live_call_count":26,"total_tokens":18358,"total_cost_microusd":3715,"total_cost_cny_at_policy_rate":0.02972},
+  "tasks":[
+    {"scenario_id":"CR-V1-001","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":2753,"max_output_tokens":768,"output_sha256":"f6609d7d6269694d6f85d81c51f4ce66b69e91623ac02e29e8ab2f0116a9bdc8"},
+    {"scenario_id":"CR-V1-002","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":3259,"max_output_tokens":768,"output_sha256":"54e94eff1935c709ec8d7bf8066396d19f8a6dd9123c742268b8675eda5d3f53"},
+    {"scenario_id":"CR-V1-003","status":"failed","failure_class":"quality.daylight_only","quality_rule_codes":["quality.daylight_only"],"attempt_count":1,"latency_ms":5516,"max_output_tokens":1280,"output_sha256":"372fb1fc883640f18f51b3a8a54428929392091112be70a9eb217b7bfe5c7d81"},
+    {"scenario_id":"CR-V1-004","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":2817,"max_output_tokens":768,"output_sha256":"3a9b08bd0d446fa668462657df6ff3b217cf1af507ff3c974e070c08731cfb98"},
+    {"scenario_id":"CR-V1-005","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":4248,"max_output_tokens":1024,"output_sha256":"73e7e6d659beec9911ce5525466dee2b984b8e385953b25c704f09c97e5544a9"},
+    {"scenario_id":"CR-V1-006","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":8400,"max_output_tokens":1792,"output_sha256":"515bf5e3966ee51845bf1e94a6876c4099f662aec4e4a609c1482a3f118b8b18"},
+    {"scenario_id":"CR-V1-007","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":4912,"max_output_tokens":2048,"output_sha256":"c0917c3295f08d0ea01cbecf8a78c4961d1cd5c0132baec52fd4ac574d0e9211"},
+    {"scenario_id":"CR-V1-008","status":"failed","failure_class":"quality.daylight_only","quality_rule_codes":["quality.daylight_only","quality.unique_item_ids"],"attempt_count":1,"latency_ms":3020,"max_output_tokens":768,"output_sha256":"1a4d354611805dc3d3729b6f038a9225a33b85248f928c101295d0647af465ff"},
+    {"scenario_id":"CR-V1-009","status":"failed","failure_class":"quality.no_late_night","quality_rule_codes":["quality.no_late_night"],"attempt_count":1,"latency_ms":2611,"max_output_tokens":768,"output_sha256":"d386ecf7c26dd3dfb69a4f3c60ae5c41cac7b70a53c4d01e262f3fdad2604e9b"},
+    {"scenario_id":"CR-V1-010","status":"qualified_success","failure_class":null,"quality_rule_codes":[],"attempt_count":1,"latency_ms":7580,"max_output_tokens":2560,"output_sha256":"6a7c571ea919d53497bde063afa747193a7b6f4f5f55dbddb5e2b3c7af777b17"}
+  ],
+  "attempt_metering":[
+    {"scenario_id":"CR-V1-001","input_tokens":453,"output_tokens":188,"cache_hit_input_tokens":384,"cache_miss_input_tokens":69,"cost_microusd":64},
+    {"scenario_id":"CR-V1-002","input_tokens":457,"output_tokens":493,"cache_hit_input_tokens":384,"cache_miss_input_tokens":73,"cost_microusd":150},
+    {"scenario_id":"CR-V1-003","input_tokens":457,"output_tokens":736,"cache_hit_input_tokens":384,"cache_miss_input_tokens":73,"cost_microusd":218},
+    {"scenario_id":"CR-V1-004","input_tokens":458,"output_tokens":295,"cache_hit_input_tokens":384,"cache_miss_input_tokens":74,"cost_microusd":95},
+    {"scenario_id":"CR-V1-005","input_tokens":461,"output_tokens":666,"cache_hit_input_tokens":384,"cache_miss_input_tokens":77,"cost_microusd":199},
+    {"scenario_id":"CR-V1-006","input_tokens":459,"output_tokens":1523,"cache_hit_input_tokens":384,"cache_miss_input_tokens":75,"cost_microusd":439},
+    {"scenario_id":"CR-V1-007","input_tokens":469,"output_tokens":807,"cache_hit_input_tokens":384,"cache_miss_input_tokens":85,"cost_microusd":239},
+    {"scenario_id":"CR-V1-008","input_tokens":454,"output_tokens":427,"cache_hit_input_tokens":384,"cache_miss_input_tokens":70,"cost_microusd":131},
+    {"scenario_id":"CR-V1-009","input_tokens":456,"output_tokens":324,"cache_hit_input_tokens":384,"cache_miss_input_tokens":72,"cost_microusd":102},
+    {"scenario_id":"CR-V1-010","input_tokens":469,"output_tokens":1298,"cache_hit_input_tokens":384,"cache_miss_input_tokens":85,"cost_microusd":377}
+  ],
+  "guardrails":{"all_strata_quality_qualified":false,"schema_and_business_rules":false,"bounded_retry":true,"provider_availability":true,"successful_task_p95_latency_lte_20s":true,"safety_redlines":true},
+  "redline_failure_count":0,
+  "candidate_allocation":0,
+  "benefit_claim_eligible":false,
+  "secret_material_persisted":0,
+  "claim_boundary":"DeepSeek-only negative quality evidence; no Gemini live baseline and no relative benefit claim."
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-status-fragment-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "catalog_sha256", "head_oid", "controls"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "task_id": {"type": "string", "pattern": "^TASK-"},
+    "catalog_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "head_oid": {"type": "string", "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"},
+    "controls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "action", "test_file", "case_ids", "node_ids", "collection_sha256", "junit_sha256", "tests", "failures", "errors", "skipped", "xfailed"],
+        "properties": {
+          "id": {"type": "integer", "minimum": 1, "maximum": 34},
+          "action": {"enum": ["implement", "extend"]},
+          "test_file": {"type": "string", "pattern": "^agent-service/tests/.+\\.py$"},
+          "case_ids": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["S", "I", "D"],
+            "properties": {
+              "S": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+              "I": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+              "D": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+            }
+          },
+          "node_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "collection_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "junit_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "tests": {"type": "integer", "minimum": 3},
+          "failures": {"const": 0},
+          "errors": {"const": 0},
+          "skipped": {"const": 0},
+          "xfailed": {"const": 0}
+        }
+      }
+    }
+  }
+}

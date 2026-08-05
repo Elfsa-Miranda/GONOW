@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P02-002",
+  "status": "resolved_by_minimal_reversible_alternative",
+  "reproduction": {
+    "command_contract": "BOOT-005 toolchain python -m pytest",
+    "exit_code": 1,
+    "reason": "No module named pytest"
+  },
+  "root_cause": "The task card treats the locked bare Python interpreter as though it were the uv-synchronized project environment.",
+  "impact_surface": [
+    "Phase 2 direct Python test commands that import project dependencies"
+  ],
+  "reversible_alternative": {
+    "executable": "agent-service/.venv/Scripts/python.exe",
+    "provenance": "created by locked uv 0.10.9 using locked Python 3.13.9 and agent-service/uv.lock",
+    "capability_difference": "Adds only the exact project and development dependencies from uv.lock; does not mutate the BOOT-005 interpreter.",
+    "equivalent_test_arguments": true
+  },
+  "affected_regression": {
+    "direct_tests_passed": 8,
+    "expanded_tests_passed": 10,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "rollback": "Delete the ignored agent-service/.venv and recreate it with agent-service/scripts/build.ps1 from uv.lock.",
+  "production_write_count": 0
+}

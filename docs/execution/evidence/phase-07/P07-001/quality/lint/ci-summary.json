@@ -1,0 +1,1 @@
+{"schema_version":"1.0","stage":"Lint","mandatory_skip_count":0,"xfail_count":0,"results":[{"name":"lock-check","exit_code":0,"duration_ms":27},{"name":"frozen-sync","exit_code":0,"duration_ms":36},{"name":"lint","exit_code":0,"duration_ms":258}],"completed_at":"2026-08-01T09:19:03.0582710+00:00"}

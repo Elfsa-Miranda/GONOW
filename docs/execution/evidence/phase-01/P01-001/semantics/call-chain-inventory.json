@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P01-001",
+  "current_fact_only": true,
+  "private_backend_assumption_count": 0,
+  "production_query_count": 0,
+  "production_write_count": 0,
+  "entrypoints": [
+    {
+      "id": "AI-CHAT-SEND",
+      "domain": "ai_chat",
+      "source": "AiCustomScreen._sendMessage user text, visible history, current plan, Supabase session token",
+      "sink": "AiGatewayService fixed /v1/release-a/chat plus best-effort ai_chat_messages inserts",
+      "fallback": "fixed local error; no direct-provider fallback",
+      "unknowns": ["gateway implementation", "production ai_chat_messages schema/RLS"]
+    },
+    {
+      "id": "AI-CHAT-HISTORY",
+      "domain": "ai_chat",
+      "source": "AiCustomScreen bootstrap/clear/prune lifecycle",
+      "sink": "ai_chat_messages select and delete",
+      "fallback": "initial in-memory system message and silent backup/cleanup failure",
+      "unknowns": ["retention", "delete authorization"]
+    },
+    {
+      "id": "AI-ITINERARY-IMPORT",
+      "domain": "itinerary_import",
+      "source": "gateway itinerary_data broad map and user-selected date",
+      "sink": "ItineraryModel.fromJson then ItineraryProvider.saveItinerary",
+      "fallback": "no mutation on parse failure; local persistence when cloud save fails",
+      "unknowns": ["hard/warning/unverified validation state", "confirmed Domain Command receipt"]
+    },
+    {
+      "id": "ITINERARY-SYNC",
+      "domain": "itinerary_sync",
+      "source": "itinerary editor and Realtime versioned rows",
+      "sink": "itineraries update by id+version plus SharedPreferences/list cache",
+      "fallback": "local-only save for non-UUID or missing cloud row; one whole-plan retry when cloud is ahead",
+      "unknowns": ["production RLS/grants", "field-level merge semantics"]
+    },
+    {
+      "id": "ITINERARY-ROLLBACK-DELETE",
+      "domain": "itinerary_sync",
+      "source": "editor snapshot cancel or user delete",
+      "sink": "itineraries update/delete plus local cache removal",
+      "fallback": "local snapshot restore or logged remote-delete failure",
+      "unknowns": ["rollback CAS", "remote/local divergence recovery"]
+    },
+    {
+      "id": "ITINERARY-DIRECT-AI",
+      "domain": "fallback",
+      "source": "itinerary polish and node-completion UI",
+      "sink": "legacy direct-provider HTTP and broad JSON parsing",
+      "fallback": "empty AiConfig tombstones cause null/error and keep prior content",
+      "unknowns": ["historical provider use", "production replacement endpoint"]
+    },
+    {
+      "id": "DIARY-LOAD-SAVE",
+      "domain": "diary",
+      "source": "diary forms, local caches, current user, and public feed",
+      "sink": "diaries select/upsert/delete plus SharedPreferences",
+      "fallback": "local lists/cache on unauthenticated or failed cloud writes; seed templates when empty",
+      "unknowns": ["production schema/RLS", "moderation and retention"]
+    },
+    {
+      "id": "DIARY-DIRECT-AI",
+      "domain": "diary",
+      "source": "diary generate, text polish, and copilot prompts with diary JSON",
+      "sink": "legacy direct-provider HTTP and free-form/JSON parsing",
+      "fallback": "empty AiConfig tombstones return null/error and preserve editable state",
+      "unknowns": ["server replacement", "typed Candidate schema"]
+    },
+    {
+      "id": "AUTH",
+      "domain": "auth",
+      "source": "email/password, anonymous login, reset link, and new password UI",
+      "sink": "Supabase Auth and anonymous profiles upsert",
+      "fallback": "anonymous sign-in is an explicit user action; failures return false with UI message",
+      "unknowns": ["production redirect configuration", "profile RLS and account linking"]
+    },
+    {
+      "id": "MAP-WEATHER-DISPLAY",
+      "domain": "fallback",
+      "source": "chat weather intent and itinerary map/route rendering",
+      "sink": "AMap read APIs and local UI caches",
+      "fallback": "alternate route mode, straight-line estimate, default city/image/pre-trip values",
+      "unknowns": ["quota behavior", "external data licensing and production keys"]
+    },
+    {
+      "id": "MEDIA-UPLOAD",
+      "domain": "diary",
+      "source": "user-selected itinerary or diary image",
+      "sink": "Supabase Storage bucket candidates and activity_photos metadata",
+      "fallback": "alternate bucket or retained local plan/diary state",
+      "unknowns": ["storage policies", "cross-tenant delete enforcement"]
+    }
+  ]
+}

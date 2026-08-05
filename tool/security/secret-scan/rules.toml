@@ -1,0 +1,22 @@
+schema_version = '1.0'
+
+[[rule]]
+id = 'private-key-header'
+pattern = '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+classification = 'private_key_material'
+
+[[rule]]
+id = 'github-token'
+pattern = '\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{16,}\b'
+classification = 'access_token'
+
+[[rule]]
+id = 'generic-bearer'
+pattern = '\bBearer\s+(?!synthetic-|secret-sentinel-)[A-Za-z0-9._~-]{20,}\b'
+classification = 'bearer_credential'
+ignore_case = true
+
+[[rule]]
+id = 'openai-key-shape'
+pattern = '\bsk-[A-Za-z0-9_-]{20,}\b'
+classification = 'model_provider_credential'

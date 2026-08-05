@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gonow.example.invalid/contracts/events/sse-event.schema.json",
+  "title": "GoNow SSE business event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "seq", "event_type", "payload", "occurred_at"],
+  "properties": {
+    "schema_version": {"const": "run-event.v1"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "seq": {"type": "integer", "minimum": 1},
+    "event_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,126}$"},
+    "payload": {
+      "type": "object",
+      "propertyNames": {
+        "not": {"pattern": "(?i)^(prompt|response|reasoning|secret|authorization|resume_token)$"}
+      }
+    },
+    "occurred_at": {"type": "string", "format": "date-time"}
+  },
+  "x-gonow-sse": {
+    "event_id_equals_seq": true,
+    "sequence_scope": "run_id",
+    "gaps_allowed": true,
+    "delivery": "at-least-once",
+    "reconnect_header": "Last-Event-ID",
+    "heartbeat_is_comment_only": true,
+    "heartbeat_has_business_sequence": false
+  }
+}

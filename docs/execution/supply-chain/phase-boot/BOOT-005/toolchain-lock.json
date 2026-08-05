@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-31T18:20:08.2051802+08:00",
+  "python": {
+    "executable": "D:\\GO_NOW-toolchain\\python-3.13.9-locked-venv\\Scripts\\python.exe",
+    "version": "3.13.9",
+    "sha256": "ff99d4c33c02f530d2a1fadadfa3c0175a616310f5895d72eafd755e89d97e16",
+    "source": "https://github.com/astral-sh/python-build-standalone via uv 0.10.9",
+    "license": "PSF-2.0",
+    "expected_exit_codes": [0],
+    "source_executable": "D:\\GO_NOW-toolchain\\python\\cpython-3.13.9-windows-x86_64-none\\python.exe",
+    "source_sha256": "30557f6b49fc4b6574ca3ef91edb8d148cfc989dd75c846f5639b76db800e7e2",
+    "packages": [
+      {
+        "name": "jsonschema",
+        "version": "4.26.0",
+        "metadata_path": "D:\\GO_NOW-toolchain\\python-3.13.9-locked-venv\\Lib\\site-packages\\jsonschema-4.26.0.dist-info\\METADATA",
+        "metadata_sha256": "05b189866ca98a96da3934bf6b83687ced3ff85325273b77e16b705f6d8b26d2",
+        "source": "https://pypi.org/project/jsonschema/4.26.0/",
+        "license": "MIT"
+      },
+      {
+        "name": "PyYAML",
+        "version": "6.0.3",
+        "metadata_path": "D:\\GO_NOW-toolchain\\python-3.13.9-locked-venv\\Lib\\site-packages\\pyyaml-6.0.3.dist-info\\METADATA",
+        "metadata_sha256": "847a701020334386852b6e07bad1053cb0ce3da9ee1846e7e9d02b24e8bb3f8d",
+        "source": "https://pypi.org/project/PyYAML/6.0.3/",
+        "license": "MIT"
+      },
+      {
+        "name": "pip-audit",
+        "version": "2.10.1",
+        "metadata_path": "D:\\GO_NOW-toolchain\\python-3.13.9-locked-venv\\Lib\\site-packages\\pip_audit-2.10.1.dist-info\\METADATA",
+        "metadata_sha256": "1f06472185a91042bc510b1b2afd2f08fdb14482729b02f4d9ac21a10f547ba4",
+        "source": "https://pypi.org/project/pip-audit/2.10.1/",
+        "license": "Apache-2.0"
+      }
+    ]
+  },
+  "uv": {
+    "executable": "D:\\GO_NOW-toolchain\\bin\\uv.exe",
+    "version": "0.10.9",
+    "sha256": "06af7e6262fbde2f782ee2035f3943f1e8ecf107fb1cb15eb735dc0cd9b85dc6",
+    "source": "task-owned verified copy of preinstalled uv; Python runtime downloaded from astral-sh/python-build-standalone",
+    "license": "Apache-2.0 OR MIT",
+    "expected_exit_codes": [0]
+  },
+  "flutter": {
+    "executable": "D:\\flutter\\flutter_windows_3.41.7-stable\\flutter\\bin\\flutter.bat",
+    "version": "3.41.7; Dart 3.11.5; framework cc0734ac716fbb8b90f3f9db8020958b1553afa7",
+    "sha256": "f83bfed7ecd10fd1afd8ce19c0b0119d2c80e24fbf26f4ff4f63c1cc5f75dcd5",
+    "source": "preinstalled Flutter stable SDK",
+    "license": "BSD-3-Clause",
+    "expected_exit_codes": [0]
+  },
+  "postgres": {
+    "executable": "D:\\PostgreSQL17\\bin\\postgres.exe",
+    "executable_root": "D:\\PostgreSQL17\\bin",
+    "version": "17.10",
+    "sha256": "882a5a073a88817f6c6d4c8827df1e4269ff226d52cf6f47c9883e91088c6345",
+    "source": "preinstalled PostgreSQL 17 distribution; task-owned cluster only",
+    "license": "PostgreSQL",
+    "expected_exit_codes": [0]
+  },
+  "supabase_cli": {
+    "executable": "D:\\GO_NOW-toolchain\\node\\node_modules\\.pnpm\\@supabase+cli-windows-x64@2.110.0\\node_modules\\@supabase\\cli-windows-x64\\bin\\supabase.exe",
+    "version": "2.110.0",
+    "sha256": "14814afa6fe59081eb9f24709fc077226bf89bc25cf77ee3bcb19565f3ef8899",
+    "source": "npm:supabase@2.110.0",
+    "license": "MIT",
+    "expected_exit_codes": [0]
+  },
+  "object_storage_adapter": {
+    "executable": "D:\\GO_NOW-agent-worktree\\tool\\bootstrap\\object_store_adapter.py",
+    "version": "local-content-addressed-v1",
+    "sha256": "0c77405eb3158f25b3da3ae86acbba009e55418bb230b6304ef9d9e92900daaf",
+    "source": "repository-owned adapter",
+    "license": "project-internal",
+    "expected_exit_codes": [0, 3]
+  },
+  "scanners": [
+    {
+      "executable": "D:\\GO_NOW-toolchain\\python-3.13.9-locked-venv\\Scripts\\pip-audit.exe",
+      "version": "2.10.1",
+      "sha256": "8ddae239cb5aa9a8a5462a00d283af261f2f5a664535f5100d6746a9ca780185",
+      "source": "PyPI/PyPA",
+      "license": "Apache-2.0",
+      "expected_exit_codes": [0, 1]
+    },
+    {
+      "executable": "D:\\GO_NOW-agent-worktree\\tool\\bootstrap\\scan_tracked_secrets.py",
+      "version": "tracked-redacted-v1",
+      "sha256": "cc15acae942ad56b84c685e508b402a2fade2f00790dbb8c3a126cc5418d0961",
+      "source": "repository-owned scanner",
+      "license": "project-internal",
+      "expected_exit_codes": [0]
+    }
+  ],
+  "container_or_isolation": {
+    "kind": "isolated_process",
+    "root": "D:\\GO_NOW-toolchain\\postgres-17.10-isolated",
+    "network_binding": "127.0.0.1:55432",
+    "production": false,
+    "auth_mode": "trust",
+    "capability_difference": "Real PostgreSQL 17.10 with task-owned data and loopback-only networking; host trust is acceptable for this local probe but must be replaced by SCRAM before any shared or formal environment."
+  }
+}

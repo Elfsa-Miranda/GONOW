@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P08-990",
+  "status": "resolved_local",
+  "unresolved_blocker_count": 0,
+  "root_causes": [
+    "A legacy security test treated protective denylist vocabulary as executable write capability.",
+    "The acceptance counter read JUnit aggregate attributes from the parent node instead of summing testsuite children."
+  ],
+  "impact_surface": ["research-boundary security classification", "P08-990 regression summary"],
+  "reversible_repairs": [
+    "Detect research write capability through AST imports, definitions, and calls.",
+    "Sum JUnit testsuite children and reuse the fresh 12/12 green CI evidence for the summary-only repair."
+  ],
+  "affected_regression": {
+    "security_tests": 5,
+    "ci_gates": 12,
+    "unit_tests": 515,
+    "contract_tests": 139,
+    "runner_contract_exit": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "rollback": "Revert the security-test enabler and JUnit aggregation repair; no runtime, schema, domain data, or remote state changed.",
+  "recovery_condition": "Security 5/5 and CI 12/12 pass; P08-990 reports 515 unit and 139 contract tests with zero failure, skip, or xfail.",
+  "resolved_local_diagnostic_count": 6,
+  "formal_external_items": [
+    "independent Engineering, Security, Product, Eval, Data, and SRE review",
+    "formal governance adoption and authorized landing merge",
+    "production-like workload, cost, safety, rollback, and shadow evidence",
+    "explicit approvals before any active cohort or production enablement"
+  ],
+  "production_write_count": 0
+}

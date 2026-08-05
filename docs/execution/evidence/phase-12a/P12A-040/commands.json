@@ -1,0 +1,1 @@
+{"schema_version":"1.0","task_id":"TASK-P12A-040","commands":[{"step":1,"command":"pytest Memory conflict poisoning consent commands RLS Single-Agent","exit_code":0,"passed":42,"failed":0,"skipped":0,"xfailed":0,"duration_seconds":0.08},{"step":2,"command":"git diff --check","exit_code":0}]}

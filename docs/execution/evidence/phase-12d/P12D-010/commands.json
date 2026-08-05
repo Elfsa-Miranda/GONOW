@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-010",
+  "phase": "Phase 12D",
+  "executed_at": "2026-08-04T16:55:00+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "e45b2feac90a8178f5f370279a4d51823e6c2e2e",
+  "commands": [
+    {
+      "step": 1,
+      "description": "Enumerate tracked feature write syntax and manually classify the selected itinerary boundary",
+      "command": "git grep -n -E \\\"\\\\.(insert|update|upsert|delete)\\\\(\\\" -- 'lib/features/**/*.dart'",
+      "exit_code": 0,
+      "stdout_tail": "write-inventory:raw_matches=70;selected_count=1;production_fact_claim_count=0",
+      "stderr_tail": "",
+      "stdout_sha256": "d78e4301d59dbe10f4130e5d500f2225aaf4c142c7a13d9f8e0924f4b1d4291d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.8,
+      "redaction_reason": "Only tracked paths, line numbers and classification counts are retained."
+    },
+    {
+      "step": 2,
+      "description": "Validate positive P12D trigger evidence against the frozen schema",
+      "command": "Draft202012Validator(phase12-trigger-evidence-v1.schema.json, trigger-evidence.json)",
+      "exit_code": 0,
+      "stdout_tail": "trigger-schema:passed;selected_primary=stale_conflict_partial_effect_rate_per_10k_intents",
+      "stderr_tail": "",
+      "stdout_sha256": "7f2a0b29193f44e188b5c1b78e7d21b75f1ace9ef291f69a10dcad9341a47ee8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.2,
+      "redaction_reason": "The output contains only schema and metric identifiers."
+    },
+    {
+      "step": 3,
+      "description": "Verify one-entry selection, impact-map closure and no-production-claim boundary",
+      "command": "locked-python docs/execution/commands/validate_phase12d_contracts.py --repository-root . --task P12D-010",
+      "exit_code": 0,
+      "stdout_tail": "p12d-010:passed;selected_count=1;unknown_critical_side_effect_count=0",
+      "stderr_tail": "",
+      "stdout_sha256": "7e0192d293241ca3fe81e510150f325bc8fc67bdc4d825ea2610ed9b1b7c9819",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 2.1,
+      "redaction_reason": "Only bounded task assertions are retained."
+    },
+    {
+      "step": 4,
+      "description": "Check evidence patch whitespace",
+      "command": "git diff --check",
+      "exit_code": 0,
+      "stdout_tail": "git-diff-check:passed",
+      "stderr_tail": "",
+      "stdout_sha256": "2d32eeec234706410f95ace9dc94b2c79f5b9d4ba6258a962532867ef7557088",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.5,
+      "redaction_reason": "Empty git output is summarized as the passed assertion."
+    }
+  ]
+}

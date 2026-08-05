@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase12-candidate-execution-contract-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate",
+    "contract_role",
+    "catalog_authoritative",
+    "activation_state",
+    "activation_ready",
+    "formal_catalog_revision_required",
+    "guidance_index_path",
+    "trigger_evidence_path",
+    "entry_regression",
+    "stable_ct_disposition",
+    "threat_model_hook",
+    "tasks",
+    "global_089_handoff"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "candidate": {"enum": ["P12A", "P12B", "P12D"]},
+    "contract_role": {"enum": ["dormant_proposed_execution_contract", "selected_local_provisional_execution_contract"]},
+    "catalog_authoritative": {"type": "boolean"},
+    "activation_state": {"enum": ["dormant_unselected", "selected_local_provisional"]},
+    "activation_ready": {"type": "boolean"},
+    "formal_catalog_revision_required": {"type": "boolean"},
+    "selection_record_path": {"pattern": "^docs/execution/evidence/phase-12[bd]/P12[BD]-000/selection-record\\.json$"},
+    "phase_base_oid": {"pattern": "^[0-9a-f]{40}$"},
+    "phase_branch": {"enum": ["codex/phase-12b-cost-router", "codex/phase-12d-domain-command"]},
+    "single_agent_architecture": {"const": true},
+    "multi_agent_framework_allowed": {"const": false},
+    "guidance_index_path": {"const": "docs/execution/evidence/phase-12/ABD-PLAN-HARDENING/guidance-index.json"},
+    "trigger_evidence_path": {"pattern": "^docs/execution/evidence/phase-12[abd]/P12[ABD]-010/trigger-evidence\\.json$"},
+    "entry_regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "release_b_manifest_binding", "required_journeys", "skip_count", "xfail_count"],
+      "properties": {
+        "required": {"const": true},
+        "release_b_manifest_binding": {"type": "string", "minLength": 1},
+        "required_journeys": {"type": "array", "minItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "skip_count": {"const": 0},
+        "xfail_count": {"const": 0}
+      }
+    },
+    "stable_ct_disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direct_applicable", "inherited_regression", "explicit_non_applicable", "new_package_test_namespace"],
+      "properties": {
+        "direct_applicable": {"type": "array", "uniqueItems": true, "items": {"pattern": "^CT-[0-9]{3}$"}},
+        "inherited_regression": {"type": "array", "uniqueItems": true, "items": {"pattern": "^CT-[0-9]{3}$"}},
+        "explicit_non_applicable": {"type": "array", "uniqueItems": true, "items": {"pattern": "^CT-[0-9]{3}:.+$"}},
+        "new_package_test_namespace": {"pattern": "^P12[ABD]-[A-Z]{2}$"}
+      }
+    },
+    "threat_model_hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase_review_path", "required_delta_path", "required_scenarios"],
+      "properties": {
+        "phase_review_path": {"const": "docs/architecture/threat-model/phase-12-review.json"},
+        "required_delta_path": {"pattern": "^docs/execution/evidence/phase-12[abd]/P12[ABD]-020/threat-model-delta\\.json$"},
+        "required_scenarios": {"type": "array", "minItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "depends_on",
+          "required_changes",
+          "file_allowlist",
+          "file_allowlist_status",
+          "forbidden_changes",
+          "postconditions",
+          "test_node_ids",
+          "gate_predicates",
+          "evidence_outputs",
+          "rollback"
+        ],
+        "properties": {
+          "task_id": {"pattern": "^TASK-P12[ABD]-0[1-6]0$"},
+          "depends_on": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "required_changes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "file_allowlist": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "file_allowlist_status": {"enum": ["exact_proposed", "must_bind_before_activation", "exact_active"]},
+          "forbidden_changes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "postconditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "test_node_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"pattern": "^P12[ABD]-[A-Z]{2}-[0-9]{3}$"}},
+          "gate_predicates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "evidence_outputs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "rollback": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "global_089_handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "relationship", "no_candidate_specific_089_created"],
+      "properties": {
+        "task_id": {"const": "TASK-P12-089"},
+        "relationship": {"const": "selected_package_060_and_990_feed_global_phase12_089"},
+        "no_candidate_specific_089_created": {"const": true}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"activation_state": {"const": "dormant_unselected"}}, "required": ["activation_state"]},
+      "then": {
+        "properties": {
+          "contract_role": {"const": "dormant_proposed_execution_contract"},
+          "catalog_authoritative": {"const": false},
+          "activation_ready": {"const": false},
+          "formal_catalog_revision_required": {"const": true},
+          "entry_regression": {"properties": {"release_b_manifest_binding": {"const": "pending_exact_accepted_release_b_manifest"}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"activation_state": {"const": "selected_local_provisional"}}, "required": ["activation_state"]},
+      "then": {
+        "required": ["selection_record_path", "phase_base_oid", "phase_branch", "single_agent_architecture", "multi_agent_framework_allowed"],
+        "properties": {
+          "candidate": {"enum": ["P12B", "P12D"]},
+          "contract_role": {"const": "selected_local_provisional_execution_contract"},
+          "catalog_authoritative": {"const": true},
+          "activation_ready": {"const": true},
+          "formal_catalog_revision_required": {"const": false}
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P04-000",
+  "dataset_id": "gonow-e0-synthetic-v1",
+  "case_counts": {"common": 30, "boundary": 10, "total": 40},
+  "record_counts": {"requests": 40, "labels": 40, "schema_valid_joined_cases": 40},
+  "dataset_sha256": "8f5bf67e9e17e5db8d9f87bf8ae48d2db314e117f30c22acd31f617627384c4b",
+  "schema_sha256": "ccbe014be75896992713adfb282af47dced615174ad9fd3eba4d725d342372c0",
+  "scoring_sha256": "c2870896474b017ce4cdff172f48c9266569e91aa0086a27b222775a8cb52f8b",
+  "files": [
+    {"path": "agent-service/tests/eval/datasets/e0/README.md", "sha256": "240c2b213c6a6875cc57e2a8555ecbbeb8186e3ba668c0b217a029b71dd79541", "size_bytes": 1385},
+    {"path": "agent-service/tests/eval/datasets/e0/dataset.schema.json", "sha256": "ccbe014be75896992713adfb282af47dced615174ad9fd3eba4d725d342372c0", "size_bytes": 3253},
+    {"path": "agent-service/tests/eval/datasets/e0/labels.jsonl", "sha256": "a37e8e1ad70ea55a8c70ca0e338e7bc7c7bc00951945a5b27e6c9b061b7c7743", "size_bytes": 22012},
+    {"path": "agent-service/tests/eval/datasets/e0/requests.jsonl", "sha256": "e8ca48591634fc6dcfdfed7d3e8af3286392fad19f848fe673e19474ffe55888", "size_bytes": 13548},
+    {"path": "docs/execution/evidence/phase-04/P04-000/e0-scoring-v1.json", "sha256": "c2870896474b017ce4cdff172f48c9266569e91aa0086a27b222775a8cb52f8b", "size_bytes": 956}
+  ],
+  "canonicalization": {
+    "path_format": "posix_relative",
+    "path_order": "utf8_byte_ascending",
+    "content_identity": "raw_utf8_bytes_sha256_and_size",
+    "manifest_serialization": "RFC8785_JCS",
+    "generator": "agent-service.app.runtime.behavior_manifest.canonicalize_jcs",
+    "generator_version": "gonow-jcs-rfc8785-v1",
+    "newline_normalization": false,
+    "encoding_normalization": false
+  },
+  "path_rejection_contract": ["parent_traversal", "absolute_path", "duplicate_path", "unicode_normalization_collision", "case_fold_collision"],
+  "git_object_format": "sha1",
+  "phase_base_oid": "41194ca7e67ca87fc9cc71ec1c76fcbdbc601818",
+  "phase_base_tree_oid": "604ea323bff3cb388f04196c23ef87837634d95a",
+  "candidate_tree_binding": "artifact-hashes.json after immutable candidate commit",
+  "data_source": "synthetic_e0_v1",
+  "real_user_record_count": 0,
+  "formal_approval_status": "pending_external"
+}

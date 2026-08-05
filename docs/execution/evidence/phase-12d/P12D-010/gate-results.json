@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-010",
+  "gate_run_at": "2026-08-04T16:55:00+08:00",
+  "git_object_format": "sha1",
+  "head_oid": "e45b2feac90a8178f5f370279a4d51823e6c2e2e",
+  "phase_base_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "tool_versions": {
+    "catalog": "2.3.0",
+    "trigger_schema": "1.0",
+    "python": "3.13.9"
+  },
+  "results": [
+    {
+      "check_id": "RepositorySelection",
+      "status": "passed",
+      "detail": "selected_write_entry_count=1; tracked runtime sources=2; production_fact_claim_count=0",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-010/repository-write-inventory.json",
+      "evidence_sha256": "62d87b941f8dec5ee980a1d303f06aae9fed01c4cd4051e76d73cdecfad83c31"
+    },
+    {
+      "check_id": "ImpactClosure",
+      "status": "passed",
+      "detail": "tracked caller, memory, cache and remote effects mapped; unknown_critical_side_effect_count=0 within tracked boundary; production unknowns explicit",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-010/impact-map.json",
+      "evidence_sha256": "1459cd9f1d88a3c0639e593e9271b472006392a6a4a9900153d6ecc151e7dc0c"
+    },
+    {
+      "check_id": "PositiveTrigger",
+      "status": "passed",
+      "detail": "tracked stale-conflict partial-effect mechanism present; schema_errors=0; this is not a production-rate claim",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-010/trigger-evidence.json",
+      "evidence_sha256": "e2ab02c9ee4349a736512d58a5d21643363261f1054c2a6581b1ac5fdd909943"
+    },
+    {
+      "check_id": "MetricsFreeze",
+      "status": "passed",
+      "detail": "primary_metric_count=1; controlled baseline/candidate denominators=10000/10000; fixed_seed=12040010; hard_redline_count=4; production measurement remains pending",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-010/metrics-binding.json",
+      "evidence_sha256": "22197705a689318661b84ba3c13fb502e57991381a526f1d7e33cb53483840ec"
+    }
+  ],
+  "overall_status": "passed"
+}

@@ -1,0 +1,240 @@
+{
+  "schema_version": "2.0",
+  "task_id": "TASK-P12D-050-STAR-REPAIR",
+  "status": "qualified_local_controlled_star",
+  "selected_write_entry": "flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries",
+  "candidate_evaluator_oid": "a475ff5bdf489bf5c89bb3231bac4614de408114",
+  "runtime_behavior_digest": "4ea7660e9b6f04f108d72e0820dcd39a4bc5bfb930d7a56595e001048fd55773",
+  "environment": {
+    "kind": "isolated_test_postgres",
+    "postgresql_version": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35227, 64-bit",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python_version": "3.13.9",
+    "production_schema_equivalence": "unknown",
+    "production_claim_allowed": false
+  },
+  "primary_result": {
+    "metric_id": "stale_conflict_partial_effect_rate_per_10k_intents",
+    "comparison_unit": "paired logical stale-conflict intent",
+    "workload_version": "p12d-stale-conflict-v1",
+    "workload_sha256": "782ecc553fe26a081732f2bed69cfd765ffbc88e14e6513fdefb9657fd8f1cb7",
+    "fixture_sha256": "f6cff467b744667132da2de65a0a6f409bde02b9425417c20c64ac728b860c73",
+    "fixed_random_seed": 12040010,
+    "baseline": {
+      "denominator": 10000,
+      "partial_effect_intents": 10000,
+      "rate_per_10k": 10000.0,
+      "elapsed_seconds": 16.334301
+    },
+    "candidate": {
+      "denominator": 10000,
+      "partial_effect_intents": 0,
+      "rate_per_10k": 0.0,
+      "conflict_receipt_count": 10000,
+      "business_mutation_count": 0,
+      "logical_outbox_count": 0,
+      "elapsed_seconds": 105.657347
+    },
+    "observed_relative_improvement_percent": 100.0,
+    "statistical_result": {
+      "method": "exact one-sided Clopper-Pearson bound on paired improvement indicators",
+      "confidence_level": 0.95,
+      "paired_improvement_count": 10000,
+      "paired_regression_count": 0,
+      "paired_tie_count": 0,
+      "improvement_rate_lower_bound": 0.999700472,
+      "improvement_lower_bound_per_10k": 9997.004716,
+      "candidate_partial_effect_rate_upper_bound_per_10k": 2.995284,
+      "primary_bound_passed": true,
+      "interpretation": "Zero candidate events were observed; the controlled risk is not asserted to be mathematically zero."
+    }
+  },
+  "normal_write_guardrail": {
+    "profile": "p12d-normal-write-v1",
+    "workload_sha256": "4199f5bfe0d7e8f2af52900e03c0ce49e7235f74245c60ec9b4437c99edc3ffb",
+    "fixture_sha256": "d7f14e6d4d43d1e3198542e73e024b13ed5e4e3967f7d5c6a706dace4d99f508",
+    "fixed_random_seed": 12040010,
+    "baseline_denominator": 10000,
+    "candidate_denominator": 10000,
+    "baseline_success_count": 10000,
+    "candidate_success_count": 10000,
+    "field_equivalence_count": 10000,
+    "candidate_expected_version_delta": 1,
+    "fixed_fixture_success_difference_pp": 0.0,
+    "zero_observed_failure_one_sided_95_upper_per_10k": 2.995284,
+    "fixed_fixture_guardrail_passed": true,
+    "population_noninferiority_claim": false,
+    "receipt_coverage": {
+      "terminal_attempt_count": 10000,
+      "schema_valid_stable_receipt_count": 10000,
+      "coverage_rate": 1.0
+    },
+    "logical_outbox_events_per_successful_command": 1.0
+  },
+  "local_cost_and_latency_diagnostic": {
+    "claim_scope": "single_run_local_sequential_diagnostic",
+    "benchmark_or_production_claim_allowed": false,
+    "clock": "time.perf_counter",
+    "legacy": {
+      "elapsed_seconds": 17.60137,
+      "seconds_per_successful_intent": 0.001760137,
+      "intents_per_second": 568.1376,
+      "p50_ms": 1.366,
+      "p95_ms": 3.6969,
+      "p99_ms": 5.1401,
+      "max_ms": 11.8073
+    },
+    "candidate": {
+      "elapsed_seconds": 135.819828,
+      "seconds_per_successful_command": 0.013581983,
+      "intents_per_second": 73.626952,
+      "p50_ms": 11.8919,
+      "p95_ms": 23.8489,
+      "p99_ms": 31.2679,
+      "max_ms": 89.7464
+    },
+    "candidate_to_legacy_p95_ratio": 6.451054,
+    "candidate_to_legacy_throughput_ratio": 0.129594,
+    "interpretation": "The candidate pays a material local transaction, receipt, and outbox cost. Production latency and capacity guardrails remain mandatory before allocation."
+  },
+  "redlines": {
+    "source": "docs/execution/evidence/phase-12d/P12D-050/fault-and-replay-results.json",
+    "duplicate_formal_write_count": 0,
+    "unauthorized_or_cross_tenant_write_count": 0,
+    "mutation_outbox_divergence_count": 0,
+    "lost_or_ambiguous_committed_outcome_count": 0,
+    "data_loss_count": 0,
+    "redline_failure_count": 0,
+    "averaged_into_primary": false
+  },
+  "run_records": [
+    {
+      "task_id": "TASK-P12D-050-STAR-REPAIR",
+      "run_id": "p12d-stale-baseline-782ecc553fe26a08",
+      "baseline_or_candidate": "baseline",
+      "git_oid": "a475ff5bdf489bf5c89bb3231bac4614de408114",
+      "behavior_digest": "4ea7660e9b6f04f108d72e0820dcd39a4bc5bfb930d7a56595e001048fd55773",
+      "dataset_version": "p12d-stale-conflict-v1",
+      "toolset_version": "python-3.13.9",
+      "database_version": "PostgreSQL 17.10",
+      "random_seed": 12040010,
+      "retry_count": 0,
+      "final_success": true,
+      "failure_category": "none",
+      "evaluator_version": "p12d-star-evaluator-v2",
+      "start_time": "2026-08-04T12:48:35.124714+00:00",
+      "end_time": "2026-08-04T12:48:51.459022+00:00"
+    },
+    {
+      "task_id": "TASK-P12D-050-STAR-REPAIR",
+      "run_id": "p12d-stale-candidate-782ecc553fe26a08",
+      "baseline_or_candidate": "candidate",
+      "git_oid": "a475ff5bdf489bf5c89bb3231bac4614de408114",
+      "behavior_digest": "4ea7660e9b6f04f108d72e0820dcd39a4bc5bfb930d7a56595e001048fd55773",
+      "dataset_version": "p12d-stale-conflict-v1",
+      "toolset_version": "python-3.13.9",
+      "database_version": "PostgreSQL 17.10",
+      "random_seed": 12040010,
+      "retry_count": 0,
+      "final_success": true,
+      "failure_category": "none",
+      "evaluator_version": "p12d-star-evaluator-v2",
+      "start_time": "2026-08-04T12:48:51.459022+00:00",
+      "end_time": "2026-08-04T12:50:37.116372+00:00"
+    },
+    {
+      "task_id": "TASK-P12D-050-STAR-REPAIR",
+      "run_id": "p12d-normal-baseline-4199f5bfe0d7e8f2",
+      "baseline_or_candidate": "baseline",
+      "git_oid": "a475ff5bdf489bf5c89bb3231bac4614de408114",
+      "behavior_digest": "4ea7660e9b6f04f108d72e0820dcd39a4bc5bfb930d7a56595e001048fd55773",
+      "dataset_version": "p12d-normal-write-v1",
+      "toolset_version": "python-3.13.9",
+      "database_version": "PostgreSQL 17.10",
+      "random_seed": 12040010,
+      "retry_count": 0,
+      "final_success": true,
+      "failure_category": "none",
+      "evaluator_version": "p12d-star-evaluator-v2",
+      "start_time": "2026-08-04T20:53:42.531727+08:00",
+      "end_time": "2026-08-04T20:54:00.163788+08:00"
+    },
+    {
+      "task_id": "TASK-P12D-050-STAR-REPAIR",
+      "run_id": "p12d-normal-candidate-4199f5bfe0d7e8f2",
+      "baseline_or_candidate": "candidate",
+      "git_oid": "a475ff5bdf489bf5c89bb3231bac4614de408114",
+      "behavior_digest": "4ea7660e9b6f04f108d72e0820dcd39a4bc5bfb930d7a56595e001048fd55773",
+      "dataset_version": "p12d-normal-write-v1",
+      "toolset_version": "python-3.13.9",
+      "database_version": "PostgreSQL 17.10",
+      "random_seed": 12040010,
+      "retry_count": 0,
+      "final_success": true,
+      "failure_category": "none",
+      "evaluator_version": "p12d-star-evaluator-v2",
+      "start_time": "2026-08-04T20:54:00.163800+08:00",
+      "end_time": "2026-08-04T20:56:16.002881+08:00"
+    }
+  ],
+  "execution_integrity": {
+    "identical_inputs_per_arm": true,
+    "all_failed_intents_retained_in_denominator": true,
+    "excluded_failure_count": 0,
+    "final_profile_test_result": "2 passed in 293.21s",
+    "affected_failure_matrix_regression": "8 passed in 7.34s",
+    "diagnostic_failure_history": [
+      {
+        "sequence": 1,
+        "status": "failed_external_harness_timeout",
+        "detail": "The first invocation used a five-second outer command timeout and was not eligible as a complete experiment record."
+      },
+      {
+        "sequence": 2,
+        "status": "failed_teardown_environment_interference",
+        "detail": "A concurrent orphan from sequence 1 removed shared test roles after all 20,000 normal-profile intent assertions passed; the run remains disclosed and was not selected as canonical evidence."
+      },
+      {
+        "sequence": 3,
+        "status": "passed_clean_normal_profile",
+        "detail": "1 passed in 172.95s after proving no competing test process remained."
+      },
+      {
+        "sequence": 4,
+        "status": "passed_final_affected_regression",
+        "detail": "Both stale-conflict and normal-write profiles passed together at candidate evaluator OID a475ff5bdf489bf5c89bb3231bac4614de408114."
+      },
+      {
+        "sequence": 5,
+        "status": "passed_canonical_stale_capture",
+        "detail": "1 passed in 133.01s; complete audit record captured."
+      },
+      {
+        "sequence": 6,
+        "status": "passed_canonical_normal_capture",
+        "detail": "1 passed in 163.53s; complete audit record captured."
+      },
+      {
+        "sequence": 7,
+        "status": "failed_external_harness_timeout",
+        "detail": "The first affected-regression invocation incorrectly used a one-second outer timeout, closed pytest stdout, and produced no eligible test result; process and role cleanup were verified before rerun."
+      },
+      {
+        "sequence": 8,
+        "status": "passed_affected_failure_matrix_regression",
+        "detail": "8 passed in 7.34s with the corrected bounded command timeout."
+      }
+    ]
+  },
+  "claim_boundary": {
+    "claim_scope": "local_controlled_mechanism",
+    "production_improvement_claim": false,
+    "production_measurement_status": "measurement_pending",
+    "production_flow_distribution": "unknown",
+    "production_incident_rate": "unknown",
+    "deepseek_or_other_model_call_count": 0,
+    "reason": "Models cannot establish production schema, traffic, incidents, or causal rollout results."
+  }
+}

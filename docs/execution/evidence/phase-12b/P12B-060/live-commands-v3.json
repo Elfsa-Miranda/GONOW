@@ -1,0 +1,10 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V3-DEEPSEEK",
+  "commands":[
+    {"step":1,"description":"Load the user-scoped DeepSeek key into one subprocess and run all ten stratified scenarios","result":"calls=10; retries=0; qualified=7; tokens=11350; cost_microusd=2014; redlines=0","exit_code":0,"gemini_live_call_count":0},
+    {"step":2,"description":"Read only content-free failed rule codes, hashes, metering and latency","result":"CR-V1-003=quality.daylight_only; CR-V1-008=quality.daylight_only+quality.unique_item_ids; CR-V1-009=quality.no_late_night","exit_code":0,"response_body_output_count":0}
+  ],
+  "secret_material_persisted":0,
+  "production_write_count":0
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-999",
+  "git_object_format": "sha1",
+  "merge_oid": "8c3ddfc532133bb9794dd61495c156eee9789cf1",
+  "parent_count": 2,
+  "parents": [
+    "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+    "f58a0e0f77d98aaa5cc1d0ccd155a2ac7aa21df7"
+  ],
+  "expected_parent1": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "expected_parent2": "f58a0e0f77d98aaa5cc1d0ccd155a2ac7aa21df7",
+  "approval_tip_tree_oid": "a2c2ec0fd412b81e6be3f2f585651cedcf52a63d",
+  "merge_tree_oid": "a2c2ec0fd412b81e6be3f2f585651cedcf52a63d",
+  "tree_mismatch_count": 0,
+  "history_preserving_no_ff": true,
+  "squash_count": 0,
+  "rebase_count": 0,
+  "main_mutation_count": 0,
+  "remote_write_count": 0,
+  "verified_at": "2026-08-04T19:22:00+08:00"
+}

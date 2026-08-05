@@ -1,0 +1,1 @@
+{"schema_version":"1.0","task_id":"TASK-BOOT-003","git_object_format":"sha1","head_oid":"142abfc339f003ede8d85d9534336923b5610252","artifacts":[{"path_or_reference":"fixture.txt","sha256":"bad","size_bytes":1,"mime_type":"text/plain","artifact_type":"fixture","generated_by_step":"fixture","generated_at":"2026-07-31T00:00:00+08:00","sensitivity":"none","retention":"test-only"}]}

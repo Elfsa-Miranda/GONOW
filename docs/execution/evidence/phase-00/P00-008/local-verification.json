@@ -1,0 +1,47 @@
+{
+    "schema_version":  "1.0",
+    "task_id":  "TASK-P00-008",
+    "execution_mode":  "local_provisional",
+    "base_head_oid":  "dc8b08aa141bf4effcb6b6d41c52088ef34fba20",
+    "primary_assertion_passed":  false,
+    "local_implementation_passed":  true,
+    "formal_acceptance_passed":  false,
+    "checks":  {
+                   "critical_regression_count":  0,
+                   "compatibility_test_count":  6,
+                   "compatibility_test_failures":  0,
+                   "rollback_passed":  true,
+                   "schema_inventory_complete":  false,
+                   "schema_inventory_pending_external":  true,
+                   "missing_input_count":  0,
+                   "arbitrary_sql_executor_count":  0,
+                   "restore_verification_failures":  0,
+                   "missing_audit_receipt_count":  1,
+                   "production_write_count":  0
+               },
+    "covered_journeys":  [
+                             "ordinary_chat",
+                             "itinerary_import",
+                             "auth",
+                             "itinerary",
+                             "diary",
+                             "safe_model_rollback"
+                         ],
+    "compatibility_fixture":  {
+                                  "mode":  "isolated_vm_adapter",
+                                  "capability_difference":  "No device-driven UI journey: the repository does not declare the integration_test SDK dependency and P00-008 cannot change pubspec.yaml.",
+                                  "temporary_worktree_removed":  true
+                              },
+    "artifact_paths":  [
+                           "integration_test/release_a_compat_test.dart",
+                           "tool/release_a_acceptance.ps1",
+                           "docs/execution/evidence/phase-00/P00-008/local-verification.json"
+                       ],
+    "blocker":  {
+                    "reason_code":  "pending_approved_production_read_only_identity",
+                    "affected_assertion":  "production schema/RLS/grant inventory completeness",
+                    "local_work_remaining":  0,
+                    "production_activation_allowed":  false
+                },
+    "generated_at":  "2026-08-01T01:02:48.4520042+08:00"
+}

@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-010",
+  "comparison_unit": "paired_synthetic_itinerary_scenario",
+  "arms": {
+    "baseline": "current certified Gemini route selected by the existing capability rule",
+    "candidate": "fixed DeepSeek V4 Flash non-thinking JSON route with at most one fallback to the exact baseline route"
+  },
+  "primary_metric": "total_cost_per_successful_quality_qualified_task",
+  "primary_formula": "sum(charged_usd for all attempts, retries and fallbacks in arm) / count(quality_qualified_success in the same frozen scenario denominator)",
+  "same_failure_denominator": true,
+  "denominator": {
+    "scenario_count": 10,
+    "scenario_ids": ["CR-V1-001","CR-V1-002","CR-V1-003","CR-V1-004","CR-V1-005","CR-V1-006","CR-V1-007","CR-V1-008","CR-V1-009","CR-V1-010"],
+    "excluded_after_run_count": 0,
+    "failure_classes_included_in_cost_numerator": ["authentication","rate_limit","timeout","provider_5xx","incomplete_output","invalid_json","schema_invalid","business_shape_invalid","quality_guardrail","fallback","retry","budget_stop"]
+  },
+  "quality_qualification": {
+    "judge_model_calls": 0,
+    "required_checks": ["schema_valid","exact_day_count","consecutive_day_numbers","at_least_one_item_per_day","item_end_within_day","unique_item_ids","no_overlap"],
+    "constraint_checks": {
+      "no_late_night": "every item end_minute <= 1320",
+      "morning_start": "each day earliest start_minute <= 600",
+      "daylight_only": "every item start_minute >= 360 and end_minute <= 1200",
+      "max_3_items_per_day": "each day item_count <= 3"
+    },
+    "non_inferiority_margin_success_count": 0,
+    "candidate_requirement": "candidate qualified_success_count >= baseline qualified_success_count"
+  },
+  "cost_signal": {
+    "candidate_requirement": "candidate cost_per_success_usd <= 0.75 * baseline cost_per_success_usd",
+    "minimum_relative_reduction": 0.25,
+    "cannot_override_guardrail": true
+  },
+  "latency_guardrail": {
+    "measure": "end-to-end monotonic milliseconds including retries and fallback until qualified success or terminal failure",
+    "percentile": "nearest-rank p95 over the frozen denominator",
+    "candidate_upper_bound": "min(1.25 * baseline_p95_ms, baseline_p95_ms + 5000)",
+    "cannot_be_offset_by_cost": true
+  },
+  "fallback_guardrail": {
+    "maximum_depth": 1,
+    "maximum_candidate_fallback_count_over_ten": 1,
+    "recursive_fallback_count": 0,
+    "cannot_be_offset_by_cost": true
+  },
+  "safety_redlines": {
+    "required_total": 0,
+    "classes": ["ineligible_route_selected","quality_floor_bypassed","policy_digest_mismatch","unauthorized_endpoint_or_model","content_bearing_route_reason","secret_or_prompt_or_response_in_evidence","budget_overspend_or_idempotency_collision","fallback_depth_gt_1","cross_tenant_or_production_write"]
+  },
+  "live_budget": {
+    "max_tasks": 20,
+    "max_live_calls": 40,
+    "max_total_tokens": 100000
+  },
+  "planned_live_cohort": {
+    "max_tasks": 10,
+    "nominal_calls": 20,
+    "worst_case_calls_with_one_retry_per_arm": 40,
+    "maximum_output_tokens_nominal": 47104,
+    "hard_spend_cap_usd": 1.0,
+    "hard_spend_cap_cny_by_policy": 8.0
+  },
+  "pilot": {
+    "scenario_ids": ["CR-V1-001","CR-V1-007","CR-V1-008","CR-V1-010"],
+    "nominal_calls": 8,
+    "expand_only_if": ["usage_complete","candidate_quality_non_inferior","all_safety_redlines_zero","latency_guardrail_passed","fallback_guardrail_passed","candidate_cost_per_success_ratio_lte_0_75","projected_total_within_all_call_token_and_money_caps"],
+    "stop_without_expansion_if": ["missing_usage_or_cost","no_quality_qualified_candidate_success","quality_inferior","any_redline","latency_failed","fallback_failed","cost_ratio_gt_0_75","projected_budget_exceeded"]
+  },
+  "result_claim_boundary": "Ten synthetic paired scenarios can support only local feasibility and measured sample results, not production traffic, invoice, or statistically general production claims.",
+  "recorded_at": "2026-08-04T22:20:00+08:00"
+}
