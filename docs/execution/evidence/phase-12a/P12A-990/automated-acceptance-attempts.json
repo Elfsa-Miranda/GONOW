@@ -37,8 +37,25 @@
       "production_write_count": 0,
       "main_write_count": 0,
       "recorded_at": "2026-08-05T12:20:00+08:00"
+    },
+    {
+      "attempt": 3,
+      "head_oid": "7c96332fffa1914d327a6097b4f99c9534caef99",
+      "mode": "AutomatedAcceptancePreflight",
+      "execution_mode": "formal_adopted",
+      "result": "passed_and_accepted",
+      "reason_code": null,
+      "candidate_head_oid": "d264ff751d67f089663c0c9f9e5e0594d0003ba4",
+      "selected_merge_sha": "2acb7d07b85edc399b44eeb08f19f0197eb94cfd",
+      "gate_results_sha256": "a5c0af710ab2e0f0c07f0f81f3f76262ed489a8634a4ab680c808da01e95fc5b",
+      "attestation_sha256": "9f30be1bdf48e7d97898e40ebb4fb747631cfed01f3a44b4bd960b953d838cf6",
+      "status": "accepted",
+      "status_transition_seq": 2,
+      "production_write_count": 0,
+      "main_write_count": 0,
+      "recorded_at": "2026-08-05T12:24:00+08:00"
     }
   ],
-  "next_action": "Add the missing optional status property compatibly, retain this attempt, and rerun only the affected automated acceptance mode.",
+  "next_action": "Proceed to TASK-P12-089 automated handoff registration against this exact accepted candidate.",
   "production_write_count": 0
 }
