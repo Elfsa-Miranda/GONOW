@@ -104,10 +104,10 @@ if (-not (Test-Path -LiteralPath $CatalogPath -PathType Leaf)) { throw 'catalog_
 $Original = [IO.File]::ReadAllText($CatalogPath, [Text.UTF8Encoding]::new($false)); $OriginalHash = Get-Sha256 $CatalogPath
 $Current = [scriptblock]::Create($Original).InvokeReturnAsIs()
 $TaskIds = @('TASK-P12A-010','TASK-P12A-020','TASK-P12A-030','TASK-P12A-040','TASK-P12A-050','TASK-P12A-060','TASK-P12A-990','TASK-P12A-999')
-if ([string]$Current.CatalogVersion -ceq '2.5.0' -and @($TaskIds | Where-Object { $null -eq $Current.Tasks[$_] }).Count -eq 0 -and @($Current.Tasks.Keys).Count -eq 177 -and
+if ([string]$Current.CatalogVersion -in @('2.5.0','2.5.1') -and @($TaskIds | Where-Object { $null -eq $Current.Tasks[$_] }).Count -eq 0 -and @($Current.Tasks.Keys).Count -eq 177 -and
     @($Current.TaskGateModeContracts['BootstrapSelfTest'].success_predicates) -contains 'catalog_entries=177' -and
     @($Current.TaskGateModeContracts['BootstrapSelfTest'].success_predicates) -contains 'unique_status_paths=177') {
-  [ordered]@{schema_version='1.0';old_sha256=$OriginalHash;new_sha256=$OriginalHash;catalog_version='2.5.0';task_count=177;work_contract_count=151;updated_task_ids=@();idempotent_noop=$true} | ConvertTo-Json -Compress
+  [ordered]@{schema_version='1.0';old_sha256=$OriginalHash;new_sha256=$OriginalHash;catalog_version=[string]$Current.CatalogVersion;task_count=177;work_contract_count=151;updated_task_ids=@();idempotent_noop=$true} | ConvertTo-Json -Compress
   exit 0
 }
 if ([string]$Current.CatalogVersion -ceq '2.5.0' -and @($TaskIds | Where-Object { $null -eq $Current.Tasks[$_] }).Count -eq 0 -and @($Current.Tasks.Keys).Count -eq 177) {

@@ -49,7 +49,7 @@ def main() -> int:
     catalog = export_catalog(root)
     tasks = catalog.get("Tasks", {})
 
-    if catalog.get("CatalogVersion") != "2.5.0" or len(tasks) != 177:
+    if catalog.get("CatalogVersion") != "2.5.1" or len(tasks) != 177:
         errors.append("Catalog version/count mismatch")
     if contract.get("activation_state") != "selected_local_provisional":
         errors.append("P12A is not selected local provisional")
@@ -79,6 +79,13 @@ def main() -> int:
         errors.append("P12A-999 dependency mismatch")
     if "Push" in tasks.get("TASK-P12A-999", {}).get("allowed_phase_merge_modes", []):
         errors.append("P12A-999 permits push")
+    for task_id in ("TASK-P12A-990", "TASK-P12-089", "TASK-P12A-999"):
+        task = tasks.get(task_id, {})
+        if "AutomatedAcceptancePreflight" not in task.get("allowed_taskgate_modes", []):
+            errors.append(f"{task_id} missing personal automated acceptance mode")
+        policy = task.get("approval_policy", {})
+        if policy.get("independent_from_implementer") or policy.get("minimum_approvals") != 0:
+            errors.append(f"{task_id} personal automated approval policy mismatch")
 
     report = {"schema_version":"1.0","task_id":args.task_id,"passed":not errors,"error_count":len(errors),"errors":errors,"catalog_version":catalog.get("CatalogVersion"),"catalog_task_count":len(tasks),"single_agent_architecture":True,"production_write_count":0}
     print(json.dumps(report, sort_keys=True))

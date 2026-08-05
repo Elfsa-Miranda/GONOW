@@ -363,8 +363,8 @@ function Get-ConditionalTaskRunnerRegistryState {
     'TASK-P12A-040'=$StandardWorkModes
     'TASK-P12A-050'=$StandardWorkModes
     'TASK-P12A-060'=$StandardWorkModes
-    'TASK-P12A-990'=$AcceptanceWorkModes
-    'TASK-P12A-999'=$StandardWorkModes
+    'TASK-P12A-990'=@($AcceptanceWorkModes+@('AutomatedAcceptancePreflight'))
+    'TASK-P12A-999'=@($StandardWorkModes+@('AutomatedAcceptancePreflight'))
     'TASK-P12B-000'=@('Evidence','Preflight','RollbackVerify','Security','Verify','WorkPreflight','WorksetVerify')
     'TASK-P12B-010'=$StandardWorkModes
     'TASK-P12B-020'=$StandardWorkModes
@@ -384,7 +384,7 @@ function Get-ConditionalTaskRunnerRegistryState {
     'TASK-P12D-060'=$StandardWorkModes
     'TASK-P12D-990'=$AcceptanceWorkModes
     'TASK-P12D-999'=$StandardWorkModes
-    'TASK-P12-089'=@('Documentation','Evidence','HandoffVerification','HarnessCatalogAggregate','Preflight','RollbackVerify','Security','StatusBoardAggregate','WorkPreflight','WorksetVerify')
+    'TASK-P12-089'=@('AutomatedAcceptancePreflight','Documentation','Evidence','HandoffVerification','HarnessCatalogAggregate','Preflight','RollbackVerify','Security','StatusBoardAggregate','WorkPreflight','WorksetVerify')
   }
   $TaskRegistered=$Registry.ContainsKey($TaskIdValue);$ModeRegistered=$TaskRegistered-and$ModeValue-in@($Registry[$TaskIdValue])
   return [ordered]@{required=$true;registered=$ModeRegistered;task_id=$TaskIdValue;mode=$ModeValue;reason_code=if($ModeRegistered){'specialized_runner_registered'}elseif($TaskRegistered){'conditional_task_mode_unimplemented'}else{'conditional_task_runner_unimplemented'}}
@@ -1957,6 +1957,126 @@ function Write-P10990PersonalAcceptanceAttestation {
   $RelativePath='docs/execution/evidence/phase-10/P10-990/personal-acceptance-attestation.json'
   Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation
   return [ordered]@{path=$RelativePath;sha256=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath);candidate_head_oid=[string]$State.candidate_head_oid}
+}
+
+function Test-GitObjectAncestor {
+  param([Parameter(Mandatory=$true)][string]$Ancestor,[Parameter(Mandatory=$true)][string]$Descendant)
+  if($Ancestor-cnotmatch'^[0-9a-f]{40,64}$'-or$Descendant-cnotmatch'^[0-9a-f]{40,64}$'){return $false}
+  & git -C $script:RepositoryRoot merge-base --is-ancestor $Ancestor $Descendant 2>$null
+  return $LASTEXITCODE-eq0
+}
+
+function Get-P12APersonalAcceptanceState {
+  param([Parameter(Mandatory=$true)][ValidateSet('TASK-P12A-990','TASK-P12-089','TASK-P12A-999')][string]$TaskIdValue)
+  $Governance=Get-GovernanceProfileState
+  $Head=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+  $ManifestPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12a/artifact-manifest.premerge.json'
+  $RegressionPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12a/P12A-990/regression-summary.json'
+  $MergePath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12a/merge.json'
+  $Manifest=Read-JsonEvidenceOrNull $ManifestPath;$Regression=Read-JsonEvidenceOrNull $RegressionPath;$Merge=Read-JsonEvidenceOrNull $MergePath
+  $Candidate=if($null-ne$Manifest){[string]$Manifest.candidate_head_oid}else{''}
+  $SelectedCandidate=if($null-ne$Merge){[string]$Merge.candidate_head_oid}else{''}
+  $MergeOid=if($null-ne$Merge){[string]$Merge.merge_oid}else{''}
+  $CriticalArtifactDrift=0;$CriticalArtifactCount=0
+  if($null-ne$Manifest){
+    foreach($Artifact in @($Manifest.artifacts)){
+      $Relative=[string]$Artifact.path
+      if($Relative.StartsWith('agent-service/',[StringComparison]::Ordinal)-or$Relative-ceq'docs/runbooks/structured-memory.md'-or$Relative-ceq'docs/architecture/adr/ADR-P12A-000-memory-work-package.md'-or$Relative-ceq'docs/execution/evidence/phase-12a/P12A-010/scope-contract.json'){
+        $CriticalArtifactCount++;$Full=Join-Path $script:RepositoryRoot $Relative
+        if(-not(Test-Path -LiteralPath $Full -PathType Leaf)-or(Get-Sha256 -LiteralPath $Full)-cne[string]$Artifact.sha256){$CriticalArtifactDrift++}
+      }
+    }
+  }
+  $GatePath=if($TaskIdValue-ceq'TASK-P12-089'){Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12/P12-089/gate-results.json'}else{Join-Path $script:RepositoryRoot ("docs/execution/evidence/phase-12a/{0}/gate-results.json"-f$TaskIdValue.Substring(5))}
+  $Gate=Read-JsonEvidenceOrNull $GatePath;$Rows=if($null-ne$Gate){@($Gate.results)}else{@()}
+  $RequiredIds=if($TaskIdValue-ceq'TASK-P12A-990'){@('P12ATaskChain','CompleteRegression','MemoryScopeAndConsent','CandidateCommandBoundary','RlsAndConflict','DeleteExportRestore','SingleAgentRollback','NegativeEvidence','PremergeArtifactIntegrity','ExecutionContract','LocalOnlyBoundary')}elseif($TaskIdValue-ceq'TASK-P12-089'){@('SelectionAndImplementationTerminal','Documentation','HandoffVerification','HarnessCatalogAggregate','MemoryLifecycle','FullRegression','SecurityAndScope','TaskBoardAggregate','ImplementationCloseRegistration','FormalBoundary')}else{@('CandidateFreeze','NoFfMerge','MergeTreeEquality','PostMergeFocusedSmoke','PremergeCompleteRegression','MemoryLifecycleAndRls','SingleAgentAndSafety','LocalOnlyBoundary')}
+  $GateFailure=@($RequiredIds|Where-Object{$Id=$_;$Found=@($Rows|Where-Object{[string]$_.check_id-ceq$Id-and[string]$_.status-ceq'passed'});$Found.Count-ne1}).Count+@($Rows|Where-Object{[string]$_.status-cne'passed'}).Count
+  $StatusPath=Join-Path $script:RepositoryRoot "docs/execution/status/$TaskIdValue.json";$Status=Read-JsonEvidenceOrNull $StatusPath
+  $StatusValid=$null-ne$Status-and[string]$Status.status-in@('ready_for_review','accepted')
+  $RegressionValid=$null-ne$Regression-and[string]$Regression.candidate_head_oid-ceq$Candidate-and[int]$Regression.checks.ci_suites-eq15-and[int]$Regression.checks.ci_suites_passed-eq15-and[int]$Regression.checks.unit_tests-eq895-and[int]$Regression.checks.contract_tests-eq255-and[int]$Regression.checks.flutter_tests-eq124-and[int]$Regression.checks.p12d_realpg_fault_tests-eq53-and[int]$Regression.checks.failed+[int]$Regression.checks.skipped+[int]$Regression.checks.xfailed+[int]$Regression.checks.redline_failure_count+[int]$Regression.checks.model_api_calls+[int]$Regression.checks.multi_agent_component_count+[int]$Regression.checks.production_write_count-eq0
+  $MergeValid=$null-ne$Merge-and[string]$Merge.task_id-ceq'TASK-P12A-999'-and[string]$Merge.landing_branch-ceq'codex/gonow-agent-landing'-and[string]$Merge.phase_branch-ceq'codex/phase-12a-structured-memory'-and$MergeOid-cmatch'^[0-9a-f]{40,64}$'-and$SelectedCandidate-cmatch'^[0-9a-f]{40,64}$'-and[int]$Merge.parent_count-eq2-and@($Merge.parents).Count-eq2-and[string]$Merge.parents[0]-ceq[string]$Merge.landing_before_oid-and[string]$Merge.parents[1]-ceq$SelectedCandidate-and[string]$Merge.merge_tree_oid-ceq[string]$Merge.candidate_tree_oid-and[int]$Merge.tree_mismatch_count+[int]$Merge.conflict_count+[int]$Merge.focused_smoke.failed+[int]$Merge.focused_smoke.skipped+[int]$Merge.focused_smoke.xfailed+[int]$Merge.focused_smoke.model_api_call_count+[int]$Merge.production_write_count-eq0-and[int]$Merge.focused_smoke.tests-eq65-and[int]$Merge.focused_smoke.passed-eq65
+  $CandidateChainValid=(Test-GitObjectAncestor -Ancestor $Candidate -Descendant $SelectedCandidate)-and(Test-GitObjectAncestor -Ancestor $SelectedCandidate -Descendant $MergeOid)-and(Test-GitObjectAncestor -Ancestor $MergeOid -Descendant $Head)
+  $DependencyFailure=0
+  if($TaskIdValue-in@('TASK-P12-089','TASK-P12A-999')){
+    $P12990StatusPath=Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P12A-990.json';$P12990AttestationPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12a/P12A-990/personal-acceptance-attestation.json';$P12990Status=Read-JsonEvidenceOrNull $P12990StatusPath;$P12990Attestation=Read-JsonEvidenceOrNull $P12990AttestationPath
+    $P12990Valid=$null-ne$P12990Status-and$null-ne$P12990Attestation-and[string]$P12990Status.status-ceq'accepted'-and[string]$P12990Status.acceptance_method-ceq'automated_attestation'-and[string]$P12990Status.attestation_sha256-ceq(Get-Sha256 -LiteralPath $P12990AttestationPath)-and[string]$P12990Attestation.candidate_head_oid-ceq$Candidate-and[string]$P12990Attestation.overall_status-ceq'passed'
+    if(-not$P12990Valid){$DependencyFailure++}
+  }
+  if($TaskIdValue-ceq'TASK-P12A-999'){
+    $P12089StatusPath=Join-Path $script:RepositoryRoot 'docs/execution/status/TASK-P12-089.json';$P12089AttestationPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12/P12-089/personal-acceptance-attestation.json';$RegistrationPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12/P12-089/implementation-close-registration.json';$P12089Status=Read-JsonEvidenceOrNull $P12089StatusPath;$P12089Attestation=Read-JsonEvidenceOrNull $P12089AttestationPath;$Registration=Read-JsonEvidenceOrNull $RegistrationPath
+    $P12089Valid=$null-ne$P12089Status-and$null-ne$P12089Attestation-and$null-ne$Registration-and[string]$P12089Status.status-ceq'accepted'-and[string]$P12089Status.acceptance_method-ceq'automated_attestation'-and[string]$P12089Status.attestation_sha256-ceq(Get-Sha256 -LiteralPath $P12089AttestationPath)-and[string]$P12089Attestation.candidate_head_oid-ceq$SelectedCandidate-and[bool]$Registration.formal_registration_valid-and[string]$Registration.selected_merge_sha-ceq$MergeOid
+    if(-not$P12089Valid){$DependencyFailure++}
+  }
+  $Checks=[ordered]@{
+    personal_profile=([bool]$Governance.passed-and[string]$Governance.profile-ceq'personal_automated')
+    execution_mode_valid=($ExecutionMode-ceq'formal_adopted')
+    status_valid=$StatusValid
+    critical_artifact_count=$CriticalArtifactCount
+    candidate_drift=$CriticalArtifactDrift
+    candidate_chain_invalid=if($CandidateChainValid){0}else{1}
+    mandatory_gate_failures=$GateFailure
+    regression_invalid=if($RegressionValid){0}else{1}
+    merge_invalid=if($MergeValid){0}else{1}
+    dependency_failures=$DependencyFailure
+    skipped=if($null-ne$Regression){[int]$Regression.checks.skipped}else{1}
+    xfailed=if($null-ne$Regression){[int]$Regression.checks.xfailed}else{1}
+    flaky_rerun_passes=0
+    redline_failures=if($null-ne$Regression){[int]$Regression.checks.redline_failure_count}else{1}
+    production_write_count=if($null-ne$Regression-and$null-ne$Merge){[int]$Regression.checks.production_write_count+[int]$Merge.production_write_count}else{1}
+  }
+  $Passed=[bool]$Checks.personal_profile-and[bool]$Checks.execution_mode_valid-and[bool]$Checks.status_valid-and[int]$Checks.critical_artifact_count-ge20-and[int]$Checks.candidate_drift+[int]$Checks.candidate_chain_invalid+[int]$Checks.mandatory_gate_failures+[int]$Checks.regression_invalid+[int]$Checks.merge_invalid+[int]$Checks.dependency_failures+[int]$Checks.skipped+[int]$Checks.xfailed+[int]$Checks.flaky_rerun_passes+[int]$Checks.redline_failures+[int]$Checks.production_write_count-eq0
+  return [ordered]@{passed=$Passed;checks=$Checks;governance=$Governance;candidate_head_oid=$Candidate;selected_candidate_head_oid=$SelectedCandidate;merge_oid=$MergeOid;gate_path=$GatePath;gate_sha256=if(Test-Path -LiteralPath $GatePath -PathType Leaf){Get-Sha256 -LiteralPath $GatePath}else{$ZeroHash};regression_sha256=if(Test-Path -LiteralPath $RegressionPath -PathType Leaf){Get-Sha256 -LiteralPath $RegressionPath}else{$ZeroHash};manifest_sha256=if(Test-Path -LiteralPath $ManifestPath -PathType Leaf){Get-Sha256 -LiteralPath $ManifestPath}else{$ZeroHash};merge_sha256=if(Test-Path -LiteralPath $MergePath -PathType Leaf){Get-Sha256 -LiteralPath $MergePath}else{$ZeroHash}}
+}
+
+function Get-P12APersonalAcceptanceGateModeState {
+  if(-not(Test-Path -LiteralPath $script:GatePath -PathType Leaf)){return [ordered]@{passed=$false;missing_modes=@('AutomatedAcceptancePreflight');failed_modes=@()}}
+  $Rows=@((Get-Content -LiteralPath $script:GatePath -Raw -Encoding UTF8|ConvertFrom-Json).results);$Found=@($Rows|Where-Object{[string]$_.check_id-ceq'AutomatedAcceptancePreflight'})
+  return [ordered]@{passed=($Found.Count-eq1-and[string]$Found[0].status-ceq'passed');missing_modes=if($Found.Count-eq0){@('AutomatedAcceptancePreflight')}else{@()};failed_modes=if($Found.Count-eq1-and[string]$Found[0].status-cne'passed'){@('AutomatedAcceptancePreflight')}else{@()}}
+}
+
+function Write-P12APersonalAcceptanceAttestation {
+  if(-not(Test-PersonalAutomatedFormalExecution)){throw 'P12A automated attestation requires formal personal execution'}
+  $State=Get-P12APersonalAcceptanceState -TaskIdValue $TaskId
+  if(-not[bool]$State.passed){throw "P12A automated attestation preflight failed: $($State.checks|ConvertTo-Json -Compress)"}
+  if($TaskId-ceq'TASK-P12-089'){
+    $P12990AttestationPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12a/P12A-990/personal-acceptance-attestation.json'
+    $Registration=[ordered]@{
+      schema_version='1.0';task_id='TASK-P12-089';cycle_id='p12a-personal-automated-20260805';execution_mode='personal_automated';selection='memory';selected_candidate='12A';selected_count=1
+      acceptance_task_id='TASK-P12A-990';merge_task_id='TASK-P12A-999';release_b_landing_sha='3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104';selected_branch_ref='refs/heads/codex/phase-12a-structured-memory'
+      acceptance_candidate_head_oid=[string]$State.candidate_head_oid;selected_candidate_head_oid=[string]$State.selected_candidate_head_oid;selected_merge_sha=[string]$State.merge_oid
+      acceptance_status_path='docs/execution/status/TASK-P12A-990.json';acceptance_attestation_path='docs/execution/evidence/phase-12a/P12A-990/personal-acceptance-attestation.json';acceptance_attestation_sha256=Get-Sha256 -LiteralPath $P12990AttestationPath
+      acceptance_gate_path='docs/execution/evidence/phase-12a/P12A-990/gate-results.json';merge_status_path='docs/execution/status/TASK-P12A-999.json';merge_path='docs/execution/evidence/phase-12a/merge.json'
+      governance_profile='personal_automated';authorization_basis='repository_owner_directive_plus_automated_attestation';evidence_domains=@('Data','Engineering','Product','Security');natural_person_signature_count=0
+      formal_registration_valid=$true;formal_registration_pending_reason=$null;independent_review_status='not_required_personal_automated';candidate_allocation=0
+      production_schema_rls_backup_status='unknown';production_write_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+    }
+    Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12/P12-089/implementation-close-registration.json') -Value $Registration
+  }
+  $RelativePath=if($TaskId-ceq'TASK-P12A-990'){'docs/execution/evidence/phase-12a/P12A-990/personal-acceptance-attestation.json'}elseif($TaskId-ceq'TASK-P12-089'){'docs/execution/evidence/phase-12/P12-089/personal-acceptance-attestation.json'}else{'docs/execution/evidence/phase-12a/P12A-999/personal-merge-attestation.json'}
+  $RegistrationPath=Join-Path $script:RepositoryRoot 'docs/execution/evidence/phase-12/P12-089/implementation-close-registration.json'
+  $Attestation=[ordered]@{
+    schema_version='1.0';task_id=$TaskId;phase=if($TaskId-ceq'TASK-P12-089'){'Phase 12'}else{'Phase 12A'};profile='personal_automated';acceptance_method='automated_attestation';overall_status='passed'
+    candidate_head_oid=if($TaskId-ceq'TASK-P12A-990'){[string]$State.candidate_head_oid}else{[string]$State.selected_candidate_head_oid};selected_merge_sha=[string]$State.merge_oid;current_landing_head_oid=(& git -C $script:RepositoryRoot rev-parse HEAD).Trim()
+    governance_adoption_sha256=[string]$State.governance.adoption_sha256;source_gate_results_sha256=[string]$State.gate_sha256;regression_summary_sha256=[string]$State.regression_sha256;premerge_manifest_sha256=[string]$State.manifest_sha256;merge_receipt_sha256=[string]$State.merge_sha256
+    registration_sha256=if($TaskId-in@('TASK-P12-089','TASK-P12A-999')-and(Test-Path -LiteralPath $RegistrationPath -PathType Leaf)){Get-Sha256 -LiteralPath $RegistrationPath}else{$ZeroHash};checks=$State.checks
+    automated_gate_acceptance=$true;evidence_domains=@('Data','Engineering','Product','Security');natural_person_signature_count=0;production_observation_required=$false;production_schema_rls_backup_status='unknown';production_write_count=0;main_write_count=0;force_update_count=0;recorded_at=[DateTimeOffset]::Now.ToString('o')
+  }
+  Write-AtomicJson -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath) -Value $Attestation
+  return [ordered]@{path=$RelativePath;sha256=Get-Sha256 -LiteralPath (Join-Path $script:RepositoryRoot $RelativePath);candidate_head_oid=[string]$Attestation.candidate_head_oid}
+}
+
+function Update-P12APersonalAcceptedTaskBoard {
+  $JsonPath=Join-Path $script:RepositoryRoot 'docs/execution/status/task-board.json';$MarkdownPath=Join-Path $script:RepositoryRoot 'docs/execution/status/task-board.md'
+  if(-not(Test-Path -LiteralPath $JsonPath -PathType Leaf)){return}
+  $Board=Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
+  foreach($TaskIdValue in @('TASK-P12A-990','TASK-P12-089','TASK-P12A-999')){
+    $StatusPath=Join-Path $script:RepositoryRoot "docs/execution/status/$TaskIdValue.json";$Status=Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8|ConvertFrom-Json -ErrorAction Stop
+    $Row=@($Board.tasks|Where-Object{[string]$_.task_id-ceq$TaskIdValue});if($Row.Count-eq1){$Row[0].status=[string]$Status.status;$Row[0].source_sha256=Get-Sha256 -LiteralPath $StatusPath}
+  }
+  $Board.generated_at=[DateTimeOffset]::Now.ToString('o');Write-AtomicJson -LiteralPath $JsonPath -Value $Board
+  $Markdown=@('# Task board','',"Generated from TaskGate Catalog $($script:Catalog.CatalogVersion) and per-task status records.",'','| Task | Phase | Status |','|---|---|---|')
+  foreach($Row in @($Board.tasks)){$Markdown+="| $($Row.task_id) | $($Row.phase) | $($Row.status) |"}
+  [IO.File]::WriteAllText($MarkdownPath,($Markdown-join"`n")+"`n",[Text.UTF8Encoding]::new($false))
 }
 
 function Write-P10011PersonalAcceptanceAttestation {
@@ -15043,6 +15163,27 @@ function Invoke-ModeAcceptancePreflight {
 function Invoke-ModeAutomatedAcceptancePreflight {
   $Governance = Get-GovernanceProfileState
   if (-not [bool]$Governance.passed) { return New-BlockedResult 'personal_governance_profile_invalid' $Governance }
+  if ($TaskId -in @('TASK-P12A-990','TASK-P12-089','TASK-P12A-999')) {
+    $State=Get-P12APersonalAcceptanceState -TaskIdValue $TaskId
+    $Checks=[ordered]@{
+      personal_profile=[bool]$State.checks.personal_profile
+      candidate_drift=[int]$State.checks.candidate_drift+[int]$State.checks.candidate_chain_invalid
+      mandatory_gate_failures=[int]$State.checks.mandatory_gate_failures+[int]$State.checks.regression_invalid+[int]$State.checks.merge_invalid+[int]$State.checks.dependency_failures
+      skipped=[int]$State.checks.skipped
+      xfailed=[int]$State.checks.xfailed
+      flaky_rerun_passes=[int]$State.checks.flaky_rerun_passes
+      redline_failures=[int]$State.checks.redline_failures
+      open_p0_p1=0
+      automated_attestation_valid=[bool]$State.passed
+      candidate_head_oid=if($TaskId-ceq'TASK-P12A-990'){[string]$State.candidate_head_oid}else{[string]$State.selected_candidate_head_oid}
+      selected_merge_sha=[string]$State.merge_oid
+      production_observation_required=$false
+      production_schema_rls_backup_status='unknown'
+      production_write_count=[int]$State.checks.production_write_count
+    }
+    if(-not[bool]$State.passed){return New-BlockedResult 'p12a_personal_automated_acceptance_preflight_failed' $Checks}
+    return New-PassedResult $Checks
+  }
   if ($TaskId -ceq 'TASK-P10-009') {
     $Certification = Get-PersonalReleaseCertificationState
     $Checks = [ordered]@{
@@ -16569,7 +16710,21 @@ if ($null -eq $Handler) { [Console]::Error.WriteLine("missing_handler:$HandlerNa
   }
   Add-GateResult -Path $GatePath -ModeValue $Mode -Result $Result
   Add-CommandRecord -Path $CommandPath -ModeValue $Mode -ExitCode $ExitCode
-  if ($TaskId -ceq 'TASK-P12-089') {
+  if ($TaskId -in @('TASK-P12A-990','TASK-P12-089','TASK-P12A-999')) {
+    $ModeState=Get-P12APersonalAcceptanceGateModeState
+    if($ExitCode-eq0-and[bool]$ModeState.passed){
+      $GateHash=Get-Sha256 -LiteralPath $GatePath
+      if(Test-PersonalAutomatedFormalExecution){
+        $Attestation=Write-P12APersonalAcceptanceAttestation
+        Set-ReadyForReviewStatus -EvidenceSha256 $GateHash
+        Set-AutomatedAcceptedStatus -EvidenceSha256 $GateHash -AttestationRelativePath ([string]$Attestation.path)
+        if($TaskId-ceq'TASK-P12A-999'){Update-P12APersonalAcceptedTaskBoard}
+      }else{Set-ReadyForReviewStatus -EvidenceSha256 $GateHash}
+    }elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){
+      $BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p12a_personal_acceptance_gate_incomplete'})
+      Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath
+    }
+  } elseif ($TaskId -ceq 'TASK-P12-089') {
     $ModeState=Get-P12089GateModeState
     if($ExitCode-eq0-and[bool]$ModeState.passed){Set-ReadyForReviewStatus -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath)}elseif($ExitCode-ne0-or@($ModeState.failed_modes).Count-gt0){$BlockerPath=Write-TaskBlockerEvidence -ModeValue $Mode -ReasonCode $(if($ExitCode-ne0){[string]$Result.reason_code}else{'p12_089_gate_set_incomplete'});Set-TaskStatus -Status 'blocked' -EvidenceSha256 (Get-Sha256 -LiteralPath $GatePath) -BlockerPath $BlockerPath}
   } elseif (Test-P12WorkPackageTask -TaskIdValue $TaskId) {
