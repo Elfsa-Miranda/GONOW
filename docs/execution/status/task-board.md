@@ -166,7 +166,7 @@ Generated from TaskGate Catalog 2.5.2 and per-task status records.
 | TASK-P12B-040 | Phase 12B | ready_for_review |
 | TASK-P12B-050 | Phase 12B | ready_for_review |
 | TASK-P12B-060 | Phase 12B | ready_for_review |
-| TASK-P12B-990 | Phase 12B | ready_for_review |
+| TASK-P12B-990 | Phase 12B | accepted |
 | TASK-P12B-999 | Phase 12B | ready_for_review |
 | TASK-P12C-000 | Phase 12C | not_started |
 | TASK-P12D-000 | Phase 12D | ready_for_review |
