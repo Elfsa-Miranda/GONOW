@@ -1,0 +1,19 @@
+{
+  "duplicate_charge_count": 0,
+  "duplicate_formal_side_effect_count": 0,
+  "duplicate_physical_side_effect_count": 0,
+  "failure_samples": [],
+  "fault_plan_id": "c4-kill-schedule-v1",
+  "gate_id": "C4",
+  "method": "seven real process-kill anchors plus independent deterministic interleaving model",
+  "minimum_schedules_per_killpoint_outcome": 20,
+  "permanent_run_count": 0,
+  "production": false,
+  "provider_outcome_count": 3,
+  "real_process_baseline_sha256": "cb8a5a084d4854ddcc06ce354f26da5838a9dc81025305dce56e84a91f3defe1",
+  "real_process_killpoint_count": 7,
+  "schedule_count": 420,
+  "schedule_results_sha256": "c272ceaa93987eea3091a6cdcb38fa145c1939f9f72540409ce9cd0abe7be70b",
+  "schema_version": "1.0",
+  "stale_worker_denial_failure_count": 0
+}
