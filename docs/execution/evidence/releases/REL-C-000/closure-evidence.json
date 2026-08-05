@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-REL-C-000",
+  "profile": "personal_automated",
+  "overall_status": "passed",
+  "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+  "p12c_status": "dormant",
+  "single_agent_architecture": true,
+  "candidate_head_oid": "af1e3024289edd123c2427c2ff3117c6873ba5d8",
+  "candidate_tree_oid": "5b2101fe2090998da05b7d4eac66ea7831eb02de",
+  "release_c_path": "cumulative_phase12",
+  "release_b_compatibility_baseline": {
+    "mechanical_certification_status": "passed",
+    "certification_gate_count": 5,
+    "python_tests": 846,
+    "flutter_tests": 144,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "rollback_fault_classes": 20,
+    "formal_release_status": "pending_production_owner_canary_inputs",
+    "production_facts_status": "unknown"
+  },
+  "proofs": [
+    {"path": "docs/execution/status/TASK-P12-089.json", "sha256": "2c9ae7b846fb077e2b996f3c363be628287380c65fb9e977fcec938d979f49ab", "size_bytes": 1353},
+    {"path": "docs/execution/evidence/phase-12/P12-089/cumulative-acceptance-attestation.json", "sha256": "88700412d3aeb294908c2ef2332b3b74a7850d05fba2fe0ee0be0bc31de04df2", "size_bytes": 3386},
+    {"path": "docs/execution/evidence/phase-10/P10-009/personal-release-certification.json", "sha256": "a74645c11cc443ec3bcddb10a9eb2ead2cd32508c05eb4a44c41a7b7c1175ce9", "size_bytes": 3158},
+    {"path": "docs/execution/evidence/phase-10/P10-009/regression-report.json", "sha256": "1960ad8e4dded7a48569a29cc91a8cfb57440adeb623cfe5d6eaffe290bf51c2", "size_bytes": 1679},
+    {"path": "docs/execution/evidence/phase-10/P10-009/rollback-operations-report.json", "sha256": "768a24a62d4c13059a1c3b85be95b2525deee7bc0c0ed4233f50bbc69ba0b513", "size_bytes": 6204},
+    {"path": "docs/execution/evidence/phase-10/P10-010/owner-canary-readiness-20260805.md", "sha256": "333e0e5eb6cbc46b1925afdd5caeff5bd6187db16b5c5b7f05d56a7dabac825a", "size_bytes": 1227}
+  ],
+  "checks": {
+    "mandatory_gate_failures": 0, "artifact_drift": 0, "failed": 0, "skipped": 0, "xfailed": 0,
+    "flaky_rerun_passes": 0, "redline_failures": 0, "open_p0_p1": 0, "security_failures": 0,
+    "model_api_call_count": 0, "multi_agent_component_count": 0, "production_write_count": 0,
+    "production_allocation": 0, "force_update_count": 0, "direct_main_push_count": 0
+  },
+  "recorded_at": "2026-08-05T15:32:00+08:00"
+}
