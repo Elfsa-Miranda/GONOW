@@ -1,10 +1,10 @@
 # Release C selection architecture
 
-archive_mode: local_provisional
-formal_selection_status: local_provisional_selected
-selection_cycle: p12a-local-provisional-20260805
-selected_candidate: 12A
-selected_count: 1
+archive_mode: cumulative_close_candidate
+formal_selection_status: cumulative_acceptance_in_progress
+selection_cycle: p12-cumulative-close-20260805
+selected_candidate: P12D,P12B,P12A
+selected_count: 3
 formal_none_decision: false
 design_ready_count: 1
 runtime_change_count: 1
@@ -15,27 +15,27 @@ multi_agent_implementation_count: 0
 
 ## Decision boundary
 
-This cycle selects only Phase 12A Structured Memory. The implementation is local provisional and
-ends at `ready_for_review`; independent owner approval, remote integration, production deployment,
-and Release C acceptance remain pending. P12B, P12C, and P12D are dormant for new work in this
-cycle. Their historical evidence is retained but does not authorize allocation or further changes.
+This close aggregates the already implemented Phase 12D Domain Command, Phase 12B Cost Router, and
+Phase 12A Structured Memory packages. P12C remains dormant. Exact automated attestations authorize
+repository acceptance and the final protected pull-request flow, but do not authorize production
+deployment, allocation, or writes.
 
 The architecture remains one Agent codebase with `agent-api` and `agent-worker` processes. P12A adds
 no coordinator, specialist Agent, Redis, queue, dynamic MCP marketplace, model-routing layer, or
 public client contract. PostgreSQL remains the intended durable source of truth, while the actual
 production schema, grants, RLS, triggers, data, backups, and traffic remain `unknown`.
 
-## XOR candidate map
+## Cumulative capability map
 
 | Candidate | Present disposition |
 |---|---|
-| 12A explicit Structured Memory | selected and implemented locally; default off; production allocation zero |
-| 12B deterministic Cost Router | historically integrated local provisional; dormant this cycle |
+| 12A explicit Structured Memory | selected, implemented, and accepted locally; default off; production allocation zero |
+| 12B deterministic Cost Router | selected from preserved evidence; accepted; allocation zero; positive benefit unclaimed |
 | 12C production Multi-Agent | explicitly dormant; no runtime or allocation |
-| 12D one Domain Command migration | historical `ready_for_review`; dormant this cycle |
+| 12D one Domain Command migration | selected from preserved evidence; accepted; default off |
 
-Selecting another capability requires a new XOR cycle, evidence window, ADR/gates, rollback exercise,
-and integration decision.
+Adding P12C or any fourth capability requires a new user directive, ADR/gates, rollback exercise, and
+integration decision.
 
 ## Structured Memory contract
 
