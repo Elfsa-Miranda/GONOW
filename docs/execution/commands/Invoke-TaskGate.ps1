@@ -572,7 +572,7 @@ function Set-ReadyForReviewStatus {
   $Record.updated_at = [DateTimeOffset]::Now.ToString('o')
   $Record.evidence_sha256 = $EvidenceSha256
   $Record.evidence_paths = [object[]]@($script:GatePath.Replace($script:RepositoryRoot + '\', '').Replace('\', '/'))
-  $Record.blocker_path = $null
+  if ($Record.PSObject.Properties.Name -contains 'blocker_path') { $Record.blocker_path = $null } else { $Record | Add-Member -NotePropertyName blocker_path -NotePropertyValue $null }
   $Record.transition_reason = 'task-gate:evidence-refresh-without-status-transition'
   Write-AtomicJson -LiteralPath $StatusPath -Value $Record
 }
