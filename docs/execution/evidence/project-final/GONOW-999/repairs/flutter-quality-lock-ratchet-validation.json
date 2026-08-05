@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-999",
+  "validated_commit_oid": "fe88ded8613d91f60d6942642880808bc7154502",
+  "baseline_oid": "142abfc339f003ede8d85d9534336923b5610252",
+  "validation_scope": "affected Flutter baseline/candidate analyzer test skip and APK ratchet",
+  "outer_wait": {
+    "timeout_seconds": 1200,
+    "classification": "output_channel_timeout_while_original_process_continued",
+    "rerun_started": false,
+    "original_process_completed": true
+  },
+  "result": {
+    "primary_assertion_passed": true,
+    "lock_comparison_mode": "per_revision_frozen_lock",
+    "baseline_candidate_lock_hash_match": false,
+    "baseline_candidate_lock_equality_required": false,
+    "new_analyzer_error_count": 0,
+    "new_test_failure_count": 0,
+    "new_skip_count": 0,
+    "baseline_analyze_exit": 1,
+    "candidate_analyze_exit": 1,
+    "baseline_completed_test_count": 12,
+    "candidate_completed_test_count": 144,
+    "baseline_test_exit": 1,
+    "candidate_test_exit": 0,
+    "baseline_build_exit": 0,
+    "candidate_build_exit": 0,
+    "baseline_apk_present": true,
+    "candidate_apk_present": true,
+    "candidate_worktree_dirty_count_after_run": 0,
+    "baseline_worktree_dirty_count_after_run": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "production_write_count": 0
+  },
+  "evidence": {
+    "path": "D:/Temp/gonow-final-flutter-ratchet-fe88ded.json",
+    "sha256": "4b484d8246289baaea1a65e680c919c3fdc6b98647923f7c34f9569b4fc0ac24",
+    "size_bytes": 9288
+  },
+  "evidence_boundary": "The candidate is clean and has no new Flutter analyzer error, test failure or skip relative to the preserved baseline. This is a CI ratchet result, not a production claim.",
+  "recorded_at": "2026-08-05T16:40:00+08:00"
+}
