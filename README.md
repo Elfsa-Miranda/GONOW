@@ -5,6 +5,22 @@
 
 [📱 申请内测 (Waitlist)](#bookmark=id.4uewzkleyekb) • [📧 联系作者](mailto:tu07918382691@gmail.com)
 
+## 最终仓库候选状态
+
+GoNow 的 BOOT–P12 本地实现与 Release C 仓库收口已经形成最终候选。Phase 12 的累计能力
+是 P12D Domain Command、P12B Cost Router 和 P12A Structured Memory；P12C Multi-Agent
+保持 dormant，运行架构仍为 Single-Agent。Structured Memory 只保存四类经用户明确确认、
+typed 且用户可见的行程偏好，默认关闭，不会从聊天记录、隐藏画像或模型推断静默写入。
+
+这表示仓库中的实现、迁移、合同、回滚和本地/隔离测试证据已经归档，不表示已部署到生产。
+生产 schema/RLS/grants、真实同意数据、备份恢复链、流量、成本收益及用户改善仍是
+`unknown/pending`；生产写入和流量分配均为 0。
+
+- 最终架构与证据边界：`docs/architecture/final-release.md`
+- 发布、降级、删除恢复与回滚：`docs/runbooks/final-release.md`
+- Structured Memory 运维说明：`docs/runbooks/structured-memory.md`
+- 累计 Phase 12 决策：`docs/architecture/release-c-selection.md`
+
 ## **📖 项目简介 (About)**
 
 **GoNow 寻迹** 是一款集**旅程记录、行程规划、手账记录、旅行资产管理**于一体的全场景高可用应用。我们致力于解决传统旅行软件中的状态断层与信息过载问题，通过智能算法与大模型 AI 伴创，为热爱旅行的用户提供丝滑、沉浸、极具个性化的行前、行中、行后全链路体验。
