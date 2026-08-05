@@ -90,6 +90,8 @@ def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:
     assert "probe role unexpectedly has CONNECT" in provisioner
     assert "PgvectorVersion = '0.8.1'" in provisioner
     assert "PgvectorCommit = '778dacf20c07caf904557a88705142631818d8cb'" in provisioner
+    assert "Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1" in provisioner
+    assert "$Git = [string]$GitCommand.Source" in provisioner
     assert "Locked pgvector source commit mismatch" in provisioner
     assert "CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public" in provisioner
     assert "CREATE EXTENSION IF NOT EXISTS btree_gin WITH SCHEMA public" in provisioner

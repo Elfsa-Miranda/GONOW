@@ -57,7 +57,8 @@ function Install-LockedPgvectorIfMissing {
   $VectorControl = Join-Path $PostgresRoot 'share\extension\vector.control'
   $BuildRequired = -not (Test-Path -LiteralPath $VectorControl -PathType Leaf)
   if ($BuildRequired) {
-    $Git = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+    $GitCommand = Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    $Git = [string]$GitCommand.Source
     $VsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path -LiteralPath $VsWhere -PathType Leaf)) {
       throw 'Visual Studio locator is unavailable for the locked pgvector build'
