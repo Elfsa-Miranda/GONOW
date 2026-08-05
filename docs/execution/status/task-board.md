@@ -1,6 +1,6 @@
 # Task board
 
-Generated from the 2.5.0 TaskGate Catalog and per-task status records.
+Generated from TaskGate Catalog 2.5.2 and per-task status records.
 
 | Task | Phase | Status |
 |---|---|---|
@@ -149,7 +149,7 @@ Generated from the 2.5.0 TaskGate Catalog and per-task status records.
 | TASK-P12-000 | Phase 12 | not_started |
 | TASK-P12-001 | Phase 12 | not_started |
 | TASK-P12-002 | Phase 12 | not_started |
-| TASK-P12-089 | Phase 12 | ready_for_review |
+| TASK-P12-089 | Phase 12 | accepted |
 | TASK-P12A-000 | Phase 12A | ready_for_review |
 | TASK-P12A-010 | Phase 12A | ready_for_review |
 | TASK-P12A-020 | Phase 12A | ready_for_review |
@@ -157,8 +157,8 @@ Generated from the 2.5.0 TaskGate Catalog and per-task status records.
 | TASK-P12A-040 | Phase 12A | ready_for_review |
 | TASK-P12A-050 | Phase 12A | ready_for_review |
 | TASK-P12A-060 | Phase 12A | ready_for_review |
-| TASK-P12A-990 | Phase 12A | ready_for_review |
-| TASK-P12A-999 | Phase 12A | not_started |
+| TASK-P12A-990 | Phase 12A | accepted |
+| TASK-P12A-999 | Phase 12A | accepted |
 | TASK-P12B-000 | Phase 12B | ready_for_review |
 | TASK-P12B-010 | Phase 12B | ready_for_review |
 | TASK-P12B-020 | Phase 12B | ready_for_review |
