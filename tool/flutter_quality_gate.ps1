@@ -124,6 +124,25 @@ function Convert-ToRelativePath {
   return $Value -replace '\\','/'
 }
 
+function Get-BoundedDiagnosticLines {
+  param([object]$Result, [string]$Repository)
+  $RootBackslash = [System.IO.Path]::GetFullPath($Repository).TrimEnd('\')
+  $RootSlash = $RootBackslash -replace '\\','/'
+  $Selected = New-Object System.Collections.Generic.List[string]
+  foreach ($RawLine in $Result.lines) {
+    $Line = [string]$RawLine
+    if ($Line -notmatch '(?i)(error:|exception|failure:|what went wrong|could not|build failed|gradle task|expected:|actual:|\.dart:\d+:\d+)') { continue }
+    $Safe = $Line.Replace($RootBackslash, '<repo>').Replace($RootSlash, '<repo>')
+    $Safe = [regex]::Replace($Safe, '(?i)\bBearer\s+\S+', 'Bearer <redacted>')
+    $Safe = [regex]::Replace($Safe, '\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{16,}\b', '<redacted-access-token>')
+    $Safe = [regex]::Replace($Safe, '\bsk-[A-Za-z0-9_-]{20,}\b', '<redacted-provider-key>')
+    $Safe = [regex]::Replace($Safe, '-----BEGIN [A-Z ]*PRIVATE KEY-----', '<redacted-private-key-header>')
+    if ($Safe.Length -gt 500) { $Safe = $Safe.Substring(0, 500) }
+    $Selected.Add($Safe)
+  }
+  return @($Selected | Select-Object -Last 80)
+}
+
 function Convert-AnalyzerResult {
   param([object]$Result, [string]$Repository)
   $Errors = New-Object System.Collections.Generic.List[string]
@@ -203,6 +222,10 @@ function Invoke-FlutterSuite {
       apk_present = (Test-Path -LiteralPath $ApkPath -PathType Leaf)
       apk_size_bytes = if (Test-Path -LiteralPath $ApkPath -PathType Leaf) { (Get-Item -LiteralPath $ApkPath).Length } else { $null }
       apk_sha256 = if (Test-Path -LiteralPath $ApkPath -PathType Leaf) { Get-Sha256Hex $ApkPath } else { $null }
+    }
+    bounded_diagnostics = [ordered]@{
+      test = if ($TestRaw.exit_code -ne 0) { @(Get-BoundedDiagnosticLines $TestRaw $Repository) } else { @() }
+      build = if ($BuildRaw.exit_code -ne 0) { @(Get-BoundedDiagnosticLines $BuildRaw $Repository) } else { @() }
     }
   }
 }

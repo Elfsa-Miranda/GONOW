@@ -36,7 +36,9 @@ jobs:
       - name: Run baseline and candidate ratchet
         shell: pwsh
         run: |
-          $report = Join-Path $env:RUNNER_TEMP 'gonow-flutter-quality.json'
+          $reportRoot = Join-Path $env:RUNNER_TEMP 'gonow-flutter-quality'
+          New-Item -ItemType Directory -Force $reportRoot | Out-Null
+          $report = Join-Path $reportRoot 'gonow-flutter-quality.json'
           ./tool/flutter_quality_gate.ps1 -BaselineRepo $env:GONOW_BASELINE -CandidateRepo . -Output $report -FlutterPath (Get-Command flutter).Source
           $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
           if (-not [bool]$result.ratchet.primary_assertion_passed) { throw 'Flutter ratchet failed' }
@@ -44,11 +46,23 @@ jobs:
           if ([int]$result.ratchet.new_test_failure_count -ne 0) { throw 'New test failure' }
           if ([int]$result.ratchet.new_skip_count -ne 0) { throw 'New skipped test' }
 
-      - name: Upload bounded Flutter ratchet report
+      - name: Validate bounded Flutter report redaction
+        id: validate-flutter-report
         if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $reportRoot = Join-Path $env:RUNNER_TEMP 'gonow-flutter-quality'
+          $scanReport = Join-Path $env:RUNNER_TEMP 'gonow-flutter-quality-secret-scan.json'
+          ./tool/security/secret-scan/Invoke-SecretScan.ps1 -Mode artifact -Repo . -Artifact $reportRoot -Output $scanReport
+          $scan = Get-Content -LiteralPath $scanReport -Raw | ConvertFrom-Json
+          if ([int]$scan.valid_secret_finding_count -ne 0) { throw 'Flutter report secret finding' }
+          if ([int]$scan.secret_value_output_count -ne 0) { throw 'Flutter report secret value output' }
+
+      - name: Upload bounded Flutter ratchet report
+        if: ${{ always() && steps.validate-flutter-report.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: flutter-quality-ratchet-${{ github.run_id }}
-          path: ${{ runner.temp }}/gonow-flutter-quality.json
+          path: ${{ runner.temp }}/gonow-flutter-quality
           if-no-files-found: error
           retention-days: 14

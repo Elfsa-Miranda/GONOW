@@ -14,6 +14,12 @@ if ($Text -notmatch "IndexOf\('\{'\)" -or $Text -notmatch "LastIndexOf\('\}'\)")
 foreach ($RequiredProperty in @('frameworkVersion','channel','frameworkRevision','dartSdkVersion')) {
   if ($Text -notmatch [regex]::Escape("'$RequiredProperty'")) { throw "Flutter machine version property contract is missing: $RequiredProperty" }
 }
+if ($Text -notmatch 'function Get-BoundedDiagnosticLines') { throw 'bounded Flutter failure diagnostics are missing' }
+if ($Text -notmatch 'Select-Object -Last 80') { throw 'Flutter failure diagnostic line bound is missing' }
+if ($Text -notmatch 'Substring\(0, 500\)') { throw 'Flutter failure diagnostic character bound is missing' }
+foreach ($Redaction in @('Bearer <redacted>','<redacted-access-token>','<redacted-provider-key>','<redacted-private-key-header>')) {
+  if ($Text -notmatch [regex]::Escape($Redaction)) { throw "Flutter failure diagnostic redaction is missing: $Redaction" }
+}
 $PrimaryStart = $Text.IndexOf('$PrimaryPassed =',[StringComparison]::Ordinal)
 $ReportStart = $Text.IndexOf('$Report =',[StringComparison]::Ordinal)
 if ($PrimaryStart -lt 0 -or $ReportStart -le $PrimaryStart) { throw 'primary ratchet expression not found' }
