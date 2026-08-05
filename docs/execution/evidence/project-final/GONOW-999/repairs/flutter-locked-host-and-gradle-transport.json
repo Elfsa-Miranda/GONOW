@@ -1,6 +1,8 @@
 {
   "schema_version": "1.0",
   "task_id": "TASK-GONOW-999",
+  "status": "superseded_by_flutter_amap_compatible_fork_migration",
+  "superseding_evidence": "docs/execution/evidence/project-final/GONOW-999/repairs/flutter-amap-compatible-fork-migration.json",
   "github_pull_request": 1,
   "workflow_run_id": 30994667931,
   "job_id": 92268757081,
@@ -8,7 +10,7 @@
   "root_causes": [
     {
       "classification": "hosted_package_origin_drift",
-      "evidence": "Every hosted entry in pubspec.lock binds https://pub.flutter-io.cn, whose locked amap_flutter_base/map 3.0.0 content uses Object.hash. The unbound CI resolution used pub.dev content of the same version that still calls removed hashValues APIs.",
+      "evidence": "The first local cache appeared compatible, but remote run 30996245827 proved a fresh mirror cache still supplied the incompatible 3.0.0 plugin. The mirror pin alone did not solve the root cause.",
       "affected_test_loading_path": "test/itinerary_agent/feature_flag_routing_test.dart"
     },
     {

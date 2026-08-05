@@ -105,6 +105,34 @@ def test_agent_workflow_provisions_database_before_mandatory_gates() -> None:
     assert "if: ${{ always() }}" in workflow[cleanup:]
 
 
+def test_flutter_amap_dependencies_are_exact_and_compatible() -> None:
+    pubspec = (REPO_ROOT / "pubspec.yaml").read_text(encoding="utf-8")
+    itinerary = (
+        REPO_ROOT
+        / "lib"
+        / "features"
+        / "itinerary"
+        / "presentation"
+        / "screens"
+        / "itinerary_screen.dart"
+    ).read_text(encoding="utf-8")
+    flutter_workflow = (
+        REPO_ROOT / ".github" / "workflows" / "flutter-quality.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "amap_flutter_base_plus: 3.1.0" in pubspec
+    assert "amap_flutter_map_plus_x: 3.1.2" in pubspec
+    assert "amap_flutter_location_plus_x: 3.1.5" in pubspec
+    assert "amap_flutter_base:" not in pubspec
+    assert "amap_flutter_map:" not in pubspec
+    assert "amap_flutter_location:" not in pubspec
+    assert "package:amap_flutter_base_plus/amap_flutter_base_plus.dart" in itinerary
+    assert "package:amap_flutter_map_plus_x/amap_flutter_map.dart" in itinerary
+    assert "package:amap_flutter_base/amap_flutter_base.dart" not in itinerary
+    assert "package:amap_flutter_map/amap_flutter_map.dart" not in itinerary
+    assert "PUB_HOSTED_URL: https://pub.flutter-io.cn" in flutter_workflow
+
+
 def test_deployment_clock_gate_fails_closed_on_missing_measurement() -> None:
     wrapper = (SERVICE_ROOT / "scripts" / "ci.ps1").read_text(encoding="utf-8")
     assert "$StatusExit-ne 0" in wrapper

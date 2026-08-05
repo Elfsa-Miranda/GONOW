@@ -21,14 +21,14 @@ dependencies:
   shared_preferences: ^2.2.3
   supabase_flutter: ^2.12.4
   flutter_markdown: ^0.7.7+1
-  amap_flutter_map: ^3.0.0
-  amap_flutter_location: ^3.0.0
+  amap_flutter_map_plus_x: 3.1.2
+  amap_flutter_location_plus_x: 3.1.5
   google_maps_flutter: ^2.17.0
   geolocator: ^14.0.2
   url_launcher: ^6.3.2
   share_plus: ^7.2.2
   app_links: ^7.0.0
-  amap_flutter_base: ^3.0.0
+  amap_flutter_base_plus: 3.1.0
   image_picker: ^1.2.2
   flutter_image_compress: ^2.3.0
   path_provider: ^2.1.1

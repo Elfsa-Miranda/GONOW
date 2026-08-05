@@ -6,8 +6,8 @@ import 'dart:ui' as ui;
 
 import 'package:http/http.dart' as http;
 
-import 'package:amap_flutter_base/amap_flutter_base.dart' as amap_base;
-import 'package:amap_flutter_map/amap_flutter_map.dart' as amap;
+import 'package:amap_flutter_base_plus/amap_flutter_base_plus.dart' as amap_base;
+import 'package:amap_flutter_map_plus_x/amap_flutter_map.dart' as amap;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
