@@ -115,15 +115,16 @@
 * **协同并发编辑**：三步CAS并发保存：以拉取云端真实 Version 作为 CAS（Compare-And-Swap）比对与写入基准，配合落后拉取重试机制，彻底消除并发编辑下的假冲突问题。
                   实时同步与防抖推送：引入 800ms 防抖机制将高频编辑操作压缩为单次静默写入，结合 Supabase Realtime 事件流推送，实现多端状态的自动重建或非阻断提示，完美平衡同步实时性与网络性能。
                   协同感知快照回滚：编辑前预留数据与版本快照支持本地撤销，并在触发回滚时结合 Presence 状态感知校验协作环境，实现单人独立回滚，同时避免多人协作时误覆盖协作者的自动保存记录。
-🧠 Agent 系统架构 (Agent Architecture)
+## **🧠 Agent 系统架构 (Agent Architecture)**
 
-GoNow Agent 不是套在旅行应用上的聊天机器人，而是一套面向真实业务副作用设计的、可持久化与可恢复的行程规划系统。
-GoNow Agent is not a chatbot wrapper. It is a durable and recoverable itinerary-planning system designed for real-world side effects.
+> **GoNow Agent 不是套在旅行应用上的聊天机器人，而是一套面向真实业务副作用设计的、可持久化与可恢复的行程规划系统。**  
+> **GoNow Agent is not a chatbot wrapper. It is a durable and recoverable itinerary-planning system designed for real-world side effects.**
 
 系统不会把模型输出直接写入正式行程。用户意图首先进入类型化 Planning Graph，结合 POI、路线、天气与 RAG 证据生成结构化 Candidate；随后经过确定性约束校验、有限修复和人工确认，最终才由受保护的 Domain Command 完成业务写入。
 
 Instead of writing model output directly into an itinerary, GoNow compiles user intent through a typed Planning Graph, grounds it with POI, route, weather, and RAG evidence, and produces a structured Candidate. Deterministic validation, bounded repair, and explicit user approval are required before a guarded Domain Command can mutate business data.
 
+```mermaid
 flowchart TB
     A["Flutter Client<br/>Flutter 客户端"] --> B["Agent API<br/>Auth · Tenant · Contract"]
     B --> C["Durable Agent Runtime<br/>持久化运行时"]
@@ -132,62 +133,21 @@ flowchart TB
     D --> F["Candidate & Evidence Gate<br/>候选方案 · 证据门控 · 有限修复"]
     F --> G["Human Approval & Domain Command<br/>人工确认 · 安全业务写入"]
     C <--> H["PostgreSQL State Store<br/>Run · Event · Lease · Checkpoint · Outbox"]
+```
 
-核心设计 (Core Design)
+### **核心设计 (Core Design)**
 
-架构层
+| 架构层 | 中文 | English |
+|---|---|---|
+| **Typed Orchestration** | 固定六阶段 Planning Graph 管理状态、工具调用、模型路由和预算；每个 Run 固定可追踪的 Behavior Package 版本。 | A six-stage typed Planning Graph controls state, tool calls, model routing, and budgets, while each Run is pinned to a traceable Behavior Package version. |
+| **Durable Runtime** | PostgreSQL 持久化 Run、Event、Job、Lease、Checkpoint 与 Outbox；Worker 崩溃后可安全接管并继续执行。 | PostgreSQL persists Runs, Events, Jobs, Leases, Checkpoints, and the Outbox so another Worker can safely resume after a crash. |
+| **Side-Effect Safety** | 幂等记录、CAS 与 fencing token 阻止重复写入和失效 Worker 的迟到提交；结果未知的外部调用不会被盲目重试。 | Idempotency, CAS, and fencing tokens prevent duplicate writes and stale-worker commits; uncertain external calls are never retried blindly. |
+| **Evidence-Grounded Planning** | POI、路线、天气与 RAG 结果必须携带可追踪证据；Evidence Gate 不会把“接口调用成功”误判为“事实成立”。 | POI, route, weather, and RAG outputs remain traceable, while the Evidence Gate separates successful transport from verified truth. |
+| **Validation & Bounded Repair** | Candidate 被划分为 hard、warning、unverified 和 verified；自动修复有严格轮次与预算上限，未解决冲突不会被隐藏。 | Candidates are classified as hard, warning, unverified, or verified; repair is strictly bounded and unresolved conflicts remain visible. |
+| **Human-in-the-Loop** | 模型只能提出 Candidate，不能直接修改正式行程；用户明确确认后才允许执行经过认证、授权和幂等保护的 Domain Command。 | The model may propose a Candidate but cannot mutate the itinerary; only explicit user approval unlocks an authenticated, authorized, and idempotent Domain Command. |
+| **Recoverable Streaming** | SSE 事件可通过 `Last-Event-ID` 重放，Run 支持安全取消、短期恢复凭证与 Checkpoint 续跑。 | SSE events replay from `Last-Event-ID`, with safe cancellation, short-lived resume capabilities, and checkpoint-based continuation. |
+| **RAG & Structured Memory** | RAG 具备租户/ACL 硬过滤、引用与删除 tombstone；Memory 只保存经用户确认的旅行偏好，不建立隐藏画像。 | RAG enforces tenant/ACL filters, citations, and deletion tombstones; Memory stores only user-confirmed travel preferences rather than hidden profiles. |
 
-中文
-
-English
-
-Typed Orchestration
-
-固定六阶段 Planning Graph 管理状态、工具调用、模型路由和预算；每个 Run 固定可追踪的 Behavior Package 版本。
-
-A six-stage typed Planning Graph controls state, tool calls, model routing, and budgets, while each Run is pinned to a traceable Behavior Package version.
-
-Durable Runtime
-
-PostgreSQL 持久化 Run、Event、Job、Lease、Checkpoint 与 Outbox；Worker 崩溃后可安全接管并继续执行。
-
-PostgreSQL persists Runs, Events, Jobs, Leases, Checkpoints, and the Outbox so another Worker can safely resume after a crash.
-
-Side-Effect Safety
-
-幂等记录、CAS 与 fencing token 阻止重复写入和失效 Worker 的迟到提交；结果未知的外部调用不会被盲目重试。
-
-Idempotency, CAS, and fencing tokens prevent duplicate writes and stale-worker commits; uncertain external calls are never retried blindly.
-
-Evidence-Grounded Planning
-
-POI、路线、天气与 RAG 结果必须携带可追踪证据；Evidence Gate 不会把“接口调用成功”误判为“事实成立”。
-
-POI, route, weather, and RAG outputs remain traceable, while the Evidence Gate separates successful transport from verified truth.
-
-Validation & Bounded Repair
-
-Candidate 被划分为 hard、warning、unverified 和 verified；自动修复有严格轮次与预算上限，未解决冲突不会被隐藏。
-
-Candidates are classified as hard, warning, unverified, or verified; repair is strictly bounded and unresolved conflicts remain visible.
-
-Human-in-the-Loop
-
-模型只能提出 Candidate，不能直接修改正式行程；用户明确确认后才允许执行经过认证、授权和幂等保护的 Domain Command。
-
-The model may propose a Candidate but cannot mutate the itinerary; only explicit user approval unlocks an authenticated, authorized, and idempotent Domain Command.
-
-Recoverable Streaming
-
-SSE 事件可通过 Last-Event-ID 重放，Run 支持安全取消、短期恢复凭证与 Checkpoint 续跑。
-
-SSE events replay from Last-Event-ID, with safe cancellation, short-lived resume capabilities, and checkpoint-based continuation.
-
-RAG & Structured Memory
-
-RAG 具备租户/ACL 硬过滤、引用与删除 tombstone；Memory 只保存经用户确认的旅行偏好，不建立隐藏画像。
-
-RAG enforces tenant/ACL filters, citations, and deletion tombstones; Memory stores only user-confirmed travel preferences rather than hidden profiles.
 ## **📫 交流与内测 (Contact & Beta)**
 
 GoNow 目前正处于高频迭代期。我们正在寻找热爱的旅行的内测体验官，以及志同道合的独立开发者/投资机构。
