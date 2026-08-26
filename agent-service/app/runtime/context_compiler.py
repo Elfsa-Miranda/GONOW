@@ -10,7 +10,7 @@ from enum import StrEnum
 
 
 MAX_CONTEXT_SLICES = 64
-MAX_SLICE_CHARACTERS = 4_096
+MAX_SLICE_CHARACTERS = 8_192
 MAX_TOTAL_CHARACTERS = 32_768
 
 
@@ -25,6 +25,9 @@ class ContextKind(StrEnum):
     REQUEST = "request"
     ITINERARY = "itinerary"
     TOOL_EVIDENCE = "tool_evidence"
+
+
+DEFAULT_REQUIRED_KINDS = frozenset({ContextKind.REQUEST, ContextKind.ITINERARY})
 
 
 KIND_ORDER = {
@@ -88,14 +91,24 @@ class ContextCompiler:
         slices: Iterable[ContextSlice],
         *,
         token_limit: int,
+        required_kinds: frozenset[ContextKind] | None = None,
     ) -> CompiledContext:
         materialized = tuple(slices)
-        self._validate_input(materialized, token_limit=token_limit)
+        required = (
+            DEFAULT_REQUIRED_KINDS
+            if required_kinds is None
+            else required_kinds
+        )
+        self._validate_input(
+            materialized,
+            token_limit=token_limit,
+            required_kinds=required,
+        )
         ranked = tuple(
             sorted(
                 materialized,
                 key=lambda item: (
-                    not self._is_required(item),
+                    not self._is_required(item, required),
                     -item.priority,
                     KIND_ORDER[item.kind],
                     item.slice_id,
@@ -104,7 +117,7 @@ class ContextCompiler:
         )
         measured = tuple((item, self._count_tokens(item)) for item in ranked)
         required_tokens = sum(
-            tokens for item, tokens in measured if self._is_required(item)
+            tokens for item, tokens in measured if self._is_required(item, required)
         )
         if required_tokens > token_limit:
             raise ContextCompilerError("context.required_slice_missing")
@@ -113,15 +126,15 @@ class ContextCompiler:
         transformations: list[TransformRecord] = []
         token_count = 0
         for item, tokens in measured:
-            required = self._is_required(item)
-            if required or token_count + tokens <= token_limit:
+            item_required = self._is_required(item, required)
+            if item_required or token_count + tokens <= token_limit:
                 included.append(
                     CompiledSlice(
                         slice_id=item.slice_id,
                         kind=item.kind,
                         content=item.content,
                         priority=item.priority,
-                        required=required,
+                        required=item_required,
                         tokens=tokens,
                     )
                 )
@@ -135,7 +148,9 @@ class ContextCompiler:
                 )
 
         required_ids = {
-            item.slice_id for item in materialized if self._is_required(item)
+            item.slice_id
+            for item in materialized
+            if self._is_required(item, required)
         }
         included_ids = {item.slice_id for item in included}
         if not required_ids.issubset(included_ids):
@@ -178,11 +193,23 @@ class ContextCompiler:
         )
 
     @staticmethod
-    def _is_required(item: ContextSlice) -> bool:
-        return item.required or item.kind is ContextKind.HARD_CONSTRAINT
+    def _is_required(
+        item: ContextSlice,
+        required_kinds: frozenset[ContextKind],
+    ) -> bool:
+        return (
+            item.required
+            or item.kind is ContextKind.HARD_CONSTRAINT
+            or item.kind in required_kinds
+        )
 
     @staticmethod
-    def _validate_input(slices: tuple[ContextSlice, ...], *, token_limit: int) -> None:
+    def _validate_input(
+        slices: tuple[ContextSlice, ...],
+        *,
+        token_limit: int,
+        required_kinds: frozenset[ContextKind],
+    ) -> None:
         ids = [item.slice_id for item in slices]
         if (
             token_limit < 1
@@ -201,10 +228,10 @@ class ContextCompiler:
         ):
             raise ContextCompilerError("context.input_invalid")
         kinds = {item.kind for item in slices}
-        if ContextKind.REQUEST not in kinds or ContextKind.ITINERARY not in kinds:
+        if not required_kinds or not required_kinds.issubset(kinds):
             raise ContextCompilerError("context.required_slice_missing")
         if any(
-            item.kind in {ContextKind.REQUEST, ContextKind.ITINERARY}
+            item.kind in required_kinds
             and not item.required
             for item in slices
         ):
