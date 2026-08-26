@@ -190,7 +190,7 @@ def test_planner_maps_invalid_tokenizer_count_to_stable_failure() -> None:
     assert decision.working_context is None
 
 
-def test_default_stage_policies_cover_fixed_runtime_and_require_stage_artifacts() -> None:
+def test_default_stage_context_policies_require_stage_artifacts() -> None:
     assert tuple(item.stage for item in DEFAULT_STAGE_CONTEXT_POLICIES) == (
         WorkflowStage.INTAKE,
         WorkflowStage.PLAN,
@@ -244,7 +244,7 @@ def test_default_stage_policies_cover_fixed_runtime_and_require_stage_artifacts(
     assert complete_decision.reason_code == "context.input_invalid"
 
 
-def test_stage_policy_budget_is_bound_to_behavior_policy_digest() -> None:
+def test_stage_context_policy_budget_is_bound_to_behavior_policy_digest() -> None:
     changed_stages = tuple(
         StageContextPolicy(
             stage=item.stage,
