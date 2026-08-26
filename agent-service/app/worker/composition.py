@@ -10,6 +10,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.gemini import EnvironmentGeminiCredentialProvider
+from app.runtime.context_planner import ContextPlanner
 from app.worker.execution import DurableWorkerExecutor
 from app.worker.itinerary_processor import GeminiItineraryProcessor
 from app.worker.main import WorkerRuntime
@@ -59,6 +60,21 @@ def _required_environment(name: str) -> str:
     return value
 
 
+def _context_planner_from_environment() -> ContextPlanner | None:
+    enabled = os.environ.get("GONOW_CONTEXT_PLANNER_V2_ENABLED", "0").strip()
+    if enabled in {"", "0"}:
+        return None
+    if enabled != "1":
+        raise WorkerCompositionError()
+    planner = ContextPlanner()
+    if (
+        os.environ.get("GONOW_CONTEXT_PLANNER_V2_POLICY_SHA256", "").strip()
+        != planner.policy_digest
+    ):
+        raise WorkerCompositionError()
+    return planner
+
+
 def build_worker_runtime_from_environment() -> WorkerRuntime:
     database_url = _required_environment("GONOW_DATABASE_URL")
     raw_tenants = _required_environment("GONOW_WORKER_TENANTS")
@@ -87,7 +103,8 @@ def build_worker_runtime_from_environment() -> WorkerRuntime:
     executor = DurableWorkerExecutor(
         factory,
         processor=GeminiItineraryProcessor(
-            credentials=EnvironmentGeminiCredentialProvider()
+            credentials=EnvironmentGeminiCredentialProvider(),
+            context_planner=_context_planner_from_environment(),
         ),
     )
     return WorkerRuntime(

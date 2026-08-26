@@ -25,7 +25,12 @@ from app.worker.execution import ClaimedItineraryJob, WorkerExecutionError
 from app.worker.itinerary_processor import GeminiItineraryProcessor, _prompt
 
 
-def _job(*, days: int = 2, constraints: tuple[str, ...] = ()) -> ClaimedItineraryJob:
+def _job(
+    *,
+    days: int = 2,
+    constraints: tuple[str, ...] = (),
+    context_policy_digest: str = "d" * 64,
+) -> ClaimedItineraryJob:
     run_id = uuid4()
     return ClaimedItineraryJob(
         claim=JobClaim(
@@ -41,6 +46,7 @@ def _job(*, days: int = 2, constraints: tuple[str, ...] = ()) -> ClaimedItinerar
             replayed=False,
         ),
         behavior_digest="b" * 64,
+        context_policy_digest=context_policy_digest,
         input_digest="c" * 64,
         structured_input={
             "schema_version": "1.0",

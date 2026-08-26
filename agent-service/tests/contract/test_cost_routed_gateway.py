@@ -53,6 +53,7 @@ def _job() -> ClaimedItineraryJob:
             replayed=False,
         ),
         behavior_digest="b" * 64,
+        context_policy_digest="d" * 64,
         input_digest="c" * 64,
         structured_input={
             "schema_version": "1.0",
