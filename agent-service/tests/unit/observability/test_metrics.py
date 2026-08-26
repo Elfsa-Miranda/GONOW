@@ -25,7 +25,7 @@ def test_required_domains_have_type_unit_and_owner() -> None:
     assert {item.domain for item in METRIC_REGISTRY.values()} == {
         "run", "tool", "context", "validation", "cost", "recovery"
     }
-    assert len(METRIC_REGISTRY) == 12
+    assert len(METRIC_REGISTRY) == 13
     assert all(item.kind in {"counter", "gauge", "histogram"} for item in METRIC_REGISTRY.values())
     assert all(item.unit and item.owner for item in METRIC_REGISTRY.values())
 
@@ -33,7 +33,15 @@ def test_required_domains_have_type_unit_and_owner() -> None:
 def test_registry_has_no_high_cardinality_label_key() -> None:
     label_keys = {key for item in METRIC_REGISTRY.values() for key in item.label_keys}
     assert label_keys.isdisjoint(FORBIDDEN_LABEL_KEYS)
-    assert label_keys == {"outcome", "tool_class", "validation_result", "recovery_reason"}
+    assert label_keys == {
+        "context_outcome",
+        "context_policy",
+        "context_reason",
+        "outcome",
+        "recovery_reason",
+        "tool_class",
+        "validation_result",
+    }
 
 
 def test_record_accepts_only_complete_bounded_labels() -> None:
@@ -46,6 +54,25 @@ def test_record_accepts_only_complete_bounded_labels() -> None:
     with pytest.raises(MetricContractError):
         metrics.record(
             "gonow_tool_calls_total", 1, {"tool_class": "user-selected-tool", "outcome": "success"}
+        )
+    assert metrics.record(
+        "gonow_context_decisions_total",
+        1,
+        {
+            "context_outcome": "compiled",
+            "context_policy": "itinerary-compose-v2",
+            "context_reason": "none",
+        },
+    )
+    with pytest.raises(MetricContractError):
+        metrics.record(
+            "gonow_context_decisions_total",
+            1,
+            {
+                "context_outcome": "compiled",
+                "context_policy": "user-supplied-policy",
+                "context_reason": "none",
+            },
         )
 
 

@@ -23,6 +23,7 @@
     {"title": "Tool duration", "metric": "gonow_tool_duration_ms", "type": "histogram", "unit": "ms", "owner": "Agent Platform"},
     {"title": "Context tokens", "metric": "gonow_context_tokens", "type": "gauge", "unit": "token", "owner": "Agent Platform"},
     {"title": "Context utilization", "metric": "gonow_context_utilization", "type": "histogram", "unit": "1", "owner": "Agent Platform"},
+    {"title": "Context decisions", "metric": "gonow_context_decisions_total", "type": "counter", "unit": "count", "owner": "Agent Platform"},
     {"title": "Validation results", "metric": "gonow_validation_total", "type": "counter", "unit": "count", "owner": "Quality"},
     {"title": "Validation duration", "metric": "gonow_validation_duration_ms", "type": "histogram", "unit": "ms", "owner": "Quality"},
     {"title": "Model cost", "metric": "gonow_model_cost_usd_total", "type": "counter", "unit": "usd", "owner": "Finance"},
