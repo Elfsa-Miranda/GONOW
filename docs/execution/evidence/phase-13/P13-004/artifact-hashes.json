@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-004",
+  "hash_algorithm": "SHA-256",
+  "head_oid_before_evidence": "ac1753d441940aecde066c77affb086b8ec47e13",
+  "artifacts": [
+    {"path":"agent-service/tests/fixtures/context-planner-v2/manifest.json","sha256":"47a676d23a4895cde4875cf9ac9be79ea1f132f7325b428760710a033f3cc38d","size_bytes":5477},
+    {"path":"agent-service/tests/fixtures/context-planner-v2/release-gate.json","sha256":"36287a07e6804b407737630f5a1cf2017291d00fb2a4d94b8dfcdc5ae0f78d70","size_bytes":1171},
+    {"path":"agent-service/tests/fixtures/context-planner-v2/frozen-contract.json","sha256":"97ec76aac50e83e64b0775dc3eebcc4fb86ba1db4b2ca49c7fbab68aa4441717","size_bytes":432},
+    {"path":"agent-service/app/evaluation/context_planner_v2.py","sha256":"6c22aa12dcf9e5ffdcb4ab8abcb2c0e47dc8bc0630fae53dd1217c779ae75517","size_bytes":10371},
+    {"path":"agent-service/scripts/run_context_planner_eval.py","sha256":"20fcc0b22e2e84387a20205f54fae10ec9719a77bc93212154af74659db1fec4","size_bytes":1220},
+    {"path":"agent-service/tests/eval/test_context_planner_v2.py","sha256":"8412018b232828ddaeb9bb55baba3d7aa81b6f6a0a62d7176ed914199e748af6","size_bytes":2024},
+    {"path":"agent-service/tests/eval/test_context_planner_v2_contract.py","sha256":"ce9443e96a023ac54b0155a0dbe3739124438c7f466ff9d0376afec915394103","size_bytes":1641},
+    {"path":"agent-service/app/harness/context_planner_v2.py","sha256":"b47590e8f5d2be19acc7c3d39561b5ba70bf0b201c1c4c0f2872ab6a0d4fc58e","size_bytes":2246},
+    {"path":"agent-service/tests/contract/test_context_planner_v2_harness.py","sha256":"9762cbc57db599ef43771aad8a2740d411877fb9e435c66543cfc4c74c2d0e5c","size_bytes":1385},
+    {"path":"docs/execution/schemas/context-planner-v2-harness-mapping.json","sha256":"bb9879f77170950faecbeafe8365e47faf1c11998fb202f9c2f4f80c05e5374c","size_bytes":2569},
+    {"path":"docs/execution/evidence/phase-13/P13-004/context-planner-report.json","sha256":"e28c70542470b7e98a1de29e3a083eece9d63dc8899474b2083d324ec85f521e","size_bytes":26821},
+    {"path":"docs/execution/evidence/phase-13/P13-004/release-state.json","sha256":"7785e46661dc41301467feb60af919e873ed980779994549095ca6d11c84e5f0","size_bytes":685}
+  ],
+  "production_write_count": 0
+}
