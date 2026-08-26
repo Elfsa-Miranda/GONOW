@@ -13,6 +13,7 @@ sys.path.insert(0, str(SERVICE_ROOT))
 
 from app.runtime.task_contract import (  # noqa: E402
     TaskContractError,
+    build_itinerary_plan_intent,
     build_itinerary_task_contract,
 )
 from tests.contract.test_gemini_itinerary_processor import _job  # noqa: E402
@@ -41,6 +42,11 @@ def test_task_contract_is_canonical_content_addressed_and_complete() -> None:
     assert first.currency == "CNY"
     assert first.locale == "zh-CN"
     assert first.timezone == "Asia/Shanghai"
+    assert tuple(item.code for item in first.machine_semantics) == (
+        "day_end_within_1440",
+        "item_id_template",
+        "unique_item_ids",
+    )
     assert tuple(item.code for item in first.hard_semantics) == (
         "daylight_only",
         "no_overlap",
@@ -48,6 +54,11 @@ def test_task_contract_is_canonical_content_addressed_and_complete() -> None:
     assert first.reference.kind == "requirement"
     assert first.reference.sha256 == first.sha256
     assert first.source_ref == job.claim.input_ref
+    intent = build_itinerary_plan_intent(first, evidence_enabled=True)
+    assert intent.task_contract_sha256 == first.sha256
+    assert intent.evidence_mode == "authorized_optional"
+    assert intent.logical_model_call_limit == 1
+    assert intent.reference.kind == "requirement"
 
 
 def test_task_contract_rejects_unknown_machine_constraint() -> None:

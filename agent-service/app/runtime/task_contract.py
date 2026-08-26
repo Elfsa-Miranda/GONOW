@@ -46,6 +46,15 @@ HARD_CONSTRAINT_SEMANTICS = {
     ),
     "max_3_items_per_day": "each day must contain at most three items",
 }
+UNIVERSAL_MACHINE_SEMANTICS = {
+    "day_end_within_1440": (
+        "every item must end at or before local minute 1440"
+    ),
+    "item_id_template": (
+        "item_d{day_number}_{within-day ordinal starting at 1}"
+    ),
+    "unique_item_ids": "every item_id must be unique across all days",
+}
 
 
 class TaskContractError(ValueError):
@@ -105,6 +114,7 @@ class ItineraryTaskContract(BaseModel):
         max_length=64,
         pattern=r"^[A-Za-z0-9_+./-]+$",
     )
+    machine_semantics: tuple[MachineHardSemantic, ...]
     hard_semantics: tuple[MachineHardSemantic, ...]
     untrusted_data_fields: tuple[Literal["origin", "destination"], ...] = (
         "origin",
@@ -130,6 +140,51 @@ class ItineraryTaskContract(BaseModel):
             uri=f"context://task-contract/sha256/{self.sha256}",
             sha256=self.sha256,
         )
+
+
+class ItineraryPlanIntent(BaseModel):
+    """Deterministic execution intent; never a hidden natural-language plan."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = "1.0"
+    task_contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    requested_days: int = Field(ge=1, le=31)
+    evidence_mode: Literal["authorized_optional", "disabled"]
+    logical_model_call_limit: Literal[1] = 1
+    output_kind: Literal["validated_itinerary"] = "validated_itinerary"
+
+    @property
+    def canonical_bytes(self) -> bytes:
+        return canonicalize_jcs(self.model_dump(mode="json"))
+
+    @property
+    def canonical_json(self) -> str:
+        return self.canonical_bytes.decode("utf-8")
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes).hexdigest()
+
+    @property
+    def reference(self) -> StateReference:
+        return StateReference(
+            kind="requirement",
+            uri=f"context://plan-intent/sha256/{self.sha256}",
+            sha256=self.sha256,
+        )
+
+
+def build_itinerary_plan_intent(
+    task_contract: ItineraryTaskContract,
+    *,
+    evidence_enabled: bool,
+) -> ItineraryPlanIntent:
+    return ItineraryPlanIntent(
+        task_contract_sha256=task_contract.sha256,
+        requested_days=task_contract.days,
+        evidence_mode=("authorized_optional" if evidence_enabled else "disabled"),
+    )
 
 
 def build_itinerary_task_contract(
@@ -170,5 +225,9 @@ def build_itinerary_task_contract(
         currency=source.currency,
         locale=source.locale,
         timezone=source.timezone,
+        machine_semantics=tuple(
+            MachineHardSemantic(code=code, semantics=semantics)
+            for code, semantics in sorted(UNIVERSAL_MACHINE_SEMANTICS.items())
+        ),
         hard_semantics=semantics,
     )

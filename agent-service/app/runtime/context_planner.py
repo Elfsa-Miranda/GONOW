@@ -27,7 +27,9 @@ REFERENCE_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*://[^\s]{1,500}$")
 
 class ContextArtifactKind(StrEnum):
     TASK_CONTRACT = "task_contract"
+    PLAN_INTENT = "plan_intent"
     EVIDENCE = "evidence"
+    CANDIDATE_DRAFT = "candidate_draft"
 
 
 class ContextDecisionStatus(StrEnum):
@@ -105,7 +107,7 @@ class ContextArtifact:
             or tuple(sorted(self.claim_ids)) != self.claim_ids
             or any(CLAIM_ID_PATTERN.fullmatch(value) is None for value in self.claim_ids)
             or (
-                self.kind is ContextArtifactKind.TASK_CONTRACT
+                self.kind is not ContextArtifactKind.EVIDENCE
                 and bool(self.claim_ids)
             )
         ):
@@ -130,11 +132,39 @@ class ContextArtifact:
 
 
 @dataclass(frozen=True, slots=True)
+class StageContextPolicy:
+    stage: WorkflowStage
+    required_kinds: tuple[ContextArtifactKind, ...]
+    optional_kinds: tuple[ContextArtifactKind, ...]
+    max_working_context_tokens: int
+
+    def __post_init__(self) -> None:
+        if (
+            len(self.required_kinds) != len(set(self.required_kinds))
+            or len(self.optional_kinds) != len(set(self.optional_kinds))
+            or set(self.required_kinds) & set(self.optional_kinds)
+            or isinstance(self.max_working_context_tokens, bool)
+            or not isinstance(self.max_working_context_tokens, int)
+            or self.max_working_context_tokens < 1
+        ):
+            raise ValueError("context.policy_invalid")
+
+    def canonical_dict(self) -> dict[str, object]:
+        return {
+            "max_working_context_tokens": self.max_working_context_tokens,
+            "optional_kinds": sorted(item.value for item in self.optional_kinds),
+            "required_kinds": sorted(item.value for item in self.required_kinds),
+            "stage": self.stage.value,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ContextPlannerPolicy:
     policy_id: str
     tokenizer_id: str
     supported_stages: tuple[WorkflowStage, ...]
     required_kinds: tuple[ContextArtifactKind, ...]
+    stage_policies: tuple[StageContextPolicy, ...] = ()
     schema_version: str = "2.0"
 
     def __post_init__(self) -> None:
@@ -145,6 +175,15 @@ class ContextPlannerPolicy:
             or len(self.supported_stages) != len(set(self.supported_stages))
             or not self.required_kinds
             or len(self.required_kinds) != len(set(self.required_kinds))
+            or (
+                self.stage_policies
+                and (
+                    len(self.stage_policies)
+                    != len({item.stage for item in self.stage_policies})
+                    or {item.stage for item in self.stage_policies}
+                    != set(self.supported_stages)
+                )
+            )
             or self.schema_version != "2.0"
         ):
             raise ValueError("context.policy_invalid")
@@ -156,6 +195,13 @@ class ContextPlannerPolicy:
                 "policy_id": self.policy_id,
                 "required_kinds": sorted(item.value for item in self.required_kinds),
                 "schema_version": self.schema_version,
+                "stage_policies": [
+                    item.canonical_dict()
+                    for item in sorted(
+                        self.stage_policies,
+                        key=lambda candidate: candidate.stage.value,
+                    )
+                ],
                 "supported_stages": sorted(item.value for item in self.supported_stages),
                 "tokenizer_id": self.tokenizer_id,
             },
@@ -165,12 +211,81 @@ class ContextPlannerPolicy:
         ).encode("utf-8")
         return hashlib.sha256(canonical).hexdigest()
 
+    def stage_policy(self, stage: WorkflowStage) -> StageContextPolicy | None:
+        if self.stage_policies:
+            return next(
+                (item for item in self.stage_policies if item.stage is stage),
+                None,
+            )
+        if stage not in self.supported_stages:
+            return None
+        return StageContextPolicy(
+            stage=stage,
+            required_kinds=self.required_kinds,
+            optional_kinds=tuple(
+                item
+                for item in ContextArtifactKind
+                if item not in self.required_kinds
+            ),
+            max_working_context_tokens=16_384,
+        )
+
+
+DEFAULT_STAGE_CONTEXT_POLICIES = (
+    StageContextPolicy(
+        stage=WorkflowStage.INTAKE,
+        required_kinds=(),
+        optional_kinds=(),
+        max_working_context_tokens=64,
+    ),
+    StageContextPolicy(
+        stage=WorkflowStage.PLAN,
+        required_kinds=(ContextArtifactKind.TASK_CONTRACT,),
+        optional_kinds=(),
+        max_working_context_tokens=2_048,
+    ),
+    StageContextPolicy(
+        stage=WorkflowStage.EVIDENCE,
+        required_kinds=(
+            ContextArtifactKind.TASK_CONTRACT,
+            ContextArtifactKind.PLAN_INTENT,
+        ),
+        optional_kinds=(),
+        max_working_context_tokens=4_096,
+    ),
+    StageContextPolicy(
+        stage=WorkflowStage.COMPOSE,
+        required_kinds=(ContextArtifactKind.TASK_CONTRACT,),
+        optional_kinds=(
+            ContextArtifactKind.PLAN_INTENT,
+            ContextArtifactKind.EVIDENCE,
+        ),
+        max_working_context_tokens=16_384,
+    ),
+    StageContextPolicy(
+        stage=WorkflowStage.VALIDATE,
+        required_kinds=(
+            ContextArtifactKind.TASK_CONTRACT,
+            ContextArtifactKind.CANDIDATE_DRAFT,
+        ),
+        optional_kinds=(),
+        max_working_context_tokens=12_288,
+    ),
+    StageContextPolicy(
+        stage=WorkflowStage.COMPLETE,
+        required_kinds=(ContextArtifactKind.CANDIDATE_DRAFT,),
+        optional_kinds=(ContextArtifactKind.TASK_CONTRACT,),
+        max_working_context_tokens=8_192,
+    ),
+)
+
 
 DEFAULT_CONTEXT_POLICY = ContextPlannerPolicy(
-    policy_id="itinerary-compose-v2",
+    policy_id="itinerary-six-stage-v2",
     tokenizer_id="utf8-ceil-div4-v1",
-    supported_stages=(WorkflowStage.COMPOSE,),
+    supported_stages=tuple(item.stage for item in DEFAULT_STAGE_CONTEXT_POLICIES),
     required_kinds=(ContextArtifactKind.TASK_CONTRACT,),
+    stage_policies=DEFAULT_STAGE_CONTEXT_POLICIES,
 )
 
 
@@ -225,14 +340,18 @@ class ContextPlanner:
     def plan(self, request: ContextPlanRequest) -> ContextDecision:
         if request.policy_digest != self.policy_digest:
             return self._blocked(request, "context.policy_mismatch")
-        if request.stage not in self._policy.supported_stages:
+        stage_policy = self._policy.stage_policy(request.stage)
+        if stage_policy is None:
             return self._blocked(request, "context.stage_unsupported")
         artifact_ids = tuple(item.artifact_id for item in request.artifacts)
         kinds = {item.kind for item in request.artifacts}
+        allowed_kinds = set(stage_policy.required_kinds) | set(
+            stage_policy.optional_kinds
+        )
         if (
-            not request.artifacts
-            or len(artifact_ids) != len(set(artifact_ids))
-            or not set(self._policy.required_kinds).issubset(kinds)
+            len(artifact_ids) != len(set(artifact_ids))
+            or not set(stage_policy.required_kinds).issubset(kinds)
+            or not kinds.issubset(allowed_kinds)
         ):
             return self._blocked(request, "context.input_invalid")
 
@@ -242,14 +361,47 @@ class ContextPlanner:
             wrapper_tokens = self._count_tokens(empty_wrapper)
         except ContextCompilerError as error:
             return self._blocked(request, error.code)
-        token_limit = request.budget.working_context_tokens - wrapper_tokens
+        effective_limit = min(
+            request.budget.working_context_tokens,
+            stage_policy.max_working_context_tokens,
+        )
+        if not request.artifacts:
+            if stage_policy.required_kinds or wrapper_tokens > effective_limit:
+                return self._blocked(request, "context.required_slice_missing")
+            return ContextDecision(
+                status=ContextDecisionStatus.COMPILED,
+                policy_digest=self.policy_digest,
+                stage=request.stage,
+                reason_code=None,
+                working_context=empty_wrapper,
+                included_artifact_ids=(),
+                omitted_artifact_ids=(),
+                included_claim_ids=(),
+                transform_log=(),
+                token_count=wrapper_tokens,
+                token_limit=effective_limit,
+                digest=self._decision_digest(
+                    status=ContextDecisionStatus.COMPILED,
+                    stage=request.stage,
+                    reason_code=None,
+                    working_context=empty_wrapper,
+                    included_ids=(),
+                    omitted_ids=(),
+                    included_claim_ids=(),
+                ),
+            )
+        token_limit = effective_limit - wrapper_tokens
         if token_limit < 1:
             return self._blocked(request, "context.required_slice_missing")
         kind_mapping = {
             ContextArtifactKind.TASK_CONTRACT: ContextKind.REQUEST,
+            ContextArtifactKind.PLAN_INTENT: ContextKind.HARD_CONSTRAINT,
             ContextArtifactKind.EVIDENCE: ContextKind.TOOL_EVIDENCE,
+            ContextArtifactKind.CANDIDATE_DRAFT: ContextKind.ITINERARY,
         }
-        required_kinds = frozenset(kind_mapping[item] for item in self._policy.required_kinds)
+        required_kinds = frozenset(
+            kind_mapping[item] for item in stage_policy.required_kinds
+        )
         try:
             compiled = self._compiler.compile(
                 (
@@ -272,7 +424,7 @@ class ContextPlanner:
             actual_tokens = self._count_tokens(working_context)
         except ContextCompilerError as error:
             return self._blocked(request, error.code)
-        if actual_tokens > request.budget.working_context_tokens:
+        if actual_tokens > effective_limit:
             return self._blocked(request, "context.required_slice_missing")
 
         by_id = {item.artifact_id: item for item in request.artifacts}
@@ -300,7 +452,7 @@ class ContextPlanner:
             included_claim_ids=included_claim_ids,
             transform_log=compiled.transform_log,
             token_count=actual_tokens,
-            token_limit=request.budget.working_context_tokens,
+            token_limit=effective_limit,
             digest=self._decision_digest(
                 status=ContextDecisionStatus.COMPILED,
                 stage=request.stage,
