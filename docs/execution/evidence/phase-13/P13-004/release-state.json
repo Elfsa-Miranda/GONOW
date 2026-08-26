@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "task_id": "P13-004",
   "decision": "KEEP_DISABLED",
-  "report_sha256": "57b6f1577a3a9464dd11d9e4a15a23b647b6924c3ef785cca4cbb98ce03ee559",
+  "report_sha256": "75251049e1eea8a423e87a6890466c9c76e08b2fc54126d1505234c4e059a658",
   "production_environment_default": {
     "GONOW_CONTEXT_PLANNER_V2_ENABLED": "0",
     "GONOW_CONTEXT_STAGE_RUNTIME_V2_ENABLED": "0",
@@ -11,9 +11,7 @@
   "active_alias_mutated": false,
   "behavior_release_mutated": false,
   "reasons": [
-    "required live-provider evidence unavailable",
-    "full provisioned CI unavailable because PostgreSQL/pgvector prerequisites are missing",
-    "Ruff and mypy are absent from the locked project"
+    "required live-provider evidence unavailable"
   ],
   "production_write_count": 0
 }

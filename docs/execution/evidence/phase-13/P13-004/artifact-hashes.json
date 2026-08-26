@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "task_id": "P13-004",
   "hash_algorithm": "SHA-256",
-  "head_oid_before_evidence": "ac1753d441940aecde066c77affb086b8ec47e13",
+  "head_oid_before_evidence": "d6854afaa320ffca30eedf7c19adf53c489247f4",
   "artifacts": [
     {"path":"agent-service/tests/fixtures/context-planner-v2/manifest.json","sha256":"47a676d23a4895cde4875cf9ac9be79ea1f132f7325b428760710a033f3cc38d","size_bytes":5477},
     {"path":"agent-service/tests/fixtures/context-planner-v2/release-gate.json","sha256":"36287a07e6804b407737630f5a1cf2017291d00fb2a4d94b8dfcdc5ae0f78d70","size_bytes":1171},
@@ -14,8 +14,16 @@
     {"path":"agent-service/app/harness/context_planner_v2.py","sha256":"b47590e8f5d2be19acc7c3d39561b5ba70bf0b201c1c4c0f2872ab6a0d4fc58e","size_bytes":2246},
     {"path":"agent-service/tests/contract/test_context_planner_v2_harness.py","sha256":"9762cbc57db599ef43771aad8a2740d411877fb9e435c66543cfc4c74c2d0e5c","size_bytes":1385},
     {"path":"docs/execution/schemas/context-planner-v2-harness-mapping.json","sha256":"bb9879f77170950faecbeafe8365e47faf1c11998fb202f9c2f4f80c05e5374c","size_bytes":2569},
-    {"path":"docs/execution/evidence/phase-13/P13-004/context-planner-report.json","sha256":"e28c70542470b7e98a1de29e3a083eece9d63dc8899474b2083d324ec85f521e","size_bytes":26821},
-    {"path":"docs/execution/evidence/phase-13/P13-004/release-state.json","sha256":"7785e46661dc41301467feb60af919e873ed980779994549095ca6d11c84e5f0","size_bytes":685}
+    {"path":"docs/execution/evidence/phase-13/P13-004/context-planner-report.json","sha256":"c81b2209f62fb5efc84e0405e2e0b1b3fd3bc536438783453790be725a90125e","size_bytes":26820},
+    {"path":"docs/execution/evidence/phase-13/P13-004/release-state.json","sha256":"3557ee8be07cfc2af9c2de0ac224c33ff0ca07e7c81673a54d1438c3066454cb","size_bytes":536},
+    {"path":"docs/execution/evidence/phase-13/P13-004/gate-results.json","sha256":"77e0a7188f36be0f91095b2e753ada859bf01bb5b426b78c8d6de1acb262ce8c","size_bytes":1290},
+    {"path":"docs/execution/evidence/phase-13/P13-004/commands.json","sha256":"0309d24e6a0f5f5f3d822d5dd498e5b5597cd8202526ad41213e8ca407ab9b54","size_bytes":2070},
+    {"path":"docs/execution/evidence/phase-13/P13-004/ci-summary.json","sha256":"7f2639df417bc5d4d63a1180af0803dcd4cd2b68381520efeaef93a2579a2b99","size_bytes":1273},
+    {"path":"docs/execution/evidence/phase-13/P13-004/eval-contract.xml","sha256":"dbdea090b7b35658fc2d0ce15260314a35390f9311887085f2b1647ad4c47950","size_bytes":1440},
+    {"path":"docs/execution/evidence/phase-13/P13-004/e0-parity.xml","sha256":"1505b41b3fe45f0cb1f94e32515bc26bb1c5e52bf4bd44cfc28d2eb1b3ad166c","size_bytes":1215},
+    {"path":"docs/execution/evidence/phase-13/P13-004/context-integration.xml","sha256":"f4172834451bc52bbf631b1c4afe74a2727c944c5d54f222f85978b646ef9478","size_bytes":2657},
+    {"path":"docs/execution/evidence/phase-13/P13-004/security.xml","sha256":"5df0e9461503ac5de63a93091ac2bb35345ea68f7fd320db2239d2f754029919","size_bytes":2861},
+    {"path":"agent-service/tests/contract/test_p12b_live_calibration_contract.py","sha256":"afe1eb319e95260d3ed3291d618657adbb94a7b378660aced0dbc1ee87d6223a","size_bytes":19082}
   ],
   "production_write_count": 0
 }

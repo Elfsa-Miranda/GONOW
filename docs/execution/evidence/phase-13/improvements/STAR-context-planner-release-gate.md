@@ -16,13 +16,13 @@ Freeze requests, labels, thresholds, tokenizer/policy identity, and runner versi
 - Bound the manifest and release-gate files to SHA-256 in a separate frozen contract tied to the exact Context policy and runner version.
 - Added an offline paired runner that retains failures, reports every case, measures deterministic token estimates and local mechanism timing, repeats decisions three times, signs the report, and rejects manifest/report tampering.
 - Mapped eleven relevant immutable Harness controls to Phase 13 owner, stable failure code, test, and evidence paths.
-- Ran the frozen report without live/full-CI flags. The scorer—not a manual override—selected `KEEP_DISABLED`; the production environment defaults and active alias were left untouched.
+- Provisioned the supported local CI stack and passed the official full gate, then reran the frozen report with full-CI evidence but without a live-provider flag. The scorer—not a manual override—selected `KEEP_DISABLED`; the production environment defaults and active alias were left untouched.
 
 ## Result
 
 All 24 expected Context terminals matched; accepted cases retained 100% hard semantics; Claim violations and partial segment successes were zero; candidate decisions were stable across three repeats; the 40-case E0 dataset remained green. On 14 preregistered long-context cases, the offline fixture model recorded two completion wins and a 44.56% median input-token-estimate reduction. Local evaluation p95 was 0.028 ms on the recorded Windows/Intel environment, below the frozen 25 ms ceiling.
 
-The release decision is `KEEP_DISABLED` because full provisioned CI and required live-provider evidence are absent. These results are offline deterministic fixtures and local mechanism timing—not provider latency, production quality, SLA, cost, or reliability evidence.
+Official full CI passed 966 main-suite tests and 267 contract tests, with all mandatory quality, secret, clock, dependency, license, and repository-clean gates green. The release decision remains `KEEP_DISABLED` solely because required live-provider evidence is absent. The paired results are offline deterministic fixtures and local mechanism timing—not provider latency, production quality, SLA, cost, or reliability evidence.
 
 ## Evidence
 

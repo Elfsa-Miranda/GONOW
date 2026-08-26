@@ -1,39 +1,43 @@
 # BLK-P13-GATES-LOCAL-TOOLCHAIN
 
-Status: open external environment blocker
+Status: resolved locally on 2026-08-27
 
-## Reproduction
+## Original reproduction
 
 - PostgreSQL tests target isolated `127.0.0.1:55432` and fail setup with connection refused.
 - The repository pgvector provisioning path cannot build the locked extension because Visual Studio `vswhere.exe` / build prerequisites are unavailable.
-- `uv run --frozen ruff ...` and `uv run --frozen mypy ...` fail because neither executable is present in the locked project.
+- Ad hoc `ruff` and `mypy` commands were unavailable; later inspection established that they are not repository CI gates. The official quality gate is `tests/ci/test_quality_gate.py`.
 - The unrelated P12B price snapshot is stale.
 - No approved live-provider paired run was available.
 
-## Observable results
+## Original observable results
 
 - Unit run: 322 passed, 9 PostgreSQL setup errors.
 - Non-stale contract run before PR4 additions: 226 passed, 22 deselected, 16 PostgreSQL setup errors.
 - Targeted security: 11 passed, 93 deselected, 9 PostgreSQL setup errors.
 - Frozen Context eval: all offline gates except full CI/live evidence pass; decision is `KEEP_DISABLED`.
 
-## Attempts and outcomes
+## Resolution and verification
 
-- Re-ran focused non-database partitions, compileall, E0, Context integration, security selection, and the frozen paired evaluator.
-- Inspected the locked project rather than mutating `pyproject.toml` or `uv.lock` to add ad hoc tools.
-- Preserved all failed commands and JUnit output in P13-003/P13-004 evidence.
+- Installed Visual Studio Build Tools 2022 with the VCTools workload.
+- Reused the installed PostgreSQL 17.10 and pgvector 0.8.1 binaries, while provisioning a new isolated cluster at `127.0.0.1:55432`; no existing database was modified.
+- Installed the locked Python 3.13.9 runtime and used the locked Dart 3.11.5 executable.
+- Fixed one official Type-gate annotation failure in the Phase 13 stack.
+- Made the P12B contract tests independent of wall-clock expiry while retaining an explicit stale-snapshot fail-closed test.
+- Ran `agent-service/scripts/ci.ps1 -Stage All`: 966 tests passed in the main suite, 267 tests passed in the contract suite, and all lock, format, lint, type, secret, clock, SCA, license, and repository-clean gates passed.
+- Re-ran targeted security: 20 passed and 93 deselected, with zero setup errors.
 
-## Safe workaround
+## Remaining external evidence
 
-Keep every production gate default-off. Run the same commits in the repository's provisioned CI image with PostgreSQL/pgvector, locked lint/type tooling, and an approved live-provider fixture binding.
+The toolchain/CI blocker is closed. Keep every production gate default-off until an approved live-provider paired run is available.
 
 ## Resolution criteria
 
-Repository-wide test, lint, type, E0, security, integration, and frozen Phase 13 commands pass on a supported provisioned environment; the exact frozen paired report includes required live evidence. Any material contract change creates a new manifest identity and full rerun.
+Repository-wide test, lint, type, E0, security, integration, and frozen Phase 13 commands pass on a supported provisioned environment. This criterion is met. Live-provider evidence remains a separate release prerequisite. Any material contract change creates a new manifest identity and full rerun.
 
 ## Delivered resolution
 
-The mechanism stack and replayable offline evidence are delivered. Release allocation remains zero and PR Ready state is withheld.
+The mechanism stack, replayable offline evidence, and full local CI evidence are delivered. Release allocation remains zero because live-provider evidence is absent.
 
 ## Truth audit
 

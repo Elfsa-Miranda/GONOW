@@ -14,11 +14,10 @@
     {"command": "uv run --frozen python -m pytest tests/contract -q --tb=no -k 'not p12b and not price_snapshot'", "exit_code": 1, "result": "226 passed, 22 deselected; 16 setup errors from unavailable PostgreSQL on 127.0.0.1:55432"},
     {"command": "uv run --frozen python -m pytest tests/integration/test_runtime_composition.py::test_worker_clarification_transitions_to_waiting_without_candidate --collect-only -q", "exit_code": 0, "result": "1 test collected"},
     {"command": "agent-service/scripts/ci.ps1 -Stage Type with locked Python 3.13.9", "exit_code": 0, "result": "0 annotation failures across 472 public callables"},
-    {"command": "uv run --frozen python -m pytest tests/unit/runtime/test_context_recovery.py tests/unit/runtime/test_segment_plan.py tests/integration/test_context_overflow_recovery.py -q", "exit_code": 0, "result": "12 passed in 7.21s after annotation repair"}
+    {"command": "uv run --frozen python -m pytest tests/unit/runtime/test_context_recovery.py tests/unit/runtime/test_segment_plan.py tests/integration/test_context_overflow_recovery.py -q", "exit_code": 0, "result": "12 passed in 7.21s after annotation repair"},
+    {"command": "uv run --frozen python -m pytest tests/integration/test_runtime_composition.py::test_worker_clarification_transitions_to_waiting_without_candidate -q", "exit_code": 0, "result": "1 passed in 2.13s against isolated PostgreSQL 17.10 with pgvector 0.8.1"},
+    {"command": "agent-service/scripts/ci.ps1 -Stage All with locked Python 3.13.9 and Dart 3.11.5", "exit_code": 0, "result": "966 main-suite tests and 267 contract tests passed; all mandatory gates passed"}
   ],
-  "unavailable_full_gate_reasons": [
-    "the unrelated P12B price snapshot remains stale",
-    "full suite rerun is pending against the newly provisioned isolated PostgreSQL instance"
-  ],
+  "unavailable_full_gate_reasons": [],
   "production_write_count": 0
 }
