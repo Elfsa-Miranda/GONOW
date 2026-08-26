@@ -3,7 +3,7 @@
   "task_id": "P13-003",
   "executed_at": "2026-08-27T03:16:41.3304791+08:00",
   "executor": "codex-local-provisional",
-  "head_oid_before_evidence": "1e2c0296450df1f3a6fe1839773a6400be5d247b",
+  "head_oid_before_evidence": "6a4cee19570b5bd8575ced41112462d05f734e13",
   "commands": [
     {"command": "uv run --frozen python -m pytest tests/unit/runtime/test_context_recovery.py tests/unit/runtime/test_segment_plan.py -q", "exit_code": 0, "result": "6 passed in 0.56s"},
     {"command": "uv run --frozen python -m pytest tests/integration/test_context_overflow_recovery.py -q", "exit_code": 0, "result": "6 passed in 0.51s"},
@@ -12,12 +12,13 @@
     {"command": "uv run --frozen python -m compileall -q app tests", "exit_code": 0, "result": "passed"},
     {"command": "uv run --frozen python -m pytest tests/unit -q", "exit_code": 1, "result": "322 passed; 9 setup errors from unavailable PostgreSQL on 127.0.0.1:55432"},
     {"command": "uv run --frozen python -m pytest tests/contract -q --tb=no -k 'not p12b and not price_snapshot'", "exit_code": 1, "result": "226 passed, 22 deselected; 16 setup errors from unavailable PostgreSQL on 127.0.0.1:55432"},
-    {"command": "uv run --frozen python -m pytest tests/integration/test_runtime_composition.py::test_worker_clarification_transitions_to_waiting_without_candidate --collect-only -q", "exit_code": 0, "result": "1 test collected"}
+    {"command": "uv run --frozen python -m pytest tests/integration/test_runtime_composition.py::test_worker_clarification_transitions_to_waiting_without_candidate --collect-only -q", "exit_code": 0, "result": "1 test collected"},
+    {"command": "agent-service/scripts/ci.ps1 -Stage Type with locked Python 3.13.9", "exit_code": 0, "result": "0 annotation failures across 472 public callables"},
+    {"command": "uv run --frozen python -m pytest tests/unit/runtime/test_context_recovery.py tests/unit/runtime/test_segment_plan.py tests/integration/test_context_overflow_recovery.py -q", "exit_code": 0, "result": "12 passed in 7.21s after annotation repair"}
   ],
   "unavailable_full_gate_reasons": [
-    "PostgreSQL/pgvector provisioning cannot build without the unavailable Visual Studio prerequisite",
-    "Ruff and mypy are absent from the locked project",
-    "the unrelated P12B price snapshot remains stale"
+    "the unrelated P12B price snapshot remains stale",
+    "full suite rerun is pending against the newly provisioned isolated PostgreSQL instance"
   ],
   "production_write_count": 0
 }

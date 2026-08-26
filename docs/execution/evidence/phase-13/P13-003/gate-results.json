@@ -9,6 +9,7 @@
   "non_database_unit": {"passed": 322, "failed": 0},
   "non_database_non_stale_contract": {"passed": 226, "failed": 0},
   "compileall_passed": true,
+  "repository_type_gate_passed": true,
   "max_verified_days": 31,
   "max_verified_model_calls": 5,
   "partial_candidate_persisted": false,
