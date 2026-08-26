@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "mapping_id": "context-planner-v2-phase-13",
+  "owner_task": "P13-004",
+  "controls": [
+    {"harness_control_id":1,"failure_code":"context.policy_mismatch","test":"agent-service/tests/eval/test_context_planner_v2_contract.py","evidence":"docs/execution/evidence/phase-13/P13-004/context-planner-report.json"},
+    {"harness_control_id":8,"failure_code":"budget.global_exhausted","test":"agent-service/tests/integration/test_context_overflow_recovery.py","evidence":"docs/execution/evidence/phase-13/P13-003/negative-boundaries.json"},
+    {"harness_control_id":12,"failure_code":"context.required_slice_missing","test":"agent-service/tests/unit/runtime/test_context_planner.py","evidence":"docs/execution/evidence/phase-13/P13-001/negative-boundaries.json"},
+    {"harness_control_id":14,"failure_code":"context.clarification_required","test":"agent-service/tests/integration/test_context_overflow_recovery.py","evidence":"docs/execution/evidence/phase-13/P13-003/negative-boundaries.json"},
+    {"harness_control_id":22,"failure_code":"context.rehydration_denied","test":"agent-service/tests/unit/runtime/test_context_recovery.py","evidence":"docs/execution/evidence/phase-13/P13-003/recovery-report.json"},
+    {"harness_control_id":23,"failure_code":"validation.claim_unavailable","test":"agent-service/tests/integration/test_context_overflow_recovery.py","evidence":"docs/execution/evidence/phase-13/P13-003/negative-boundaries.json"},
+    {"harness_control_id":26,"failure_code":"segment.coverage_invalid","test":"agent-service/tests/unit/runtime/test_segment_plan.py","evidence":"docs/execution/evidence/phase-13/P13-003/segmentation-trace.json"},
+    {"harness_control_id":27,"failure_code":"context.injection_quoted","test":"agent-service/tests/integration/test_context_overflow_recovery.py","evidence":"docs/execution/evidence/phase-13/P13-003/negative-boundaries.json"},
+    {"harness_control_id":29,"failure_code":"metrics.contract_invalid","test":"agent-service/tests/unit/observability/test_metrics.py","evidence":"docs/execution/evidence/phase-13/P13-003/recovery-report.json"},
+    {"harness_control_id":30,"failure_code":"evaluation.context_report_invalid","test":"agent-service/tests/eval/test_context_planner_v2.py","evidence":"docs/execution/evidence/phase-13/P13-004/context-planner-report.json"},
+    {"harness_control_id":31,"failure_code":"feature.disabled","test":"agent-service/tests/contract/test_worker_production_composition.py","evidence":"docs/execution/evidence/phase-13/P13-004/release-state.json"}
+  ]
+}
