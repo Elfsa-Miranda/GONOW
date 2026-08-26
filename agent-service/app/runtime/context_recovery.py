@@ -57,6 +57,7 @@ class EvidenceRecoveryDecision:
     handles: tuple[ContextHandle, ...]
     compression_records: tuple[CompressionRecord, ...]
     deduplicated_evidence_ids: tuple[str, ...]
+    superseded_evidence_ids: tuple[str, ...]
     transform_log: tuple[dict[str, str], ...]
     digest: str
 
@@ -138,13 +139,34 @@ def compact_authorized_evidence(
     *,
     query_terms: tuple[str, ...],
     max_total_characters: int,
+    supersession: tuple[tuple[str, str], ...] = (),
 ) -> EvidenceRecoveryDecision:
     if max_total_characters < 1:
         raise ContextRecoveryError("context.recovery_budget_invalid")
+    by_id = {item.evidence_id: item for item in evidence}
+    superseded_ids = tuple(sorted(item[0] for item in supersession))
+    replacement_ids = tuple(item[1] for item in supersession)
+    if (
+        len(by_id) != len(evidence)
+        or len(superseded_ids) != len(set(superseded_ids))
+        or any(
+            old_id == replacement_id
+            or old_id not in by_id
+            or replacement_id not in by_id
+            for old_id, replacement_id in supersession
+        )
+        or set(superseded_ids) & set(replacement_ids)
+    ):
+        raise ContextRecoveryError("context.supersession_invalid")
     representatives: dict[str, SingleAgentKnowledgeEvidence] = {}
     deduplicated: list[str] = []
-    transforms: list[dict[str, str]] = []
+    transforms: list[dict[str, str]] = [
+        {"artifact_id": old_id, "action": "superseded"}
+        for old_id in superseded_ids
+    ]
     for item in sorted(evidence, key=lambda value: (value.source_ref, value.claim_id)):
+        if item.evidence_id in superseded_ids:
+            continue
         if item.sha256 in representatives:
             deduplicated.append(item.evidence_id)
             transforms.append(
@@ -202,6 +224,7 @@ def compact_authorized_evidence(
             }
             for item in records
         ],
+        "superseded_evidence_ids": list(superseded_ids),
     }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -211,6 +234,7 @@ def compact_authorized_evidence(
         handles=tuple(handles),
         compression_records=tuple(records),
         deduplicated_evidence_ids=tuple(sorted(deduplicated)),
+        superseded_evidence_ids=superseded_ids,
         transform_log=tuple(transforms),
         digest=digest,
     )

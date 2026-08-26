@@ -89,3 +89,30 @@ def test_omitted_evidence_has_handle_and_rehydration_rechecks_authority() -> Non
             resolver=lambda _: second.model_copy(update={"sha256": "f" * 64}),
             authorize=lambda _: True,
         )
+
+
+def test_supersession_requires_explicit_valid_provenance() -> None:
+    old = _evidence("1", "Old museum hours.")
+    current = _evidence("2", "Current museum hours.")
+    decision = compact_authorized_evidence(
+        (current, old),
+        query_terms=("museum",),
+        max_total_characters=100,
+        supersession=((old.evidence_id, current.evidence_id),),
+    )
+
+    assert decision.superseded_evidence_ids == (old.evidence_id,)
+    assert tuple(item.evidence_id for item in decision.included) == (
+        current.evidence_id,
+    )
+    assert decision.transform_log[0] == {
+        "artifact_id": old.evidence_id,
+        "action": "superseded",
+    }
+    with pytest.raises(ContextRecoveryError, match="context.supersession_invalid"):
+        compact_authorized_evidence(
+            (old,),
+            query_terms=("museum",),
+            max_total_characters=100,
+            supersession=((old.evidence_id, "ev_missing"),),
+        )
