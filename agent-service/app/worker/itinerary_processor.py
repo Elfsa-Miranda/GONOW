@@ -345,7 +345,12 @@ class _FixedEvidenceProvider:
     ) -> None:
         self._evidence = evidence
 
-    def retrieve(self, *, tenant_id: str, structured_input: dict[str, Any]):
+    def retrieve(
+        self,
+        *,
+        tenant_id: str,
+        structured_input: dict[str, Any],
+    ) -> tuple[SingleAgentKnowledgeEvidence, ...]:
         del tenant_id, structured_input
         return self._evidence
 
