@@ -99,6 +99,27 @@ def test_worker_composition_rejects_stage_runtime_without_context_planner(
         build_worker_runtime_from_environment()
 
 
+def test_worker_composition_rejects_overflow_recovery_without_stage_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "GONOW_DATABASE_URL",
+        "postgresql+pg8000://worker@127.0.0.1:55432/gonow_p03_test",
+    )
+    monkeypatch.setenv("GONOW_WORKER_TENANTS", "tenant-a")
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-gemini-credential")
+    monkeypatch.setenv("GONOW_CONTEXT_PLANNER_V2_ENABLED", "1")
+    monkeypatch.setenv(
+        "GONOW_CONTEXT_PLANNER_V2_POLICY_SHA256",
+        ContextPlanner().policy_digest,
+    )
+    monkeypatch.delenv("GONOW_CONTEXT_STAGE_RUNTIME_V2_ENABLED", raising=False)
+    monkeypatch.setenv("GONOW_CONTEXT_OVERFLOW_RECOVERY_V2_ENABLED", "1")
+
+    with pytest.raises(WorkerCompositionError):
+        build_worker_runtime_from_environment()
+
+
 def test_worker_composition_accepts_stage_runtime_with_exact_context_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -114,6 +135,28 @@ def test_worker_composition_accepts_stage_runtime_with_exact_context_policy(
         ContextPlanner().policy_digest,
     )
     monkeypatch.setenv("GONOW_CONTEXT_STAGE_RUNTIME_V2_ENABLED", "1")
+
+    runtime = build_worker_runtime_from_environment()
+    asyncio.run(check_lifecycle(runtime))
+    assert runtime.started is False
+
+
+def test_worker_composition_accepts_overflow_recovery_with_full_stack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "GONOW_DATABASE_URL",
+        "postgresql+pg8000://worker@127.0.0.1:55432/gonow_p03_test",
+    )
+    monkeypatch.setenv("GONOW_WORKER_TENANTS", "tenant-a")
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-gemini-credential")
+    monkeypatch.setenv("GONOW_CONTEXT_PLANNER_V2_ENABLED", "1")
+    monkeypatch.setenv(
+        "GONOW_CONTEXT_PLANNER_V2_POLICY_SHA256",
+        ContextPlanner().policy_digest,
+    )
+    monkeypatch.setenv("GONOW_CONTEXT_STAGE_RUNTIME_V2_ENABLED", "1")
+    monkeypatch.setenv("GONOW_CONTEXT_OVERFLOW_RECOVERY_V2_ENABLED", "1")
 
     runtime = build_worker_runtime_from_environment()
     asyncio.run(check_lifecycle(runtime))

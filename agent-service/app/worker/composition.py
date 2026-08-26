@@ -15,6 +15,7 @@ from app.worker.execution import DurableWorkerExecutor
 from app.worker.itinerary_processor import (
     GeminiItineraryProcessor,
     ItineraryStageRuntimePolicy,
+    OverflowRecoveryPolicy,
 )
 from app.worker.main import WorkerRuntime
 
@@ -89,6 +90,27 @@ def _stage_runtime_from_environment(
     return ItineraryStageRuntimePolicy()
 
 
+def _overflow_recovery_from_environment(
+    planner: ContextPlanner | None,
+    stage_runtime: ItineraryStageRuntimePolicy | None,
+) -> tuple[ItineraryStageRuntimePolicy | None, OverflowRecoveryPolicy | None]:
+    enabled = os.environ.get(
+        "GONOW_CONTEXT_OVERFLOW_RECOVERY_V2_ENABLED",
+        "0",
+    ).strip()
+    if enabled in {"", "0"}:
+        return stage_runtime, None
+    if enabled != "1" or planner is None or stage_runtime is None:
+        raise WorkerCompositionError()
+    return (
+        ItineraryStageRuntimePolicy(
+            max_total_tokens=250_000,
+            max_model_calls=5,
+        ),
+        OverflowRecoveryPolicy(),
+    )
+
+
 def build_worker_runtime_from_environment() -> WorkerRuntime:
     database_url = _required_environment("GONOW_DATABASE_URL")
     raw_tenants = _required_environment("GONOW_WORKER_TENANTS")
@@ -110,6 +132,12 @@ def build_worker_runtime_from_environment() -> WorkerRuntime:
     tenant_source = StaticTenantWorkSource(tenants)
     context_planner = _context_planner_from_environment()
     stage_runtime_policy = _stage_runtime_from_environment(context_planner)
+    stage_runtime_policy, overflow_recovery_policy = (
+        _overflow_recovery_from_environment(
+            context_planner,
+            stage_runtime_policy,
+        )
+    )
     engine = create_engine(database_url, pool_pre_ping=True)
     factory = sessionmaker(
         engine,
@@ -122,6 +150,7 @@ def build_worker_runtime_from_environment() -> WorkerRuntime:
             credentials=EnvironmentGeminiCredentialProvider(),
             context_planner=context_planner,
             stage_runtime_policy=stage_runtime_policy,
+            overflow_recovery_policy=overflow_recovery_policy,
         ),
     )
     return WorkerRuntime(
