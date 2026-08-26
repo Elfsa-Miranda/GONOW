@@ -336,6 +336,6 @@ def test_context_planner_policy_mismatch_prevents_model_call(
     points = processor.metrics.snapshot()["gonow_context_decisions_total"]
     assert points[0].labels == {
         "context_outcome": "blocked",
-        "context_policy": "itinerary-compose-v2",
+        "context_policy": "itinerary-six-stage-v2",
         "context_reason": "context.policy_mismatch",
     }
