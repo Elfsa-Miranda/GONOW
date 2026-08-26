@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-003",
+  "status": "focused_pass_full_gate_blocked",
+  "recovery_units": {"passed": 6, "failed": 0, "junit": "recovery-units.xml"},
+  "overflow_integration": {"passed": 6, "failed": 0, "junit": "overflow-integration.xml"},
+  "focused_regression": {"passed": 32, "failed": 0, "junit": "regression-focused.xml"},
+  "e0": {"passed": 8, "failed": 0, "junit": "e0-parity.xml"},
+  "non_database_unit": {"passed": 322, "failed": 0},
+  "non_database_non_stale_contract": {"passed": 226, "failed": 0},
+  "compileall_passed": true,
+  "max_verified_days": 31,
+  "max_verified_model_calls": 5,
+  "partial_candidate_persisted": false,
+  "database_clarification_test_collected": true,
+  "database_clarification_test_executed": false,
+  "claim_scope": "local deterministic mechanism and mocked-provider integration",
+  "production_write_count": 0
+}

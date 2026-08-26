@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-003",
+  "executed_at": "2026-08-27T03:16:41.3304791+08:00",
+  "executor": "codex-local-provisional",
+  "head_oid_before_evidence": "1e2c0296450df1f3a6fe1839773a6400be5d247b",
+  "commands": [
+    {"command": "uv run --frozen python -m pytest tests/unit/runtime/test_context_recovery.py tests/unit/runtime/test_segment_plan.py -q", "exit_code": 0, "result": "6 passed in 0.56s"},
+    {"command": "uv run --frozen python -m pytest tests/integration/test_context_overflow_recovery.py -q", "exit_code": 0, "result": "6 passed in 0.51s"},
+    {"command": "uv run --frozen python -m pytest tests/contract/test_worker_production_composition.py tests/integration/test_context_planner_itinerary.py tests/unit/observability/test_metrics.py -q", "exit_code": 0, "result": "32 passed in 0.78s"},
+    {"command": "uv run --frozen python -m pytest tests/eval/test_e0_parity.py -q", "exit_code": 0, "result": "8 passed in 1.34s"},
+    {"command": "uv run --frozen python -m compileall -q app tests", "exit_code": 0, "result": "passed"},
+    {"command": "uv run --frozen python -m pytest tests/unit -q", "exit_code": 1, "result": "322 passed; 9 setup errors from unavailable PostgreSQL on 127.0.0.1:55432"},
+    {"command": "uv run --frozen python -m pytest tests/contract -q --tb=no -k 'not p12b and not price_snapshot'", "exit_code": 1, "result": "226 passed, 22 deselected; 16 setup errors from unavailable PostgreSQL on 127.0.0.1:55432"},
+    {"command": "uv run --frozen python -m pytest tests/integration/test_runtime_composition.py::test_worker_clarification_transitions_to_waiting_without_candidate --collect-only -q", "exit_code": 0, "result": "1 test collected"}
+  ],
+  "unavailable_full_gate_reasons": [
+    "PostgreSQL/pgvector provisioning cannot build without the unavailable Visual Studio prerequisite",
+    "Ruff and mypy are absent from the locked project",
+    "the unrelated P12B price snapshot remains stale"
+  ],
+  "production_write_count": 0
+}

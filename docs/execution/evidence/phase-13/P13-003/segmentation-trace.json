@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-003",
+  "requested_days": 31,
+  "segment_ranges": [[1, 7], [8, 14], [15, 21], [22, 28], [29, 31]],
+  "segment_model_calls": 5,
+  "model_ledger_records": 5,
+  "stage_sequence": ["intake", "plan", "evidence", "compose", "validate", "complete"],
+  "global_day_sequence": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31],
+  "global_item_id_pattern": "item_d{absolute_day}_{ordinal}",
+  "global_merge_validation_count": 1,
+  "partial_failure_reached_validate": false,
+  "partial_failure_reached_complete": false,
+  "partial_candidate_persisted": false,
+  "production_write_count": 0
+}

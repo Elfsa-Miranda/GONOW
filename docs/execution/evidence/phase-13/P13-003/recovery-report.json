@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-003",
+  "policy_id": "itinerary-six-stage-v2",
+  "policy_digest": "1f7342470a2c5b2909a01a879ad6ca12cec2062b553ae0721418c19b37b9d53c",
+  "recovery_ladder": [
+    "content_digest_deduplication",
+    "relevance_projection",
+    "exact_sentence_span_compaction",
+    "authorized_context_handles",
+    "bounded_day_segmentation",
+    "typed_clarification",
+    "fail_closed"
+  ],
+  "extractive_compaction": {
+    "repeat_runs": 3,
+    "distinct_decision_digests": 1,
+    "source_span_verification": "exact",
+    "duplicate_projection_removed": true,
+    "abstractive_summary_used": false
+  },
+  "supersession": {
+    "requires_explicit_provenance_map": true,
+    "infers_latest_from_hash_or_input_order": false,
+    "invalid_or_cyclic_map_fails_closed": true
+  },
+  "progressive_disclosure": {
+    "omitted_evidence_has_content_addressed_handle": true,
+    "rehydration_reauthorizes": true,
+    "rehydration_rechecks_source_digest": true,
+    "rehydration_rechecks_claim_identity": true,
+    "denied_or_stale_rehydration_fails_closed": true
+  },
+  "telemetry_outcomes": ["compacted", "needs_clarification"],
+  "raw_context_retained_in_metrics": false,
+  "production_write_count": 0
+}

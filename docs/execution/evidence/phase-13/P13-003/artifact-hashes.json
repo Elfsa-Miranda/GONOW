@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-003",
+  "hash_algorithm": "SHA-256",
+  "head_oid_before_evidence": "1e2c0296450df1f3a6fe1839773a6400be5d247b",
+  "artifacts": [
+    {"path": "agent-service/app/runtime/context_recovery.py", "sha256": "16f8b53f4401d825cd3a9a2660bb0a52d938ba0c703df0daa938354afb5c28c1", "size_bytes": 8890},
+    {"path": "agent-service/app/runtime/segment_plan.py", "sha256": "d7e578d123011756b954cabf0862ac28b2a178fc6dfc545e1fd6ccb5f1e1f77b", "size_bytes": 4771},
+    {"path": "agent-service/app/runtime/context_planner.py", "sha256": "da3ab89fd394610e1cc1235f0cbdc1260b1f338127c66b594afcd1e6a3c9165d", "size_bytes": 19340},
+    {"path": "agent-service/app/worker/itinerary_processor.py", "sha256": "7b504591757236335f77f8f9039ab1d676abc08e6b0fbc8c916a7892e98d273d", "size_bytes": 52310},
+    {"path": "agent-service/app/worker/execution.py", "sha256": "229536d0922ec7f5eab59843efde42078272f69d0227bac2cfae1cb01e24f76d", "size_bytes": 17270},
+    {"path": "agent-service/app/worker/composition.py", "sha256": "e7f05c4a6f094a927e5d68f651dcee62850df8a1c486987fabe8f10254205f20", "size_bytes": 5474},
+    {"path": "agent-service/app/observability/metrics.py", "sha256": "65fc6e0140cef3bf979557f01bac7639ce7c5aeb47e324982827ac0bc0482c14", "size_bytes": 7939},
+    {"path": "agent-service/tests/unit/runtime/test_context_recovery.py", "sha256": "957da190a27d6766476589abd08454bf1d68f64bd4fe49b6db0644c118cd8549", "size_bytes": 4149},
+    {"path": "agent-service/tests/unit/runtime/test_segment_plan.py", "sha256": "abbc92ba026e41f6d6042b2359df9bac9607307b20e84ca0c64601cd61a7e3e7", "size_bytes": 3001},
+    {"path": "agent-service/tests/integration/test_context_overflow_recovery.py", "sha256": "0452b44ebc42c0bcccb6f0241029d47fb694f2b5ad870a5aff77253af35d193e", "size_bytes": 10850},
+    {"path": "agent-service/tests/integration/test_runtime_composition.py", "sha256": "e9f8c5029d4c0aff8974e9ec3ee22efb5b571e5a574e5f2338425f7e824335cd", "size_bytes": 40137},
+    {"path": "agent-service/tests/contract/test_worker_production_composition.py", "sha256": "19eaef285677e426e05a9b1f7b5a7b839d40d050d9f79dd418af3cce06b19916", "size_bytes": 6544}
+  ],
+  "production_write_count": 0
+}
