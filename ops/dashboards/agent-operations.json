@@ -19,6 +19,7 @@
   "panels": [
     {"title": "Run completions", "metric": "gonow_run_completed_total", "type": "counter", "unit": "count", "owner": "SRE"},
     {"title": "Run duration", "metric": "gonow_run_duration_ms", "type": "histogram", "unit": "ms", "owner": "SRE"},
+    {"title": "Stage transitions", "metric": "gonow_stage_transitions_total", "type": "counter", "unit": "count", "owner": "Agent Platform"},
     {"title": "Tool calls", "metric": "gonow_tool_calls_total", "type": "counter", "unit": "count", "owner": "Agent Platform"},
     {"title": "Tool duration", "metric": "gonow_tool_duration_ms", "type": "histogram", "unit": "ms", "owner": "Agent Platform"},
     {"title": "Context tokens", "metric": "gonow_context_tokens", "type": "gauge", "unit": "token", "owner": "Agent Platform"},

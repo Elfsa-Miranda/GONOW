@@ -30,7 +30,8 @@ LABEL_VALUE_DOMAINS: dict[str, frozenset[str]] = {
         "context.stage_unsupported",
         "context.tokenizer_unavailable",
     }),
-    "context_policy": frozenset({"itinerary-compose-v2"}),
+    "context_policy": frozenset({"itinerary-compose-v2", "itinerary-six-stage-v2"}),
+    "stage": frozenset({"intake", "plan", "evidence", "compose", "validate", "complete"}),
 }
 
 
@@ -63,6 +64,7 @@ class MetricDefinition(BaseModel):
 REQUIRED_METRICS = (
     MetricDefinition(name="gonow_run_completed_total", domain="run", kind="counter", unit="count", owner="SRE", description="Completed runs by bounded outcome.", label_keys=("outcome",), critical=True),
     MetricDefinition(name="gonow_run_duration_ms", domain="run", kind="histogram", unit="ms", owner="SRE", description="End-to-end run duration.", label_keys=("outcome",), buckets=(100.0, 500.0, 2_000.0, 10_000.0, 60_000.0), critical=True),
+    MetricDefinition(name="gonow_stage_transitions_total", domain="run", kind="counter", unit="count", owner="Agent Platform", description="Entered in-process itinerary stages by fixed stage identity.", label_keys=("stage",), critical=True),
     MetricDefinition(name="gonow_tool_calls_total", domain="tool", kind="counter", unit="count", owner="Agent Platform", description="Tool calls by bounded class and outcome.", label_keys=("tool_class", "outcome"), critical=True),
     MetricDefinition(name="gonow_tool_duration_ms", domain="tool", kind="histogram", unit="ms", owner="Agent Platform", description="Tool-call latency by bounded class.", label_keys=("tool_class",), buckets=(25.0, 100.0, 500.0, 2_000.0, 10_000.0)),
     MetricDefinition(name="gonow_context_tokens", domain="context", kind="gauge", unit="token", owner="Agent Platform", description="Current bounded context-token usage."),
