@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "manifest_sha256": "47a676d23a4895cde4875cf9ac9be79ea1f132f7325b428760710a033f3cc38d",
+  "release_gate_sha256": "36287a07e6804b407737630f5a1cf2017291d00fb2a4d94b8dfcdc5ae0f78d70",
+  "policy_id": "itinerary-six-stage-v2",
+  "policy_sha256": "1f7342470a2c5b2909a01a879ad6ca12cec2062b553ae0721418c19b37b9d53c",
+  "runner_version": "context-paired-runner-v1",
+  "frozen_at": "2026-08-27T03:25:00+08:00"
+}
