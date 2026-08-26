@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-002",
+  "policy_id": "itinerary-six-stage-v2",
+  "policy_digest": "1f7342470a2c5b2909a01a879ad6ca12cec2062b553ae0721418c19b37b9d53c",
+  "stage_sequence": ["intake", "plan", "evidence", "compose", "validate", "complete"],
+  "step_counts": [0, 1, 2, 3, 4, 5],
+  "model_call_counts": [0, 0, 0, 0, 1, 1],
+  "tool_call_counts": [0, 0, 0, 0, 0, 0],
+  "remaining_tokens": [32768, 32768, 32768, 32768, 32688, 32688],
+  "model_gateway_call_count": 1,
+  "model_ledger_records": [
+    {"status": "succeeded", "input_tokens": 50, "output_tokens": 30}
+  ],
+  "authorized_provider_call_count": 1,
+  "context_decision_count": 6,
+  "candidate_status": "candidate",
+  "production_write_count": 0
+}
