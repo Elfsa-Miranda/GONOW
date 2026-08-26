@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-001",
+  "fixture": "test_context_planner_itinerary_enabled_and_feature_off_paths",
+  "disabled_prompt_equals_legacy_prompt_builder": true,
+  "disabled_metrics_empty": true,
+  "enabled_and_disabled_candidate_equal": true,
+  "enabled_authorized_claim_count": 3,
+  "enabled_included_claim_count": 2,
+  "enabled_omitted_claim_count": 1,
+  "omitted_claim_absent_from_model_prompt": true,
+  "omitted_claim_rejected_by_output_validation": true,
+  "raw_context_or_claim_text_in_metrics": false,
+  "production_write_count": 0
+}
