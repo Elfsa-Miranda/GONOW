@@ -34,6 +34,8 @@ class ContextArtifactKind(StrEnum):
 
 class ContextDecisionStatus(StrEnum):
     COMPILED = "compiled"
+    COMPACTED = "compacted"
+    NEEDS_CLARIFICATION = "needs_clarification"
     BLOCKED = "blocked"
 
 

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import math
+import re
 import time
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 
@@ -69,6 +72,18 @@ from app.runtime.context_planner import (
     ContextPlanner,
     deterministic_token_count,
 )
+from app.runtime.context_recovery import compact_authorized_evidence
+from app.runtime.interrupts import (
+    MissingInfoInputKind,
+    MissingInfoInterrupt,
+    MissingInfoRequest,
+)
+from app.runtime.segment_plan import (
+    SegmentMergeError,
+    SegmentOutput,
+    build_segment_plan,
+    merge_segment_outputs,
+)
 from app.runtime.state import BudgetSnapshot, StateReference, WorkflowStage
 from app.runtime.task_contract import (
     HARD_CONSTRAINT_SEMANTICS,
@@ -83,7 +98,11 @@ from app.rag.single_agent import (
     SingleAgentKnowledgeProvider,
     select_used_citations,
 )
-from app.worker.execution import ClaimedItineraryJob, WorkerExecutionError
+from app.worker.execution import (
+    ClaimedItineraryJob,
+    WorkerClarificationRequired,
+    WorkerExecutionError,
+)
 
 
 ITINERARY_RESPONSE_SCHEMA: dict[str, Any] = {
@@ -269,6 +288,7 @@ class ItineraryStageRuntimePolicy:
     """In-process fuse policy; durable recovery remains at the Job boundary."""
 
     max_total_tokens: int = 32_768
+    max_model_calls: int = 1
     deadline_seconds: float = 60.0
 
     def __post_init__(self) -> None:
@@ -276,12 +296,34 @@ class ItineraryStageRuntimePolicy:
             isinstance(self.max_total_tokens, bool)
             or not isinstance(self.max_total_tokens, int)
             or self.max_total_tokens < 1
+            or isinstance(self.max_model_calls, bool)
+            or not isinstance(self.max_model_calls, int)
+            or self.max_model_calls < 1
             or isinstance(self.deadline_seconds, bool)
             or not isinstance(self.deadline_seconds, (int, float))
             or not math.isfinite(self.deadline_seconds)
             or self.deadline_seconds <= 0
         ):
             raise WorkerExecutionError("budget.policy_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class OverflowRecoveryPolicy:
+    max_evidence_characters: int = 4_000
+    max_days_per_segment: int = 7
+    max_segments: int = 5
+
+    def __post_init__(self) -> None:
+        values = (
+            self.max_evidence_characters,
+            self.max_days_per_segment,
+            self.max_segments,
+        )
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 1
+            for value in values
+        ):
+            raise WorkerExecutionError("context.recovery_policy_invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +336,18 @@ class StageObservation:
 
 
 StageObserver = Callable[[StageObservation], None]
+
+
+class _FixedEvidenceProvider:
+    def __init__(
+        self,
+        evidence: tuple[SingleAgentKnowledgeEvidence, ...],
+    ) -> None:
+        self._evidence = evidence
+
+    def retrieve(self, *, tenant_id: str, structured_input: dict[str, Any]):
+        del tenant_id, structured_input
+        return self._evidence
 
 
 def _stage_observation(state: InProcessStageState) -> StageObservation:
@@ -316,6 +370,24 @@ def _evidence_references(
             sha256=item.sha256,
         )
         for item in sorted(evidence, key=lambda candidate: candidate.claim_id)
+    )
+
+
+def _task_query_terms(task_contract: ItineraryTaskContract) -> tuple[str, ...]:
+    material = " ".join(
+        (
+            task_contract.origin,
+            task_contract.destination,
+            *(item.code for item in task_contract.hard_semantics),
+        )
+    )
+    return tuple(
+        sorted(
+            {
+                value.casefold()
+                for value in re.findall(r"[\w-]{2,}", material, flags=re.UNICODE)
+            }
+        )
     )
 
 
@@ -524,6 +596,8 @@ class GeminiItineraryProcessor:
         metrics: OperationalMetrics | None = None,
         stage_runtime_policy: ItineraryStageRuntimePolicy | None = None,
         stage_observer: StageObserver | None = None,
+        overflow_recovery_policy: OverflowRecoveryPolicy | None = None,
+        _defer_gateway_validation: bool = False,
     ) -> None:
         if (
             isinstance(context_window_tokens, bool)
@@ -538,6 +612,17 @@ class GeminiItineraryProcessor:
             raise WorkerExecutionError("context.policy_mismatch")
         if stage_observer is not None and not callable(stage_observer):
             raise WorkerExecutionError("worker.dependencies_unavailable")
+        if not isinstance(_defer_gateway_validation, bool):
+            raise WorkerExecutionError("worker.dependencies_unavailable")
+        if (
+            overflow_recovery_policy is not None
+            and (
+                stage_runtime_policy is None
+                or stage_runtime_policy.max_model_calls
+                < overflow_recovery_policy.max_segments
+            )
+        ):
+            raise WorkerExecutionError("context.recovery_policy_invalid")
         self._credentials = credentials or EnvironmentGeminiCredentialProvider()
         self._client = client
         self._clock = clock
@@ -556,6 +641,8 @@ class GeminiItineraryProcessor:
         self.metrics = metrics or OperationalMetrics()
         self._stage_runtime_policy = stage_runtime_policy
         self._stage_observer = stage_observer or (lambda _: None)
+        self._overflow_recovery_policy = overflow_recovery_policy
+        self._defer_gateway_validation = _defer_gateway_validation
         self.last_route_decision: CostRouteDecision | None = None
 
     @staticmethod
@@ -640,6 +727,228 @@ class GeminiItineraryProcessor:
         )
         self._stage_observer(observation)
 
+    def _clarification_required(
+        self,
+        job: ClaimedItineraryJob,
+    ) -> WorkerClarificationRequired:
+        self._record_recovery_outcome(
+            ContextDecisionStatus.NEEDS_CLARIFICATION,
+            "context.clarification_required",
+        )
+        interrupt = MissingInfoInterrupt(
+            kind="missing_info",
+            interrupt_id=uuid5(
+                NAMESPACE_URL,
+                f"gonow:context-clarification:{job.claim.run_id}",
+            ),
+            run_id=job.claim.run_id,
+            created_at=datetime.fromtimestamp(self._wall_clock(), tz=timezone.utc),
+            ui_message_key="interrupt.context_clarification.title",
+            requests=(
+                MissingInfoRequest(
+                    field_key="context_recovery_choice",
+                    label_key="interrupt.field.context_recovery",
+                    input_kind=MissingInfoInputKind.CHOICE,
+                    required=True,
+                    option_keys=(
+                        "context.reduce_detail",
+                        "context.prioritize_constraints",
+                        "context.authorize_larger_budget",
+                    ),
+                ),
+            ),
+        )
+        return WorkerClarificationRequired(interrupt)
+
+    def _process_segmented(
+        self,
+        job: ClaimedItineraryJob,
+        *,
+        evidence: tuple[SingleAgentKnowledgeEvidence, ...],
+        task_contract: ItineraryTaskContract,
+        stage_graph: BoundedItineraryPlanningGraph,
+        stage_state: InProcessStageState,
+    ) -> ItineraryCandidate:
+        policy = self._overflow_recovery_policy
+        if policy is None:
+            raise WorkerExecutionError("context.recovery_policy_invalid")
+        try:
+            plan = build_segment_plan(
+                requested_days=task_contract.days,
+                max_days_per_segment=policy.max_days_per_segment,
+                max_segments=policy.max_segments,
+            )
+        except SegmentMergeError as error:
+            if error.code in {
+                "context.clarification_required",
+                "context.segment_count_exceeded",
+            }:
+                raise self._clarification_required(job) from error
+            raise WorkerExecutionError(error.code) from error
+        maximum_segment_output = itinerary_max_output_tokens(
+            min(task_contract.days, policy.max_days_per_segment)
+        )
+        try:
+            stage_graph.preflight(
+                stage_state,
+                PlanningStep(
+                    next_stage=WorkflowStage.VALIDATE,
+                    model_calls=len(plan.segments),
+                    tokens=len(plan.segments)
+                    * (self._context_window_tokens + maximum_segment_output),
+                ),
+            )
+        except (BudgetExceeded, PlanningGraphError) as error:
+            raise self._clarification_required(job) from error
+
+        ledger_start = len(self.ledger.records)
+        segment_outputs: list[SegmentOutput] = []
+        citations_by_claim: dict[str, Any] = {}
+        source_start = date.fromisoformat(str(job.structured_input["starts_on"]))
+        for segment in plan.segments:
+            structured = dict(job.structured_input)
+            structured.update(
+                {
+                    "starts_on": (
+                        source_start + timedelta(days=segment.start_day - 1)
+                    ).isoformat(),
+                    "days": segment.day_count,
+                    "global_task_contract_sha256": task_contract.sha256,
+                    "segment_id": segment.segment_id,
+                    "segment_absolute_start_day": segment.start_day,
+                    "segment_absolute_end_day": segment.end_day,
+                    "segment_boundary_summary": (
+                        f"absolute days {segment.start_day}-{segment.end_day}"
+                    ),
+                }
+            )
+            child = GeminiItineraryProcessor(
+                credentials=self._credentials,
+                client=self._client,
+                clock=self._clock,
+                ledger=self.ledger,
+                rag_enabled=bool(evidence),
+                knowledge_provider=_FixedEvidenceProvider(evidence),
+                cost_routing=self._cost_routing,
+                deepseek_credentials=self._deepseek_credentials,
+                deepseek_client=self._deepseek_client,
+                wall_clock=self._wall_clock,
+                context_planner=self._context_planner,
+                context_window_tokens=self._context_window_tokens,
+                context_safety_tokens=self._context_safety_tokens,
+                metrics=self.metrics,
+                _defer_gateway_validation=True,
+            )
+            segment_candidate = child.process(
+                replace(job, structured_input=structured)
+            )
+            absolute_days: list[dict[str, object]] = []
+            for local_day in segment_candidate.days:
+                absolute_day = segment.start_day + local_day.day_number - 1
+                absolute_days.append(
+                    {
+                        "day_number": absolute_day,
+                        "items": [
+                            {
+                                **item.model_dump(mode="json"),
+                                "item_id": f"item_d{absolute_day}_{ordinal}",
+                            }
+                            for ordinal, item in enumerate(local_day.items, start=1)
+                        ],
+                    }
+                )
+            output = ValidatedItineraryOutput.model_validate(
+                {"title": segment_candidate.title, "days": absolute_days}
+            )
+            included_claim_ids = tuple(
+                sorted(citation.claim_id for citation in segment_candidate.citations)
+            )
+            segment_outputs.append(
+                SegmentOutput(
+                    segment_id=segment.segment_id,
+                    output=output,
+                    included_claim_ids=included_claim_ids,
+                )
+            )
+            for citation in segment_candidate.citations:
+                citations_by_claim[citation.claim_id] = citation
+
+        actual_tokens = sum(
+            record.input_tokens + record.output_tokens
+            for record in self.ledger.records[ledger_start:]
+            if record.status == "succeeded"
+        )
+        draft_digest = hashlib.sha256(
+            json.dumps(
+                [
+                    [item.segment_id, item.output.model_dump(mode="json")]
+                    for item in segment_outputs
+                ],
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        try:
+            stage_state = stage_graph.advance_in_process(
+                stage_state,
+                PlanningStep(
+                    next_stage=WorkflowStage.VALIDATE,
+                    model_calls=len(plan.segments),
+                    tokens=actual_tokens,
+                ),
+                references=StageReferenceDelta(
+                    candidate_draft_ref=StateReference(
+                        kind="candidate",
+                        uri=f"candidate://segments/sha256/{draft_digest}",
+                        sha256=draft_digest,
+                    ),
+                ),
+            )
+            self._observe_stage(stage_state)
+            merged = merge_segment_outputs(
+                plan,
+                tuple(segment_outputs),
+                title=segment_outputs[0].output.title,
+            )
+        except (BudgetExceeded, PlanningGraphError, SegmentMergeError) as error:
+            raise WorkerExecutionError(getattr(error, "code", "segment.output_invalid")) from error
+        self._validate_business_shape(
+            merged,
+            job.structured_input,
+            frozenset(citations_by_claim),
+        )
+        draft = _candidate_draft_artifact(
+            merged,
+            output_ref=f"candidate://segments/sha256/{draft_digest}",
+        )
+        task = _context_artifacts(job, (), task_contract=task_contract)[0]
+        self._plan_stage_context(
+            job,
+            stage=WorkflowStage.VALIDATE,
+            artifacts=(task, draft),
+        )
+        try:
+            stage_state = stage_graph.advance_in_process(
+                stage_state,
+                PlanningStep(next_stage=WorkflowStage.COMPLETE),
+            )
+        except (BudgetExceeded, PlanningGraphError) as error:
+            raise WorkerExecutionError(error.code) from error
+        self._observe_stage(stage_state)
+        self._plan_stage_context(
+            job,
+            stage=WorkflowStage.COMPLETE,
+            artifacts=(draft,),
+        )
+        return CandidateProjector().project(
+            run_id=str(job.claim.run_id),
+            behavior_digest=job.behavior_digest,
+            input_digest=job.input_digest,
+            output=merged,
+            citations=tuple(citations_by_claim[key] for key in sorted(citations_by_claim)),
+        )
+
     def process(self, job: ClaimedItineraryJob) -> ItineraryCandidate:
         stage_graph: BoundedItineraryPlanningGraph | None = None
         stage_state: InProcessStageState | None = None
@@ -660,7 +969,7 @@ class GeminiItineraryProcessor:
             )
             stage_state = InProcessStageState(
                 budget=BudgetSnapshot(
-                    remaining_model_calls=1,
+                    remaining_model_calls=self._stage_runtime_policy.max_model_calls,
                     remaining_tool_calls=0,
                     remaining_tokens=self._stage_runtime_policy.max_total_tokens,
                 )
@@ -739,6 +1048,20 @@ class GeminiItineraryProcessor:
                 evidence
             ):
                 raise WorkerExecutionError()
+        if self._overflow_recovery_policy is not None and task_contract is not None:
+            recovery = compact_authorized_evidence(
+                evidence,
+                query_terms=_task_query_terms(task_contract),
+                max_total_characters=(
+                    self._overflow_recovery_policy.max_evidence_characters
+                ),
+            )
+            evidence = recovery.included
+            if recovery.transform_log:
+                self._record_recovery_outcome(
+                    ContextDecisionStatus.COMPACTED,
+                    "context.extractive_compaction",
+                )
         if stage_graph is not None and stage_state is not None:
             try:
                 stage_state = stage_graph.advance_in_process(
@@ -751,6 +1074,21 @@ class GeminiItineraryProcessor:
             except PlanningGraphError as error:
                 raise WorkerExecutionError(error.code) from error
             self._observe_stage(stage_state)
+        if (
+            self._overflow_recovery_policy is not None
+            and task_contract is not None
+            and stage_graph is not None
+            and stage_state is not None
+            and task_contract.days
+            > self._overflow_recovery_policy.max_days_per_segment
+        ):
+            return self._process_segmented(
+                job,
+                evidence=evidence,
+                task_contract=task_contract,
+                stage_graph=stage_graph,
+                stage_state=stage_state,
+            )
         requested_days = int(job.structured_input.get("days", 0))
         max_output_tokens = itinerary_max_output_tokens(requested_days)
         if self._context_planner is None:
@@ -774,7 +1112,7 @@ class GeminiItineraryProcessor:
         input_ref = f"context://sha256/{input_sha256}"
         output_validator = (
             (lambda _: ())
-            if stage_graph is not None
+            if stage_graph is not None or self._defer_gateway_validation
             else lambda payload: itinerary_business_rule_codes(
                 payload,
                 job.structured_input,
@@ -984,3 +1322,20 @@ class GeminiItineraryProcessor:
                 "gonow_context_utilization",
                 decision.token_count / decision.token_limit,
             )
+
+    def _record_recovery_outcome(
+        self,
+        status: ContextDecisionStatus,
+        reason_code: str,
+    ) -> None:
+        self.metrics.record(
+            "gonow_context_decisions_total",
+            1,
+            {
+                "context_outcome": status.value,
+                "context_policy": self._context_planner.policy_id
+                if self._context_planner is not None
+                else "itinerary-compose-v2",
+                "context_reason": reason_code,
+            },
+        )
