@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import json
 from typing import Any, Protocol
 
 from sqlalchemy import func, select
@@ -18,12 +19,14 @@ from app.persistence.repositories.jobs import JobClaim, JobsRepository
 from app.persistence.repositories.runs import RunsRepository
 from app.runtime.behavior_manifest import BehaviorManifestError, digest_behavior_manifest
 from app.runtime.candidate import ItineraryCandidate
+from app.runtime.interrupts import MissingInfoInterrupt, interrupt_json
 from app.worker.job_runner import ClaimState, DurableJobRunner
 
 
 class WorkerExecutionState(StrEnum):
     EMPTY = "empty"
     SUCCEEDED = "succeeded"
+    WAITING_INPUT = "waiting_input"
     CANCELLED = "cancelled"
     FAILED = "failed"
 
@@ -35,6 +38,14 @@ class WorkerExecutionError(RuntimeError):
     def __init__(self, code: str = default_code) -> None:
         self.code = code
         super().__init__(code)
+
+
+class WorkerClarificationRequired(WorkerExecutionError):
+    code = "context.clarification_required"
+
+    def __init__(self, interrupt: MissingInfoInterrupt) -> None:
+        self.interrupt = interrupt
+        super().__init__(self.code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +118,12 @@ class DurableWorkerExecutor:
                 candidate=candidate,
                 audit_receipt_id=audit_receipt_id,
             )
+        except WorkerClarificationRequired as error:
+            return self._wait_for_input(
+                claim=claim,
+                interrupt=error.interrupt,
+                audit_receipt_id=audit_receipt_id,
+            )
         except WorkerExecutionError as error:
             self._fail(
                 claim=claim,
@@ -121,6 +138,67 @@ class DurableWorkerExecutor:
                 reason_code=WorkerExecutionError.default_code,
             )
             raise WorkerExecutionError() from error
+
+    def _wait_for_input(
+        self,
+        *,
+        claim: JobClaim,
+        interrupt: MissingInfoInterrupt,
+        audit_receipt_id: str,
+    ) -> WorkerExecutionResult:
+        with self._session_factory.begin() as session:
+            self._set_tenant(session, claim.tenant_id)
+            jobs = JobsRepository(session)
+            jobs.assert_fence(
+                tenant_id=claim.tenant_id,
+                job_id=claim.job_id,
+                holder_id=claim.holder_id,
+                fencing_token=claim.fencing_token,
+            )
+            run = session.execute(
+                select(RunRecord)
+                .where(
+                    RunRecord.tenant_id == claim.tenant_id,
+                    RunRecord.run_id == claim.run_id,
+                )
+                .with_for_update()
+            ).scalar_one()
+            if RunState(run.state) is not RunState.RUNNING:
+                raise WorkerExecutionError()
+            EventsRepository(session).append(
+                tenant_id=claim.tenant_id,
+                run_id=claim.run_id,
+                event_type="interrupt.requested",
+                payload={"interrupt": json.loads(interrupt_json(interrupt))},
+                audit_receipt_id=audit_receipt_id,
+            )
+            RunsRepository(session).transition_state(
+                tenant_id=claim.tenant_id,
+                run_id=claim.run_id,
+                expected_state=RunState.RUNNING,
+                expected_version=run.version,
+                target_state=RunState.WAITING_INPUT,
+            )
+            job = session.execute(
+                select(JobRecord)
+                .where(
+                    JobRecord.tenant_id == claim.tenant_id,
+                    JobRecord.job_id == claim.job_id,
+                )
+                .with_for_update()
+            ).scalar_one()
+            job.status = "completed"
+            job.updated_at = func.statement_timestamp()
+            jobs.release_lease(
+                tenant_id=claim.tenant_id,
+                job_id=claim.job_id,
+                holder_id=claim.holder_id,
+                fencing_token=claim.fencing_token,
+            )
+            return WorkerExecutionResult(
+                state=WorkerExecutionState.WAITING_INPUT,
+                claim=claim,
+            )
 
     def _prepare(
         self,

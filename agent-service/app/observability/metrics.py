@@ -21,7 +21,9 @@ LABEL_VALUE_DOMAINS: dict[str, frozenset[str]] = {
     "tool_class": frozenset({"weather", "map", "search", "solver", "domain_command"}),
     "validation_result": frozenset({"valid", "warning", "invalid", "unverified"}),
     "recovery_reason": frozenset({"lease_expired", "worker_restart", "dependency_timeout", "cancel"}),
-    "context_outcome": frozenset({"compiled", "blocked"}),
+    "context_outcome": frozenset(
+        {"compiled", "compacted", "needs_clarification", "blocked"}
+    ),
     "context_reason": frozenset({
         "none",
         "context.input_invalid",
@@ -29,6 +31,8 @@ LABEL_VALUE_DOMAINS: dict[str, frozenset[str]] = {
         "context.required_slice_missing",
         "context.stage_unsupported",
         "context.tokenizer_unavailable",
+        "context.extractive_compaction",
+        "context.clarification_required",
     }),
     "context_policy": frozenset({"itinerary-compose-v2", "itinerary-six-stage-v2"}),
     "stage": frozenset({"intake", "plan", "evidence", "compose", "validate", "complete"}),

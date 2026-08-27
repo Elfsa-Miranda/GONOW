@@ -75,11 +75,17 @@ from app.runtime.candidate import (  # noqa: E402
 from app.runtime.cancellation import CancellationService  # noqa: E402
 from app.runtime.behavior_manifest import COMPONENTS, digest_behavior_manifest  # noqa: E402
 from app.runtime.behavior_package import RunBehaviorPin  # noqa: E402
+from app.runtime.interrupts import (  # noqa: E402
+    MissingInfoInputKind,
+    MissingInfoInterrupt,
+    MissingInfoRequest,
+)
 from app.runtime.run_start import RunStartService  # noqa: E402
 from app.runtime.resume import ResumeTransitionService  # noqa: E402
 from app.worker.execution import (  # noqa: E402
     ClaimedItineraryJob,
     DurableWorkerExecutor,
+    WorkerClarificationRequired,
     WorkerExecutionState,
 )
 from app.worker.lease import DurableLeaseCoordinator  # noqa: E402
@@ -174,6 +180,31 @@ class _CandidateProcessor:
         if self._before_return is not None:
             self._before_return(job)
         return candidate
+
+
+class _ClarificationProcessor:
+    def process(self, job: ClaimedItineraryJob):
+        raise WorkerClarificationRequired(
+            MissingInfoInterrupt(
+                kind="missing_info",
+                interrupt_id=UUID("00000000-0000-4000-8000-000000000909"),
+                run_id=job.claim.run_id,
+                created_at=datetime(2026, 8, 27, tzinfo=UTC),
+                ui_message_key="interrupt.context_clarification.title",
+                requests=(
+                    MissingInfoRequest(
+                        field_key="context_recovery_choice",
+                        label_key="interrupt.field.context_recovery",
+                        input_kind=MissingInfoInputKind.CHOICE,
+                        required=True,
+                        option_keys=(
+                            "context.reduce_detail",
+                            "context.prioritize_constraints",
+                        ),
+                    ),
+                ),
+            )
+        )
 
 
 def _pin(seed: str) -> RunBehaviorPin:
@@ -810,6 +841,51 @@ async def test_worker_claim_persists_candidate_and_converges_terminal(runtime_da
     assert owner.json()["candidate_id"] == candidate.candidate_id
     assert other_tenant.status_code == 403
     assert other_tenant.json()["error"]["code"] == "auth.forbidden"
+
+
+def test_worker_clarification_transitions_to_waiting_without_candidate(
+    runtime_database,
+) -> None:
+    _, _, api_factory, worker_factory = runtime_database
+    started = RunStartService(
+        api_factory,
+        behavior_pin=_PinProvider(_pin("8")),
+    ).start(
+        context=_context(TENANT_A),
+        thread_id=uuid4(),
+        idempotency_key="worker-clarification-source-0001",
+        structured_input=_body(uuid4())["itinerary"],  # type: ignore[arg-type]
+    )
+
+    result = DurableWorkerExecutor(
+        worker_factory,
+        processor=_ClarificationProcessor(),
+    ).execute_once(
+        tenant_id=TENANT_A,
+        holder_id="worker-p10-clarification",
+        audit_receipt_id="audit-worker-p10-clarification",
+    )
+
+    with worker_factory.begin() as session:
+        session.execute(select(func.set_config("app.tenant_id", TENANT_A, True)))
+        run = session.scalar(select(RunRecord).where(RunRecord.run_id == started.run_id))
+        job = session.scalar(select(JobRecord).where(JobRecord.run_id == started.run_id))
+        candidates = session.scalars(
+            select(CandidateRecord).where(CandidateRecord.run_id == started.run_id)
+        ).all()
+        events = session.scalars(
+            select(EventRecord)
+            .where(EventRecord.run_id == started.run_id)
+            .order_by(EventRecord.seq)
+        ).all()
+
+    assert result.state is WorkerExecutionState.WAITING_INPUT
+    assert run is not None and run.state == RunState.WAITING_INPUT.value
+    assert job is not None and job.status == "completed"
+    assert candidates == []
+    assert events[-1].event_type == "interrupt.requested"
+    assert events[-1].payload["interrupt"]["kind"] == "missing_info"
+    assert "prompt" not in json.dumps(events[-1].payload)
 
 
 def test_real_gemini_adapter_composes_through_postgresql_worker_boundary(

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-003",
+  "boundaries": [
+    {"case": "second_segment_model_failure", "expected": "no validate, complete, or candidate", "observed": "passed"},
+    {"case": "claim_from_omitted_evidence", "expected": "validation.business_rules", "observed": "passed"},
+    {"case": "prompt_injection_in_authorized_evidence", "expected": "quoted as untrusted data across all segments", "observed": "passed"},
+    {"case": "aggregate_token_preflight_exceeded", "expected": "typed missing_info clarification before model call", "observed": "passed"},
+    {"case": "segment_count_exceeded", "expected": "typed missing_info clarification before model call", "observed": "passed"},
+    {"case": "rehydration_authorization_denied", "expected": "context.rehydration_denied", "observed": "passed"},
+    {"case": "rehydration_digest_stale", "expected": "context.rehydration_stale", "observed": "passed"},
+    {"case": "durable_waiting_input", "expected": "RUNNING to WAITING_INPUT, completed source job, no Candidate", "observed": "test collected; execution blocked by PostgreSQL prerequisite"}
+  ],
+  "production_write_count": 0
+}
