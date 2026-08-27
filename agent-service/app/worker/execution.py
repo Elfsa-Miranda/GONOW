@@ -16,6 +16,7 @@ from app.persistence.repositories.events import EventsRepository
 from app.persistence.repositories.job_inputs import JobInputsRepository
 from app.persistence.repositories.jobs import JobClaim, JobsRepository
 from app.persistence.repositories.runs import RunsRepository
+from app.runtime.behavior_manifest import BehaviorManifestError, digest_behavior_manifest
 from app.runtime.candidate import ItineraryCandidate
 from app.worker.job_runner import ClaimState, DurableJobRunner
 
@@ -29,15 +30,18 @@ class WorkerExecutionState(StrEnum):
 
 class WorkerExecutionError(RuntimeError):
     code = "worker.execution_failed"
+    default_code = code
 
-    def __init__(self) -> None:
-        super().__init__(self.code)
+    def __init__(self, code: str = default_code) -> None:
+        self.code = code
+        super().__init__(code)
 
 
 @dataclass(frozen=True, slots=True)
 class ClaimedItineraryJob:
     claim: JobClaim
     behavior_digest: str
+    context_policy_digest: str
     input_digest: str
     structured_input: dict[str, Any]
 
@@ -103,11 +107,19 @@ class DurableWorkerExecutor:
                 candidate=candidate,
                 audit_receipt_id=audit_receipt_id,
             )
-        except WorkerExecutionError:
-            self._fail(claim=claim, audit_receipt_id=audit_receipt_id)
+        except WorkerExecutionError as error:
+            self._fail(
+                claim=claim,
+                audit_receipt_id=audit_receipt_id,
+                reason_code=error.code,
+            )
             raise
         except Exception as error:
-            self._fail(claim=claim, audit_receipt_id=audit_receipt_id)
+            self._fail(
+                claim=claim,
+                audit_receipt_id=audit_receipt_id,
+                reason_code=WorkerExecutionError.default_code,
+            )
             raise WorkerExecutionError() from error
 
     def _prepare(
@@ -165,9 +177,19 @@ class DurableWorkerExecutor:
                 tenant_id=claim.tenant_id,
                 input_ref=claim.input_ref,
             )
+            try:
+                manifest = digest_behavior_manifest(run.manifest)
+                context_policy_digest = str(
+                    manifest.normalized["components"]["context"]["sha256"]
+                )
+            except (BehaviorManifestError, KeyError, TypeError, ValueError) as error:
+                raise WorkerExecutionError("behavior.not_qualified") from error
+            if manifest.sha256 != run.manifest_digest:
+                raise WorkerExecutionError("behavior.not_qualified")
             return ClaimedItineraryJob(
                 claim=claim,
                 behavior_digest=run.manifest_digest,
+                context_policy_digest=context_policy_digest,
                 input_digest=job_input.input_sha256,
                 structured_input=dict(job_input.payload),
             )
@@ -265,7 +287,13 @@ class DurableWorkerExecutor:
                 candidate_ref=persisted.candidate_ref,
             )
 
-    def _fail(self, *, claim: JobClaim, audit_receipt_id: str) -> None:
+    def _fail(
+        self,
+        *,
+        claim: JobClaim,
+        audit_receipt_id: str,
+        reason_code: str,
+    ) -> None:
         with self._session_factory.begin() as session:
             self._set_tenant(session, claim.tenant_id)
             jobs = JobsRepository(session)
@@ -297,7 +325,7 @@ class DurableWorkerExecutor:
                     tenant_id=claim.tenant_id,
                     run_id=claim.run_id,
                     event_type="run.failed",
-                    payload={"reason_code": WorkerExecutionError.code},
+                    payload={"reason_code": reason_code},
                     audit_receipt_id=audit_receipt_id,
                 )
                 RunsRepository(session).transition_state(

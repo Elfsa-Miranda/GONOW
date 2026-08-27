@@ -21,6 +21,16 @@ LABEL_VALUE_DOMAINS: dict[str, frozenset[str]] = {
     "tool_class": frozenset({"weather", "map", "search", "solver", "domain_command"}),
     "validation_result": frozenset({"valid", "warning", "invalid", "unverified"}),
     "recovery_reason": frozenset({"lease_expired", "worker_restart", "dependency_timeout", "cancel"}),
+    "context_outcome": frozenset({"compiled", "blocked"}),
+    "context_reason": frozenset({
+        "none",
+        "context.input_invalid",
+        "context.policy_mismatch",
+        "context.required_slice_missing",
+        "context.stage_unsupported",
+        "context.tokenizer_unavailable",
+    }),
+    "context_policy": frozenset({"itinerary-compose-v2"}),
 }
 
 
@@ -57,6 +67,7 @@ REQUIRED_METRICS = (
     MetricDefinition(name="gonow_tool_duration_ms", domain="tool", kind="histogram", unit="ms", owner="Agent Platform", description="Tool-call latency by bounded class.", label_keys=("tool_class",), buckets=(25.0, 100.0, 500.0, 2_000.0, 10_000.0)),
     MetricDefinition(name="gonow_context_tokens", domain="context", kind="gauge", unit="token", owner="Agent Platform", description="Current bounded context-token usage."),
     MetricDefinition(name="gonow_context_utilization", domain="context", kind="histogram", unit="1", owner="Agent Platform", description="Context-window utilization ratio.", buckets=(0.25, 0.5, 0.75, 0.9, 1.0)),
+    MetricDefinition(name="gonow_context_decisions_total", domain="context", kind="counter", unit="count", owner="Agent Platform", description="Context planning decisions by bounded policy and reason.", label_keys=("context_outcome", "context_reason", "context_policy"), critical=True),
     MetricDefinition(name="gonow_validation_total", domain="validation", kind="counter", unit="count", owner="Quality", description="Validation results by fixed semantic class.", label_keys=("validation_result",), critical=True),
     MetricDefinition(name="gonow_validation_duration_ms", domain="validation", kind="histogram", unit="ms", owner="Quality", description="Canonical validation duration.", buckets=(10.0, 50.0, 200.0, 1_000.0, 5_000.0)),
     MetricDefinition(name="gonow_model_cost_usd_total", domain="cost", kind="counter", unit="usd", owner="Finance", description="Provider-reconciled model cost in USD.", critical=True),

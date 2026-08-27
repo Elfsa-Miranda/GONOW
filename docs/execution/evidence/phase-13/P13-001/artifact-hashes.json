@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-001",
+  "hash_algorithm": "SHA-256",
+  "base_oid": "0db6a791bb01bdd6b1d200f62fa9f791e733d34a",
+  "artifacts": [
+    {"path":"agent-service/app/runtime/context_planner.py","sha256":"da62b594fd3ce5f21f3010344503fdcc67a548b1437bf92975bfd003db27d3e4","size_bytes":13728},
+    {"path":"agent-service/app/runtime/context_compiler.py","sha256":"3f76008a8d7cc78e2e121a4aab130ed4dbe2e940a7d5ae1f71f2e2afeee9e1f9","size_bytes":7875},
+    {"path":"agent-service/app/worker/itinerary_processor.py","sha256":"bb0c01b0eda65cd3e76b462964218ae195cd22520b90fc007212a8ddadedd81d","size_bytes":26805},
+    {"path":"agent-service/app/worker/composition.py","sha256":"b565f32fd9aaf72c76d9fbd3482eb64ad4ae032137b775093b7a1d9319243906","size_bytes":3958},
+    {"path":"agent-service/app/worker/execution.py","sha256":"c17d1c76f273cf8f458fcb346a76c650fd9e554e55f2e28520b83fdc255b1d78","size_bytes":14377},
+    {"path":"agent-service/app/observability/metrics.py","sha256":"84401e408d33ed02bb05ce93e579a983a5e3bafe178e0b42bef736265875e90b","size_bytes":7447},
+    {"path":"agent-service/tests/unit/runtime/test_context_planner.py","sha256":"dbc85da7496490023aa32724f87d48f675328975a5d22f2f15d354575297f073","size_bytes":6055},
+    {"path":"agent-service/tests/integration/test_context_planner_itinerary.py","sha256":"e2c3c884760f3032ec3ee6c7c795e4993ff1ebe94f6b207c550d536c31fe0eb0","size_bytes":4545},
+    {"path":"docs/execution/evidence/phase-13/P13-001/context-digest-report.json","sha256":"057ec92eb5c671194bc6c39b6946108f865f2d05bd9cd2c0cb5275d49bd3d26e","size_bytes":854},
+    {"path":"docs/execution/evidence/phase-13/P13-001/feature-off-comparison.json","sha256":"29ca6706a148c31acd0b091df7bb8bd5e1da7ee7243d9718b7fa6f901708cb21","size_bytes":566},
+    {"path":"docs/execution/evidence/phase-13/P13-001/commands.json","sha256":"19bdde0cb8d59f98ab24d0aab3c6f871c9c901dbda8d414d5e3d8fbee6f5ce33","size_bytes":2765},
+    {"path":"docs/execution/evidence/phase-13/P13-001/gate-results.json","sha256":"08335e49a6fe26747aa82e8fa69399e0c2293d7c1be52f9401df2e7df6bd1d28","size_bytes":887},
+    {"path":"docs/execution/evidence/phase-13/P13-001/context-planner-itinerary.xml","sha256":"8fbe5bee097bf2d724bf9f7879db2bdde81a431f154298509c1f43dc98402706","size_bytes":405},
+    {"path":"docs/execution/evidence/phase-13/P13-001/e0-parity.xml","sha256":"6d69e720bd209416c731dbb059abcdcf6d57b65ef9e48301a0e36c5aa903ac03","size_bytes":1215},
+    {"path":"docs/execution/evidence/phase-13/improvements/STAR-context-runtime-wiring.md","sha256":"7802de1f97b44ff85f23006ad307ce3ed2d06f4966037ab76db108df89ce1248","size_bytes":2100}
+  ],
+  "production_write_count": 0
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timedelta, tzinfo
 import json
 from pathlib import Path
 import site
@@ -20,6 +21,34 @@ from app.worker.itinerary_processor import itinerary_business_rule_codes  # noqa
 
 
 MANIFEST = REPOSITORY_ROOT / "docs/execution/evidence/phase-12b/P12B-010/calibration-dataset-manifest.json"
+PRICE_OBSERVED_AT = datetime.fromisoformat(
+    json.loads(live.PRICE_SNAPSHOT_PATH.read_text(encoding="utf-8"))["freshness"][
+        "observed_at"
+    ]
+)
+
+
+class _FreshSnapshotDateTime(datetime):
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> datetime:
+        current = PRICE_OBSERVED_AT + timedelta(hours=1)
+        if tz is None:
+            return current.replace(tzinfo=None)
+        return current.astimezone(tz)
+
+
+class _StaleSnapshotDateTime(datetime):
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> datetime:
+        current = PRICE_OBSERVED_AT + timedelta(days=8)
+        if tz is None:
+            return current.replace(tzinfo=None)
+        return current.astimezone(tz)
+
+
+@pytest.fixture(autouse=True)
+def deterministic_price_snapshot_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(live, "datetime", _FreshSnapshotDateTime)
 
 
 def _output(days: int, destination: str) -> dict[str, object]:
@@ -110,6 +139,14 @@ def test_missing_key_receipt_has_zero_calls_and_no_secret_value(
     assert result["total_tokens"] == 0
     assert result["secret_material_persisted"] == 0
     assert "synthetic" not in json.dumps(result)
+
+
+def test_stale_price_snapshot_remains_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(live, "datetime", _StaleSnapshotDateTime)
+    with pytest.raises(live.CalibrationError, match="calibration.price_snapshot_stale"):
+        live._load_prices()
 
 
 def test_pilot_uses_eight_mock_calls_and_freezes_expansion_budget(

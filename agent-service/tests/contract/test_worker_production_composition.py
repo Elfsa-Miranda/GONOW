@@ -17,6 +17,7 @@ from app.worker.composition import (  # noqa: E402
     WorkerCompositionError,
     build_worker_runtime_from_environment,
 )
+from app.runtime.context_planner import ContextPlanner  # noqa: E402
 from app.worker.main import check_lifecycle  # noqa: E402
 
 
@@ -38,6 +39,44 @@ def test_worker_composition_accepts_only_fixed_postgresql_and_tenant_scope(
     )
     monkeypatch.setenv("GONOW_WORKER_TENANTS", "tenant-b,tenant-a")
     monkeypatch.setenv("GEMINI_API_KEY", "synthetic-gemini-credential")
+    monkeypatch.delenv("GONOW_CONTEXT_PLANNER_V2_ENABLED", raising=False)
+    monkeypatch.delenv("GONOW_CONTEXT_PLANNER_V2_POLICY_SHA256", raising=False)
+    runtime = build_worker_runtime_from_environment()
+    asyncio.run(check_lifecycle(runtime))
+    assert runtime.started is False
+
+
+def test_worker_composition_rejects_context_planner_policy_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "GONOW_DATABASE_URL",
+        "postgresql+pg8000://worker@127.0.0.1:55432/gonow_p03_test",
+    )
+    monkeypatch.setenv("GONOW_WORKER_TENANTS", "tenant-a")
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-gemini-credential")
+    monkeypatch.setenv("GONOW_CONTEXT_PLANNER_V2_ENABLED", "1")
+    monkeypatch.setenv("GONOW_CONTEXT_PLANNER_V2_POLICY_SHA256", "f" * 64)
+
+    with pytest.raises(WorkerCompositionError):
+        build_worker_runtime_from_environment()
+
+
+def test_worker_composition_accepts_exact_context_planner_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "GONOW_DATABASE_URL",
+        "postgresql+pg8000://worker@127.0.0.1:55432/gonow_p03_test",
+    )
+    monkeypatch.setenv("GONOW_WORKER_TENANTS", "tenant-a")
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-gemini-credential")
+    monkeypatch.setenv("GONOW_CONTEXT_PLANNER_V2_ENABLED", "1")
+    monkeypatch.setenv(
+        "GONOW_CONTEXT_PLANNER_V2_POLICY_SHA256",
+        ContextPlanner().policy_digest,
+    )
+
     runtime = build_worker_runtime_from_environment()
     asyncio.run(check_lifecycle(runtime))
     assert runtime.started is False
