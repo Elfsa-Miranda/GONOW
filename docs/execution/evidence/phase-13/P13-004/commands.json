@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-004",
+  "executed_at": "2026-08-27T05:37:44.1651148+08:00",
+  "executor": "codex-local-provisional",
+  "head_oid_before_evidence": "d6854afaa320ffca30eedf7c19adf53c489247f4",
+  "commands": [
+    {"command": "provision_ci_postgres.ps1 -Mode Start -Port 55432 with PostgreSQL 17.10 and pgvector 0.8.1", "exit_code": 0, "result": "isolated cluster, roles, database, vector and btree_gin contracts ready"},
+    {"command": "agent-service/scripts/ci.ps1 -Stage All with locked Python 3.13.9 and Dart 3.11.5", "exit_code": 0, "result": "966 main-suite tests and 267 contract tests passed; lock, format, lint, type, secret, clock, SCA, licenses, and repository-clean gates passed"},
+    {"command": "uv run --frozen python -m pytest tests/eval/test_context_planner_v2_contract.py tests/eval/test_context_planner_v2.py tests/contract/test_context_planner_v2_harness.py -q", "exit_code": 0, "result": "8 passed in 0.23s"},
+    {"command": "uv run --frozen python -m pytest tests/eval/test_e0_parity.py -q", "exit_code": 0, "result": "8 passed / 40 frozen cases in 1.79s"},
+    {"command": "uv run --frozen python -m pytest tests/integration/test_context_planner_itinerary.py tests/integration/test_context_overflow_recovery.py -q", "exit_code": 0, "result": "15 passed in 0.86s"},
+    {"command": "uv run --frozen python -m pytest tests/security -q -k 'context or citation or tenant or deleted'", "exit_code": 0, "result": "20 passed, 93 deselected in 11.93s"},
+    {"command": "uv run --frozen python scripts/run_context_planner_eval.py --fixture-root tests/fixtures/context-planner-v2 --output ../docs/execution/evidence/phase-13/P13-004/context-planner-report.json --e0-passes 8 --full-ci-passed", "exit_code": 0, "result": "KEEP_DISABLED because live-provider evidence is absent"},
+    {"command": "uv run --frozen python -m compileall -q app tests scripts", "exit_code": 0, "result": "passed"}
+  ],
+  "unavailable_gate_reasons": [
+    "no live provider evidence was requested or available"
+  ],
+  "production_write_count": 0
+}

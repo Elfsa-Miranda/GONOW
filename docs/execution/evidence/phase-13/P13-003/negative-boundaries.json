@@ -9,7 +9,7 @@
     {"case": "segment_count_exceeded", "expected": "typed missing_info clarification before model call", "observed": "passed"},
     {"case": "rehydration_authorization_denied", "expected": "context.rehydration_denied", "observed": "passed"},
     {"case": "rehydration_digest_stale", "expected": "context.rehydration_stale", "observed": "passed"},
-    {"case": "durable_waiting_input", "expected": "RUNNING to WAITING_INPUT, completed source job, no Candidate", "observed": "test collected; execution blocked by PostgreSQL prerequisite"}
+    {"case": "durable_waiting_input", "expected": "RUNNING to WAITING_INPUT, completed source job, no Candidate", "observed": "passed against isolated PostgreSQL 17.10 with pgvector 0.8.1"}
   ],
   "production_write_count": 0
 }

@@ -1,0 +1,810 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "gonow-context-planner-v2-2026-08-27",
+  "runner_version": "context-paired-runner-v1",
+  "provider_mode": "offline_deterministic_fixture",
+  "manifest_sha256": "47a676d23a4895cde4875cf9ac9be79ea1f132f7325b428760710a033f3cc38d",
+  "release_gate_sha256": "36287a07e6804b407737630f5a1cf2017291d00fb2a4d94b8dfcdc5ae0f78d70",
+  "policy_sha256": "1f7342470a2c5b2909a01a879ad6ca12cec2062b553ae0721418c19b37b9d53c",
+  "pairs": [
+    {
+      "case_id": "task-01",
+      "group": "task_contract",
+      "scenario": "hard_semantics_first",
+      "expected_terminal": "accepted",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 480,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 450,
+        "hard_semantics_total": 1,
+        "hard_semantics_retained": 1,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "de07405ba78cb74c89d85e288b4d27929375f8f4b4920ef1bd2ab247447223dd",
+          "de07405ba78cb74c89d85e288b4d27929375f8f4b4920ef1bd2ab247447223dd",
+          "de07405ba78cb74c89d85e288b4d27929375f8f4b4920ef1bd2ab247447223dd"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "task-02",
+      "group": "task_contract",
+      "scenario": "hard_semantics_last",
+      "expected_terminal": "accepted",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 480,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 450,
+        "hard_semantics_total": 1,
+        "hard_semantics_retained": 1,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "83c00bf10ca2a7409ccda014a6d59b81a9721b2644c147667ebf50a745a1742d",
+          "83c00bf10ca2a7409ccda014a6d59b81a9721b2644c147667ebf50a745a1742d",
+          "83c00bf10ca2a7409ccda014a6d59b81a9721b2644c147667ebf50a745a1742d"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "task-03",
+      "group": "task_contract",
+      "scenario": "hard_semantics_reordered",
+      "expected_terminal": "accepted",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 640,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 460,
+        "hard_semantics_total": 2,
+        "hard_semantics_retained": 2,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "20c9723216042692954beaee4c26fad70688dcd2bd9d60d6f3fb2211d7d562c2",
+          "20c9723216042692954beaee4c26fad70688dcd2bd9d60d6f3fb2211d7d562c2",
+          "20c9723216042692954beaee4c26fad70688dcd2bd9d60d6f3fb2211d7d562c2"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "task-04",
+      "group": "task_contract",
+      "scenario": "unknown_constraint",
+      "expected_terminal": "rejected",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 640,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "rejected",
+        "model_calls": 0,
+        "input_tokens": 460,
+        "hard_semantics_total": 1,
+        "hard_semantics_retained": 1,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "cb9c18e2462e2d097ad8dfc5dd3d682134246b3dd60f40941469ed8cb65ad9dc",
+          "cb9c18e2462e2d097ad8dfc5dd3d682134246b3dd60f40941469ed8cb65ad9dc",
+          "cb9c18e2462e2d097ad8dfc5dd3d682134246b3dd60f40941469ed8cb65ad9dc"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "evidence-01",
+      "group": "evidence_overflow",
+      "scenario": "optional_overflow",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": false,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 3750,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 1420,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "55654082937f192954941eb6196718159d8e196c797d47a0c32deca9606b98aa",
+          "55654082937f192954941eb6196718159d8e196c797d47a0c32deca9606b98aa",
+          "55654082937f192954941eb6196718159d8e196c797d47a0c32deca9606b98aa"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "evidence-02",
+      "group": "evidence_overflow",
+      "scenario": "digest_duplicate",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": false,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 3000,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 1420,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "5f3e2cebb9ba066867f976a8986c7eb76e754bd80f27b0b942f5d80c28df34fc",
+          "5f3e2cebb9ba066867f976a8986c7eb76e754bd80f27b0b942f5d80c28df34fc",
+          "5f3e2cebb9ba066867f976a8986c7eb76e754bd80f27b0b942f5d80c28df34fc"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "evidence-03",
+      "group": "evidence_overflow",
+      "scenario": "explicit_supersession",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": false,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 3000,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 1420,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "7e8dfbe432d968e0a75a06b64453509c214784769834a02c4d2aa8939aa47b16",
+          "7e8dfbe432d968e0a75a06b64453509c214784769834a02c4d2aa8939aa47b16",
+          "7e8dfbe432d968e0a75a06b64453509c214784769834a02c4d2aa8939aa47b16"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "evidence-04",
+      "group": "evidence_overflow",
+      "scenario": "required_slice_overflow",
+      "expected_terminal": "interrupted",
+      "long_context": true,
+      "segmented": false,
+      "baseline": {
+        "terminal": "interrupted",
+        "model_calls": 1,
+        "input_tokens": 38250,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "interrupted",
+        "model_calls": 0,
+        "input_tokens": 1420,
+        "hard_semantics_total": 1,
+        "hard_semantics_retained": 1,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "20ae9eda61e065a8d15efbff081430fec9bd8c25b58e50f6d24c9e167f5f0914",
+          "20ae9eda61e065a8d15efbff081430fec9bd8c25b58e50f6d24c9e167f5f0914",
+          "20ae9eda61e065a8d15efbff081430fec9bd8c25b58e50f6d24c9e167f5f0914"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "segment-01",
+      "group": "long_itinerary",
+      "scenario": "eight_days",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 1750,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 2,
+        "input_tokens": 1340,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "7ca6b4199bb211fd3ef5fc02a64ba5fb490848bdffa53075d82bc7d0f301f16e",
+          "7ca6b4199bb211fd3ef5fc02a64ba5fb490848bdffa53075d82bc7d0f301f16e",
+          "7ca6b4199bb211fd3ef5fc02a64ba5fb490848bdffa53075d82bc7d0f301f16e"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "segment-02",
+      "group": "long_itinerary",
+      "scenario": "sixteen_days",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 3150,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 3,
+        "input_tokens": 2610,
+        "hard_semantics_total": 1,
+        "hard_semantics_retained": 1,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "986d31103573ccc1a5a0990d7573b8696619e65bb2b5b39fe3fb1dadb456882c",
+          "986d31103573ccc1a5a0990d7573b8696619e65bb2b5b39fe3fb1dadb456882c",
+          "986d31103573ccc1a5a0990d7573b8696619e65bb2b5b39fe3fb1dadb456882c"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "segment-03",
+      "group": "long_itinerary",
+      "scenario": "thirty_one_days",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 5700,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 5,
+        "input_tokens": 5850,
+        "hard_semantics_total": 1,
+        "hard_semantics_retained": 1,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "53d870d557fc99c28414818830b7e7ffa7ea59ddae2b0b047b52631887bd4da0",
+          "53d870d557fc99c28414818830b7e7ffa7ea59ddae2b0b047b52631887bd4da0",
+          "53d870d557fc99c28414818830b7e7ffa7ea59ddae2b0b047b52631887bd4da0"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "segment-04",
+      "group": "long_itinerary",
+      "scenario": "boundary_continuity",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 2850,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 2,
+        "input_tokens": 1740,
+        "hard_semantics_total": 1,
+        "hard_semantics_retained": 1,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "92f5a6f2690a05c531766ed931ce7d49912009736082a592986c07b1eda362a4",
+          "92f5a6f2690a05c531766ed931ce7d49912009736082a592986c07b1eda362a4",
+          "92f5a6f2690a05c531766ed931ce7d49912009736082a592986c07b1eda362a4"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "security-01",
+      "group": "security",
+      "scenario": "prompt_injection",
+      "expected_terminal": "accepted",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 900,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 720,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "a0668bbf1084915aa3ecff0cf210a524138ac2fe4b8b6c813a5979141a70970a",
+          "a0668bbf1084915aa3ecff0cf210a524138ac2fe4b8b6c813a5979141a70970a",
+          "a0668bbf1084915aa3ecff0cf210a524138ac2fe4b8b6c813a5979141a70970a"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "security-02",
+      "group": "security",
+      "scenario": "omitted_citation",
+      "expected_terminal": "rejected",
+      "long_context": true,
+      "segmented": false,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 3600,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "rejected",
+        "model_calls": 0,
+        "input_tokens": 1420,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "deeb43e5b5a548dc34a961573b8fc43f4e0522914f47a6833ab21edb3c09b5d1",
+          "deeb43e5b5a548dc34a961573b8fc43f4e0522914f47a6833ab21edb3c09b5d1",
+          "deeb43e5b5a548dc34a961573b8fc43f4e0522914f47a6833ab21edb3c09b5d1"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "security-03",
+      "group": "security",
+      "scenario": "cross_tenant_claim",
+      "expected_terminal": "rejected",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 900,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "rejected",
+        "model_calls": 0,
+        "input_tokens": 720,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "83c764e618def1500c6cd753a9b771f7e8539380b94dfc94c7d09e2f45b90baa",
+          "83c764e618def1500c6cd753a9b771f7e8539380b94dfc94c7d09e2f45b90baa",
+          "83c764e618def1500c6cd753a9b771f7e8539380b94dfc94c7d09e2f45b90baa"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "security-04",
+      "group": "security",
+      "scenario": "deleted_content",
+      "expected_terminal": "rejected",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 900,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "rejected",
+        "model_calls": 0,
+        "input_tokens": 720,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "0881a1f23f127039a845140ddddb8a5e4da040e9dd56c8494c9e5fae1c0e470b",
+          "0881a1f23f127039a845140ddddb8a5e4da040e9dd56c8494c9e5fae1c0e470b",
+          "0881a1f23f127039a845140ddddb8a5e4da040e9dd56c8494c9e5fae1c0e470b"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "stale-01",
+      "group": "stale_and_rehydration",
+      "scenario": "stale_digest",
+      "expected_terminal": "rejected",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 975,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "rejected",
+        "model_calls": 0,
+        "input_tokens": 795,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "1ac3004fe447d46c816cb63d0df5a461f01a3475490760ebf172809bb3c800c1",
+          "1ac3004fe447d46c816cb63d0df5a461f01a3475490760ebf172809bb3c800c1",
+          "1ac3004fe447d46c816cb63d0df5a461f01a3475490760ebf172809bb3c800c1"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "stale-02",
+      "group": "stale_and_rehydration",
+      "scenario": "conflicted_supersession",
+      "expected_terminal": "rejected",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 975,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "rejected",
+        "model_calls": 0,
+        "input_tokens": 795,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "6b2763987d42e93129434ac600680d3f69d5b6c6bc19e38beb66475965bef9e9",
+          "6b2763987d42e93129434ac600680d3f69d5b6c6bc19e38beb66475965bef9e9",
+          "6b2763987d42e93129434ac600680d3f69d5b6c6bc19e38beb66475965bef9e9"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "stale-03",
+      "group": "stale_and_rehydration",
+      "scenario": "authorized_rehydration",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": false,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 2850,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 1420,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "aeff099442c6cd1df95f380c7db181abd2954d924f47396d17e9b60785414a3c",
+          "aeff099442c6cd1df95f380c7db181abd2954d924f47396d17e9b60785414a3c",
+          "aeff099442c6cd1df95f380c7db181abd2954d924f47396d17e9b60785414a3c"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "stale-04",
+      "group": "stale_and_rehydration",
+      "scenario": "tokenizer_failure",
+      "expected_terminal": "blocked",
+      "long_context": false,
+      "segmented": false,
+      "baseline": {
+        "terminal": "blocked",
+        "model_calls": 1,
+        "input_tokens": 975,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "blocked",
+        "model_calls": 0,
+        "input_tokens": 795,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "6aac2f0e0c56bd9dbaabaf19f90795a69fdc53210645fa79a190cf7d9e31b97f",
+          "6aac2f0e0c56bd9dbaabaf19f90795a69fdc53210645fa79a190cf7d9e31b97f",
+          "6aac2f0e0c56bd9dbaabaf19f90795a69fdc53210645fa79a190cf7d9e31b97f"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "recovery-01",
+      "group": "recovery",
+      "scenario": "segment_failure",
+      "expected_terminal": "rejected",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "rejected",
+        "model_calls": 1,
+        "input_tokens": 3150,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "rejected",
+        "model_calls": 0,
+        "input_tokens": 2610,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "3e7e304ece5aa89351ab546826cdb72504eb9ecc2088d69308ee846996ee68cf",
+          "3e7e304ece5aa89351ab546826cdb72504eb9ecc2088d69308ee846996ee68cf",
+          "3e7e304ece5aa89351ab546826cdb72504eb9ecc2088d69308ee846996ee68cf"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "recovery-02",
+      "group": "recovery",
+      "scenario": "deterministic_replay",
+      "expected_terminal": "accepted",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "accepted",
+        "model_calls": 1,
+        "input_tokens": 1950,
+        "business_validation": "valid"
+      },
+      "candidate": {
+        "terminal": "accepted",
+        "model_calls": 2,
+        "input_tokens": 1740,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "valid",
+        "repeat_decision_digests": [
+          "3accfd4729f4f80414f09d95567ad8ff8e9e0bddebd205ce65379c9eb1807244",
+          "3accfd4729f4f80414f09d95567ad8ff8e9e0bddebd205ce65379c9eb1807244",
+          "3accfd4729f4f80414f09d95567ad8ff8e9e0bddebd205ce65379c9eb1807244"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "recovery-03",
+      "group": "recovery",
+      "scenario": "clarification",
+      "expected_terminal": "interrupted",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "interrupted",
+        "model_calls": 1,
+        "input_tokens": 42450,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "interrupted",
+        "model_calls": 0,
+        "input_tokens": 7100,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "443b17d69b23dcb4fcaf539241ddb578d708a0cedb65d814981e0320bd19a2db",
+          "443b17d69b23dcb4fcaf539241ddb578d708a0cedb65d814981e0320bd19a2db",
+          "443b17d69b23dcb4fcaf539241ddb578d708a0cedb65d814981e0320bd19a2db"
+        ]
+      },
+      "expected_terminal_matched": true
+    },
+    {
+      "case_id": "recovery-04",
+      "group": "recovery",
+      "scenario": "budget_exhaustion",
+      "expected_terminal": "interrupted",
+      "long_context": true,
+      "segmented": true,
+      "baseline": {
+        "terminal": "interrupted",
+        "model_calls": 1,
+        "input_tokens": 5700,
+        "business_validation": "not_adopted"
+      },
+      "candidate": {
+        "terminal": "interrupted",
+        "model_calls": 0,
+        "input_tokens": 5850,
+        "hard_semantics_total": 0,
+        "hard_semantics_retained": 0,
+        "included_claim_ids": [],
+        "cited_claim_ids": [],
+        "claim_violations": 0,
+        "partial_segment_success": 0,
+        "business_validation": "not_adopted",
+        "repeat_decision_digests": [
+          "9f0b165574154b3ef9a4d32be6ec96d0bfae11e449562a96dade5f336b7a0f87",
+          "9f0b165574154b3ef9a4d32be6ec96d0bfae11e449562a96dade5f336b7a0f87",
+          "9f0b165574154b3ef9a4d32be6ec96d0bfae11e449562a96dade5f336b7a0f87"
+        ]
+      },
+      "expected_terminal_matched": true
+    }
+  ],
+  "measurements": {
+    "case_count": 24,
+    "long_context_case_count": 14,
+    "long_context_completion_delta": 2,
+    "long_context_overflow_wins": 2,
+    "median_input_token_reduction_ratio": 0.4456140350877193,
+    "hard_semantic_coverage": 1.0,
+    "local_context_planning_p95_ms": 0.020129166666666667
+  },
+  "hard_gates": {
+    "expected_terminals": true,
+    "hard_semantic_coverage": true,
+    "claim_violations": true,
+    "partial_segment_success": true,
+    "deterministic_repeats": true,
+    "feature_off_identity": true,
+    "canary_leaks": true,
+    "e0": true,
+    "full_ci": true
+  },
+  "activation_gates": {
+    "long_context_completion": true,
+    "median_input_token_reduction": true,
+    "non_segmented_extra_model_calls": true,
+    "segment_budget": true,
+    "local_context_planning_p95": true,
+    "live_provider_evidence": false
+  },
+  "decision": "KEEP_DISABLED",
+  "production_write_count": 0,
+  "report_sha256": "75251049e1eea8a423e87a6890466c9c76e08b2fc54126d1505234c4e059a658"
+}

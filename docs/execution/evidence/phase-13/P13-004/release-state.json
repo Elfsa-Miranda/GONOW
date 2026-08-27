@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-004",
+  "decision": "KEEP_DISABLED",
+  "report_sha256": "75251049e1eea8a423e87a6890466c9c76e08b2fc54126d1505234c4e059a658",
+  "production_environment_default": {
+    "GONOW_CONTEXT_PLANNER_V2_ENABLED": "0",
+    "GONOW_CONTEXT_STAGE_RUNTIME_V2_ENABLED": "0",
+    "GONOW_CONTEXT_OVERFLOW_RECOVERY_V2_ENABLED": "0"
+  },
+  "active_alias_mutated": false,
+  "behavior_release_mutated": false,
+  "reasons": [
+    "required live-provider evidence unavailable"
+  ],
+  "production_write_count": 0
+}

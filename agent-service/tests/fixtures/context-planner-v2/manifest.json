@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "gonow-context-planner-v2-2026-08-27",
+  "runner_version": "context-paired-runner-v1",
+  "tokenizer_id": "utf8-ceil-div4-v1",
+  "seed": 13004,
+  "provider_mode": "offline_deterministic_fixture",
+  "cases": [
+    {"case_id":"task-01","group":"task_contract","scenario":"hard_semantics_first","days":1,"evidence_characters":120,"hard_semantics":["arrival_buffer"],"expected_terminal":"accepted","long_context":false,"segmented":false},
+    {"case_id":"task-02","group":"task_contract","scenario":"hard_semantics_last","days":1,"evidence_characters":120,"hard_semantics":["departure_buffer"],"expected_terminal":"accepted","long_context":false,"segmented":false},
+    {"case_id":"task-03","group":"task_contract","scenario":"hard_semantics_reordered","days":2,"evidence_characters":160,"hard_semantics":["fixed_start","arrival_buffer"],"expected_terminal":"accepted","long_context":false,"segmented":false},
+    {"case_id":"task-04","group":"task_contract","scenario":"unknown_constraint","days":2,"evidence_characters":160,"hard_semantics":["unknown_constraint"],"expected_terminal":"rejected","long_context":false,"segmented":false},
+
+    {"case_id":"evidence-01","group":"evidence_overflow","scenario":"optional_overflow","days":3,"evidence_characters":12000,"hard_semantics":[],"expected_terminal":"accepted","long_context":true,"segmented":false},
+    {"case_id":"evidence-02","group":"evidence_overflow","scenario":"digest_duplicate","days":3,"evidence_characters":9000,"hard_semantics":[],"expected_terminal":"accepted","long_context":true,"segmented":false},
+    {"case_id":"evidence-03","group":"evidence_overflow","scenario":"explicit_supersession","days":3,"evidence_characters":9000,"hard_semantics":[],"expected_terminal":"accepted","long_context":true,"segmented":false},
+    {"case_id":"evidence-04","group":"evidence_overflow","scenario":"required_slice_overflow","days":3,"evidence_characters":150000,"hard_semantics":["fixed_start"],"expected_terminal":"interrupted","long_context":true,"segmented":false},
+
+    {"case_id":"segment-01","group":"long_itinerary","scenario":"eight_days","days":8,"evidence_characters":1000,"hard_semantics":[],"expected_terminal":"accepted","long_context":true,"segmented":true},
+    {"case_id":"segment-02","group":"long_itinerary","scenario":"sixteen_days","days":16,"evidence_characters":1800,"hard_semantics":["arrival_buffer"],"expected_terminal":"accepted","long_context":true,"segmented":true},
+    {"case_id":"segment-03","group":"long_itinerary","scenario":"thirty_one_days","days":31,"evidence_characters":3000,"hard_semantics":["departure_buffer"],"expected_terminal":"accepted","long_context":true,"segmented":true},
+    {"case_id":"segment-04","group":"long_itinerary","scenario":"boundary_continuity","days":14,"evidence_characters":1800,"hard_semantics":["fixed_start"],"expected_terminal":"accepted","long_context":true,"segmented":true},
+
+    {"case_id":"security-01","group":"security","scenario":"prompt_injection","days":2,"evidence_characters":1200,"hard_semantics":[],"expected_terminal":"accepted","long_context":false,"segmented":false},
+    {"case_id":"security-02","group":"security","scenario":"omitted_citation","days":2,"evidence_characters":12000,"hard_semantics":[],"expected_terminal":"rejected","long_context":true,"segmented":false},
+    {"case_id":"security-03","group":"security","scenario":"cross_tenant_claim","days":2,"evidence_characters":1200,"hard_semantics":[],"expected_terminal":"rejected","long_context":false,"segmented":false},
+    {"case_id":"security-04","group":"security","scenario":"deleted_content","days":2,"evidence_characters":1200,"hard_semantics":[],"expected_terminal":"rejected","long_context":false,"segmented":false},
+
+    {"case_id":"stale-01","group":"stale_and_rehydration","scenario":"stale_digest","days":2,"evidence_characters":1500,"hard_semantics":[],"expected_terminal":"rejected","long_context":false,"segmented":false},
+    {"case_id":"stale-02","group":"stale_and_rehydration","scenario":"conflicted_supersession","days":2,"evidence_characters":1500,"hard_semantics":[],"expected_terminal":"rejected","long_context":false,"segmented":false},
+    {"case_id":"stale-03","group":"stale_and_rehydration","scenario":"authorized_rehydration","days":2,"evidence_characters":9000,"hard_semantics":[],"expected_terminal":"accepted","long_context":true,"segmented":false},
+    {"case_id":"stale-04","group":"stale_and_rehydration","scenario":"tokenizer_failure","days":2,"evidence_characters":1500,"hard_semantics":[],"expected_terminal":"blocked","long_context":false,"segmented":false},
+
+    {"case_id":"recovery-01","group":"recovery","scenario":"segment_failure","days":16,"evidence_characters":1800,"hard_semantics":[],"expected_terminal":"rejected","long_context":true,"segmented":true},
+    {"case_id":"recovery-02","group":"recovery","scenario":"deterministic_replay","days":8,"evidence_characters":1800,"hard_semantics":[],"expected_terminal":"accepted","long_context":true,"segmented":true},
+    {"case_id":"recovery-03","group":"recovery","scenario":"clarification","days":31,"evidence_characters":150000,"hard_semantics":[],"expected_terminal":"interrupted","long_context":true,"segmented":true},
+    {"case_id":"recovery-04","group":"recovery","scenario":"budget_exhaustion","days":31,"evidence_characters":3000,"hard_semantics":[],"expected_terminal":"interrupted","long_context":true,"segmented":true}
+  ]
+}
