@@ -174,6 +174,66 @@ function Restore-GradleDistribution {
   [System.IO.File]::WriteAllBytes([string]$Receipt.path, [Convert]::FromBase64String([string]$Receipt.original_base64))
 }
 
+function Set-OfficialMavenRepositories {
+  param([string]$Repository)
+  $ExpectedMirrorCounts = @{
+    'android\build.gradle.kts' = 2
+    'android\settings.gradle.kts' = 3
+  }
+  $MirrorPattern = '(?m)^\s*maven \{ url = uri\("https://maven\.aliyun\.com/repository/(?:public|google|gradle-plugin)"\) \}\r?\n'
+  $Receipts = New-Object System.Collections.Generic.List[object]
+  foreach ($RelativePath in $ExpectedMirrorCounts.Keys) {
+    $Path = Join-Path $Repository $RelativePath
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Maven repository file is unavailable: $RelativePath" }
+    $OriginalBytes = [System.IO.File]::ReadAllBytes($Path)
+    $Text = $Utf8NoBom.GetString($OriginalBytes)
+    $MirrorMatches = [regex]::Matches($Text, $MirrorPattern)
+    if ($MirrorMatches.Count -ne [int]$ExpectedMirrorCounts[$RelativePath]) {
+      throw "Unexpected Aliyun Maven repository contract: $RelativePath"
+    }
+    $Effective = [regex]::Replace($Text, $MirrorPattern, '')
+    if ($Effective -notmatch '(?m)^\s*google\(\)\s*$' -or $Effective -notmatch '(?m)^\s*mavenCentral\(\)\s*$') {
+      throw "Official Maven repositories are unavailable: $RelativePath"
+    }
+    if ($RelativePath -ceq 'android\settings.gradle.kts' -and $Effective -notmatch '(?m)^\s*gradlePluginPortal\(\)\s*$') {
+      throw 'Official Gradle plugin repository is unavailable'
+    }
+    [void]$Receipts.Add([pscustomobject]@{
+      path = $Path
+      original_base64 = [Convert]::ToBase64String($OriginalBytes)
+      effective_text = $Effective
+      removed_mirror_repository_count = $MirrorMatches.Count
+    })
+  }
+  $ReceiptResult = [pscustomobject]@{
+    files = $Receipts.ToArray()
+    override_applied = $true
+    mode = 'official_google_maven_gradle_only'
+    removed_mirror_repository_count = [int](($Receipts.ToArray() | Measure-Object -Property removed_mirror_repository_count -Sum).Sum)
+  }
+  $Written = New-Object System.Collections.Generic.List[object]
+  try {
+    foreach ($Receipt in $Receipts) {
+      [System.IO.File]::WriteAllText([string]$Receipt.path, [string]$Receipt.effective_text, $Utf8NoBom)
+      [void]$Written.Add($Receipt)
+    }
+  }
+  catch {
+    foreach ($Receipt in $Written) {
+      [System.IO.File]::WriteAllBytes([string]$Receipt.path, [Convert]::FromBase64String([string]$Receipt.original_base64))
+    }
+    throw
+  }
+  return $ReceiptResult
+}
+
+function Restore-MavenRepositories {
+  param([object]$Receipt)
+  foreach ($FileReceipt in @($Receipt.files)) {
+    [System.IO.File]::WriteAllBytes([string]$FileReceipt.path, [Convert]::FromBase64String([string]$FileReceipt.original_base64))
+  }
+}
+
 function Convert-AnalyzerResult {
   param([object]$Result, [string]$Repository)
   $Errors = New-Object System.Collections.Generic.List[string]
@@ -233,9 +293,17 @@ function Invoke-FlutterSuite {
   $RestoredPaths = @(Restore-ToolGeneratedDrift $Repository $BeforePaths)
   $AnalyzeRaw = Invoke-Captured $FlutterExecutable @('analyze','--machine') $Repository
   $TestRaw = Invoke-Captured $FlutterExecutable @('test','--machine') $Repository
-  $GradleReceipt = Set-OfficialGradleDistribution $Repository
-  try { $BuildRaw = Invoke-Captured $FlutterExecutable @('build','apk','--debug','--no-pub') $Repository }
-  finally { Restore-GradleDistribution $GradleReceipt }
+  $MavenReceipt = $null
+  $GradleReceipt = $null
+  try {
+    $MavenReceipt = Set-OfficialMavenRepositories $Repository
+    $GradleReceipt = Set-OfficialGradleDistribution $Repository
+    $BuildRaw = Invoke-Captured $FlutterExecutable @('build','apk','--debug','--no-pub') $Repository
+  }
+  finally {
+    if ($null -ne $GradleReceipt) { Restore-GradleDistribution $GradleReceipt }
+    if ($null -ne $MavenReceipt) { Restore-MavenRepositories $MavenReceipt }
+  }
   $ApkPath = Join-Path $Repository 'build\app\outputs\flutter-apk\app-debug.apk'
   $PostSuiteRestoredPaths = @(Restore-ToolGeneratedDrift $Repository $BeforePaths)
   return [pscustomobject]@{
@@ -258,6 +326,9 @@ function Invoke-FlutterSuite {
       gradle_transport_override_applied = [bool]$GradleReceipt.override_applied
       gradle_distribution_url = [string]$GradleReceipt.effective_url
       gradle_distribution_sha256 = [string]$GradleReceipt.distribution_sha256
+      maven_transport_override_applied = [bool]$MavenReceipt.override_applied
+      maven_transport_mode = [string]$MavenReceipt.mode
+      removed_mirror_repository_count = [int]$MavenReceipt.removed_mirror_repository_count
     }
     bounded_diagnostics = [ordered]@{
       test = if ($TestRaw.exit_code -ne 0) { @(Get-BoundedDiagnosticLines $TestRaw $Repository) } else { @() }
@@ -298,6 +369,7 @@ $CommandContract = @(
   'git restore --worktree -- <tool-generated-tracked-drift>',
   'flutter analyze --machine',
   'flutter test --machine',
+  'temporarily use official Google Maven and Gradle Plugin Portal repositories',
   'flutter build apk --debug --no-pub'
 )
 $CommandHash = Get-TextSha256 ([string]::Join("`n", $CommandContract))
