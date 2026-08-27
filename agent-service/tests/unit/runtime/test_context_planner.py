@@ -18,6 +18,9 @@ from app.runtime.context_planner import (  # noqa: E402
     ContextPlanRequest,
     ContextPlanner,
     ContextPlannerPolicy,
+    DEFAULT_CONTEXT_POLICY,
+    DEFAULT_STAGE_CONTEXT_POLICIES,
+    StageContextPolicy,
     deterministic_token_count,
 )
 from app.runtime.state import WorkflowStage  # noqa: E402
@@ -185,3 +188,83 @@ def test_planner_maps_invalid_tokenizer_count_to_stable_failure() -> None:
     assert decision.status is ContextDecisionStatus.BLOCKED
     assert decision.reason_code == "context.tokenizer_unavailable"
     assert decision.working_context is None
+
+
+def test_default_stage_context_policies_require_stage_artifacts() -> None:
+    assert tuple(item.stage for item in DEFAULT_STAGE_CONTEXT_POLICIES) == (
+        WorkflowStage.INTAKE,
+        WorkflowStage.PLAN,
+        WorkflowStage.EVIDENCE,
+        WorkflowStage.COMPOSE,
+        WorkflowStage.VALIDATE,
+        WorkflowStage.COMPLETE,
+    )
+    planner = ContextPlanner()
+    task = _artifact(
+        "task",
+        ContextArtifactKind.TASK_CONTRACT,
+        "{}",
+        required=True,
+        priority=100,
+    )
+    intent = _artifact(
+        "plan-intent",
+        ContextArtifactKind.PLAN_INTENT,
+        '{"evidence_mode":"disabled"}',
+        required=True,
+        priority=90,
+    )
+    plan_decision = planner.plan(
+        ContextPlanRequest(
+            stage=WorkflowStage.PLAN,
+            policy_digest=planner.policy_digest,
+            artifacts=(task,),
+            budget=_request(planner, (task,)).budget,
+        )
+    )
+    evidence_decision = planner.plan(
+        ContextPlanRequest(
+            stage=WorkflowStage.EVIDENCE,
+            policy_digest=planner.policy_digest,
+            artifacts=(task, intent),
+            budget=_request(planner, (task,)).budget,
+        )
+    )
+    complete_decision = planner.plan(
+        ContextPlanRequest(
+            stage=WorkflowStage.COMPLETE,
+            policy_digest=planner.policy_digest,
+            artifacts=(task,),
+            budget=_request(planner, (task,)).budget,
+        )
+    )
+
+    assert plan_decision.status is ContextDecisionStatus.COMPILED
+    assert evidence_decision.status is ContextDecisionStatus.COMPILED
+    assert complete_decision.reason_code == "context.input_invalid"
+
+
+def test_stage_context_policy_budget_is_bound_to_behavior_policy_digest() -> None:
+    changed_stages = tuple(
+        StageContextPolicy(
+            stage=item.stage,
+            required_kinds=item.required_kinds,
+            optional_kinds=item.optional_kinds,
+            max_working_context_tokens=(
+                item.max_working_context_tokens + 1
+                if item.stage is WorkflowStage.PLAN
+                else item.max_working_context_tokens
+            ),
+        )
+        for item in DEFAULT_STAGE_CONTEXT_POLICIES
+    )
+    changed = ContextPlannerPolicy(
+        policy_id=DEFAULT_CONTEXT_POLICY.policy_id,
+        tokenizer_id=DEFAULT_CONTEXT_POLICY.tokenizer_id,
+        supported_stages=DEFAULT_CONTEXT_POLICY.supported_stages,
+        required_kinds=DEFAULT_CONTEXT_POLICY.required_kinds,
+        stage_policies=changed_stages,
+    )
+
+    assert ContextPlanner().policy_digest == ContextPlanner().policy_digest
+    assert changed.digest != ContextPlanner().policy_digest

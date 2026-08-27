@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-002",
+  "cases": [
+    {"case":"unknown_machine_constraint","failure_code":"task_contract.constraint_unknown","last_stage":"intake","model_calls":0},
+    {"case":"token_budget_exhausted","failure_code":"budget.global_exhausted","last_stage":"compose","model_calls":0},
+    {"case":"deadline_exhausted","failure_code":"budget.global_exhausted","last_stage":"intake","model_calls":0},
+    {"case":"authorized_provider_failure","failure_code":"knowledge.unavailable","last_stage":"evidence","model_calls":0},
+    {"case":"model_failure","failure_code":"retry.exhausted","last_stage":"compose","model_calls":1},
+    {"case":"business_validation_failure","failure_code":"validation.business_rules","last_stage":"validate","model_calls":1},
+    {"case":"invalid_transition","failure_code":"graph.transition_invalid","later_side_effects":0},
+    {"case":"forbidden_stage_delta","failure_code":"graph.stage_delta_forbidden","later_side_effects":0},
+    {"case":"no_progress","failure_code":"budget.global_exhausted","later_side_effects":0}
+  ],
+  "production_write_count": 0
+}

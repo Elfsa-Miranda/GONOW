@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.models.gemini import EnvironmentGeminiCredentialProvider
 from app.runtime.context_planner import ContextPlanner
 from app.worker.execution import DurableWorkerExecutor
-from app.worker.itinerary_processor import GeminiItineraryProcessor
+from app.worker.itinerary_processor import (
+    GeminiItineraryProcessor,
+    ItineraryStageRuntimePolicy,
+)
 from app.worker.main import WorkerRuntime
 
 
@@ -75,6 +78,17 @@ def _context_planner_from_environment() -> ContextPlanner | None:
     return planner
 
 
+def _stage_runtime_from_environment(
+    planner: ContextPlanner | None,
+) -> ItineraryStageRuntimePolicy | None:
+    enabled = os.environ.get("GONOW_CONTEXT_STAGE_RUNTIME_V2_ENABLED", "0").strip()
+    if enabled in {"", "0"}:
+        return None
+    if enabled != "1" or planner is None:
+        raise WorkerCompositionError()
+    return ItineraryStageRuntimePolicy()
+
+
 def build_worker_runtime_from_environment() -> WorkerRuntime:
     database_url = _required_environment("GONOW_DATABASE_URL")
     raw_tenants = _required_environment("GONOW_WORKER_TENANTS")
@@ -94,6 +108,8 @@ def build_worker_runtime_from_environment() -> WorkerRuntime:
         raise WorkerCompositionError()
     tenants = tuple(value.strip() for value in raw_tenants.split(",") if value.strip())
     tenant_source = StaticTenantWorkSource(tenants)
+    context_planner = _context_planner_from_environment()
+    stage_runtime_policy = _stage_runtime_from_environment(context_planner)
     engine = create_engine(database_url, pool_pre_ping=True)
     factory = sessionmaker(
         engine,
@@ -104,7 +120,8 @@ def build_worker_runtime_from_environment() -> WorkerRuntime:
         factory,
         processor=GeminiItineraryProcessor(
             credentials=EnvironmentGeminiCredentialProvider(),
-            context_planner=_context_planner_from_environment(),
+            context_planner=context_planner,
+            stage_runtime_policy=stage_runtime_policy,
         ),
     )
     return WorkerRuntime(

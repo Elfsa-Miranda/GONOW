@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-002",
+  "executed_at": "2026-08-27T02:53:33+08:00",
+  "executor": "codex-local-provisional",
+  "head_oid_before_evidence": "9aa7680c2f3c72c798d0ae65e6d342dae564020a",
+  "commands": [
+    {"command":"uv run pytest -q tests/unit/graphs/test_itinerary_planning.py","exit_code":0,"result":"13 passed in 0.06s"},
+    {"command":"uv run pytest -q tests/unit/runtime -k \"task_contract or stage_context or state_guard\"","exit_code":0,"result":"6 passed, 17 deselected in 0.63s"},
+    {"command":"uv run pytest -q tests/contract/test_gemini_itinerary_processor.py tests/contract/test_single_agent_rag_processor.py tests/contract/test_worker_production_composition.py tests/contract/test_cost_routed_gateway.py","exit_code":0,"result":"34 passed in 0.70s"},
+    {"command":"uv run pytest -q tests/integration -k \"itinerary and stage\"","exit_code":0,"result":"8 passed, 109 deselected in 1.91s"},
+    {"command":"uv run pytest -q tests/eval/test_e0_parity.py","exit_code":0,"result":"8 passed in 1.53s"},
+    {"command":"uv run python -m compileall -q app tests scripts","exit_code":0,"result":"passed"},
+    {"command":"uv run pytest -q tests/unit --ignore=tests/unit/harness/test_11_behavior_registry.py --ignore=tests/unit/harness/test_25_event_writer.py","exit_code":0,"result":"317 passed in 3.34s"},
+    {"command":"uv run pytest -q tests/contract with six known infrastructure/stale-snapshot files ignored","exit_code":0,"result":"224 passed in 2.75s"}
+  ],
+  "unavailable_full_gate_reasons": [
+    "PostgreSQL/pgvector provisioning cannot build without the unavailable Visual Studio prerequisite",
+    "Ruff and mypy are absent from the locked project",
+    "the unrelated P12B price snapshot remains stale"
+  ],
+  "production_write_count": 0
+}

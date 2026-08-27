@@ -1,0 +1,27 @@
+{
+  "schema_version":"1.0",
+  "task_id":"P13-002",
+  "hash_algorithm":"SHA-256",
+  "head_oid_before_evidence":"9aa7680c2f3c72c798d0ae65e6d342dae564020a",
+  "artifacts":[
+    {"path":"agent-service/app/graphs/itinerary_planning.py","sha256":"f9e37055034fd68d612a3daa51de3a3af51348c16bca0b9055f6d1f8e30b4d75","size_bytes":11947},
+    {"path":"agent-service/app/runtime/context_planner.py","sha256":"c79a0c908e14870d69021d0646b6e5365016fafec6ffa3b04b7e463418c2f8db","size_bytes":19264},
+    {"path":"agent-service/app/runtime/task_contract.py","sha256":"aad223c08136570532bca22a065830a49fa518811da87783aaf90d135c5d0075","size_bytes":7441},
+    {"path":"agent-service/app/worker/itinerary_processor.py","sha256":"4c19bbd51007ff6d22028ea972839f7ac42a0fc93acd9f642663b9fe445addc1","size_bytes":38717},
+    {"path":"agent-service/app/worker/composition.py","sha256":"9c804cf765b6c53f547c04e61d533093c20725b6a73f95724dece46e13b59a5f","size_bytes":4540},
+    {"path":"agent-service/app/observability/metrics.py","sha256":"b7f41b59217ddcf22f3af4cdd123c799f649b0a5fecef310872687f9f49d07bf","size_bytes":7806},
+    {"path":"agent-service/tests/unit/graphs/test_itinerary_planning.py","sha256":"2953b8f0cb90cc7d222dc0043ff4a745f375da83c3278e62cb75a6c3902be83b","size_bytes":8469},
+    {"path":"agent-service/tests/unit/runtime/test_context_planner.py","sha256":"2f3341d93277736ec330186554a206e40072b634a93bc9f069f645b1ec170036","size_bytes":8824},
+    {"path":"agent-service/tests/unit/runtime/test_task_contract.py","sha256":"b9080347232df563899e9953048379522c55a34945afd4aebe6133c970e4d7e6","size_bytes":3003},
+    {"path":"agent-service/tests/integration/test_context_planner_itinerary.py","sha256":"c4857def9b816517d41fd59f5eeb2323691338a65e7d348fe0c8bdd5f3d2e606","size_bytes":13950},
+    {"path":"docs/architecture/context-planner-v2.md","sha256":"a5c3ccafef50aaa7cc0099a41efe8ee9a8e1f51534ee0cf7dcd7dce5e805e68f","size_bytes":1991},
+    {"path":"docs/execution/evidence/phase-13/P13-002/stage-trace.json","sha256":"a223196d01c3cb4fa35809d610b07bfbe2ed9352c32b24eb1e454b1590ba7501","size_bytes":728},
+    {"path":"docs/execution/evidence/phase-13/P13-002/negative-boundaries.json","sha256":"ccc99c2658ea7982bed0dad2dd5ddbf65918c1a8c574a2aa090ba1123ae2f68c","size_bytes":1116},
+    {"path":"docs/execution/evidence/phase-13/P13-002/commands.json","sha256":"94fe0b6725dc35c383cd1e6c897c4760aa503870c496b34798412ca949422115","size_bytes":1793},
+    {"path":"docs/execution/evidence/phase-13/P13-002/gate-results.json","sha256":"b01b020203156b9d5bff53961fe6df9d5e89c55aec033b04b965bc9f1502084f","size_bytes":644},
+    {"path":"docs/execution/evidence/phase-13/P13-002/stage-itinerary.xml","sha256":"b096bac2a4be06b0e791e886c93bcb2cee93c83313eb06468f6d3ab0d9736da7","size_bytes":1527},
+    {"path":"docs/execution/evidence/phase-13/P13-002/e0-parity.xml","sha256":"fe78f2cefadba10fdf3627de1645e92c9f112442f275cee2466607cdd1577fee","size_bytes":1215},
+    {"path":"docs/execution/evidence/phase-13/improvements/STAR-stage-aware-runtime.md","sha256":"f3e1617ff9b64851988d20966cd6d602b36307573ed1164e3a017a24872f8016","size_bytes":2277}
+  ],
+  "production_write_count":0
+}

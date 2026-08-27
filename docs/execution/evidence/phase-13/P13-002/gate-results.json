@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "task_id": "P13-002",
+  "status": "focused_pass_full_gate_blocked",
+  "stage_integration": {"passed": 8, "failed": 0, "junit":"stage-itinerary.xml"},
+  "e0": {"passed": 8, "failed": 0, "junit":"e0-parity.xml"},
+  "non_database_unit": {"passed": 317, "failed": 0},
+  "non_database_non_stale_contract": {"passed": 224, "failed": 0},
+  "compileall_passed": true,
+  "exact_stage_sequence": true,
+  "logical_model_calls": 1,
+  "actual_tokens_charged": 80,
+  "rag_tool_calls_charged": 0,
+  "durable_per_stage_resume_claimed": false,
+  "claim_scope": "local production-path integration",
+  "production_write_count": 0
+}

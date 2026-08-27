@@ -25,7 +25,7 @@ def test_required_domains_have_type_unit_and_owner() -> None:
     assert {item.domain for item in METRIC_REGISTRY.values()} == {
         "run", "tool", "context", "validation", "cost", "recovery"
     }
-    assert len(METRIC_REGISTRY) == 13
+    assert len(METRIC_REGISTRY) == 14
     assert all(item.kind in {"counter", "gauge", "histogram"} for item in METRIC_REGISTRY.values())
     assert all(item.unit and item.owner for item in METRIC_REGISTRY.values())
 
@@ -39,6 +39,7 @@ def test_registry_has_no_high_cardinality_label_key() -> None:
         "context_reason",
         "outcome",
         "recovery_reason",
+        "stage",
         "tool_class",
         "validation_result",
     }
@@ -60,7 +61,7 @@ def test_record_accepts_only_complete_bounded_labels() -> None:
         1,
         {
             "context_outcome": "compiled",
-            "context_policy": "itinerary-compose-v2",
+            "context_policy": "itinerary-six-stage-v2",
             "context_reason": "none",
         },
     )
@@ -73,6 +74,17 @@ def test_record_accepts_only_complete_bounded_labels() -> None:
                 "context_policy": "user-supplied-policy",
                 "context_reason": "none",
             },
+        )
+    assert metrics.record(
+        "gonow_stage_transitions_total",
+        1,
+        {"stage": "compose"},
+    )
+    with pytest.raises(MetricContractError):
+        metrics.record(
+            "gonow_stage_transitions_total",
+            1,
+            {"stage": "user-supplied-stage"},
         )
 
 

@@ -21,10 +21,17 @@ from app.graphs.itinerary_planning import (  # noqa: E402
     BudgetDimension,
     BudgetExceeded,
     BudgetPolicy,
+    InProcessStageState,
     PlanningGraphError,
     PlanningStep,
+    StageReferenceDelta,
 )
-from app.runtime.state import BudgetSnapshot, GoNowAgentState, StateReference  # noqa: E402
+from app.runtime.state import (  # noqa: E402
+    BudgetSnapshot,
+    GoNowAgentState,
+    StateReference,
+    WorkflowStage,
+)
 
 
 def _state() -> GoNowAgentState:
@@ -142,3 +149,110 @@ def test_graph_d_stops_expired_deadline_before_state_change() -> None:
         )
     assert failure.value.dimension is BudgetDimension.DEADLINE
     assert state.workflow_stage is BUSINESS_STAGES[0]
+
+
+def test_graph_advances_reference_only_in_process_stage_state() -> None:
+    graph = _graph()
+    task_ref = StateReference(
+        kind="requirement",
+        uri="context://task-contract/sha256/" + "1" * 64,
+        sha256="1" * 64,
+    )
+    intent_ref = StateReference(
+        kind="requirement",
+        uri="context://plan-intent/sha256/" + "2" * 64,
+        sha256="2" * 64,
+    )
+    draft_ref = StateReference(
+        kind="candidate",
+        uri="candidate://sha256/" + "3" * 64,
+        sha256="3" * 64,
+    )
+    state = InProcessStageState(
+        budget=BudgetSnapshot(
+            remaining_model_calls=1,
+            remaining_tool_calls=0,
+            remaining_tokens=1_000,
+        )
+    )
+    state = graph.advance_in_process(
+        state,
+        PlanningStep(next_stage=WorkflowStage.PLAN),
+        references=StageReferenceDelta(task_contract_ref=task_ref),
+    )
+    state = graph.advance_in_process(
+        state,
+        PlanningStep(next_stage=WorkflowStage.EVIDENCE),
+        references=StageReferenceDelta(plan_intent_ref=intent_ref),
+    )
+    state = graph.advance_in_process(
+        state,
+        PlanningStep(next_stage=WorkflowStage.COMPOSE),
+    )
+    state = graph.advance_in_process(
+        state,
+        PlanningStep(
+            next_stage=WorkflowStage.VALIDATE,
+            model_calls=1,
+            tokens=80,
+        ),
+        references=StageReferenceDelta(candidate_draft_ref=draft_ref),
+    )
+    state = graph.advance_in_process(
+        state,
+        PlanningStep(next_stage=WorkflowStage.COMPLETE),
+    )
+
+    assert state.workflow_stage is WorkflowStage.COMPLETE
+    assert state.task_contract_ref == task_ref
+    assert state.plan_intent_ref == intent_ref
+    assert state.candidate_draft_ref == draft_ref
+    assert state.model_call_count == 1
+    assert state.tool_call_count == 0
+    assert state.budget.remaining_tokens == 920
+
+
+def test_graph_preflight_rejects_model_budget_without_mutating_stage() -> None:
+    graph = _graph()
+    state = InProcessStageState(
+        workflow_stage=WorkflowStage.COMPOSE,
+        step_count=3,
+        budget=BudgetSnapshot(
+            remaining_model_calls=0,
+            remaining_tool_calls=0,
+            remaining_tokens=1_000,
+        ),
+    )
+    with pytest.raises(BudgetExceeded) as raised:
+        graph.preflight(
+            state,
+            PlanningStep(
+                next_stage=WorkflowStage.VALIDATE,
+                model_calls=1,
+                tokens=100,
+            ),
+        )
+    assert raised.value.dimension is BudgetDimension.MODEL_CALL
+    assert state.workflow_stage is WorkflowStage.COMPOSE
+
+
+def test_graph_rejects_reference_delta_owned_by_another_stage() -> None:
+    state = InProcessStageState(
+        budget=BudgetSnapshot(
+            remaining_model_calls=1,
+            remaining_tool_calls=0,
+            remaining_tokens=1_000,
+        )
+    )
+    forbidden = StateReference(
+        kind="candidate",
+        uri="candidate://sha256/" + "9" * 64,
+        sha256="9" * 64,
+    )
+    with pytest.raises(PlanningGraphError) as raised:
+        _graph().advance_in_process(
+            state,
+            PlanningStep(next_stage=WorkflowStage.PLAN),
+            references=StageReferenceDelta(candidate_draft_ref=forbidden),
+        )
+    assert raised.value.code == "graph.stage_delta_forbidden"

@@ -38,7 +38,7 @@ def _job(
             run_id=run_id,
             tenant_id="tenant-gemini-contract",
             job_type="itinerary_planning",
-            input_ref="job-input://sha256/" + "a" * 64,
+            input_ref="job-input://sha256/" + "c" * 64,
             lease_id=uuid4(),
             holder_id="worker-gemini-contract",
             fencing_token=1,
