@@ -1,6 +1,6 @@
 # BLK-P13-STACK-GITHUB-PR-AUTH
 
-Status: remote publication deferred by user on 2026-08-27
+Status: resolved on 2026-08-27
 
 ## Reproduction
 
@@ -10,7 +10,7 @@ Status: remote publication deferred by user on 2026-08-27
 
 ## Error / impact
 
-The four local review branches and commits remain recoverable in the local repository. This environment cannot create Draft PR objects, set their stacked base branches, or mark them Ready. The user explicitly requested no further remote pushes, so the rewritten local PR3/PR4 tips intentionally diverge from their older remote branch tips. No PR URL or remote synchronization claim is made.
+The environment initially could not create Draft PR objects because GitHub CLI was unauthenticated and the connector lacked write access. The user later reauthorized remote publication, completed GitHub CLI device authentication, and the four local branches were synchronized before PR creation.
 
 ## Attempts and outcomes
 
@@ -19,11 +19,13 @@ The four local review branches and commits remain recoverable in the local repos
 - Used standard Git branches as allowed by the objective.
 - Earlier in the run, pushed all four branch tips once before the user changed the instruction.
 - Stopped all remote writes after the user requested local-only commit history.
+- Resumed remote writes only after the user explicitly requested that all branches be pushed and the PRs be created.
+- Created four Draft PRs with the exact stacked base/head pairs and verified their remote metadata.
 - Wrote complete PR bodies under ignored `.codex-local/pr-bodies/`.
 
 ## Safe workaround
 
-Use the local branches and local PR bodies. If the user later reauthorizes remote publication, an authenticated actor must first push the current local tips, then create four PRs with bases exactly:
+The delivered Draft PR stack uses these exact bases:
 
 1. `main` ← `feat/context-planner-v2-01-runtime-wiring`
 2. PR1 branch ← `feat/context-planner-v2-02-stage-runtime`
@@ -32,12 +34,12 @@ Use the local branches and local PR bodies. If the user later reauthorizes remot
 
 ## Resolution criteria
 
-Remote publication is no longer a completion criterion for the current local-only request. If later reauthorized, four GitHub PR URLs must exist with those bases/heads. The CI/toolchain gate is resolved; live-provider evidence remains required for release enablement.
+Four GitHub PR URLs exist with those bases/heads. This criterion is met. The CI/toolchain gate is resolved; live-provider evidence remains required for release enablement and Ready status.
 
 ## Delivered resolution
 
-Local branch and commit history delivered. Remote synchronization and PR creation are intentionally deferred. No PR existence or Ready claim is made.
+Delivered Draft PRs: [PR #2](https://github.com/Elfsa-Miranda/GO_NOW/pull/2), [PR #3](https://github.com/Elfsa-Miranda/GO_NOW/pull/3), [PR #4](https://github.com/Elfsa-Miranda/GO_NOW/pull/4), and [PR #5](https://github.com/Elfsa-Miranda/GO_NOW/pull/5). No Ready claim is made while live-provider evidence is absent.
 
 ## Truth audit
 
-No credentials were read, printed, copied, or fabricated. Branch push success is not represented as PR creation.
+No credential material was read, copied, or fabricated. Each PR URL and stacked base/head pair was verified after creation.
