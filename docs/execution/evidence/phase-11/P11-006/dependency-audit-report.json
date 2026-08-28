@@ -1,1 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P11-006","checks":{"unpinned_direct":0,"unknown_license":0,"critical_cve":0,"high_cve":0,"stale_without_adr":0,"dependency_change_count":0,"audit_exit_code":0,"license_exit_code":0,"production_write_count":0},"recorded_at":"2026-08-04T00:32:48.2890896+08:00"}

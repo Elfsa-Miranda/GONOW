@@ -1,8 +1,0 @@
-{
-  "schema_version":"1.0","task_id":"TASK-P12A-010","evidence_kind":"direct_user_local_provisional_selection",
-  "local_decision":"proceed_with_mechanism_validation","production_trigger_decision":"unknown_pending_real_data",
-  "phase_base_oid":"3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104",
-  "entry_regression_reused":{"ci":15,"unit":830,"contract":233,"flutter":124,"realpg_fault":53,"skipped":0,"xfailed":0,"p12b_postmerge_focused":"98/98"},
-  "fixture_source":"repository_synthetic_deidentified","raw_user_row_count":0,"model_api_call_count":0,"production_write_count":0,
-  "claim_boundary":"Direct selection authorizes local provisional implementation; it does not prove a production failure rate, value gain, schema, RLS or consent inventory."
-}

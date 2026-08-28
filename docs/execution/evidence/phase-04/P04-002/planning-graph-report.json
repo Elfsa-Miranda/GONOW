@@ -1,1 +1,0 @@
-{"budget_fuse_cases":6,"budget_fuse_failures":0,"budget_fuses":["step","model_call","tool_call","token","deadline","no_progress"],"deadline_overrun_count":0,"max_business_stages":6,"model_call_count":0,"no_progress_loop_count":0,"production_write_count":0,"schema_version":"1.0","second_behavior_count":0,"task_id":"TASK-P04-002","tool_call_count":0}

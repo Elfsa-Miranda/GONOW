@@ -1,1 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P11-008","checks":{"old_path_failures":0,"unexpected_writes":0,"rollback_not_run":0,"diff_check_exit_code":0,"rollback_strategy":"do not reverse deletion; repair incomplete propagation from the durable tombstone","production_write_count":0},"recorded_at":"2026-08-04T00:55:22.6456559+08:00"}

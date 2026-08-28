@@ -1,7 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P12A-020","artifacts":[
-{"path_or_reference":"agent-service/app/memory/contracts.py","sha256":"ec02553edb6a268a6c3198b43f1393ddaade17eb81d631a5c31667102246a63e","size_bytes":4632},
-{"path_or_reference":"agent-service/app/persistence/models/memory.py","sha256":"ab98ac7d2d4cd8c48c62c3ec739eac76d2895e99e7ba083411f3d2893b0a0c3d","size_bytes":5588},
-{"path_or_reference":"agent-service/migrations/versions/p12a_001_structured_memory.py","sha256":"509d14f90747dc221a0abae3b3ad086fcc769ee4df32dec56523beccdd4287ad","size_bytes":8354},
-{"path_or_reference":"agent-service/tests/unit/memory/test_contracts.py","sha256":"841898034157aed1fd42157be2663ac60931528493595a415b18cd432f0cc40c","size_bytes":3017},
-{"path_or_reference":"agent-service/tests/integration/test_memory_migration_restore.py","sha256":"71ec6a723cc7a5495d9e5c9a5441581ff7a8db4ccef57ddbfd9473175cc79958","size_bytes":1243},
-{"path_or_reference":"agent-service/tests/security/test_memory_rls.py","sha256":"5e6d1d566100a2e7746ade7cdf045ddfa39a7fae0952ec4770eeda0ba9fecb02","size_bytes":6659}]}

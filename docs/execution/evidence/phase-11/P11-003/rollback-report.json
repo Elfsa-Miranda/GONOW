@@ -1,1 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P11-003","checks":{"old_path_failures":0,"unexpected_writes":0,"rollback_not_run":0,"diff_check_exit_code":0,"rollback_strategy":"disable ingestion claims and preserve durable receipts for replay","production_write_count":0},"recorded_at":"2026-08-03T23:31:47.7376451+08:00"}

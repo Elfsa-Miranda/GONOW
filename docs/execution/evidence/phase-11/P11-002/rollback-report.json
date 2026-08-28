@@ -1,1 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P11-002","checks":{"old_path_failures":0,"unexpected_writes":0,"rollback_not_run":0,"diff_check_exit_code":0,"rollback_strategy":"contract the knowledge schema only after outbox drain and restore verification","production_write_count":0},"recorded_at":"2026-08-03T23:22:14.0864881+08:00"}

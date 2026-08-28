@@ -1,9 +1,0 @@
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q001","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D001"],"expect_no_results":false,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q002","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D002"],"expect_no_results":false,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q003","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D003"],"expect_no_results":false,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q004","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D008"],"expect_no_results":false,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q005","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D010"],"expect_no_results":false,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q006","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D011"],"expect_no_results":false,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q007","label_status":"synthetic_curated","relevant_doc_ids":[],"expect_no_results":true,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q008","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D009"],"expect_no_results":false,"require_current_version":true}
-{"record_type":"label","schema_version":"1.0","query_id":"RAG-Q009","label_status":"synthetic_curated","relevant_doc_ids":["RAG-D009"],"expect_no_results":false,"require_current_version":true}

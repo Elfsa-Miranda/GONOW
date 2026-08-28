@@ -1,6 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P12A-030","artifacts":[
-{"path_or_reference":"agent-service/app/memory/contracts.py","sha256":"fd7697dfae94b4c8a0dc0d0dc225434d34aaf3a9808f1a00dae75cc25403413c","size_bytes":5487},
-{"path_or_reference":"agent-service/app/memory/service.py","sha256":"f9d4aec05ce864f9ac3d50c9b82bc8b33a74387bf745ad525a6c6a4ed486b947","size_bytes":2244},
-{"path_or_reference":"agent-service/app/persistence/repositories/memory.py","sha256":"618eee6f98698a30b16e3519adc964ed5c7e184dcefd58695955e0eaa1716a50","size_bytes":4883},
-{"path_or_reference":"agent-service/tests/contract/test_memory_consent.py","sha256":"f348656af70f1669b6c5ea6c96c50a02e3e9b6c3814e6100da540d38898d2392","size_bytes":2659},
-{"path_or_reference":"agent-service/tests/integration/test_memory_commands.py","sha256":"e6e18ee0c5d0924bc9c7b952b427a572173d35f554d48868043bbded2dc19d28","size_bytes":5189}]}

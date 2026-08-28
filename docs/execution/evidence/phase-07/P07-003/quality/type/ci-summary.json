@@ -1,1 +1,0 @@
-{"schema_version":"1.0","stage":"Type","mandatory_skip_count":0,"xfail_count":0,"results":[{"name":"lock-check","exit_code":0,"duration_ms":24},{"name":"frozen-sync","exit_code":0,"duration_ms":36},{"name":"type","exit_code":0,"duration_ms":195}],"completed_at":"2026-08-01T09:39:12.1733428+00:00"}

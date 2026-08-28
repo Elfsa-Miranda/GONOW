@@ -1,1 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P12A-010","commands":[{"step":1,"command":"fixture JSONL parse and frozen-field assertions","exit_code":0,"passed":12,"failed":0,"skipped":0,"xfailed":0,"model_api_calls":0},{"step":2,"command":"git diff --check","exit_code":0}]}

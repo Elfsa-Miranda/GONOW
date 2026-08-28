@@ -1,9 +1,0 @@
-{
-  "schema_version":"1.0","task_id":"TASK-P12A-010","baseline_oid":"3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104","dataset_version":"structured-memory-v1",
-  "primary":{"id":"authorized_lifecycle_success_rate","formula":"successful_authorized_lifecycle_scenarios / all_preregistered_scenarios","denominator":12,"threshold":"12/12 local mechanism only"},
-  "diagnostic":{"id":"eligible_materialization_accuracy","formula":"correct_materializations / eligible_opportunities"},
-  "guardrail":{"id":"legacy_path_compatibility_failures","threshold":0},
-  "redlines":{"cross_tenant_materialization":0,"negative_consent_bypass":0,"injection_executed_action":0,"deletion_propagation_failure":0,"backup_resurrection":0},
-  "missing_run_rule":"candidate-caused missing run is failure","skipped_allowed":0,"xfailed_allowed":0,"model_api_calls_allowed":0,
-  "production_value_claim_allowed":false
-}

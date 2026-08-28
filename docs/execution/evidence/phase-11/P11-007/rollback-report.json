@@ -1,1 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P11-007","checks":{"old_path_failures":0,"unexpected_writes":0,"rollback_not_run":0,"diff_check_exit_code":0,"rollback_strategy":"CAS the alias back to the prior certified manifest","production_write_count":0},"recorded_at":"2026-08-04T00:42:25.2876480+08:00"}

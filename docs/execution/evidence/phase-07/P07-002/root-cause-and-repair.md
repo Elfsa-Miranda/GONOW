@@ -1,7 +1,0 @@
-# P07-002 root-cause and repair record
-
-- Reproduction: the first direct test collection could not import `app` when pytest was started from the repository root, and a later ad-hoc quality command referenced `.venv\Scripts\ruff.exe` and `.venv\Scripts\mypy.exe`, which are not installed as standalone Windows entry points.
-- Root cause and impact: the isolated test did not establish the service root on `sys.path`; the quality invocation bypassed the repository's locked `uv`/`ci.ps1` toolchain contract. The validator logic and its golden assertions were not implicated.
-- Reversible repair: the test now adds the existing service root and locked site-packages path before importing `app`. Formatting uses the locked `uv` executable, while format/lint/type verification uses `agent-service/scripts/ci.ps1` with task-local report roots.
-- Gate adaptation: the first pre-commit `WorksetVerify` found no commit yet for the new validator path, so PowerShell returned no scalar and `.Trim()` failed. The anchor lookup now joins an empty result into a safe empty string; after the candidate commit it still expands that commit's complete diff for OID-bound workset verification.
-- Affected regression: the isolated test passes 3/3, its golden matrix passes 6/6 with zero missed hard conflicts and zero unknown facts labeled verified, and the three repository quality stages pass. Reverting the test bootstrap and task-local evidence fully removes this repair without changing runtime configuration or data.

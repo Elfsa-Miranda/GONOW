@@ -1,1 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P11-001","checks":{"old_path_failures":0,"unexpected_writes":0,"rollback_not_run":0,"diff_check_exit_code":0,"rollback_strategy":"revoke source eligibility and retain the prior policy version","production_write_count":0},"recorded_at":"2026-08-03T23:02:11.5219121+08:00"}

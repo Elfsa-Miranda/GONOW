@@ -1,5 +1,0 @@
-{"schema_version":"1.0","task_id":"TASK-P12A-050","artifacts":[
-{"path_or_reference":"agent-service/app/memory/service.py","sha256":"7a759d3887c328012e18b34f781c064defa6fbc634f3cd101c5f2953998c53ca","size_bytes":3523},
-{"path_or_reference":"agent-service/app/persistence/repositories/memory.py","sha256":"02059f9c12d7732de561b8b922766163b846cd2b51fba80b5cfe4b7595bc44ba","size_bytes":11355},
-{"path_or_reference":"agent-service/tests/contract/test_memory_delete.py","sha256":"457f119b0550ff5b6d02df70e9e20de77469d9fbcb9324d3e453821b69beec04","size_bytes":3438},
-{"path_or_reference":"agent-service/tests/integration/test_memory_delete_restore.py","sha256":"002070dbabe31a88d105fe5602af85403fab5782f8f3b3c891bb6722a9b5bac5","size_bytes":1865}]}
