@@ -1,0 +1,12 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-060",
+  "cohort":"deepseek-targeted-v4",
+  "primary_result":{"metric":"latest_result_per_scenario_deepseek_qualified_success_rate","before":0.7,"after":0.9,"qualified_successes":9,"denominator":10,"outcome":"improved_but_repair_required","improvement_claimed":false},
+  "diagnostics":{"targeted_live_calls":3,"targeted_qualified_successes":2,"targeted_quality_failures":1,"remaining_rule_codes":["quality.unique_item_ids"],"provider_failures":0,"successful_task_p95_latency_ms":3732,"targeted_cost_per_qualified_success_microusd":322},
+  "guardrails":{"schema_and_business_rules":"fail","provider_availability":"pass","latency":"pass","fallback_and_retry":"pass_no_retry","safety_redlines":"pass","allocation":"zero"},
+  "relative_cost_benefit":{"status":"not_computable","reason":"Gemini baseline has zero qualified live successes"},
+  "candidate_allocation":0,
+  "positive_benefit_claim":false,
+  "production_suitability":"unknown"
+}

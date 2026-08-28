@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-030",
+  "gate_run_at": "2026-08-04T17:21:27+08:00",
+  "git_object_format": "sha1",
+  "head_oid": "f899f3d15a5d4321a1c5a60fd6f720f0955bea3f",
+  "phase_base_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "tool_versions": {
+    "catalog": "2.3.0",
+    "python": "3.13.9",
+    "postgresql": "17.10",
+    "pytest": "9.1.1"
+  },
+  "results": [
+    {
+      "check_id": "ExpandOnlyMigration",
+      "status": "passed",
+      "detail": "destructive_step_count=0; business_table_changed=false; production schema not guessed; forward-fix rollback preserved",
+      "evidence_path": "agent-service/migrations/versions/p12d_001_itinerary_basic_info_commands.py",
+      "evidence_sha256": "7a0769b270086f01e78e2ba4bb9bb27042a1352d637633a9374a5e9ad19a80de"
+    },
+    {
+      "check_id": "RealPgRestore",
+      "status": "passed",
+      "detail": "restore_mismatch_count=0; logical_rows=6; schema/fixture/snapshot hashes bound; object owner returned to non-bypass migrator",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-030/migration-restore-results.json",
+      "evidence_sha256": "828baf8fb3f72c3ef650f35190594ae1d13b1e0217825e5d164f2c9886a32602"
+    },
+    {
+      "check_id": "TenantIsolation",
+      "status": "passed",
+      "detail": "cross_tenant_allow_count=0; unset_context_visible_row_count=0; forced_rls_table_count=3",
+      "evidence_path": "agent-service/tests/security/test_p12d_rls.py",
+      "evidence_sha256": "d80e8dbf08b26c1e28ed1121fd9aa15f30f878ec8f2d42748f0b8e5a2f3f5ced"
+    },
+    {
+      "check_id": "LeastPrivilegeAndImmutability",
+      "status": "passed",
+      "detail": "least_privilege_gap_count=0; public_grant_count=0; role_bypass_count=0; receipt/attempt evidence mutation allow count=0",
+      "evidence_path": "agent-service/tests/integration/test_p12d_migration_restore.py",
+      "evidence_sha256": "4618cec2d3bf2ccdd8eb022fb603adfcba298406495ddd92bb229b33bce73724"
+    },
+    {
+      "check_id": "FocusedRealPgSuite",
+      "status": "passed",
+      "detail": "passed=5; failed=0; skipped=0; xfailed=0; all diagnostic failures retained",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-030/commands.json",
+      "evidence_sha256": "65bfdb65523b052e9b0965d60efa38bf7be16bdbae3fdcd464b13268638412e3"
+    },
+    {
+      "check_id": "EvidenceBoundary",
+      "status": "passed",
+      "detail": "claim_scope=local_controlled_mechanism; production_schema_equivalence=unknown; production_improvement_claim=false; production_write_count=0",
+      "evidence_path": "docs/execution/evidence/phase-12d/P12D-030/migration-restore-results.json",
+      "evidence_sha256": "828baf8fb3f72c3ef650f35190594ae1d13b1e0217825e5d164f2c9886a32602"
+    }
+  ],
+  "overall_status": "passed"
+}

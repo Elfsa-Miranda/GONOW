@@ -1,0 +1,6 @@
+{"schema_version":"1.0","task_id":"TASK-P12A-040","artifacts":[
+{"path_or_reference":"agent-service/app/memory/contracts.py","sha256":"13bd946129cabcb4a6e89a772998f5421295a82541f49427c757f978a683689c","size_bytes":5903},
+{"path_or_reference":"agent-service/app/memory/service.py","sha256":"f9d4aec05ce864f9ac3d50c9b82bc8b33a74387bf745ad525a6c6a4ed486b947","size_bytes":2244},
+{"path_or_reference":"agent-service/app/persistence/repositories/memory.py","sha256":"c68be0cc2289e20ee7ca468eedfd94d99deee4c5250e3e2c45f07e8d63b61d0e","size_bytes":6749},
+{"path_or_reference":"agent-service/tests/unit/memory/test_conflict_and_poisoning.py","sha256":"8eaad50fa4ca741ffec94da59b6838f3c4330e030555ba17ca1e97e946678058","size_bytes":3566},
+{"path_or_reference":"agent-service/tests/contract/test_memory_single_agent.py","sha256":"d2ec5b18e0fdbf10ca9e6e56b05bb53228fb784a5859c7b00dbbf14788c6aa65","size_bytes":623}]}

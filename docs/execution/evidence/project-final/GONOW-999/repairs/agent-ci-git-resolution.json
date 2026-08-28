@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-999",
+  "github_pull_request": 1,
+  "workflow_run_id": 30989244010,
+  "job_id": 92251177096,
+  "first_failure": {
+    "workflow": "Agent CI",
+    "step": "Provision isolated PostgreSQL contract database",
+    "classification": "ambiguous_git_application_resolution",
+    "mandatory_agent_gates_executed": false
+  },
+  "root_cause": "Get-Command git can return multiple executable applications on the Windows runner. Reading .Source from the collection produced one space-separated string containing three git.exe paths, which PowerShell then attempted to execute as one command.",
+  "impact": {
+    "database_initialized": false,
+    "agent_gate_executed": false,
+    "runtime_product_code_changed": false,
+    "postgres_contract_changed": false,
+    "pgvector_version_changed": false,
+    "production_write_count": 0
+  },
+  "repair": {
+    "implementation": "Select the first resolved Git application and cast its Source to one string before use.",
+    "network_source_unchanged": true,
+    "locked_pgvector_commit_unchanged": true,
+    "database_roles_and_isolation_unchanged": true,
+    "rollback": "Revert this repair commit; do not bypass isolated PostgreSQL provisioning or mandatory Agent gates."
+  },
+  "focused_validation": {
+    "ci_contract_exit_code": 0,
+    "ci_contract_passed": 1,
+    "powershell_parse_errors": 0,
+    "resolved_git_application_count": 1,
+    "git_invocation_exit_code": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "recorded_at": "2026-08-05T16:45:00+08:00"
+}

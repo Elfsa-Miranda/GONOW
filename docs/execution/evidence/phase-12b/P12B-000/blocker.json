@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-000",
+  "mode": "activation_contract_test",
+  "reason_code": "conditional_task_registry_stale_after_catalog_activation",
+  "state": "resolved_local",
+  "root_cause": "The explicit conditional TaskGate registry and its test still bound the pre-activation task set, and the first repair omitted the acceptance-only modes declared by P12B-990 and historical P12D-990.",
+  "excluded_paths": [
+    "P12B runtime behavior",
+    "production routing",
+    "provider credentials",
+    "model API calls",
+    "Catalog task definitions"
+  ],
+  "impact_scope": [
+    "P12B-000 activation contract test",
+    "explicit fail-closed registration for P12B and historical P12D executable task cards"
+  ],
+  "repair": "Register all eight P12B and eight historical P12D executable tasks, including AcceptancePreflight, Regression, and RollbackDrill for each 990 task; bind the test to the exact forty-task set and print set differences on failure.",
+  "rollback": "Revert the registry and test-only patch; no runtime, production, data, or provider state is affected.",
+  "recovery_condition": "Invoke-TaskGate.Tests.ps1 passes with forty conditional tasks, zero missing registrations, and zero unexpected registrations.",
+  "first_failure": {
+    "expected_conditional_task_count": 24,
+    "observed_conditional_task_count": 40
+  },
+  "second_failure": {
+    "missing_task_ids": [
+      "TASK-P12B-990",
+      "TASK-P12D-990"
+    ],
+    "missing_modes": [
+      "AcceptancePreflight",
+      "Regression",
+      "RollbackDrill"
+    ]
+  },
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "formal_acceptance_status": "pending_external",
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T22:00:03.0448690+08:00",
+  "affected_regression": {
+    "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/execution/commands/tests/Invoke-TaskGate.Tests.ps1",
+    "exit_code": 0,
+    "duration_seconds": 88.2,
+    "conditional_task_count": 40,
+    "missing_registration_count": 0,
+    "unexpected_registration_count": 0
+  },
+  "resolved_at": "2026-08-04T22:04:00+08:00"
+}

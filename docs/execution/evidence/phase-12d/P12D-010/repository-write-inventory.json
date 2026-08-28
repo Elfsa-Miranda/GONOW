@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-010",
+  "repository_head_oid": "e45b2feac90a8178f5f370279a4d51823e6c2e2e",
+  "runtime_baseline_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "inventory_scope": "tracked Flutter feature write syntax plus manual classification of the itinerary write paths relevant to the one-entry Domain Command package",
+  "inventory_method": {
+    "command": "git grep -n -E \\\"\\\\.(insert|update|upsert|delete)\\\\(\\\" -- 'lib/features/**/*.dart'",
+    "raw_match_line_count": 70,
+    "raw_output_sha256": "1f2961acd3079350b50f4850b356a45f760d971749d322f49b56efc4341444bb",
+    "false_positive_rule": "Dart collection mutations are excluded after manual classification; the raw scan is retained as a reproducible discovery aid, not a production denominator."
+  },
+  "selected_write_entry": "flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries",
+  "selected_write_entry_count": 1,
+  "production_fact_claim_count": 0,
+  "candidates": [
+    {
+      "entry_id": "flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries",
+      "selected": true,
+      "tracked_path": "lib/features/itinerary/data/itinerary_provider.dart",
+      "method_lines": "1424-1533",
+      "remote_write_lines": "1517-1528",
+      "caller_path": "lib/features/discover/presentation/screens/discover_screen.dart",
+      "caller_lines": "1126-1149",
+      "table_literal_source": "lib/features/itinerary/data/itinerary_provider.dart:363",
+      "table_literal": "user_itineraries",
+      "selection_reason": "The tracked path acknowledges UI success before the remote result, persists local state before the remote call, does not predicate the remote update on expected version, writes the unchanged version, and converts remote failure to a log-only outcome. This is a bounded, typed Basic Info mutation with one known caller."
+    },
+    {
+      "entry_id": "flutter:ItineraryProvider.updateItineraryDataWithLock:user_itineraries",
+      "selected": false,
+      "tracked_path": "lib/features/itinerary/data/itinerary_provider.dart",
+      "method_lines": "1210-1364",
+      "exclusion_reason": "It already reads cloud version, predicates updates on version, awaits the result, and returns an explicit success value; migrating it would be a second and broader plan-data write entry."
+    },
+    {
+      "entry_id": "flutter:ItineraryProvider.uploadCoverImage:user_itineraries",
+      "selected": false,
+      "tracked_path": "lib/features/itinerary/data/itinerary_provider.dart",
+      "remote_write_lines": "991-1006",
+      "exclusion_reason": "The path includes a Storage upload plus a database update, so it is a multi-resource side-effect package rather than the selected bounded Basic Info mutation."
+    },
+    {
+      "entry_id": "flutter:ItineraryProvider.rollbackEdit:user_itineraries",
+      "selected": false,
+      "tracked_path": "lib/features/itinerary/data/itinerary_provider.dart",
+      "remote_write_lines": "1398-1419",
+      "exclusion_reason": "This is a recovery helper for a different edit flow, not the user-facing Basic Info write entry; selecting it would not migrate the named caller."
+    },
+    {
+      "entry_id": "flutter:DiaryProvider.save:travel_diaries",
+      "selected": false,
+      "tracked_path": "lib/features/diary/data/diary_provider.dart",
+      "remote_write_lines": "331",
+      "exclusion_reason": "It belongs to a different bounded context and would make this package span more than one domain."
+    }
+  ],
+  "repository_evidence": [
+    {
+      "path": "lib/features/itinerary/data/itinerary_provider.dart",
+      "blob_oid": "8db4041036c6560f45d4415203db4ef2b66346b7",
+      "last_change_commit": "21030003412db6fb4b257024423ef0ff6dfab221"
+    },
+    {
+      "path": "lib/features/discover/presentation/screens/discover_screen.dart",
+      "blob_oid": "a1a00cf72899fdf894f4af4706ef8de1d5f6f8f2",
+      "last_change_commit": "392780915828dcb64e12b87076323306c504f8fa"
+    }
+  ],
+  "unknown_production_facts": [
+    "production request volume and concurrency distribution",
+    "production stale-write or partial-effect incidence",
+    "deployed user_itineraries DDL, RLS, grants, triggers and downstream consumers",
+    "production latency, SLA, recovery objective and repair load"
+  ],
+  "recorded_at": "2026-08-04T16:52:00+08:00"
+}

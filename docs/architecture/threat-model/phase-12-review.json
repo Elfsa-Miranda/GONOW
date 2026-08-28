@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "review_id": "phase-12a-local-provisional-20260805",
+  "source_checkpoint_oid": "bde6abbd7ba474471b1ef5e4a7dd4fb7977f19fa",
+  "selected_candidate": "12A",
+  "selected_count": 1,
+  "single_agent": true,
+  "multi_agent_implementation_count": 0,
+  "public_contract_change_count": 0,
+  "schema_change_count": 1,
+  "production_write_count": 0,
+  "production_facts": "unknown_pending",
+  "candidates": {
+    "12A": {
+      "status": "selected_local_provisional",
+      "local_result": "typed user-visible Memory lifecycle, consent and purpose authorization, FORCE RLS isolation, CAS/idempotency/outbox, conflict preservation, deletion/export/restore suppression, and default-off Single-Agent read port implemented and tested",
+      "residual": "production schema, grants, RLS, triggers, backup replay, user consent population, traffic, outcomes, independent review, and rollout authority remain unknown or pending"
+    },
+    "12B": {
+      "status": "historical_dormant",
+      "local_result": "prior local-provisional Cost Router evidence retained without new work",
+      "residual": "no production allocation or current-cycle authority"
+    },
+    "12C": {
+      "status": "dormant",
+      "local_result": "no Multi-Agent runtime, coordinator, specialist, or allocation",
+      "residual": "a new XOR cycle and separate approval would be required"
+    },
+    "12D": {
+      "status": "historical_dormant",
+      "local_result": "prior Domain Command ready_for_review evidence retained without new work",
+      "residual": "no production allocation or current-cycle authority"
+    }
+  },
+  "threats": [
+    {
+      "id": "P12A-T01",
+      "boundary": "chat transcript or model inference silently becomes Memory",
+      "control": "closed typed enum, no free text, explicit user-visible Candidate, and confirmation before formal write",
+      "local_result": "negative fixtures reject transcript, hidden-profile, inference, and unknown-type inputs",
+      "residual": "production ingestion paths are unknown"
+    },
+    {
+      "id": "P12A-T02",
+      "boundary": "missing, expired, or wrong-purpose consent permits access",
+      "control": "current purpose-specific versioned consent is required for read and write",
+      "local_result": "negative-consent and purpose-mismatch reads and writes are denied",
+      "residual": "production consent records and policy ownership are unknown"
+    },
+    {
+      "id": "P12A-T03",
+      "boundary": "cross-tenant or wrong-principal materialization",
+      "control": "server-derived tenant and principal context plus FORCE RLS on all seven tables",
+      "local_result": "authorized principal sees one row, wrong principal sees zero, and Worker formal update is denied",
+      "residual": "production RLS, grants, connection roles, and bypass privileges are unknown"
+    },
+    {
+      "id": "P12A-T04",
+      "boundary": "model or Worker directly mutates formal Memory",
+      "control": "Candidate-only model output and explicit confirmation followed by server authorization, CAS, idempotency, and atomic outbox",
+      "local_result": "model and Worker formal-write paths are denied; duplicate, stale, and unauthorized effects are zero",
+      "residual": "production service identities and grants are unknown"
+    },
+    {
+      "id": "P12A-T05",
+      "boundary": "conflicting Memory silently overwrites provenance",
+      "control": "deterministic conflict state preserves both claims and requires authorized expected-version resolution",
+      "local_result": "silent conflict overwrite and nondeterministic resolution counts are zero",
+      "residual": "real user conflict frequency is unknown"
+    },
+    {
+      "id": "P12A-T06",
+      "boundary": "retrieved content grants authority or injects instructions",
+      "control": "Memory values are typed untrusted data and the read port has no Tool, model, or instruction channel",
+      "local_result": "direct, multilingual, encoded, and tool-like injection fixtures execute zero actions",
+      "residual": "production prompt composition is not inspected by this local package"
+    },
+    {
+      "id": "P12A-T07",
+      "boundary": "delete or consent withdrawal leaves derived copies",
+      "control": "tombstone fan-out covers record, Candidate, index, cache, export, eval trace, and restore ledger",
+      "local_result": "deletion propagation failures and unauthorized exports are zero",
+      "residual": "production caches, indexes, exports, and external processors are unknown"
+    },
+    {
+      "id": "P12A-T08",
+      "boundary": "backup restores deleted or consent-revoked Memory",
+      "control": "restore replays tombstones before materialization and deletion never rolls back",
+      "local_result": "backup resurrection count is zero in the isolated restore fixture",
+      "residual": "production backup and disaster-recovery procedures are unknown"
+    },
+    {
+      "id": "P12A-T09",
+      "boundary": "feature failure changes legacy behavior or opens Multi-Agent",
+      "control": "default-off narrow Single-Agent read port and kill switch return the prior no-Memory path",
+      "local_result": "legacy compatibility failures and Multi-Agent implementation count are zero",
+      "residual": "production rollout and monitoring are pending"
+    },
+    {
+      "id": "P12A-T10",
+      "boundary": "local evidence is represented as production proof",
+      "control": "claim scope is local controlled mechanism, allocation and writes are zero, and unknown production facts are explicit",
+      "local_result": "formal acceptance and production-improvement claims are false",
+      "residual": "independent Data, Product, Security, and Engineering review is pending"
+    }
+  ]
+}

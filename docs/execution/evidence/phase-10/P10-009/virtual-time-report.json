@@ -1,0 +1,27 @@
+{
+  "boundary_events": {
+    "dst_backward": 1,
+    "dst_forward": 1,
+    "leap_day": 1,
+    "month_boundary": 3,
+    "ntp_backward": 3,
+    "ntp_forward": 3,
+    "year_boundary": 1
+  },
+  "boundary_failure_count": 0,
+  "end_instant": "2028-05-01T12:00:00+00:00",
+  "failure_samples": [],
+  "fake_provider_duplicate_charge_count": 0,
+  "fake_provider_duration_seconds": 0.954921,
+  "fake_provider_ledger_sha256": "9e01e04874b2ec0d7c350c09626ee49cbaa4c9a6dae650dfb7c4851e36813940",
+  "fake_provider_lifecycle_count": 100000,
+  "fake_provider_unknown_outcome_count": 0,
+  "gate_id": "C4",
+  "production": false,
+  "schema_version": "1.0",
+  "start_instant": "2028-02-01T12:00:00+00:00",
+  "timeline_sha256": "f7831ed8776fffde382d581eb564a7649d7e10e112b9c78257db4ea15616c5cd",
+  "ttl_failure_count": 0,
+  "virtual_clock_id": "c4-virtual-time-v1",
+  "virtual_days": 90
+}

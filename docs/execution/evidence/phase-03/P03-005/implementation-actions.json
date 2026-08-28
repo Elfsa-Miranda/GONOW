@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P03-005",
+  "execution_mode": "local_provisional",
+  "actions": [
+    {
+      "sequence": 1,
+      "kind": "preflight",
+      "result": "passed",
+      "detail": "Preflight and WorkPreflight froze schema normalize -> JCS -> vectors -> Python/Dart validation -> digest storage under the P03-004 local projection."
+    },
+    {
+      "sequence": 2,
+      "kind": "primary_reference",
+      "result": "completed",
+      "detail": "Consulted the RFC 8785 primary specification for I-JSON rejection, ECMAScript number serialization, UTF-16 property ordering, string escaping, and UTF-8 generation; phase scope remained bound to sealed guidance."
+    },
+    {
+      "sequence": 3,
+      "kind": "patch",
+      "result": "completed",
+      "detail": "Added the complete reference-only Behavior Manifest schema, shared vectors, Python and Dart JCS/SHA-256 implementations, and fail-closed negative tests without adding dependencies or storing prompt/secret bodies."
+    },
+    {
+      "sequence": 4,
+      "kind": "diagnostic_failure",
+      "result": "recovered",
+      "exit_code": 1,
+      "detail": "A read-only vector-print command failed when the Windows GBK console could not encode the Euro sign; setting PYTHONIOENCODING=utf-8 produced all remaining expected hashes without changing implementation semantics."
+    },
+    {
+      "sequence": 5,
+      "kind": "baseline_blocker",
+      "result": "isolated",
+      "exit_code": 1,
+      "detail": "The required full-repository Flutter analyzer reproduced three pre-existing stale widget-test errors and 42 unrelated warnings. It reported zero findings on P03-005 paths; BLK-P03-005-FLUTTER-BASELINE records the out-of-allowlist root cause and formal follow-up."
+    },
+    {
+      "sequence": 6,
+      "kind": "affected_regression",
+      "result": "passed",
+      "exit_code": 0,
+      "detail": "The reversible scoped analyzer passed with no issues for lib/core/agent/behavior_digest.dart and test/behavior_digest_test.dart; Python 30/30 and Dart 4/4 affected tests also passed."
+    },
+    {
+      "sequence": 7,
+      "kind": "diagnostic_timeout",
+      "result": "recovered",
+      "exit_code": 124,
+      "detail": "A read-only Import-PowerShellDataFile attempt exceeded a 10-second orchestration timeout before returning Catalog data."
+    },
+    {
+      "sequence": 8,
+      "kind": "catalog_diagnostic",
+      "result": "completed",
+      "detail": "Direct data-file import cannot evaluate the Catalog's dynamic null expression. A bounded raw UTF-8 substring read recovered the exact P03-005 entry and identified that its generated file_allowlist omitted the two contract files required by the sealed execplan card."
+    },
+    {
+      "sequence": 9,
+      "kind": "known_runner_enabler",
+      "result": "completed",
+      "detail": "Added exact P03-005 Verify, Security, Evidence, WorksetVerify, and RollbackVerify adapters plus the two execplan-mandated contract paths, without changing Catalog bytes."
+    },
+    {
+      "sequence": 10,
+      "kind": "full_regression",
+      "result": "passed",
+      "exit_code": 0,
+      "detail": "The complete Agent CI suite passed with 190 unit/integration tests, 42 contract tests, and all format, lint, type, secret, clock, license, and dependency audit checks."
+    }
+  ],
+  "production_write_count": 0,
+  "remote_mutation_count": 0,
+  "formal_approval_count": 0
+}

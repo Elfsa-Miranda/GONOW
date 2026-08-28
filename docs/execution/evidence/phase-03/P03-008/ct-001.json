@@ -1,0 +1,13 @@
+{
+  "concurrent_callers": 50,
+  "contract_test": "CT-001",
+  "exactly_one_legal_winner": true,
+  "original_winner_count": 1,
+  "persisted_idempotency_count": 1,
+  "persisted_run_count": 1,
+  "production": false,
+  "replay_count": 49,
+  "schema_version": "1.0",
+  "task_id": "TASK-P03-008",
+  "unique_run_count": 1
+}

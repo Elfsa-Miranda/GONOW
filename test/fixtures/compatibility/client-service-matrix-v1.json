@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "workflow": "build versions -> matrix -> failures -> report",
+  "versions": [
+    {
+      "version_id": "old_app",
+      "artifact_kind": "flutter_source_contract",
+      "source_reference": "phase_base_oid",
+      "agent_contract_probe": false
+    },
+    {
+      "version_id": "new_app",
+      "artifact_kind": "flutter_source_contract",
+      "source_reference": "TASK-P09-008-candidate",
+      "agent_contract_probe": true
+    },
+    {
+      "version_id": "old_service",
+      "artifact_kind": "agent_api_source_contract",
+      "source_reference": "phase_base_oid",
+      "agent_api_version": "1.0.0"
+    },
+    {
+      "version_id": "new_service",
+      "artifact_kind": "agent_api_source_contract",
+      "source_reference": "P11-rag-documentation-metadata",
+      "agent_api_version": "1.1.1"
+    }
+  ],
+  "services": {
+    "old_service": {
+      "descriptor": {
+        "name": "agent-api",
+        "major": 1,
+        "version": "1.0.0",
+        "spec_sha256": "ba776e2c464ff6faf1866c7e369756368a43b5023642ac6318758e55f857b8ed"
+      },
+      "candidate_only": true
+    },
+    "new_service": {
+      "descriptor": {
+        "name": "agent-api",
+        "major": 1,
+        "version": "1.1.1",
+        "spec_sha256": "1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8"
+      },
+      "candidate_only": true
+    }
+  },
+  "matrix": [
+    {
+      "case_id": "old_app_old_service",
+      "client_id": "old_app",
+      "service_id": "old_service",
+      "expected_route": "legacy",
+      "expected_result": "passed"
+    },
+    {
+      "case_id": "old_app_new_service",
+      "client_id": "old_app",
+      "service_id": "new_service",
+      "expected_route": "legacy",
+      "expected_result": "passed"
+    },
+    {
+      "case_id": "new_app_old_service",
+      "client_id": "new_app",
+      "service_id": "old_service",
+      "expected_route": "legacy",
+      "expected_result": "passed"
+    },
+    {
+      "case_id": "new_app_new_service",
+      "client_id": "new_app",
+      "service_id": "new_service",
+      "expected_route": "agent",
+      "expected_result": "passed"
+    }
+  ],
+  "failure_cases": [
+    {
+      "case_id": "digest_mismatch",
+      "expected_route": "legacy",
+      "expected_reason": "contract_mismatch"
+    },
+    {
+      "case_id": "service_unavailable",
+      "expected_route": "legacy",
+      "expected_reason": "agent_route_unavailable"
+    },
+    {
+      "case_id": "generation_mismatch",
+      "expected_route": "legacy",
+      "expected_reason": "generation_mismatch"
+    }
+  ],
+  "forced_upgrade_count": 0,
+  "adapter_delete_count": 0,
+  "contract_change": true,
+  "production_write_count": 0
+}

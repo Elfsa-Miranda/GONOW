@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12A-990",
+  "git_object_format": "sha1",
+  "head_oid": "7c96332fffa1914d327a6097b4f99c9534caef99",
+  "artifacts": [
+    {"path_or_reference": "docs/execution/evidence/phase-12a/acceptance.md", "sha256": "94cf2fe213ff5e536f557e91742a035e1597ffe61d0c88f675f95ff0f41caf18", "size_bytes": 3117, "artifact_type": "p12a-acceptance-candidate"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/artifact-manifest.premerge.json", "sha256": "40ba45a4471f83298e13afe0186dd5a828b40c0948e72314285f17c30bdb191e", "size_bytes": 4238, "artifact_type": "p12a-premerge-manifest"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/P12A-990/regression-attempts.json", "sha256": "9d8c7d87125e23921c528f7447329bd145d3fa1e87500564fc7bdfafaa0e8ce3", "size_bytes": 2524, "artifact_type": "p12a-negative-and-complete-attempt-ledger"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/P12A-990/regression-summary.json", "sha256": "eab115c0058ea31b736db3c41d943239fac0d2e757943c16ba23cef354ff0d2a", "size_bytes": 3609, "artifact_type": "p12a-complete-regression"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/P12A-990/commands.json", "sha256": "90e20e774e6c96c78c47067b13f83ebbac04b0beb2fe72227b1e50df55194712", "size_bytes": 4792, "artifact_type": "p12a-command-ledger"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/P12A-990/gate-results.json", "sha256": "a5c0af710ab2e0f0c07f0f81f3f76262ed489a8634a4ab680c808da01e95fc5b", "size_bytes": 4626, "artifact_type": "p12a-gate-results"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/P12A-990/automated-acceptance-attempts.json", "sha256": "72dd59b780f134f47db1de171d8e6e152c0aba2ebb349be5d73a8ed4a97fd1f2", "size_bytes": 3239, "artifact_type": "p12a-automated-acceptance-attempt-ledger"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/P12A-990/personal-acceptance-attestation.json", "sha256": "9f30be1bdf48e7d97898e40ebb4fb747631cfed01f3a44b4bd960b953d838cf6", "size_bytes": 1617, "artifact_type": "p12a-personal-automated-attestation"},
+    {"path_or_reference": "docs/execution/status/TASK-P12A-990.json", "sha256": "ab07686636d3d01d489e82f08d551746ddbe94189d8c72f3facd90308d71a7ed", "size_bytes": 1214, "artifact_type": "task-status"},
+    {"path_or_reference": "docs/execution/evidence/phase-12a/P12A-020/regression-interference.json", "sha256": "a735d0b151860a194fd238815376c340acfbe20aaca3b41e2d606923ce2e25ee", "size_bytes": 1913, "artifact_type": "root-cause-repair"},
+    {"path_or_reference": "D:/GO_NOW-p12a-full-regression-20260805-retry2/ci/ci-summary.json", "sha256": "cb3fb3d1feaee8d3d9e2e40e66a9eacc2c74c27da7974b0dfffd503e160ddba9", "size_bytes": 1059, "artifact_type": "external-ci-summary"},
+    {"path_or_reference": "D:/GO_NOW-p12a-full-regression-20260805-retry2/ci/unit.xml", "sha256": "50fb4422512763b879ad9b55b7ec37beb334780e0e2d6ef91ea6973e9a92ebea", "size_bytes": 127049, "artifact_type": "external-junit"},
+    {"path_or_reference": "D:/GO_NOW-p12a-full-regression-20260805-retry2/ci/contract.xml", "sha256": "9bf1b0e36e9e98067bbd7d4611ee045dab3c823d0a62be80450ef6755cd43c3f", "size_bytes": 37526, "artifact_type": "external-junit"},
+    {"path_or_reference": "D:/GO_NOW-p12a-full-regression-20260805-retry2/flutter/flutter-machine.jsonl", "sha256": "ed5bc9fcc98570c853bcfb84a7292ee5908262ab00d040526f7b845c7f132f20", "size_bytes": 72796, "artifact_type": "external-flutter-machine-report"},
+    {"path_or_reference": "D:/GO_NOW-p12a-full-regression-20260805-retry2/p12d/p12d-failure-matrix.log", "sha256": "3aada4bcf0ac592f8bb638c0af942fb5786ada033a476c1dc895e9f7df537c0c", "size_bytes": 57301, "artifact_type": "external-realpg-fault-report"}
+  ],
+  "production_write_count": 0
+}

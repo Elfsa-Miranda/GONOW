@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 4",
+  "candidate_head_oid": "c5ea314e873b2946fa2288da48504923a6fe082b",
+  "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
+  "model_changed": true,
+  "public_api_changed": false,
+  "review_status": "pending_independent_review",
+  "reviewer_is_implementer": true,
+  "security_owner": "Security",
+  "local_review": {
+    "single_planner_count": 1,
+    "max_business_stages": 6,
+    "budget_fuse_count": 6,
+    "max_candidate_repair_rounds": 2,
+    "static_tool_count": 3,
+    "dynamic_tool_discovery_count": 0,
+    "mcp_adapter_count": 0,
+    "unverified_claim_support_count": 0,
+    "old_run_behavior_digest_change_count": 0,
+    "legacy_bypass_failure_count": 0,
+    "e0_dataset_cases": 40,
+    "e0_semantic_difference_count": 0,
+    "production_model_call_count": 0,
+    "production_tool_call_count": 0,
+    "production_write_count": 0,
+    "production_activation_allowed": false
+  },
+  "open_external_items": [
+    "Product and Eval approval of the frozen E0 dataset and thresholds",
+    "Privacy and Security approval of data use and the immutable Phase 4 candidate",
+    "production provider, tool sandbox, latency, cost, and traffic evidence",
+    "independent handoff and rollback verification",
+    "formal governance adoption, remote required checks, push, merge, deployment, and acceptance"
+  ]
+}

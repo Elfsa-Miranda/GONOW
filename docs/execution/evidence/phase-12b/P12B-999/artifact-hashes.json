@@ -1,0 +1,15 @@
+{
+  "schema_version":"1.0",
+  "task_id":"TASK-P12B-999",
+  "git_object_format":"sha1",
+  "head_oid":"1dbca43516cdebe35cb132f131106964396a31e4",
+  "artifacts":[
+    {"path_or_reference":"docs/execution/evidence/phase-12b/merge.json","sha256":"8cbc38b3a99e949158d53a277d8dda2e489df127ee31eb3003e51218a874060e","size_bytes":1559,"mime_type":"application/json","artifact_type":"local-landing-merge-receipt","generated_by_step":"TASK-P12B-999:PostMergeEvidence","generated_at":"2026-08-05T01:45:00+08:00","sensitivity":"internal","retention":"repository-governance"},
+    {"path_or_reference":"docs/execution/evidence/phase-12b/P12B-999/commands.json","sha256":"910162c7d79c4e6958d291b25edd4b67d103ddc32dbf4bc3de0fdd50a729898e","size_bytes":3510,"mime_type":"application/json","artifact_type":"command-ledger","generated_by_step":"TASK-P12B-999:PostMergeEvidence","generated_at":"2026-08-05T01:45:00+08:00","sensitivity":"internal","retention":"repository-governance"},
+    {"path_or_reference":"docs/execution/evidence/phase-12b/P12B-999/gate-results.json","sha256":"ce01abd36b23176b3ab104cff23cc7cd08fdc97e5362c1e640ee88af91aab3ad","size_bytes":3418,"mime_type":"application/json","artifact_type":"postmerge-gate-results","generated_by_step":"TASK-P12B-999:PostMergeEvidence","generated_at":"2026-08-05T01:45:00+08:00","sensitivity":"internal","retention":"repository-governance"},
+    {"path_or_reference":"docs/execution/status/TASK-P12B-999.json","sha256":"592a73c60106f0121ce05943951ab5d5783187429611432e6de6578299b52ca4","size_bytes":1842,"mime_type":"application/json","artifact_type":"task-status","generated_by_step":"TASK-P12B-999:PostMergeEvidence","generated_at":"2026-08-05T01:45:00+08:00","sensitivity":"internal","retention":"repository-governance"},
+    {"path_or_reference":"docs/execution/evidence/phase-12b/P12B-990/regression-summary.json","sha256":"8c2d2f78efae1a29a4081d90311d4774638d52d59c70e0395272c53c69023ae9","size_bytes":3348,"mime_type":"application/json","artifact_type":"premerge-complete-regression","generated_by_step":"TASK-P12B-990:Regression","generated_at":"2026-08-05T01:03:00+08:00","sensitivity":"internal","retention":"repository-governance"},
+    {"path_or_reference":"docs/execution/evidence/phase-12b/P12B-060/deepseek-quality-final.json","sha256":"67e310e198157bc7e6c03c5670c4f6b4b3dfac3d2aafa3d2dc92b9810141a5a6","size_bytes":1971,"mime_type":"application/json","artifact_type":"deepseek-quality-final","generated_by_step":"TASK-P12B-060:Calibration","generated_at":"2026-08-05T00:18:00+08:00","sensitivity":"synthetic","retention":"repository-governance"},
+    {"path_or_reference":"docs/execution/evidence/phase-12b/P12B-060/BLK-P12B-060-gemini-live-availability.md","sha256":"2c9a8824c195babdcb0b84f4aa8e32343a64359ea1312fa406e74f10a20c2ee8","size_bytes":3325,"mime_type":"text/markdown","artifact_type":"external-availability-blocker","generated_by_step":"TASK-P12B-060:Calibration","generated_at":"2026-08-04T23:20:00+08:00","sensitivity":"internal","retention":"repository-governance"}
+  ]
+}

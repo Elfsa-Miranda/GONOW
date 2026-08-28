@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-999",
+  "tested_merge_oid": "8c3ddfc532133bb9794dd61495c156eee9789cf1",
+  "execution_mode": "local_provisional",
+  "checks": {
+    "p12d_execution_contract": {
+      "passed": 1,
+      "failed": 0,
+      "catalog_task_count": 161,
+      "selected_count": 1,
+      "single_agent_architecture": true,
+      "multi_agent_framework_allowed": false
+    },
+    "realpg_security_fault_openapi": {
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "duration_seconds": 13.83,
+      "wall_seconds_with_environment_setup": 16.11,
+      "postgresql_version": "17.10"
+    },
+    "flutter_command_and_routing": {
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "duration_seconds": 8.3,
+      "flutter_version": "3.41.7",
+      "dart_version": "3.11.5"
+    }
+  },
+  "post_merge_failure_count": 0,
+  "post_merge_skip_count": 0,
+  "post_merge_xfail_count": 0,
+  "redline_regression_failure_count": 0,
+  "controlled_10000_per_arm_profile_rerun": false,
+  "controlled_profile_reference": "docs/execution/evidence/phase-12d/P12D-990/regression-summary.json",
+  "complete_regression_rerun": false,
+  "complete_regression_reference": "docs/execution/evidence/phase-12d/P12D-990/regression-summary.json",
+  "claim_scope": "local_post_merge_smoke",
+  "production_improvement_claim": false,
+  "production_measurement_status": "measurement_pending",
+  "production_write_count": 0,
+  "recorded_at": "2026-08-04T19:22:00+08:00"
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-020",
+  "base_threat_model": "docs/architecture/threat-model/phase-12-review.json",
+  "selected_write_entry": "flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries",
+  "threats": [
+    {
+      "id": "P12D-020-T01",
+      "threat": "client asserts tenant, principal, role, approval or force-overwrite authority",
+      "control": "strict extra-forbid request plus server-derived RequestContext and closed AuthorizationPolicy field authority",
+      "tests": [
+        "test_client_authority_fields_are_rejected",
+        "test_authorization_uses_server_context_and_fails_closed"
+      ],
+      "local_result": "passed",
+      "residual": "RealPG RLS and route composition are deferred to P12D-030/040"
+    },
+    {
+      "id": "P12D-020-T02",
+      "threat": "model or client submits an unbounded mutation body",
+      "control": "closed typed Basic Info patch rejects raw row, plan_data, prompt, reasoning and tool results",
+      "tests": [
+        "test_unbounded_or_model_fields_are_rejected",
+        "test_patch_is_bounded_typed_and_legacy_compatible"
+      ],
+      "local_result": "passed",
+      "residual": "handler must write only the frozen patch columns"
+    },
+    {
+      "id": "P12D-020-T03",
+      "threat": "retry identity is confused with semantic identity or crosses authority scope",
+      "control": "semantic hash binds target/version/body while idempotency digest binds server tenant/principal/action/target/key",
+      "tests": [
+        "test_semantic_hash_ignores_transport_identity_but_binds_body_and_version",
+        "test_idempotency_scope_is_server_derived"
+      ],
+      "local_result": "passed",
+      "residual": "atomic collision and replay persistence are deferred to P12D-040/050"
+    },
+    {
+      "id": "P12D-020-T04",
+      "threat": "receipt leaks identity or mutation body, or claims effects for a noncommitted outcome",
+      "control": "metadata digests replace raw authority/body and outcome validation forbids effect references outside committed",
+      "tests": [
+        "test_receipt_is_metadata_only_and_outcome_shape_is_strict"
+      ],
+      "local_result": "passed",
+      "residual": "durable receipt lookup and log/event redaction are deferred to P12D-040/050"
+    }
+  ],
+  "redline_failures": {
+    "duplicate_formal_write_count": 0,
+    "unauthorized_or_cross_tenant_write_count": 0,
+    "mutation_outbox_divergence_count": 0,
+    "lost_or_ambiguous_committed_outcome_count": 0
+  },
+  "evidence_scope": "typed_contract_only",
+  "production_operation_authorized": false,
+  "independent_security_review_status": "pending_external"
+}

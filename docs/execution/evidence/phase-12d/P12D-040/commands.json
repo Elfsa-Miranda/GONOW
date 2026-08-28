@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-040",
+  "phase": "Phase 12D",
+  "executed_at": "2026-08-04T17:42:06+08:00",
+  "executor": "codex-local-single-agent",
+  "git_object_format": "sha1",
+  "head_oid": "3ca13fd1783c53294709cc2d73b8a03891121dca",
+  "commands": [
+    {
+      "step": 1,
+      "description": "First isolated RealPG handler run",
+      "command": ".venv/Scripts/python.exe -m pytest -q tests/integration/test_p12d_domain_command.py --maxfail=1",
+      "exit_code": 1,
+      "stdout_tail": "1 failed: SET LOCAL ROLE denied for non-member test identity",
+      "stderr_tail": "",
+      "stdout_sha256": "5a94ad73017c36e7df29acd21d0dab35740e738680c42ad9b18c16e86a00f25e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 3.19,
+      "redaction_reason": "The isolated role-composition failure is retained without row data."
+    },
+    {
+      "step": 2,
+      "description": "Public JSON transport root-cause reproductions",
+      "command": "focused route test and response validation diagnostic",
+      "exit_code": 1,
+      "stdout_tail": "2 route attempts failed: valid JSON rejected by strict internal transport parsing",
+      "stderr_tail": "",
+      "stdout_sha256": "393f7c8f0d59051f49c099852de1c3de38d4b8b552920050d77342c28ced6107",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 10.05,
+      "redaction_reason": "Both same-root failures are retained and closed by the resolved blocker."
+    },
+    {
+      "step": 3,
+      "description": "Run the exact P12D-040 focused handler, security and OpenAPI set",
+      "command": ".venv/Scripts/python.exe -m pytest -q tests/integration/test_p12d_domain_command.py tests/security/test_p12d_command_service.py tests/contract/test_openapi.py --maxfail=1",
+      "exit_code": 0,
+      "stdout_tail": "21 passed in 4.03s",
+      "stderr_tail": "",
+      "stdout_sha256": "a2a38c556800bbd53dfb9ab8523e73df813d340c2309e4eddbcd477f4b1a0d46",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 5.6,
+      "redaction_reason": "Only passing counts and duration are retained."
+    },
+    {
+      "step": 4,
+      "description": "Run the affected production-composition regression with the focused set",
+      "command": ".venv/Scripts/python.exe -m pytest -q tests/integration/test_p12d_domain_command.py tests/security/test_p12d_command_service.py tests/contract/test_openapi.py tests/integration/test_runtime_composition.py --maxfail=1",
+      "exit_code": 0,
+      "stdout_tail": "30 passed in 7.87s",
+      "stderr_tail": "",
+      "stdout_sha256": "944b4226005a54cc5497e93da59798174583ea6fb2b9759b5240501d543e449f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 9.7,
+      "redaction_reason": "Only passing counts and duration are retained."
+    },
+    {
+      "step": 5,
+      "description": "Validate the runtime evidence and zero-redline boundary",
+      "command": "python assertion over handler-outbox-results.json and content-addressed OpenAPI",
+      "exit_code": 0,
+      "stdout_tail": "p12d-040-runtime-evidence:passed",
+      "stderr_tail": "",
+      "stdout_sha256": "6eb00a802565d5774d5f819c5558d17b0a03bce17a4cb2901eebd88275d06b13",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.2,
+      "redaction_reason": "Only bounded counts and hashes are asserted."
+    },
+    {
+      "step": 6,
+      "description": "Validate the selected P12D execution contract",
+      "command": ".venv/Scripts/python.exe docs/execution/commands/validate_phase12d_contracts.py --repository-root . --task P12D-040",
+      "exit_code": 0,
+      "stdout_tail": "p12d-040-contract:passed;catalog_task_count=161;error_count=0",
+      "stderr_tail": "",
+      "stdout_sha256": "d38216d220dedbeec3fcb3181d6fd26eeff7cd995dc219329d6570a9cc27d387",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 2.6,
+      "redaction_reason": "Only the task, catalog count and error count are retained."
+    },
+    {
+      "step": 7,
+      "description": "Prove the published OpenAPI contract remains byte-identical while the route is unmounted by default",
+      "command": "Get-FileHash contracts/openapi/agent-api.yaml",
+      "exit_code": 0,
+      "stdout_tail": "openapi-unchanged:1f850e47feaf845015393532a125570199308169e511138f2669e84456c72bf8",
+      "stderr_tail": "",
+      "stdout_sha256": "53bd94a63b46c63220a1b4f512a5befeb36088216f3c89b4899e4c129fdf2b12",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.2,
+      "redaction_reason": "Only the public artifact digest is retained."
+    },
+    {
+      "step": 8,
+      "description": "Compile the changed Python runtime and tests",
+      "command": ".venv/Scripts/python.exe -m py_compile changed P12D-040 Python files",
+      "exit_code": 0,
+      "stdout_tail": "py-compile:passed",
+      "stderr_tail": "",
+      "stdout_sha256": "b8e1d30764c8465e3a9b3cec6a213886b1b038d7c164a4dfbcc3c105c91afd98",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.5,
+      "redaction_reason": "Empty compiler output is summarized as passed."
+    },
+    {
+      "step": 9,
+      "description": "Check the focused patch for whitespace errors",
+      "command": "git diff --check",
+      "exit_code": 0,
+      "stdout_tail": "git-diff-check:passed",
+      "stderr_tail": "",
+      "stdout_sha256": "2d32eeec234706410f95ace9dc94b2c79f5b9d4ba6258a962532867ef7557088",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duration_seconds": 0.5,
+      "redaction_reason": "Empty git output is summarized as passed."
+    }
+  ]
+}

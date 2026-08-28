@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-999",
+  "authorized_by": "user_explicit_instruction",
+  "repository": "Elfsa-Miranda/GO_NOW",
+  "head_branch": "codex/gonow-agent-landing",
+  "base_branch": "main",
+  "maximum_pull_request_count": 1,
+  "pull_request_ready": true,
+  "required_checks_must_pass": true,
+  "merge_method": "merge",
+  "force": false,
+  "direct_main_push": false,
+  "production_deploy": false,
+  "production_write": false,
+  "traffic_allocation": 0,
+  "remote_ref_check_required_before_push": true,
+  "remote_action_status": "pending",
+  "post_main_focused_smoke_required": true,
+  "recorded_at": "2026-08-05T16:06:00+08:00"
+}

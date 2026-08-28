@@ -1,0 +1,17 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V5-IDENTIFIER-CONSTRUCTION",
+  "artifacts":[
+    {"path":"agent-service/app/worker/itinerary_processor.py","sha256":"fe947d84abccd97b5c96f766ea32e7759856a6bab5564875db2b6136e7240dc1","size_bytes":19574},
+    {"path":"agent-service/scripts/run_p12b_live_calibration.py","sha256":"ad31229a5de259546f7a9e3a0965d6d392a9c98e001526aabe7fabe2ab5fa61d","size_bytes":45680},
+    {"path":"agent-service/tests/contract/test_gemini_itinerary_processor.py","sha256":"28ded602fa695adf68c780585bf65ae31363e18aa004d42646330562a4a2e4a0","size_bytes":10401},
+    {"path":"agent-service/tests/contract/test_p12b_live_calibration_contract.py","sha256":"7f4de336d1bee1dc1a80cbbc45ab431ed7adbda784b5899313b4838c4a9c0019","size_bytes":17853}
+  ],
+  "external_quality_receipts":[
+    {"stage":"Format","sha256":"01c88909e31cbb4bc6a78a223038215ccec27c9e76dedf02ea2599c3082f93fb","size_bytes":433},
+    {"stage":"Lint","sha256":"ec6e1973b98d755319d2a10bb12b4b14184f50ef768d7435b68e29a207d90f37","size_bytes":429},
+    {"stage":"Type","sha256":"e4d5535cb76fc0125cbef7f5dcd9075f2012aa0d24ff3d0270a324c84410cabf","size_bytes":429},
+    {"stage":"Secret","sha256":"b0e25eac99807314bc6af4aa9e08f15629d087413cf9b28cdb7a63060eb2b10f","size_bytes":433}
+  ],
+  "secret_material_persisted":0
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "candidate": "P12D",
+  "task_id": "TASK-P12D-010",
+  "release_b_head_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "dataset_sha256": "1f2961acd3079350b50f4850b356a45f760d971749d322f49b56efc4341444bb",
+  "source_window": {
+    "start_at": "2026-08-04T16:49:00+08:00",
+    "end_at": "2026-08-04T16:52:00+08:00",
+    "timezone": "Asia/Shanghai"
+  },
+  "denominator": {
+    "metric_id": "eligible_tracked_write_entries_reviewed_for_this_one-entry_package",
+    "value": 1,
+    "unit": "tracked write entry"
+  },
+  "exclusion_rules": [
+    "exclude Dart collection insert/update calls after manual classification",
+    "exclude write entries outside the itinerary bounded context",
+    "exclude itinerary paths that would require a second write entry or multi-resource package",
+    "exclude every production traffic, incident, database-policy and downstream-consumer assertion because those facts are unavailable"
+  ],
+  "estimator": {
+    "name": "deterministic tracked-code mechanism review",
+    "version": "P12D-010-v1",
+    "formula": "eligible selected write entries with a tracked stale-conflict partial-effect mechanism / eligible tracked write entries reviewed for this one-entry package"
+  },
+  "uncertainty": {
+    "confidence_level": 0.95,
+    "interval_method": "deterministic code enumeration; bounds describe repository classification only and are not a production incident interval",
+    "lower": 1.0,
+    "upper": 1.0
+  },
+  "trigger_threshold": {
+    "metric_id": "tracked_stale_conflict_partial_effect_mechanism_count",
+    "operator": ">=",
+    "value": 1,
+    "unit": "tracked mechanism",
+    "source_ref": "ADR-P12D-000 one-entry eligibility plus direct-user P12D XOR selection"
+  },
+  "trigger_decision": "positive",
+  "package_fields": {
+    "selected_write_entry": "flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries",
+    "selected_primary_metric_id": "stale_conflict_partial_effect_rate_per_10k_intents",
+    "impact_map_sha256": "1459cd9f1d88a3c0639e593e9271b472006392a6a4a9900153d6ecc151e7dc0c",
+    "unknown_critical_side_effect_count": 0
+  },
+  "owner_decision_ref": "docs/execution/evidence/phase-12d/P12D-000/selection-record.json",
+  "recorded_at": "2026-08-04T16:53:00+08:00"
+}

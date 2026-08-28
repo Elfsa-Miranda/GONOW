@@ -1,0 +1,27 @@
+# GoNow BOOT baseline
+
+- Task: `TASK-BOOT-003`
+- Execution mode: `local_provisional`
+- Expected and actual remote: `https://github.com/Elfsa-Miranda/GO_NOW.git`
+- Default remote ref: `origin/main`
+- Pinned BASE_SHA: `142abfc339f003ede8d85d9534336923b5610252`
+- Commit: `142abfc339f003ede8d85d9534336923b5610252|2026-07-18T23:33:34+08:00|Update README.md`
+- Tree OID: `e4d63af9d173860ae1a4443b8518bd9076710bdc`
+- Tracked path count: `269`
+- Top-level tree: `.gitignore,.metadata,README.md,analysis_options.yaml,android,assets,ios,lib,linux,macos,pubspec.lock,pubspec.yaml,scripts,supabase,test,tool,web,windows`
+- Git: `git version 2.52.0.windows.1`
+- Native PowerShell: `5.1.26100.8875 Desktop`
+- Flutter command: `D:\flutter\flutter_windows_3.41.7-stable\flutter\bin\flutter.bat`
+- Dart command: `D:\flutter\flutter_windows_3.41.7-stable\flutter\bin\dart.bat`
+- Python/Draft 2020-12/YAML/SCA toolchain: `pending_boot005`
+- Architecture SHA-256: `644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6`
+- AGENTS.md sealed SHA-256: `6d2a3577f564cdb5161511260b125d8041df0aa32ef3fdb9629371f6800d7e85`
+- execplan.md sealed SHA-256: `e243070be5faed585a4190ed5f430fb2fc43c66d35f33552a513081004ed2c69`
+- BOOT-001 compatibility assumption: Windows PowerShell 5.1 lacks `Path.IsPathFullyQualified`; the run used an in-memory Windows fully-qualified path predicate for the fixed `D:\` inputs.
+- Compatibility impact: no change to sealed bytes, remote, OID, hash, or write scope.
+- Compatibility rollback: preserve immutable receipts and replay the unmodified block under PowerShell 7.
+- Native BOOT-001/002 and all verification commands completed with exit `0`.
+- Secret handling declaration: credential-like filenames were inspected; no secret-like untracked body, credential value, Prompt, response, reasoning, or PII body was read or recorded.
+- Production writes: `0`
+- Remote writes: `0`
+- User path deletions: `0`

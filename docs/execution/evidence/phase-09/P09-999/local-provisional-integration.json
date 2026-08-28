@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P09-999",
+  "evidence_kind": "local_provisional_integration_enabler",
+  "not_a_formal_task_transition": true,
+  "execution_mode": "local_provisional",
+  "phase_base_oid": "04ab40a00e6f8f6567956f0b3a07d5ca5c99a078",
+  "candidate_head_oid": "f81ab6e56ab95406b67b9b83494fa9682acd30bc",
+  "merge_oid": "991ac74273a8d23fe4c2044f5a36f768980e3ca6",
+  "merge_parents": [
+    "04ab40a00e6f8f6567956f0b3a07d5ca5c99a078",
+    "f81ab6e56ab95406b67b9b83494fa9682acd30bc"
+  ],
+  "merge_tree_sha1": "a9c21284dcd8c2cb0cba76acff8f69494ef20656",
+  "candidate_tree_equal": true,
+  "source_worktree_clean": true,
+  "landing_worktree_clean_after_smoke": true,
+  "smoke": {
+    "service_ci_exit_code": 0,
+    "runner_contract_exit_code": 0,
+    "unit_tests": 542,
+    "contract_tests": 144,
+    "python_failures": 0,
+    "python_skipped": 0,
+    "flutter_tests": 82,
+    "flutter_failures": 0,
+    "flutter_skipped": 0,
+    "source_copy_hash_mismatch_count": 0,
+    "production_write_count": 0,
+    "overall_passed": true
+  },
+  "diagnostic_closure": {
+    "first_attempt_service_ci_passed": true,
+    "first_attempt_flutter_tests_executed": 0,
+    "first_attempt_landing_clean": false,
+    "root_cause": "fresh landing worktree lacked Flutter package_config while smoke required --no-pub; CI/pub provisioning also changed only filtered line endings in tracked generated/evidence files",
+    "impact_surface": "local integration smoke startup and worktree cleanliness only; no Phase 9 behavior failure and no index blob change",
+    "reversible_repair": "run locked flutter pub get, retain the lockfile, rerun only the 82-test Flutter set, then refresh Git index stat/clean-filter state for logical-byte-identical files",
+    "affected_regression": "Flutter 82/82, source-copy mismatch 0, cached diff 0, landing status clean"
+  },
+  "external_smoke_artifacts": {
+    "root": "D:\\GO_NOW-control\\.git\\gonow-local-smoke\\991ac74273a8d23fe4c2044f5a36f768980e3ca6",
+    "ci_summary_sha256": "3aaa628b0585a5397fa7f41173cdd1838dd469e601cadea2d3f23aa57504070a",
+    "unit_xml_sha256": "38543819a7483bda7dc3bca69da1050cad5abd8101e9a5a2108db0941450902b",
+    "contract_xml_sha256": "b6fa9d20409f3f600a5e3aaaf34a7970be95ae6b1cdce72d5ad68aff1680d2ea",
+    "pubspec_lock_sha256": "c7cffa33465122828ce2b302e9b83c1f072d4558915db18a259c6f52c483cce2"
+  },
+  "formal_acceptance_status": "pending_external",
+  "formal_merge_status": "pending_external",
+  "remote_push_status": "pending_external",
+  "production_status": "not_authorized",
+  "accepted": false,
+  "remote_push_count": 0,
+  "production_write_count": 0,
+  "recorded_at": "2026-08-02T03:11:45.0580068+08:00"
+}

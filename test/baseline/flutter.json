@@ -1,0 +1,159 @@
+{
+    "schema_version":  "1.0",
+    "task_id":  "TASK-P00-007",
+    "execution_mode":  "local_provisional",
+    "baseline_head_oid":  "142abfc339f003ede8d85d9534336923b5610252",
+    "candidate_head_oid":  "d408e2598279ba96cfb07367d0c253b5fe31a6d5",
+    "git_object_format":  "sha1",
+    "tool":  {
+                 "flutter_version":  "3.41.7",
+                 "flutter_channel":  "stable",
+                 "flutter_framework_revision":  "cc0734ac716fbb8b90f3f9db8020958b1553afa7",
+                 "dart_sdk_version":  "3.11.5",
+                 "flutter_executable_sha256":  "f83bfed7ecd10fd1afd8ce19c0b0119d2c80e24fbf26f4ff4f63c1cc5f75dcd5",
+                 "dart_executable_sha256":  "44328b98b6bf981d8307f72ef38acbb37b8067394916953caa48b8b444525152"
+             },
+    "input_contract":  {
+                           "baseline_pubspec_lock_sha256":  "c25813710cc3c6841af05f076a4cc3859504ff12ef5aab97242d111f77ac1466",
+                           "candidate_pubspec_lock_sha256":  "c25813710cc3c6841af05f076a4cc3859504ff12ef5aab97242d111f77ac1466",
+                           "command_contract":  [
+                                                    "flutter pub get",
+                                                    "git restore --worktree -- \u003ctool-generated-tracked-drift\u003e",
+                                                    "flutter analyze --machine",
+                                                    "flutter test --machine",
+                                                    "flutter build apk --debug --no-pub"
+                                                ],
+                           "command_contract_sha256":  "c329f333aa740b8e5f34937fd39e2e2258de42cff1b336a61ec834c96d9ea8f1",
+                           "tool_and_lock_hash_match":  true
+                       },
+    "baseline":  {
+                     "pub_get":  {
+                                     "exit_code":  0,
+                                     "duration_seconds":  2.265,
+                                     "restored_generated_path_count":  7,
+                                     "restored_generated_paths":  [
+                                                                      "linux/flutter/generated_plugin_registrant.cc",
+                                                                      "linux/flutter/generated_plugin_registrant.h",
+                                                                      "linux/flutter/generated_plugins.cmake",
+                                                                      "macos/Flutter/GeneratedPluginRegistrant.swift",
+                                                                      "windows/flutter/generated_plugin_registrant.cc",
+                                                                      "windows/flutter/generated_plugin_registrant.h",
+                                                                      "windows/flutter/generated_plugins.cmake"
+                                                                  ],
+                                     "post_suite_restored_generated_path_count":  7,
+                                     "post_suite_restored_generated_paths":  [
+                                                                                 "linux/flutter/generated_plugin_registrant.cc",
+                                                                                 "linux/flutter/generated_plugin_registrant.h",
+                                                                                 "linux/flutter/generated_plugins.cmake",
+                                                                                 "macos/Flutter/GeneratedPluginRegistrant.swift",
+                                                                                 "windows/flutter/generated_plugin_registrant.cc",
+                                                                                 "windows/flutter/generated_plugin_registrant.h",
+                                                                                 "windows/flutter/generated_plugins.cmake"
+                                                                             ]
+                                 },
+                     "analyze":  {
+                                     "exit_code":  1,
+                                     "duration_seconds":  5.956,
+                                     "errors":  [
+                                                    "creation_with_non_type|android/test/widget_test.dart|16|35",
+                                                    "creation_with_non_type|test/widget_test.dart|16|35",
+                                                    "uri_does_not_exist|android/test/widget_test.dart|11|8"
+                                                ]
+                                 },
+                     "test":  {
+                                  "exit_code":  1,
+                                  "duration_seconds":  13.042,
+                                  "completed_test_count":  12,
+                                  "failures":  [
+                                                   "|name_sha256=7dedbfaa727d596658c4345e55c991fdd69a3639af8c2277c78f98906108abaf"
+                                               ],
+                                  "skipped":  [
+                                                  "test/amap_service_test.dart|name_sha256=02a588fd94ae900ed704eb5e511e2d202f70ea9c869fbcab186f693fe3552629",
+                                                  "test/amap_service_test.dart|name_sha256=4371dd4bda203fdc2a5541cd3141c083ee43f732ba6ea7435f1a7fcaa74f81a1",
+                                                  "test/amap_service_test.dart|name_sha256=744293f60b535a8eccce8e97664f6d193d2edab9149ffcf16f146f396c3648d1",
+                                                  "test/amap_service_test.dart|name_sha256=8409ad790d8e371ab38c0102960a745195ab7818cc85b9f351282dcdc8371c78"
+                                              ]
+                              },
+                     "build":  {
+                                   "exit_code":  0,
+                                   "duration_seconds":  74.376,
+                                   "apk_present":  true,
+                                   "apk_size_bytes":  195691624,
+                                   "apk_sha256":  "a6cdf29f2e31c17ee5e0ed57729f933970a91761f2522b98ae6725059ee8fe5c"
+                               }
+                 },
+    "candidate":  {
+                      "pub_get":  {
+                                      "exit_code":  0,
+                                      "duration_seconds":  2.492,
+                                      "restored_generated_path_count":  7,
+                                      "restored_generated_paths":  [
+                                                                       "linux/flutter/generated_plugin_registrant.cc",
+                                                                       "linux/flutter/generated_plugin_registrant.h",
+                                                                       "linux/flutter/generated_plugins.cmake",
+                                                                       "macos/Flutter/GeneratedPluginRegistrant.swift",
+                                                                       "windows/flutter/generated_plugin_registrant.cc",
+                                                                       "windows/flutter/generated_plugin_registrant.h",
+                                                                       "windows/flutter/generated_plugins.cmake"
+                                                                   ],
+                                      "post_suite_restored_generated_path_count":  7,
+                                      "post_suite_restored_generated_paths":  [
+                                                                                  "linux/flutter/generated_plugin_registrant.cc",
+                                                                                  "linux/flutter/generated_plugin_registrant.h",
+                                                                                  "linux/flutter/generated_plugins.cmake",
+                                                                                  "macos/Flutter/GeneratedPluginRegistrant.swift",
+                                                                                  "windows/flutter/generated_plugin_registrant.cc",
+                                                                                  "windows/flutter/generated_plugin_registrant.h",
+                                                                                  "windows/flutter/generated_plugins.cmake"
+                                                                              ]
+                                  },
+                      "analyze":  {
+                                      "exit_code":  1,
+                                      "duration_seconds":  38.205,
+                                      "errors":  [
+                                                     "creation_with_non_type|android/test/widget_test.dart|16|35",
+                                                     "creation_with_non_type|test/widget_test.dart|16|35",
+                                                     "uri_does_not_exist|android/test/widget_test.dart|11|8"
+                                                 ]
+                                  },
+                      "test":  {
+                                   "exit_code":  1,
+                                   "duration_seconds":  7.414,
+                                   "completed_test_count":  17,
+                                   "failures":  [
+                                                    "|name_sha256=7dedbfaa727d596658c4345e55c991fdd69a3639af8c2277c78f98906108abaf"
+                                                ],
+                                   "skipped":  [
+                                                   "test/amap_service_test.dart|name_sha256=02a588fd94ae900ed704eb5e511e2d202f70ea9c869fbcab186f693fe3552629",
+                                                   "test/amap_service_test.dart|name_sha256=4371dd4bda203fdc2a5541cd3141c083ee43f732ba6ea7435f1a7fcaa74f81a1",
+                                                   "test/amap_service_test.dart|name_sha256=744293f60b535a8eccce8e97664f6d193d2edab9149ffcf16f146f396c3648d1",
+                                                   "test/amap_service_test.dart|name_sha256=8409ad790d8e371ab38c0102960a745195ab7818cc85b9f351282dcdc8371c78"
+                                               ]
+                               },
+                      "build":  {
+                                    "exit_code":  0,
+                                    "duration_seconds":  9.903,
+                                    "apk_present":  true,
+                                    "apk_size_bytes":  195690112,
+                                    "apk_sha256":  "07f9390a9e375179e44870423378b3f41b27ae7a58b42aa7a2ba8269543661b3"
+                                }
+                  },
+    "ratchet":  {
+                    "new_errors":  [
+
+                                   ],
+                    "new_error_count":  0,
+                    "new_test_failures":  [
+
+                                          ],
+                    "new_test_failure_count":  0,
+                    "new_skips":  [
+
+                                  ],
+                    "new_skip_count":  0,
+                    "primary_assertion_passed":  true
+                },
+    "secret_value_output_count":  0,
+    "production_write_count":  0,
+    "generated_at":  "2026-08-01T00:26:23.0666975+08:00"
+}

@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "manifest_version": "v01",
+  "dataset_name": "gonow-synthetic-rag-holdout",
+  "dataset_sha256": "5dd19fe86998974a5c1e6fef16ed6d7f8d2b0d175ee305014da2d5807a2b0069",
+  "split": "holdout",
+  "query_count": 9,
+  "scored_query_count": 8,
+  "deletion_case_count": 1,
+  "security_case_count": 2,
+  "data_classification": "synthetic_no_user_data",
+  "threshold_status": "local_provisional_frozen",
+  "approved_for_local_evaluation": true,
+  "formal_owner_approval": false,
+  "production_write_count": 0,
+  "thresholds": {
+    "recall_at_1_min": 1.0,
+    "citation_precision_min": 1.0,
+    "tenant_leak_count_max": 0,
+    "acl_leak_count_max": 0,
+    "stale_version_leak_count_max": 0,
+    "deletion_failure_count_max": 0,
+    "ssrf_escape_count_max": 0,
+    "unauthorized_tool_exec_count_max": 0,
+    "p95_latency_ms_max": 25.0,
+    "cost_usd_per_successful_query_max": 0.0
+  },
+  "files": [
+    {
+      "path": "dataset.schema.json",
+      "sha256": "1f152db619440862f9de033e39185708721822793cbac93b7dc2f05433727ebc",
+      "size_bytes": 4229,
+      "record_count": 1
+    },
+    {
+      "path": "documents.jsonl",
+      "sha256": "6fe5f74d62a42ef250a630188e70ce5bd2546c216e50656b8fb37bfad9864d66",
+      "size_bytes": 7528,
+      "record_count": 12
+    },
+    {
+      "path": "queries.jsonl",
+      "sha256": "afe27420ab32634dd840ddda0948d8d7a8e93f4c7e190c61ef9d9eee68ab7df8",
+      "size_bytes": 3046,
+      "record_count": 9
+    },
+    {
+      "path": "labels.jsonl",
+      "sha256": "b55c02fab2c7de08d4fbd1957b5b5317c5690032e2ffa69dc762a3066e326c28",
+      "size_bytes": 1726,
+      "record_count": 9
+    },
+    {
+      "path": "acl.jsonl",
+      "sha256": "55d687c16aac3d33d176450c63f917b977ae35450d99cc8af88f32ef9909ec2b",
+      "size_bytes": 1739,
+      "record_count": 12
+    },
+    {
+      "path": "README.md",
+      "sha256": "0503a6971c5824e370cd25f18ec6cddc60929a7750b5f54e923a4a5717fe8d39",
+      "size_bytes": 633,
+      "record_count": 1
+    }
+  ]
+}

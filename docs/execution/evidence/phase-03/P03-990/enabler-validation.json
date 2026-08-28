@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P03-990",
+  "scope": "local_provisional_runner_and_fixture_enabler",
+  "powershell_parse_errors": 0,
+  "rollback_scenario_tests": 3,
+  "rollback_scenario_failures": 0,
+  "rollback_scenario_skipped": 0,
+  "shared_runner_contract_exit_code": 0,
+  "format_gate_exit_code": 0,
+  "lint_gate_exit_code": 0,
+  "production_write_count": 0,
+  "remote_push_count": 0,
+  "merge_count": 0,
+  "formal_acceptance_status": "pending_external"
+}

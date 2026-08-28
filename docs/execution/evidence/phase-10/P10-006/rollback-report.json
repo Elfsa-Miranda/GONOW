@@ -1,0 +1,1 @@
+{"schema_version":"1.0","task_id":"TASK-P10-006","checks":{"old_path_failures":0,"unexpected_writes":0,"rollback_not_run":0,"diff_check_exit_code":0,"judge_gate_disabled":true,"rollback_strategy":"disable the Judge release gate and keep all Judge results advisory-only with zero rollout decisions","production_write_count":0},"recorded_at":"2026-08-02T04:30:19.3734896+08:00"}

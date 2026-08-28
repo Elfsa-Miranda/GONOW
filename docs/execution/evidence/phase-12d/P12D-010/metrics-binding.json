@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-010",
+  "candidate": "P12D",
+  "selected_write_entry": "flutter:ItineraryProvider.updateItineraryBasicInfo:user_itineraries",
+  "selection_count": 1,
+  "binding_status": "preregistered_bound_measurement_pending",
+  "repository_inventory_sha256": "62d87b941f8dec5ee980a1d303f06aae9fed01c4cd4051e76d73cdecfad83c31",
+  "impact_map_sha256": "1459cd9f1d88a3c0639e593e9271b472006392a6a4a9900153d6ecc151e7dc0c",
+  "runtime_baseline_oid": "eab09d679a0cfd01e639dbc16bdc19a27dae5cb2",
+  "candidate_oid": "pending_after_TASK-P12D-060",
+  "controlled_comparison_contract": {
+    "claim_scope": "local_controlled_mechanism",
+    "production_improvement_claim": false,
+    "production_measurement_status": "measurement_pending",
+    "baseline_adapter": "test wrapper around the tracked updateItineraryBasicInfo ordering and failure semantics; it must not be an intentionally degraded surrogate",
+    "candidate_adapter": "typed Domain Command handler using the same logical Basic Info intent",
+    "database_isolation": "separate reset of the same isolated PostgreSQL fixture before each baseline and candidate run",
+    "workload_generator_version": "p12d-stale-conflict-v1",
+    "fixed_random_seed": 12040010,
+    "baseline_denominator": 10000,
+    "candidate_denominator": 10000,
+    "denominator_unit": "deterministic stale-conflict intents",
+    "identical_inputs_required": true,
+    "failed_runs_removed_from_denominator": false,
+    "fixture_sha256": "pending_TASK-P12D-030",
+    "schema_sha256": "pending_TASK-P12D-030",
+    "postgresql_version": "pending_TASK-P12D-030_runtime_capture"
+  },
+  "oracle_contract": [
+    "business row fields and version",
+    "business mutation count",
+    "logical outbox event count",
+    "stable receipt count and digest",
+    "client local success-state mutation count",
+    "unauthorized or cross-tenant write count",
+    "committed but unrecoverable outcome count",
+    "mutation/outbox divergence count"
+  ],
+  "primary_result": {
+    "metric_id": "stale_conflict_partial_effect_rate_per_10k_intents",
+    "role": "primary_result",
+    "formula": "10000 * stale expected-version intents leaving any local or formal partial effect / all eligible paired intents for the selected write entry",
+    "numerator": "paired intents in which the expected version is stale and any provider memory, local cache, business row, receipt or logical outbox state is left partially applied",
+    "denominator": "all eligible paired selected-entry intents, including failed, retried, denied, conflicted and ambiguous attempts",
+    "unit": "events_per_10k_intents",
+    "direction": "lower",
+    "estimator": "exact paired event-rate difference with one-sided 95 percent bounds; target-resource and concurrency-episode clustering retained",
+    "measurement_environment": "local isolated RealPG and deterministic Flutter fixtures; synthetic failures prove mechanics only",
+    "success_threshold": "for the local controlled profile: candidate partial-effect rate equals 0 per 10k, candidate is strictly lower than the measured legacy rate, and every hard redline equals zero; production threshold remains measurement_pending",
+    "production_measurement_status": "unknown_not_claimed"
+  },
+  "diagnostic": {
+    "metric_id": "command_receipt_coverage_rate",
+    "required_candidate_value": 1.0,
+    "claim_boundary": "receipt coverage proves deterministic outcome classification, not production improvement"
+  },
+  "guardrail": {
+    "metric_id": "normal_write_success_noninferiority_pp",
+    "margin": "0 percentage points in identical non-fault fixtures",
+    "failure_handling": "underpowered or missing comparison fails closed"
+  },
+  "hard_redlines": [
+    {"metric_id": "duplicate_formal_write_count", "threshold": 0, "averaging_allowed": false},
+    {"metric_id": "unauthorized_or_cross_tenant_write_count", "threshold": 0, "averaging_allowed": false},
+    {"metric_id": "mutation_outbox_divergence_count", "threshold": 0, "averaging_allowed": false},
+    {"metric_id": "data_loss_or_ambiguous_committed_outcome_count", "threshold": 0, "averaging_allowed": false}
+  ],
+  "fault_matrix": [
+    "after authorization before transaction",
+    "after business mutation before outbox",
+    "after outbox before commit",
+    "after commit before receipt response",
+    "after relay claim before acknowledgement",
+    "first replay after restore"
+  ],
+  "no_claim_boundary": [
+    "The positive TASK-P12D-010 trigger is a tracked-code mechanism decision, not a measured production improvement.",
+    "Production traffic, conflict rate, partial-write incidence, database policies and downstream side effects remain unknown.",
+    "Synthetic concurrency and crash injection in later tasks can prove mechanism safety only.",
+    "No primary result may be reported until a comparable powered baseline/candidate run and frozen owner threshold exist.",
+    "A hard redline cannot be averaged into the primary or offset by another metric."
+  ],
+  "recorded_at": "2026-08-04T16:53:00+08:00"
+}

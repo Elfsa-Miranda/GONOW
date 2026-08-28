@@ -1,0 +1,28 @@
+{
+  "configured_retrieval_date": "2026-08-05",
+  "frozen_config_sha256": "d257e6bc110fa1a77bc8a49ea5d2eaeeba88d00b7abfdc514362f6da78aee1ab",
+  "model_id": "deepseek-v4-flash",
+  "provider_id": "deepseek-api",
+  "rates": [
+    {
+      "input_cache_hit_usd_per_million_tokens": 0.0028,
+      "input_cache_miss_usd_per_million_tokens": 0.14,
+      "model_id": "deepseek-v4-flash",
+      "output_usd_per_million_tokens": 0.28,
+      "route_id": "economic"
+    },
+    {
+      "input_cache_hit_usd_per_million_tokens": 0.0028,
+      "input_cache_miss_usd_per_million_tokens": 0.14,
+      "model_id": "deepseek-v4-flash",
+      "output_usd_per_million_tokens": 0.28,
+      "route_id": "capability"
+    }
+  ],
+  "response_schema_sha256": "f91ef09266edc913eb8adfad48907682c6fe8c90da3d03fb7d2c76db8fe084ee",
+  "retrieved_at": "2026-08-04T20:52:42.515158+00:00",
+  "schema_version": "2.1",
+  "source_http_status": 200,
+  "source_response_sha256": "4af7fef5015e26cc6188778893dff29bab115bd06bb882ba22fdd8be57bb0003",
+  "source_url": "https://api-docs.deepseek.com/quick_start/pricing/"
+}

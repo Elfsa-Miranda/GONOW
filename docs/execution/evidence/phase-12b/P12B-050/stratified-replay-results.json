@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-050",
+  "dataset": {
+    "id": "gonow-cost-router-v1",
+    "sha256": "653297b4c18c28757d085490e524c5dbfc92a7ee7f75d7ca88ecc296ae4c1049",
+    "scenario_count": 10,
+    "source": "synthetic_repository_fixture",
+    "excluded_after_run_count": 0
+  },
+  "execution": {
+    "mode": "deterministic_fake_replay",
+    "same_input_and_fixed_parameter_pairing": true,
+    "network_transport_count": 0,
+    "live_call_count": 0,
+    "live_token_count": 0,
+    "live_cost_usd": 0,
+    "production_write_count": 0
+  },
+  "arms": {
+    "baseline": {
+      "denominator": 10,
+      "attempt_count": 10,
+      "qualified_success_count": 10,
+      "failure_count": 0,
+      "input_tokens": 1643,
+      "output_tokens": 3840,
+      "total_cost_microusd": 9693,
+      "cost_per_qualified_success_microusd": 969.3,
+      "p95_latency_ms": 700
+    },
+    "candidate": {
+      "denominator": 10,
+      "attempt_count": 10,
+      "qualified_success_count": 10,
+      "failure_count": 0,
+      "input_tokens": 1643,
+      "output_tokens": 3840,
+      "total_cost_microusd": 1310,
+      "cost_per_qualified_success_microusd": 131.0,
+      "p95_latency_ms": 800,
+      "fallback_count": 0,
+      "maximum_fallback_depth": 0
+    }
+  },
+  "diagnostics": {
+    "candidate_cost_per_success_ratio": 0.13514907665325493,
+    "candidate_latency_limit_ms": 875.0,
+    "same_input_digest_mismatch_count": 0,
+    "same_output_digest_mismatch_count": 0,
+    "stale_price_ineligible_selected": 0,
+    "unknown_health_ineligible_selected": 0,
+    "wrong_region_ineligible_selected": 0,
+    "restricted_privacy_ineligible_selected": 0,
+    "budget_ineligible_selected": 0,
+    "quality_floor_ineligible_selected": 0,
+    "kill_switch_candidate_selected": 0,
+    "disabled_router_candidate_selected": 0,
+    "unsafe_baseline_fail_closed_count": 1,
+    "single_fallback_scenario_count": 1,
+    "single_fallback_attempt_count": 11,
+    "recursive_fallback_count": 0,
+    "budget_collision_effect_count": 0,
+    "budget_overspend_effect_count": 0
+  },
+  "attempts": [
+    {"scenario_id":"CR-V1-001","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"12dafbddcbbf475ef9fc238251b55b77bc9dce1ab229e5a547ce8f9fe699c6ed","output_sha256":"b5d5c28f67481ca6a24bef8998361c4566a8d523a319e7e13b4281ef340bd719","status":"succeeded","failure_class":null,"input_tokens":159,"output_tokens":104,"cache_hit_input_tokens":0,"cache_miss_input_tokens":159,"cost_microusd":196,"latency_ms":520,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-001","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"12dafbddcbbf475ef9fc238251b55b77bc9dce1ab229e5a547ce8f9fe699c6ed","output_sha256":"b5d5c28f67481ca6a24bef8998361c4566a8d523a319e7e13b4281ef340bd719","status":"succeeded","failure_class":null,"input_tokens":159,"output_tokens":104,"cache_hit_input_tokens":0,"cache_miss_input_tokens":159,"cost_microusd":52,"latency_ms":620,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-002","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"f2f33b2780bb765f605cbc773b3336ecb13538ac7855e59b3d06beea66d3d7ea","output_sha256":"67e444ad9e41c645bd707ddbc3f222c77fe48fd562f1cbd07742b127bbfdeeec","status":"succeeded","failure_class":null,"input_tokens":162,"output_tokens":264,"cache_hit_input_tokens":0,"cache_miss_input_tokens":162,"cost_microusd":437,"latency_ms":560,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-002","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"f2f33b2780bb765f605cbc773b3336ecb13538ac7855e59b3d06beea66d3d7ea","output_sha256":"67e444ad9e41c645bd707ddbc3f222c77fe48fd562f1cbd07742b127bbfdeeec","status":"succeeded","failure_class":null,"input_tokens":162,"output_tokens":264,"cache_hit_input_tokens":0,"cache_miss_input_tokens":162,"cost_microusd":97,"latency_ms":660,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-003","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"ad089aa380ea5a0b6613d96436e59534501583b935116bf0f793cf28bc2fdff9","output_sha256":"a40b6e8892174bbc8e8076acd65e14241e5b2553f93215528613d9e1b1d718fe","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":424,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":677,"latency_ms":600,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-003","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"ad089aa380ea5a0b6613d96436e59534501583b935116bf0f793cf28bc2fdff9","output_sha256":"a40b6e8892174bbc8e8076acd65e14241e5b2553f93215528613d9e1b1d718fe","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":424,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":142,"latency_ms":700,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-004","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"34cf939f7756758722e55b8a6b085a2858e0adb655a51c00d2c850b8e2a062c1","output_sha256":"92bbf792c5ff486d47215e49e5a6d55e86c1e3c312b3cdd6633f9b5f3c5f71d1","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":184,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":317,"latency_ms":540,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-004","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"34cf939f7756758722e55b8a6b085a2858e0adb655a51c00d2c850b8e2a062c1","output_sha256":"92bbf792c5ff486d47215e49e5a6d55e86c1e3c312b3cdd6633f9b5f3c5f71d1","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":184,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":75,"latency_ms":640,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-005","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"aca1adc16bf5d3c23d4040d9b04fb1e4b516dd9867501d5d93407628b54ccd92","output_sha256":"012aa6525fc65b0de56ef7e71265a4fad2058c8f66e9a7e0c77b64e4bda7de1a","status":"succeeded","failure_class":null,"input_tokens":164,"output_tokens":344,"cache_hit_input_tokens":0,"cache_miss_input_tokens":164,"cost_microusd":557,"latency_ms":580,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-005","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"aca1adc16bf5d3c23d4040d9b04fb1e4b516dd9867501d5d93407628b54ccd92","output_sha256":"012aa6525fc65b0de56ef7e71265a4fad2058c8f66e9a7e0c77b64e4bda7de1a","status":"succeeded","failure_class":null,"input_tokens":164,"output_tokens":344,"cache_hit_input_tokens":0,"cache_miss_input_tokens":164,"cost_microusd":120,"latency_ms":680,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-006","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"7f52200afa04f2683e391f05d73a97c304edec169dbfd08b39f078adf0540612","output_sha256":"6e2107b2bacc4e2b51bcb96c2026e2471bb1b5330cb76afc8199ba66c5a61f05","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":584,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":917,"latency_ms":640,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-006","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"7f52200afa04f2683e391f05d73a97c304edec169dbfd08b39f078adf0540612","output_sha256":"6e2107b2bacc4e2b51bcb96c2026e2471bb1b5330cb76afc8199ba66c5a61f05","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":584,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":187,"latency_ms":740,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-007","arm":"baseline","attempt":1,"route_id":"gemini-capability-v1","input_sha256":"a92aad47d72e624010b281a1fc44f01e37c66108b27560be157ffd169303c15a","output_sha256":"a8f25e2c7649f9f316da0ca8228199221fdf5cb9edc27b4f2b19e328600ef3e1","status":"succeeded","failure_class":null,"input_tokens":172,"output_tokens":664,"cache_hit_input_tokens":0,"cache_miss_input_tokens":172,"cost_microusd":2619,"latency_ms":660,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-007","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"a92aad47d72e624010b281a1fc44f01e37c66108b27560be157ffd169303c15a","output_sha256":"a8f25e2c7649f9f316da0ca8228199221fdf5cb9edc27b4f2b19e328600ef3e1","status":"succeeded","failure_class":null,"input_tokens":172,"output_tokens":664,"cache_hit_input_tokens":0,"cache_miss_input_tokens":172,"cost_microusd":210,"latency_ms":760,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-008","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"a9423125e5299e8620dbe32b9cd0f8e53ff4db2e00590f81f84cd3aa8b7a7b7f","output_sha256":"39608fd2266b0ad2da92ef62f6e9a74176fe916328baa160e787a90b31742ca0","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":264,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":437,"latency_ms":560,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-008","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"a9423125e5299e8620dbe32b9cd0f8e53ff4db2e00590f81f84cd3aa8b7a7b7f","output_sha256":"39608fd2266b0ad2da92ef62f6e9a74176fe916328baa160e787a90b31742ca0","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":264,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":97,"latency_ms":660,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-009","arm":"baseline","attempt":1,"route_id":"gemini-economic-v1","input_sha256":"191b67cfaa1ec3dedf44d52928b2386831a0071d448d4227608ed413a062c485","output_sha256":"9142f5dd3244a17c8e251a78611925258c1c7761f9c3fc2ce3ffb5d9cbe6e88e","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":184,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":317,"latency_ms":540,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-009","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"191b67cfaa1ec3dedf44d52928b2386831a0071d448d4227608ed413a062c485","output_sha256":"9142f5dd3244a17c8e251a78611925258c1c7761f9c3fc2ce3ffb5d9cbe6e88e","status":"succeeded","failure_class":null,"input_tokens":163,"output_tokens":184,"cache_hit_input_tokens":0,"cache_miss_input_tokens":163,"cost_microusd":75,"latency_ms":640,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-010","arm":"baseline","attempt":1,"route_id":"gemini-capability-v1","input_sha256":"fda6cad551e564c6079ca325986cd82cd5d50792a09c5bdc5b9896ab0e7f4776","output_sha256":"4e79e6a8730381c8493d84003418a039c1016147d2ba7a635f3c2335b0baf59a","status":"succeeded","failure_class":null,"input_tokens":171,"output_tokens":824,"cache_hit_input_tokens":0,"cache_miss_input_tokens":171,"cost_microusd":3219,"latency_ms":700,"quality_qualified":true,"fallback_depth":0},
+    {"scenario_id":"CR-V1-010","arm":"candidate","attempt":1,"route_id":"deepseek-v4-flash-candidate-v1","input_sha256":"fda6cad551e564c6079ca325986cd82cd5d50792a09c5bdc5b9896ab0e7f4776","output_sha256":"4e79e6a8730381c8493d84003418a039c1016147d2ba7a635f3c2335b0baf59a","status":"succeeded","failure_class":null,"input_tokens":171,"output_tokens":824,"cache_hit_input_tokens":0,"cache_miss_input_tokens":171,"cost_microusd":255,"latency_ms":800,"quality_qualified":true,"fallback_depth":0}
+  ],
+  "test_counts": {"passed":12,"failed":0,"skipped":0,"xfailed":0},
+  "redline_failure_count": 0,
+  "result_claim": "The fake replay proves deterministic mechanics and accounting only. The apparent synthetic cost ratio is not evidence of live model quality, provider latency, invoice cost or production benefit."
+}

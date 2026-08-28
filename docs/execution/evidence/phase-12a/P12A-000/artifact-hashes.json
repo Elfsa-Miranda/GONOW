@@ -1,0 +1,12 @@
+{
+  "schema_version":"1.0","task_id":"TASK-P12A-000","git_object_format":"sha1","head_oid":"3a2ea2f675e419d0c5b5d1ad71a5cf00f16cf104","artifacts":[
+    {"path_or_reference":"execplan.md","sha256":"336a1ccb4bc33ae30f7d1ca08a5dc4a86533fe72d50244084073fb2ea129c709","size_bytes":1753257},
+    {"path_or_reference":"docs/architecture/adr/ADR-P12A-000-memory-work-package.md","sha256":"53cd69a4c554591da3e7920cfbea585e8a7b05321e40044d0827167cd7cc54f5","size_bytes":8027},
+    {"path_or_reference":"docs/architecture/release-c-selection.md","sha256":"d2fae2676bab012da0b9ac6d7cd415b7d801d3e05ec791e2a99c241a57e99dca","size_bytes":10711},
+    {"path_or_reference":"docs/execution/commands/TaskGateCatalog.psd1","sha256":"c23d68191dc557dfda5f0e14c24c352e211b0e1522d930e571c6e2ed2e238388","size_bytes":683318},
+    {"path_or_reference":"docs/execution/evidence/phase-12/P12A-000/task-plan.md","sha256":"18d51e7765a3072e89a19c7f5623efddf63bf8e4a6b5ec0fd790cc2bb642a184","size_bytes":9274},
+    {"path_or_reference":"docs/execution/evidence/phase-12a/P12A-000/proposed-execution-contract.json","sha256":"712b23ff9e6ecba9ab7b3196f2f0acd85a8a6453d1d759c7516de5274acfe3d5","size_bytes":5098},
+    {"path_or_reference":"docs/execution/evidence/phase-12a/P12A-000/selection-record.json","sha256":"a505a8acd607e3138d94918497de23c917e9de3c9ef17a767bf187d7200b7697","size_bytes":1154},
+    {"path_or_reference":"docs/execution/evidence/phase-12a/phase-runtime-manifest.json","sha256":"2731dbfe87e07b978118fc65b89f6bd89dbc29c4a5f7c872c0d5728c52385bb1","size_bytes":938}
+  ]
+}

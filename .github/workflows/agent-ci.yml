@@ -1,0 +1,127 @@
+name: Agent CI
+
+on:
+  pull_request:
+    paths:
+      - "agent-service/**"
+      - "contracts/**"
+      - "docs/execution/commands/Invoke-GitHubMainProtection.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubMainProtection.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleaseLabels.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleaseLabels.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleasePullRequest.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleasePullRequest.Tests.ps1"
+      - ".github/workflows/agent-ci.yml"
+  push:
+    branches:
+      - main
+      - "codex/**"
+    paths:
+      - "agent-service/**"
+      - "contracts/**"
+      - "docs/execution/commands/Invoke-GitHubMainProtection.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubMainProtection.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleaseLabels.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleaseLabels.Tests.ps1"
+      - "docs/execution/commands/Invoke-GitHubReleasePullRequest.ps1"
+      - "docs/execution/commands/tests/Invoke-GitHubReleasePullRequest.Tests.ps1"
+      - ".github/workflows/agent-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-required:
+    name: agent-required
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      PUB_HOSTED_URL: https://pub.flutter-io.cn
+    steps:
+      - name: Checkout immutable revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install locked uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.10.9"
+          enable-cache: false
+
+      - name: Install locked Python
+        shell: pwsh
+        run: uv python install 3.13.9
+
+      - name: Install locked Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.41.7"
+          channel: stable
+          cache: false
+
+      - name: Resolve locked Dart packages
+        shell: powershell
+        run: |
+          dart pub get --enforce-lockfile
+          if (@(git status --porcelain=v1 --untracked-files=no).Count -ne 0) {
+            throw 'Package resolution changed tracked files'
+          }
+
+      - name: Run branch-protection adapter contracts
+        shell: powershell
+        run: >-
+          .\docs\execution\commands\tests\Invoke-GitHubMainProtection.Tests.ps1
+
+      - name: Run release-label adapter contracts
+        shell: powershell
+        run: >-
+          .\docs\execution\commands\tests\Invoke-GitHubReleaseLabels.Tests.ps1
+
+      - name: Run release PR adapter contracts
+        shell: powershell
+        run: >-
+          .\docs\execution\commands\tests\Invoke-GitHubReleasePullRequest.Tests.ps1
+
+      - name: Provision isolated PostgreSQL contract database
+        shell: powershell
+        run: >-
+          .\agent-service\scripts\provision_ci_postgres.ps1
+          -Mode Start
+          -Port 55432
+          -DataRoot "$env:RUNNER_TEMP\gonow-postgres-17"
+          -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
+
+      - name: Run every mandatory Agent gate
+        shell: powershell
+        run: >-
+          .\agent-service\scripts\ci.ps1
+          -UvPath (Get-Command uv).Source
+          -PythonVersion 3.13.9
+          -DartPath (Get-Command dart).Source
+          -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
+
+      - name: Stop isolated PostgreSQL contract database
+        if: ${{ always() }}
+        shell: powershell
+        run: >-
+          .\agent-service\scripts\provision_ci_postgres.ps1
+          -Mode Stop
+          -Port 55432
+          -DataRoot "$env:RUNNER_TEMP\gonow-postgres-17"
+          -ReportRoot "$env:RUNNER_TEMP\gonow-agent-ci"
+
+      - name: Upload bounded gate reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-ci-reports-${{ github.run_id }}
+          path: ${{ runner.temp }}/gonow-agent-ci
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14

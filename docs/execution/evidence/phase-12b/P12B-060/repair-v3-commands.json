@@ -1,0 +1,14 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V3-DEEPSEEK",
+  "executor":"codex-local-single-agent",
+  "executed_at":"2026-08-05T00:05:26+08:00",
+  "commands":[
+    {"step":1,"description":"Read official Gemini generateContent structured-output contract","result":"provider supports a documented JSON Schema subset; pattern, minLength, maxLength and uniqueItems are outside the list","exit_code":0,"live_call_count":0},
+    {"step":2,"description":"Run the two focused DeepSeek v3 fake tests after fixing the self-referential evidence counter","result":"2 passed; 18 deselected","exit_code":0,"live_call_count":0},
+    {"step":3,"description":"Run affected adapter, Worker, live-runner, router, replay and ledger tests","result":"91 passed in 0.63s; failed=0; skipped=0; xfailed=0","exit_code":0,"live_call_count":0},
+    {"step":4,"description":"Run repository-locked format, lint, type and secret modes","result":"all passed; annotation_failures=0; valid_secret_finding_count=0","exit_code":0,"live_call_count":0}
+  ],
+  "secret_material_persisted":0,
+  "production_write_count":0
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P10-001",
+  "mode": "Verify",
+  "reason_code": "p10_001_verify_failed",
+  "status": "resolved_local",
+  "local_provisional": true,
+  "external_approval_or_authority_required": false,
+  "root_cause": "The first specialized Verify compared the TaskGate Catalog hash from the phase runtime manifest with the Harness Catalog hash, so otherwise-green S/I/D metadata was rejected.",
+  "impact_surface": "P10-001 harness evidence binding and the derived leak summary only; all 19 behavioral tests had already passed with zero failure, error, or skip.",
+  "reversible_repair": "Read the frozen Harness Catalog baseline from the P09-089 aggregate and compare it with the current Harness Catalog bytes; do not change the Catalog or thresholds.",
+  "affected_regression": "Verify passed with 19/19 tests, 8 harness nodes, S/I/D coverage, unchanged Harness Catalog hash, canary leak 0, raw run identifier leak 0, and run/digest locators present.",
+  "related_environment_adapter": "docs/execution/evidence/phase-10/P10-001/environment-adapter.json",
+  "production_write_count": 0,
+  "recorded_at": "2026-08-02T03:37:04.9277715+08:00",
+  "resolved_at": "2026-08-02T03:40:30+08:00"
+}

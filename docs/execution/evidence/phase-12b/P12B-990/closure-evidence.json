@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-990",
+  "profile": "personal_automated",
+  "overall_status": "passed",
+  "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+  "p12c_status": "dormant",
+  "single_agent_architecture": true,
+  "candidate_head_oid": "1dbca43516cdebe35cb132f131106964396a31e4",
+  "candidate_tree_oid": "38f0dd1c739cab7fc6ff4b1b05a7bfc28c1d28e7",
+  "historical_candidate_head_oid": "e926e1b88063a10b1bba808e2a5f64b4c7b87d80",
+  "historical_complete_regression": {
+    "ci": "15/15",
+    "unit": 830,
+    "contract": 233,
+    "flutter": 124,
+    "realpg_fault": 53,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "historical_local_provider_calls": 30,
+  "historical_provider_cost_microusd": 4555,
+  "positive_benefit_claim": false,
+  "production_facts_status": "unknown",
+  "proofs": [
+    {"path": "docs/execution/evidence/phase-12b/acceptance.md", "sha256": "2c3153e718eb898e8bb7d01650264a20d79d934c7932c1c0f8b3af41d2a7b529", "size_bytes": 3112},
+    {"path": "docs/execution/evidence/phase-12b/artifact-manifest.premerge.json", "sha256": "ccee66a3cfb2a78a787038a940bb7c3adc5b9e7641aaeb652cdfe922e4ff5e2a", "size_bytes": 3906},
+    {"path": "docs/execution/evidence/phase-12b/P12B-990/regression-summary.json", "sha256": "8c2d2f78efae1a29a4081d90311d4774638d52d59c70e0395272c53c69023ae9", "size_bytes": 3348},
+    {"path": "docs/execution/evidence/phase-12b/P12B-060/rollback-drill.json", "sha256": "72d663e3c904580d326c14e261b56f4cc43d999c71d66752e29eb977e60cd8bc", "size_bytes": 1456}
+  ],
+  "checks": {
+    "mandatory_gate_failures": 0,
+    "artifact_drift": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "flaky_rerun_passes": 0,
+    "redline_failures": 0,
+    "open_p0_p1": 0,
+    "security_failures": 0,
+    "model_api_call_count": 0,
+    "multi_agent_component_count": 0,
+    "production_write_count": 0,
+    "production_allocation": 0,
+    "force_update_count": 0,
+    "direct_main_push_count": 0
+  },
+  "recorded_at": "2026-08-05T15:10:00+08:00"
+}

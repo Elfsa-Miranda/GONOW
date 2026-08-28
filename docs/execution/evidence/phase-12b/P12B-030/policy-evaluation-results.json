@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12B-030",
+  "implementation_mode": "local_provisional_default_off",
+  "worker_boundary": "GeminiItineraryProcessor -> AuthenticatedModelGateway",
+  "baseline": {
+    "provider": "google-gemini-developer-api",
+    "origin": "https://generativelanguage.googleapis.com",
+    "capability_rule_unchanged": true,
+    "default_when_cost_routing_config_absent": true
+  },
+  "candidate": {
+    "provider": "deepseek-api",
+    "origin": "https://api.deepseek.com",
+    "path": "/chat/completions",
+    "model": "deepseek-v4-flash",
+    "thinking": "disabled",
+    "response_format": "json_object",
+    "temperature": 0,
+    "credential_reference": "secret://environment/DEEPSEEK_API_KEY",
+    "client_or_public_contract_exposure": false
+  },
+  "routing": {
+    "activation": "explicit injected immutable ItineraryCostRoutingConfig only",
+    "production_environment_enable_rejected": true,
+    "default_allocation": 0,
+    "fixed_endpoint_count": 2,
+    "dynamic_endpoint_count": 0,
+    "provider_discovery": false,
+    "routing_llm": false,
+    "central_gateway": false,
+    "multi_agent_change": false,
+    "quality_before_cost": true,
+    "candidate_fallback": "exact current Gemini preferred route",
+    "max_total_attempts": 2,
+    "recursive_fallback": 0
+  },
+  "credential_and_content_controls": {
+    "fixed_environment_variable_names": ["GEMINI_API_KEY", "DEEPSEEK_API_KEY"],
+    "credential_resolved_only_for_selected_provider": true,
+    "credential_repr_redacted": true,
+    "secret_value_output_or_evidence_count": 0,
+    "prompt_or_response_ledger_fields": 0,
+    "client_key_count": 0,
+    "live_adapter_invocations": 0,
+    "mock_transport_invocations_only": true
+  },
+  "test_counts": {
+    "focused_passed": 17,
+    "focused_failed": 0,
+    "affected_regression_passed": 28,
+    "affected_regression_failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "fallback_scenarios": 1,
+    "fallback_bound_failures": 0,
+    "default_off_scenarios": 1,
+    "dynamic_model_rejections": 1
+  },
+  "usage": {
+    "live_calls": 0,
+    "live_tokens": 0,
+    "live_cost_usd": 0,
+    "production_writes": 0
+  },
+  "assertions": {
+    "default_allocation": 0,
+    "fixed_endpoint_count": 2,
+    "dynamic_endpoint_count": 0,
+    "recursive_fallback": 0,
+    "secret_leak_count": 0
+  },
+  "rollback": "Omit ItineraryCostRoutingConfig and retain GONOW_COST_ROUTER_ENABLED=0; the exact pre-existing Gemini certified route table, gateway and behavior digest path remain authoritative.",
+  "evidence_boundary": "MockTransport proves request, adapter, authentication and fallback mechanics only. No real provider quality, latency, billing, availability, residency or production suitability is claimed."
+}

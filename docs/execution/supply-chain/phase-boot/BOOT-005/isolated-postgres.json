@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "status": "running",
+  "production": false,
+  "postgres_version": "17.10",
+  "executable_root": "D:\\PostgreSQL17\\bin",
+  "data_root": "D:\\GO_NOW-toolchain\\postgres-17.10-isolated\\data",
+  "network_binding": "127.0.0.1:55432",
+  "pg_isready": "accepting_connections",
+  "auth_mode": "trust",
+  "auth_capability_difference": "Loopback-only local probe; formal/shared verification requires SCRAM and an approved credential reference.",
+  "roles": [
+    {
+      "name": "gonow_probe_tenant_a",
+      "superuser": false,
+      "createdb": false,
+      "createrole": false,
+      "inherit": false,
+      "replication": false,
+      "login": true
+    },
+    {
+      "name": "gonow_probe_tenant_b",
+      "superuser": false,
+      "createdb": false,
+      "createrole": false,
+      "inherit": false,
+      "replication": false,
+      "login": true
+    }
+  ],
+  "tenant_role_count": 2,
+  "least_privilege_failure_count": 0,
+  "production_connection_count": 0,
+  "business_schema_write_count": 0,
+  "rollback": "Stop this task-owned cluster with pg_ctl -D D:\\GO_NOW-toolchain\\postgres-17.10-isolated\\data -m fast stop; retain data until path and ownership are reviewed."
+}

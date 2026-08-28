@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12-002",
+  "profile": "personal_automated",
+  "overall_status": "passed",
+  "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+  "p12c_status": "dormant",
+  "single_agent_architecture": true,
+  "candidate_head_oid": "c7b3acc123260f37a5f064c7f3e8690105babf30",
+  "candidate_tree_oid": "33d0f89c47bba487d5c124d053c9ec568910c6bd",
+  "purpose": "register the exact cumulative close DAG in Catalog 3.0 without creating another capability branch",
+  "proofs": [
+    {"path": "docs/execution/status/TASK-P12-001.json", "sha256": "1ac99c66b71f991f04c4214bcfb54487df19b42c7a33fd1ce50a3650843420db", "size_bytes": 1224},
+    {"path": "docs/execution/evidence/phase-12/P12-001/cumulative-acceptance-attestation.json", "sha256": "46006926b6d3180243e7896d005e2593a6d41e7ae7a1460e691da4a4c03a8ac7", "size_bytes": 2678},
+    {"path": "docs/execution/commands/TaskGateCatalog.psd1", "sha256": "7c6d1b5a1bf6298a300bf61a71607459345ed89dddeecd1281e51ab452e9c22b", "size_bytes": 700136},
+    {"path": "execplan.md", "sha256": "a54d2fc820879d2b796351dc6f513f5a5fb0a3856d202fbc4e82292205475287", "size_bytes": 1759268}
+  ],
+  "checks": {
+    "mandatory_gate_failures": 0, "artifact_drift": 0, "failed": 0, "skipped": 0, "xfailed": 0,
+    "flaky_rerun_passes": 0, "redline_failures": 0, "open_p0_p1": 0, "security_failures": 0,
+    "model_api_call_count": 0, "multi_agent_component_count": 0, "production_write_count": 0,
+    "production_allocation": 0, "force_update_count": 0, "direct_main_push_count": 0
+  },
+  "production_facts_status": "unknown",
+  "recorded_at": "2026-08-05T15:24:00+08:00"
+}

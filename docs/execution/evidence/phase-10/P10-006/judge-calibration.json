@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P10-006",
+  "calibration_id": "judge-calibration-v1",
+  "rubric": {
+    "version": "judge-binary-v1",
+    "labels": [
+      "pass",
+      "fail"
+    ],
+    "positive_label": "fail",
+    "excluded_content": [
+      "prompt",
+      "response",
+      "reasoning"
+    ]
+  },
+  "annotation_count": 100,
+  "double_label_count": 100,
+  "adjudicated_count": 100,
+  "thresholds": {
+    "status": "local_preapproval_candidate",
+    "raw_agreement_gte": 0.85,
+    "cohen_kappa_gte": 0.75,
+    "recall_gte": 0.85,
+    "precision_gte": 0.85,
+    "min_slice_sample": 25
+  },
+  "global": {
+    "sample_count": 100,
+    "raw_agreement": 0.92,
+    "cohen_kappa": 0.8333333333333334,
+    "recall": 0.9,
+    "precision": 0.9
+  },
+  "slices": [
+    {
+      "slice": "common",
+      "sample_count": 25,
+      "raw_agreement": 0.92,
+      "cohen_kappa": 0.8333333333333334,
+      "recall": 0.9,
+      "precision": 0.9,
+      "applicable": true
+    },
+    {
+      "slice": "boundary",
+      "sample_count": 25,
+      "raw_agreement": 0.92,
+      "cohen_kappa": 0.8333333333333334,
+      "recall": 0.9,
+      "precision": 0.9,
+      "applicable": true
+    },
+    {
+      "slice": "weak_network",
+      "sample_count": 25,
+      "raw_agreement": 0.92,
+      "cohen_kappa": 0.8333333333333334,
+      "recall": 0.9,
+      "precision": 0.9,
+      "applicable": true
+    },
+    {
+      "slice": "legacy_fallback",
+      "sample_count": 25,
+      "raw_agreement": 0.92,
+      "cohen_kappa": 0.8333333333333334,
+      "recall": 0.9,
+      "precision": 0.9,
+      "applicable": true
+    }
+  ],
+  "thresholds_met": true,
+  "advisory_only": true,
+  "rollout_decision_count": 0,
+  "decision": "metrics_meet_local_candidate_thresholds_but_formal_approval_pending",
+  "formal_approval_status": "pending_external",
+  "audit_receipt_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "production_write_count": 0
+}

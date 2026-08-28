@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P03-990",
+  "blocker_id": "BLK-P03-990-blocker-final-state-aggregation",
+  "root_cause": "non-ASCII source marker decoded through the Windows PowerShell 5 legacy code page in a UTF-8-no-BOM runner",
+  "repair": "ASCII-only same-line terminal-token normalization with per-file diagnostics",
+  "blocker_file_count": 3,
+  "resolved_blocker_count": 3,
+  "unresolved_blocker_final_state": 0,
+  "powershell_parse_errors": 0,
+  "documentation_gate": "passed",
+  "production_write_count": 0,
+  "formal_review_status": "pending_external"
+}

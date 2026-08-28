@@ -1,0 +1,80 @@
+schema_version: "1.0"
+task_id: TASK-P10-007
+status: local_candidate
+threshold_status: initial_hypothesis
+formal_approval_status: pending_external
+production_activation_allowed: false
+audit_receipt_id: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+privacy:
+  reviewed_users_only: true
+  explicit_eligibility_required: true
+  server_verified_identity: true
+  raw_identifier_logging: false
+  consent_withdrawal_action: remove_from_future_allocation
+allocation:
+  allocation_default_percent: 0
+  maximum_percent: 100
+  assignment_unit: pseudonymous_subject_ref
+  deterministic_assignment: true
+  cohorts_mutually_exclusive: true
+  skip_gate_allowed: false
+  insufficient_sample_action: extend_current_gate
+observation_contract:
+  windows_must_be_nonoverlapping: true
+  minimum_nonoverlap_observation_hours: 744
+  window_started_at_field: window_started_at
+  window_ended_at_field: window_ended_at
+  duration_field: observed_hours
+  duration_tolerance_hours: 0.01
+  timestamp_offset_required: true
+  insufficient_total_observation_action: extend_current_gate
+  stop_rules_remain_active_during_extension: true
+risk_slices:
+  - id: authentication_boundary
+  - id: candidate_rejection
+  - id: weak_network_resume
+  - id: cancellation_recovery
+  - id: adoption_conflict
+gates:
+  - stage: gate_01
+    percent: 1
+    predecessor_percent: 0
+    min_adopted_runs: 50
+    min_observation_hours: 24
+    require_all_risk_slices: true
+    required_approvals: [Product, Privacy, Security, SRE]
+  - stage: gate_05
+    percent: 5
+    predecessor_percent: 1
+    min_adopted_runs: 100
+    min_observation_hours: 48
+    require_all_risk_slices: true
+    required_approvals: [Product, Privacy, Security, SRE]
+  - stage: gate_20
+    percent: 20
+    predecessor_percent: 5
+    min_adopted_runs: 250
+    min_observation_hours: 72
+    require_all_risk_slices: true
+    required_approvals: [Product, Privacy, Security, SRE]
+  - stage: gate_50
+    percent: 50
+    predecessor_percent: 20
+    min_adopted_runs: 500
+    min_observation_hours: 120
+    require_all_risk_slices: true
+    required_approvals: [Product, Privacy, Security, SRE]
+  - stage: gate_100
+    percent: 100
+    predecessor_percent: 50
+    min_adopted_runs: 1000
+    min_observation_hours: 168
+    require_all_risk_slices: true
+    required_approvals: [Product, Privacy, Security, SRE]
+advance_contract:
+  previous_gate_mechanical_pass_required: true
+  previous_gate_owner_approval_required: true
+  minimum_sample_and_window_required: true
+  stop_rule_count_required_zero: true
+  insufficient_sample_result: extend_current_gate
+  production_write_count: 0

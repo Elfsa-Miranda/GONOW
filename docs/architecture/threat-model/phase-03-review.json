@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 3",
+  "candidate_head_oid": "21dd57498410227fe8588c94a4a5514efbc2cb87",
+  "architecture_model_sha256": "644ab9f5ad04a65383bb34b6628b49472d9f68b50fa3681aa46671f59794c3a6",
+  "model_changed": true,
+  "review_status": "pending_independent_review",
+  "reviewer_is_implementer": true,
+  "security_owner": "Security",
+  "local_review": {
+    "postgresql_is_runtime_truth": true,
+    "tenant_rls_policy_count": 10,
+    "forced_rls_table_count": 10,
+    "tenant_leak_count": 0,
+    "role_bypass_count": 0,
+    "public_grant_count": 0,
+    "idempotency_original_winner_count": 1,
+    "terminal_cas_winner_count": 1,
+    "event_sequence_gap_count": 0,
+    "restore_hash_mismatch": 0,
+    "dead_letter_payload_column_count": 0,
+    "llm_calls": 0,
+    "tool_calls": 0,
+    "production_write_count": 0,
+    "production_activation_allowed": false
+  },
+  "open_external_items": [
+    "independent SRE and Security review bound to the immutable candidate",
+    "production database schema, role, grant, backup retention and restore inventory",
+    "approved migration lock identity and production forward-fix procedure",
+    "measured and approved production RPO/RTO",
+    "formal governance adoption, remote required checks, push, merge and deployment"
+  ]
+}

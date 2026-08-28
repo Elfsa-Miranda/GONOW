@@ -1,0 +1,31 @@
+{
+  "corpus_id": "c1-state-space-v1",
+  "duration_seconds": 21.603386,
+  "failure_count": 0,
+  "failure_samples": [],
+  "gate_id": "C1",
+  "hard_invariant_pass_rate": 1.0,
+  "production": false,
+  "schema_version": "1.0",
+  "seed_namespace": "0xC1000000+ordinal",
+  "sequence_count": 50000,
+  "sequence_results_sha256": "ffd8ae4762978bc5d6a6786a5a8bea3aa7591a99b774715d5ec1e32d349d7c96",
+  "steps_per_sequence": 12,
+  "success_count": 50000,
+  "success_rate": 1.0,
+  "success_rate_lower_95": 0.9999458920587458,
+  "terminal_counts": {
+    "blocked": 7133,
+    "cancelled": 3214,
+    "cancelling": 3962,
+    "created": 7828,
+    "failed": 7209,
+    "queued": 15723,
+    "recovering": 350,
+    "resuming": 37,
+    "running": 3664,
+    "succeeded": 529,
+    "waiting_input": 351
+  },
+  "transition_count": 75145
+}

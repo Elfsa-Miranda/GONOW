@@ -1,0 +1,2723 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:gonow/features/ledger/data/ledger_provider.dart';
+import 'package:gonow/features/ledger/domain/expense_model.dart';
+import 'package:gonow/features/ledger/domain/ledger_model.dart' show LedgerBook, OrderTicket;
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+/// 旅行账本：双轨（结伴 AA / 机酒票务）+ 票根凹槽与圆角阴影 UI。
+class LedgerScreen extends StatefulWidget {
+  const LedgerScreen({super.key});
+
+  @override
+  State<LedgerScreen> createState() => _LedgerScreenState();
+}
+
+class _LedgerScreenState extends State<LedgerScreen> {
+  int _currentTab = 0;
+  static const Color _bgColor = Color(0xFFF5F7FA);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _bgColor,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black87, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Consumer<LedgerProvider>(
+          builder: (BuildContext context, LedgerProvider p, _) {
+            final LedgerBook? book = p.currentLedger;
+            return GestureDetector(
+              onTap: () => _showLedgerSelectorSheet(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: (book?.isSettled ?? false)
+                            ? Colors.grey
+                            : Colors.greenAccent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        book?.title ?? '旅行账本',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.keyboard_arrow_down, size: 14, color: Colors.grey),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.filter_alt_outlined, color: Colors.black54),
+            onPressed: () {},
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _currentTab = 0),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _currentTab == 0 ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: _currentTab == 0
+                              ? <BoxShadow>[
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 4,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '结伴 AA',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight:
+                                _currentTab == 0 ? FontWeight.bold : FontWeight.w600,
+                            color: _currentTab == 0
+                                ? Colors.black87
+                                : Colors.grey.shade500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _currentTab = 1),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _currentTab == 1 ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: _currentTab == 1
+                              ? <BoxShadow>[
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 4,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '机酒与票务',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight:
+                                _currentTab == 1 ? FontWeight.bold : FontWeight.w600,
+                            color: _currentTab == 1
+                                ? Colors.black87
+                                : Colors.grey.shade500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      body: _currentTab == 0
+          ? Consumer<LedgerProvider>(
+              builder: (BuildContext context, LedgerProvider provider, _) {
+                return _buildAASplitView(context, provider);
+              },
+            )
+          : _buildTicketsView(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          final LedgerProvider provider = context.read<LedgerProvider>();
+
+          if (provider.currentLedger == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('请先点击顶部「旅行账本」添加新账本'),
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 2),
+              ),
+            );
+            return;
+          }
+
+          if (_currentTab == 0) {
+            _showAddExpenseSheet(context);
+          } else {
+            _showAddTicketSheet(context);
+          }
+        },
+        backgroundColor: Colors.black87,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildAASplitView(BuildContext context, LedgerProvider p) {
+    final List<Expense> items = p.expenses;
+    final double total = p.totalSpent;
+    final double myNet = p.myNetBalance;
+    final int nPeople = p.participantCount;
+    final bool receivable = myNet >= -1e-6;
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: <Widget>[
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[Color(0xFFF97316), Color(0xFFEC4899)],
+            ),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.orange.withValues(alpha: 0.3),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  const Text(
+                    '本次旅行总支出',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      if (p.currentLedger == null) {
+                        return;
+                      }
+                      final TextEditingController editMembersController =
+                          TextEditingController(
+                        text: p.currentMembers.join(', '),
+                      );
+                      showDialog<void>(
+                        context: context,
+                        builder: (BuildContext ctx) => AlertDialog(
+                          title: const Text(
+                            '编辑同行人',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              TextField(
+                                controller: editMembersController,
+                                autofocus: true,
+                                decoration: InputDecoration(
+                                  hintText: '用逗号或空格隔开',
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '修改后将应用于后续新增的账单，不影响历史记录',
+                                style: TextStyle(fontSize: 10, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                          actions: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('取消'),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.indigo,
+                              ),
+                              onPressed: () {
+                                if (editMembersController.text.trim().isEmpty) {
+                                  return;
+                                }
+                                List<String> updatedMembers = editMembersController
+                                    .text
+                                    .split(RegExp(r'[,，\s]+'))
+                                    .map((String e) => e.trim())
+                                    .where((String e) => e.isNotEmpty)
+                                    .toList();
+
+                                if (!updatedMembers.contains('我')) {
+                                  updatedMembers.insert(0, '我');
+                                }
+                                updatedMembers = updatedMembers.toSet().toList();
+
+                                p.updateLedgerMembers(p.currentLedger!.id, updatedMembers);
+                                Navigator.pop(ctx);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('同行人已更新')),
+                                  );
+                                }
+                              },
+                              child: const Text(
+                                '保存',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Icon(Icons.people, color: Colors.white, size: 12),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$nPeople人',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '¥ ${total.toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text(
+                        '我的净结余',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: <Widget>[
+                          Text(
+                            '${myNet >= 0 ? '+' : '-'} ¥${myNet.abs().toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: receivable ? Colors.greenAccent : Colors.orange.shade100,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (receivable ? Colors.greenAccent : Colors.orange.shade100)
+                                  .withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              receivable ? '应收' : '应付',
+                              style: TextStyle(
+                                color: receivable ? Colors.greenAccent : Colors.orange.shade100,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  ElevatedButton(
+                    onPressed: () => _showSettlementSheet(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.orange.shade600,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      '💰 一键结算',
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          '账单流水 (${items.length})',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            color: Colors.grey.shade400,
+            letterSpacing: 1.5,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...items.map((Expense exp) {
+          return Dismissible(
+            key: ValueKey<String>(exp.id),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade400,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 24),
+              child: const Icon(Icons.delete_outline, color: Colors.white),
+            ),
+            confirmDismiss: (DismissDirection direction) async {
+              final bool? confirmed = await showDialog<bool>(
+                context: context,
+                builder: (BuildContext ctx) => AlertDialog(
+                  title: const Text(
+                    '删除账单',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  content: const Text('确定要删除这笔账单吗？'),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text(
+                        '删除',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+              return confirmed ?? false;
+            },
+            onDismissed: (_) {
+              p.deleteExpense(exp.id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已删除该笔账单')),
+              );
+            },
+            child: InkWell(
+              onTap: () => _showAddExpenseSheet(context, existingExpense: exp),
+              borderRadius: BorderRadius.circular(20),
+              child: _buildExpenseTile(exp),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildExpenseTile(Expense e) {
+    final (IconData icon, MaterialColor color) = _iconAndColorForTitle(e.title);
+    final LedgerProvider p = context.read<LedgerProvider>();
+    final String payerLine = _payerLine(e, p.currentUserDisplayName);
+    final bool isMe = e.payer == p.currentUserDisplayName;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color.shade500, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  e.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_formatExpenseDate(e.date)} · 平摊',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Text(
+                '¥${e.amount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                payerLine,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                  color: isMe ? Colors.indigo : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  (IconData, MaterialColor) _iconAndColorForTitle(String title) {
+    if (title.contains('车') || title.contains('专') || title.contains('机')) {
+      return (Icons.local_taxi, Colors.blue);
+    }
+    if (title.contains('餐') || title.contains('排') || title.contains('饭') || title.contains('鲜')) {
+      return (Icons.restaurant, Colors.orange);
+    }
+    if (title.contains('票') || title.contains('艇') || title.contains('船')) {
+      return (Icons.confirmation_num, Colors.purple);
+    }
+    return (Icons.receipt_long, Colors.teal);
+  }
+
+  String _payerLine(Expense e, String me) {
+    if (e.payer == me) {
+      return '我垫付';
+    }
+    return '${e.payer} 垫付';
+  }
+
+  String _formatExpenseDate(DateTime d) {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime day = DateTime(d.year, d.month, d.day);
+    final String hm =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    if (day == today) {
+      return '今天 $hm';
+    }
+    if (day == today.subtract(const Duration(days: 1))) {
+      return '昨天 $hm';
+    }
+    return '${d.month}月${d.day}日 $hm';
+  }
+
+  void _showAddExpenseSheet(BuildContext context, {Expense? existingExpense}) {
+    final LedgerProvider provider = Provider.of<LedgerProvider>(
+      context,
+      listen: false,
+    );
+    final TextEditingController amountController = TextEditingController(
+      text: existingExpense?.amount.toString() ?? '',
+    );
+    final TextEditingController titleController = TextEditingController(
+      text: existingExpense?.title ?? '',
+    );
+    String selectedPayer = existingExpense?.payer ?? '我';
+    List<String> selectedParticipants = existingExpense != null
+        ? List<String>.from(existingExpense.participants)
+        : List<String>.from(provider.currentMembers);
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      '记一笔',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: titleController,
+                            decoration: InputDecoration(
+                              hintText: '名目 (如: 海鲜大排档)',
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 1,
+                          child: TextField(
+                            controller: amountController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            inputFormatters: <TextInputFormatter>[
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.]'),
+                              ),
+                              TextInputFormatter.withFunction(
+                                (TextEditingValue oldValue,
+                                    TextEditingValue newValue) {
+                                  final String t = newValue.text;
+                                  if (t.isEmpty) return newValue;
+                                  if (!RegExp(r'^\d*\.?\d*$').hasMatch(t)) {
+                                    return oldValue;
+                                  }
+                                  if (t.indexOf('.') != t.lastIndexOf('.')) {
+                                    return oldValue;
+                                  }
+                                  return newValue;
+                                },
+                              ),
+                            ],
+                            decoration: InputDecoration(
+                              prefixText: '¥ ',
+                              hintText: '0.00',
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '谁垫付的？',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: provider.currentMembers.map((String m) {
+                        return ChoiceChip(
+                          label: Text(m),
+                          selected: selectedPayer == m,
+                          onSelected: (bool _) =>
+                              setModalState(() => selectedPayer = m),
+                          selectedColor: Colors.orange.shade100,
+                          labelStyle: TextStyle(
+                            color: selectedPayer == m
+                                ? Colors.orange.shade800
+                                : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '谁参与平摊？',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: provider.currentMembers.map((String m) {
+                        return FilterChip(
+                          label: Text(m),
+                          selected: selectedParticipants.contains(m),
+                          onSelected: (bool val) {
+                            setModalState(() {
+                              if (val) {
+                                selectedParticipants.add(m);
+                              } else if (selectedParticipants.length > 1) {
+                                selectedParticipants.remove(m);
+                              }
+                            });
+                          },
+                          selectedColor: Colors.indigo.shade100,
+                          checkmarkColor: Colors.indigo.shade700,
+                          labelStyle: TextStyle(
+                            color: selectedParticipants.contains(m)
+                                ? Colors.indigo.shade700
+                                : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black87,
+                        minimumSize: const Size(double.infinity, 56),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () {
+                        if (amountController.text.isEmpty ||
+                            titleController.text.isEmpty) {
+                          return;
+                        }
+                        final double amount =
+                            double.tryParse(amountController.text) ?? 0;
+                        if (amount <= 0 || selectedParticipants.isEmpty) return;
+
+                        final Expense newExp = Expense(
+                          id: existingExpense?.id ??
+                              DateTime.now().millisecondsSinceEpoch.toString(),
+                          ledgerId: provider.currentLedger?.id ?? 'default_ledger',
+                          title: titleController.text,
+                          amount: amount,
+                          payer: selectedPayer,
+                          participants: selectedParticipants,
+                          date: existingExpense?.date ?? DateTime.now(),
+                        );
+
+                        if (existingExpense != null) {
+                          provider.updateExpense(newExp.id, newExp);
+                        } else {
+                          provider.addExpense(newExp);
+                        }
+                        Navigator.pop(context);
+                      },
+                      child: const Text(
+                        '确定',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildLedgerItem({
+    required String title,
+    required String amount,
+    required String dateLine,
+    required bool isActive,
+    required bool isSettled,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dateLine,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '总支出 ¥$amount',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.indigo.shade500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (isSettled)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '已结算',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              if (isActive)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Colors.indigo.shade400,
+                    size: 22,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLedgerSelectorSheet(BuildContext screenContext) {
+    final LedgerProvider provider = screenContext.read<LedgerProvider>();
+    showModalBottomSheet<void>(
+      context: screenContext,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        final double bottom = MediaQuery.paddingOf(sheetContext).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottom),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              boxShadow: <BoxShadow>[
+                BoxShadow(color: Color(0x22000000), blurRadius: 24, offset: Offset(0, -4)),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(Icons.folder_open_rounded, color: Colors.indigo.shade400),
+                        const SizedBox(width: 8),
+                        const Text(
+                          '历史账本',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                      itemCount: provider.ledgers.length,
+                      separatorBuilder: (BuildContext context, int index) =>
+                          const SizedBox(height: 8),
+                      itemBuilder: (BuildContext _, int i) {
+                        final LedgerBook b = provider.ledgers[i];
+                        final bool isCurrent = provider.currentLedger?.id == b.id;
+                        final String dateLine =
+                            '${b.createdAt.year}-${b.createdAt.month.toString().padLeft(2, '0')}-${b.createdAt.day.toString().padLeft(2, '0')}'
+                            '${b.isSettled ? ' · 已归档' : ''}';
+                        return Dismissible(
+                          key: ValueKey<String>('ledger_${b.id}'),
+                          direction: DismissDirection.horizontal,
+                          background: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.only(left: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade400,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(Icons.delete_sweep, color: Colors.white),
+                          ),
+                          secondaryBackground: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade400,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(Icons.delete_sweep, color: Colors.white),
+                          ),
+                          confirmDismiss: (_) async {
+                            final bool? ok = await showDialog<bool>(
+                              context: sheetContext,
+                              builder: (BuildContext ctx) => AlertDialog(
+                                title: const Text(
+                                  '删除旅行账本',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                content: Text(
+                                  '确定要永久删除《${b.title}》及其所有的流水记录吗？此操作无法恢复。',
+                                ),
+                                actions: <Widget>[
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('取消'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text(
+                                      '彻底删除',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                            return ok ?? false;
+                          },
+                          onDismissed: (_) {
+                            provider.deleteLedger(b.id);
+                            if (screenContext.mounted) {
+                              ScaffoldMessenger.of(screenContext).showSnackBar(
+                                const SnackBar(content: Text('账本已删除')),
+                              );
+                            }
+                          },
+                          child: Material(
+                            color: isCurrent ? Colors.indigo.shade50 : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(16),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () {
+                                provider.switchLedger(b);
+                                Navigator.pop(sheetContext);
+                              },
+                              child: _buildLedgerItem(
+                                title: b.title,
+                                amount: provider.totalSpentByLedger(b.id).toStringAsFixed(2),
+                                dateLine: dateLine,
+                                isActive: isCurrent,
+                                isSettled: b.isSettled,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        final TextEditingController nameController =
+                            TextEditingController();
+                        final TextEditingController membersController =
+                            TextEditingController(text: '我, ');
+                        showDialog<void>(
+                          context: sheetContext,
+                          builder: (BuildContext ctx) => AlertDialog(
+                            title: const Text(
+                              '新建旅行账本',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                TextField(
+                                  controller: nameController,
+                                  autofocus: true,
+                                  decoration: InputDecoration(
+                                    hintText: '账本名称 (如：五一川西自驾)',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: membersController,
+                                  decoration: InputDecoration(
+                                    hintText: '出行人 (用逗号或空格隔开)',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  '提示：多个成员请用逗号或空格隔开，后续记账将自动分摊',
+                                  style: TextStyle(fontSize: 10, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                            actions: <Widget>[
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text(
+                                  '取消',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  final String title =
+                                      nameController.text.trim();
+                                  if (title.isNotEmpty &&
+                                      membersController.text.trim().isNotEmpty) {
+                                    List<String> parsedMembers = membersController
+                                        .text
+                                        .split(RegExp(r'[,，\s]+'))
+                                        .map((String e) => e.trim())
+                                        .where((String e) => e.isNotEmpty)
+                                        .toList();
+
+                                    if (!parsedMembers.contains('我')) {
+                                      parsedMembers.insert(0, '我');
+                                    }
+                                    parsedMembers = parsedMembers.toSet().toList();
+
+                                    provider.createNewLedger(
+                                      title,
+                                      parsedMembers,
+                                    );
+                                    Navigator.pop(ctx);
+                                    Navigator.pop(sheetContext);
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.indigo,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text(
+                                  '创建',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.add, color: Colors.white),
+                      label: const Text(
+                        '新建空白账本',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black87,
+                        minimumSize: const Size(double.infinity, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSettlementSheet(BuildContext context) {
+    final LedgerProvider ledger = context.read<LedgerProvider>();
+    final List<TransferAction> actions = ledger.settlementActions;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        final double bottom = MediaQuery.paddingOf(sheetContext).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottom),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.88,
+            ),
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Row(
+                    children: <Widget>[
+                      Icon(Icons.auto_awesome, color: Colors.indigo.shade600),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '极简结算方案',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '已根据贪心债务化简，将交叉垫付合并为最少笔数转账。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 24),
+                  if (actions.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        '当前账本全员平账，无需转账。',
+                        style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                      ),
+                    )
+                  else
+                    ...actions.map((TransferAction action) {
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          border: Border.all(color: Colors.orange.shade100),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                CircleAvatar(
+                                  backgroundColor: Colors.grey.shade200,
+                                  radius: 16,
+                                  child: Text(
+                                    _avatarLetter(action.from),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black87,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Icon(
+                                    Icons.arrow_forward_rounded,
+                                    color: Colors.orange.shade700,
+                                    size: 16,
+                                  ),
+                                ),
+                                CircleAvatar(
+                                  backgroundColor: Colors.indigo.shade100,
+                                  radius: 16,
+                                  child: Text(
+                                    _avatarLetter(action.to),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.indigo.shade800,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: <Widget>[
+                                  Text(
+                                    '${action.from} 需支付给 ${action.to}',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.end,
+                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                                  ),
+                                  Text(
+                                    '¥ ${action.amount.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.check, color: Colors.white, size: 18),
+                    label: const Text(
+                      '确定',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _avatarLetter(String name) {
+    if (name.isEmpty) {
+      return '?';
+    }
+    final Iterator<int> it = name.runes.iterator;
+    return it.moveNext() ? String.fromCharCode(it.current) : '?';
+  }
+
+  // ==================== Tab 1: 机酒票务 (实体票根设计) ====================
+  Widget _buildTicketsView() {
+    return Consumer<LedgerProvider>(
+      builder: (BuildContext context, LedgerProvider provider, _) {
+        final List<OrderTicket> tickets = provider.currentTickets;
+
+        if (tickets.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(Icons.confirmation_num_outlined, size: 64, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  '暂无订单，点击右下角添加',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ReorderableListView.builder(
+          padding: const EdgeInsets.all(20),
+          itemCount: tickets.length,
+          onReorder: (int oldIndex, int newIndex) {
+            provider.reorderTickets(oldIndex, newIndex);
+          },
+          proxyDecorator: (Widget child, int index, Animation<double> animation) {
+            return Material(
+              color: Colors.transparent,
+              elevation: 0,
+              child: child,
+            );
+          },
+          itemBuilder: (BuildContext context, int index) {
+            final OrderTicket ticket = tickets[index];
+            return Container(
+              key: ValueKey<String>(ticket.id),
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Dismissible(
+                key: ValueKey<String>('dismiss_${ticket.id}'),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade400,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 24),
+                  child: const Icon(Icons.delete_outline, color: Colors.white),
+                ),
+                confirmDismiss: (_) async {
+                  final bool? ok = await showDialog<bool>(
+                    context: context,
+                    builder: (BuildContext ctx) => AlertDialog(
+                      title: const Text('删除订单'),
+                      content: const Text('确定要删除这个记录吗？'),
+                      actions: <Widget>[
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('取消'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('删除', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                  return ok ?? false;
+                },
+                onDismissed: (_) => provider.deleteTicket(ticket.id),
+                child: InkWell(
+                  onTap: () => _showAddTicketSheet(context, existingTicket: ticket),
+                  borderRadius: BorderRadius.circular(24),
+                  child: ticket.type == 'hotel' ? _buildHotelCard(ticket) : _buildFlightCard(ticket),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFlightCard(OrderTicket ticket) {
+    final bool isTrain = ticket.type == 'train';
+    final Color themeColor = isTrain ? Colors.blue.shade600 : Colors.indigo.shade600;
+
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: themeColor.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Column(
+          children: <Widget>[
+            Container(
+              color: themeColor,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: <Widget>[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              isTrain ? Icons.train : Icons.flight_takeoff,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              ticket.dateStr,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        ticket.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            ticket.timeA,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 36,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          Text(
+                            ticket.locationA,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            children: <Widget>[
+                              Text(
+                                isTrain ? '高铁' : '直飞',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Stack(
+                                alignment: Alignment.center,
+                                children: <Widget>[
+                                  _TicketDashRow(
+                                    segments: 15,
+                                    dashColor: Colors.white.withValues(alpha: 0.4),
+                                    segmentHeight: 1.5,
+                                  ),
+                                  Icon(
+                                    isTrain ? Icons.train : Icons.flight,
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: <Widget>[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                ticket.timeB,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -1,
+                                ),
+                              ),
+                              // 跨天角标：到达时间小于出发时间则判定为跨天
+                              if (_isCrossDay(ticket.timeA, ticket.timeB))
+                                Container(
+                                  margin: const EdgeInsets.only(top: 4, left: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    '+1天',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          Text(
+                            ticket.locationB,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              height: 30,
+              color: Colors.white,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _TicketDashRow(
+                        segments: 30,
+                        dashColor: Colors.grey.shade300,
+                        segmentHeight: 1.5,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: -15,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 30,
+                      decoration: BoxDecoration(
+                        color: _bgColor,
+                        shape: BoxShape.circle,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(3, 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: -15,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 30,
+                      decoration: BoxDecoration(
+                        color: _bgColor,
+                        shape: BoxShape.circle,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(-3, 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        '出行人',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade400,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        ticket.passenger,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: themeColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.qr_code_2, size: 16, color: themeColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          '查看凭证',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: themeColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHotelCard(OrderTicket ticket) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 90,
+            height: 90,
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(Icons.hotel, color: Colors.orange.shade300, size: 32),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        ticket.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '已确认',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  ticket.locationA,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            '${ticket.dateStr} ${ticket.timeA}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            ticket.locationB.isEmpty ? '暂无地址' : ticket.locationB,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final String destination =
+                            ticket.locationB.isNotEmpty ? ticket.locationB : ticket.title;
+                        if (destination.isEmpty) return;
+
+                        final String encodedDest = Uri.encodeComponent(destination);
+                        final Uri androidUri = Uri.parse(
+                          'androidamap://route?sourceApplication=TravelApp&dname=$encodedDest',
+                        );
+                        final Uri iosUri = Uri.parse(
+                          'iosamap://path?sourceApplication=TravelApp&dname=$encodedDest',
+                        );
+                        final Uri webUri = Uri.parse(
+                          'https://uri.amap.com/search?keyword=$encodedDest',
+                        );
+
+                        try {
+                          if (await canLaunchUrl(androidUri)) {
+                            await launchUrl(androidUri);
+                          } else if (await canLaunchUrl(iosUri)) {
+                            await launchUrl(iosUri);
+                          } else {
+                            await launchUrl(
+                              webUri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        } catch (_) {
+                          await launchUrl(
+                            webUri,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.shade50,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.indigo.shade100),
+                        ),
+                        child: Icon(
+                          Icons.location_on,
+                          size: 16,
+                          color: Colors.indigo.shade500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypeTab(
+    String type,
+    String label,
+    IconData icon,
+    String selectedType,
+    VoidCallback onTap,
+  ) {
+    final bool isSelected = type == selectedType;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 4,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, size: 14, color: isSelected ? Colors.indigo : Colors.grey.shade400),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.indigo : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 统一的日期+时间分步选择器 (完美解决远期航班选择困难)
+  Future<void> showModernDateTimePicker({
+    required BuildContext context,
+    required DateTime initialTime,
+    required Function(DateTime) onConfirm,
+  }) async {
+    // ================= 第一步：选日期（原生日历，轻松跨越几十年） =================
+    final DateTime? selectedDate = await showDatePicker(
+      context: context,
+      initialDate: initialTime,
+      firstDate: DateTime(2000), // 允许录入早年的足迹
+      lastDate: DateTime(2100),
+      helpText: '第一步：选择航班日期',
+      cancelText: '取消',
+      confirmText: '下一步 (选时间)',
+      builder: (BuildContext context, Widget? child) {
+        // 深度定制主题，匹配你界面的深蓝色调 (Indigo)
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.indigo,
+              onPrimary: Colors.white,
+              onSurface: Colors.black87,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.indigo,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (selectedDate == null) return; // 用户点击了取消，直接打断
+    if (!context.mounted) return;
+
+    // ================= 第二步：选时间（24小时制，精准无歧义） =================
+    final TimeOfDay? selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialTime),
+      helpText: '第二步：选择准确时间',
+      cancelText: '取消',
+      confirmText: '确定保存',
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.indigo,
+            ),
+          ),
+          child: MediaQuery(
+            // 🚀 核心细节：强制使用 24 小时制（航班绝对不能用上下午，容易出错）
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+            child: child!,
+          ),
+        );
+      },
+    );
+    if (selectedTime == null) return; // 用户在第二步取消了
+
+    // ================= 第三步：智能合并 =================
+    final DateTime finalDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    // 传回给你的 UI 刷新
+    onConfirm(finalDateTime);
+  }
+
+  /// 计算跨了几天 (利用跨越的午夜次数，而不是单纯的 24 小时)
+  int _getCrossDay(DateTime start, DateTime end) {
+    // 将时分秒抹零，只比对日期
+    DateTime startDate = DateTime(start.year, start.month, start.day);
+    DateTime endDate = DateTime(end.year, end.month, end.day);
+    return endDate.difference(startDate).inDays;
+  }
+
+  /// 格式化飞行耗时（例如：2h 30m）
+  String _calculateDuration(DateTime start, DateTime end) {
+    Duration diff = end.difference(start);
+    if (diff.isNegative) return '时间错误'; // 如果降落比出发还早
+    int hours = diff.inHours;
+    int minutes = diff.inMinutes.remainder(60);
+    return '${hours}h ${minutes}m';
+  }
+
+  /// 解析票务数据为 DateTime 对象
+  DateTime? _parseTicketDateTime(String? dateStr, String? timeStr) {
+    if (dateStr == null || timeStr == null) return null;
+    try {
+      final int year = DateTime.now().year;
+      
+      // 解析时间 "HH:mm"
+      final RegExp timeReg = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? timeMatch = timeReg.firstMatch(timeStr);
+      if (timeMatch == null) return null;
+      final int hour = int.parse(timeMatch.group(1)!);
+      final int minute = int.parse(timeMatch.group(2)!);
+
+      // 解析日期 "MM月DD日" / "MM.DD" / "YYYY-MM-DD"
+      final RegExp mdReg1 = RegExp(r'(\d{1,2})月(\d{1,2})日');
+      final RegExp mdReg2 = RegExp(r'(\d{1,2})[.\-/](\d{1,2})');
+      final RegExp mdReg3 = RegExp(r'(\d{4})-(\d{2})-(\d{2})');
+
+      int month = 0, day = 0;
+
+      final RegExpMatch? m3 = mdReg3.firstMatch(dateStr);
+      final RegExpMatch? m1 = mdReg1.firstMatch(dateStr);
+      final RegExpMatch? m2 = mdReg2.firstMatch(dateStr);
+
+      if (m3 != null) {
+        month = int.parse(m3.group(2)!);
+        day = int.parse(m3.group(3)!);
+      } else if (m1 != null) {
+        month = int.parse(m1.group(1)!);
+        day = int.parse(m1.group(2)!);
+      } else if (m2 != null) {
+        month = int.parse(m2.group(1)!);
+        day = int.parse(m2.group(2)!);
+      } else {
+        return null;
+      }
+
+      return DateTime(year, month, day, hour, minute);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 判断是否跨天：到达时间（HH:mm）小于出发时间（HH:mm）即为跨天
+  bool _isCrossDay(String timeA, String timeB) {
+    try {
+      final RegExp r = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? ma = r.firstMatch(timeA);
+      final RegExpMatch? mb = r.firstMatch(timeB);
+      if (ma == null || mb == null) return false;
+      final int minutesA = int.parse(ma.group(1)!) * 60 + int.parse(ma.group(2)!);
+      final int minutesB = int.parse(mb.group(1)!) * 60 + int.parse(mb.group(2)!);
+      return minutesB < minutesA;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 弹出日期+时间二合一选择器，返回格式化字符串
+  Future<String?> _pickDateTime(
+    BuildContext context, {
+    String? initialDateStr,   // 已有日期字符串，如 "10.01"
+    String? initialTimeStr,   // 已有时间字符串，如 "23:00"
+  }) async {
+    // 解析初始值
+    DateTime initial = DateTime.now();
+    if (initialDateStr != null && initialDateStr.isNotEmpty) {
+      final RegExp r = RegExp(r'(\d{1,2})[.\-月/](\d{1,2})');
+      final RegExpMatch? m = r.firstMatch(initialDateStr);
+      if (m != null) {
+        initial = DateTime(
+          DateTime.now().year,
+          int.parse(m.group(1)!),
+          int.parse(m.group(2)!),
+          initial.hour,
+          initial.minute,
+        );
+      }
+    }
+    if (initialTimeStr != null && initialTimeStr.isNotEmpty) {
+      final RegExp r = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? m = r.firstMatch(initialTimeStr);
+      if (m != null) {
+        initial = DateTime(
+          initial.year, initial.month, initial.day,
+          int.parse(m.group(1)!),
+          int.parse(m.group(2)!),
+        );
+      }
+    }
+
+    // 第一步：选日期
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(DateTime.now().year - 1),
+      lastDate: DateTime(DateTime.now().year + 3),
+      locale: const Locale('zh', 'CN'),
+      helpText: '选择日期',
+      confirmText: '下一步',
+      cancelText: '取消',
+      builder: (BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Colors.indigo,
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (pickedDate == null) return null;
+
+    // 第二步：选时间
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
+      helpText: '选择时间',
+      confirmText: '确定',
+      cancelText: '返回',
+      builder: (BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Colors.indigo,
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (pickedTime == null) return null;
+
+    final DateTime result = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+
+    // 返回格式：日期部分 "MM月DD日"，时间部分 "HH:mm"，用 | 分隔传回
+    return '${result.month}月${result.day}日|'
+        '${result.hour.toString().padLeft(2, '0')}:'
+        '${result.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 只选时间（用于到达时间/退房时间，日期跟随出发日期）
+  Future<String?> _pickTimeOnly(
+    BuildContext context, {
+    String? initialTimeStr,
+  }) async {
+    TimeOfDay initial = TimeOfDay.now();
+    if (initialTimeStr != null && initialTimeStr.isNotEmpty) {
+      final RegExp r = RegExp(r'(\d{1,2}):(\d{2})');
+      final RegExpMatch? m = r.firstMatch(initialTimeStr);
+      if (m != null) {
+        initial = TimeOfDay(
+          hour: int.parse(m.group(1)!),
+          minute: int.parse(m.group(2)!),
+        );
+      }
+    }
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      helpText: '选择时间',
+      confirmText: '确定',
+      cancelText: '取消',
+      builder: (BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Colors.indigo,
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return null;
+    return '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 到达时间选择：选完时间后询问是否次日到达
+  Future<void> _pickTimeBWithCrossDay(
+    BuildContext context, {
+    required String? initialTimeStr,
+    required StateSetter setModalState,
+    required TextEditingController timeBController,
+  }) async {
+    final String? t = await _pickTimeOnly(
+      context,
+      initialTimeStr: initialTimeStr,
+    );
+    if (t == null) return;
+
+    // 询问是否次日到达
+    if (!context.mounted) return;
+    final bool? isCrossDay = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('到达日期', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(
+          '到达时间 $t 是当日还是次日？',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('当日', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('+1天（次日）', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (isCrossDay == null) return;
+    // 次日到达在时间后加标记，卡片显示时用 _isCrossDay 判断，这里仅存原始时间
+    // 如果用户选了次日，在显示时通过时间比较自动识别，无需额外存储
+    setModalState(() => timeBController.text = t);
+  }
+
+  void _showAddTicketSheet(BuildContext context, {OrderTicket? existingTicket}) {
+    final LedgerProvider provider = context.read<LedgerProvider>();
+    String selectedType = existingTicket?.type ?? 'flight';
+
+    final TextEditingController titleController =
+        TextEditingController(text: existingTicket?.title ?? '');
+    final TextEditingController locAController =
+        TextEditingController(text: existingTicket?.locationA ?? '');
+    final TextEditingController locBController =
+        TextEditingController(text: existingTicket?.locationB ?? '');
+    final TextEditingController passengerController =
+        TextEditingController(text: existingTicket?.passenger.isNotEmpty == true ? existingTicket!.passenger : '我');
+
+    // ✅ 新方案：使用完整的 DateTime 对象
+    DateTime departureTime = _parseTicketDateTime(
+      existingTicket?.dateStr,
+      existingTicket?.timeA,
+    ) ?? DateTime.now();
+    
+    DateTime arrivalTime = _parseTicketDateTime(
+      existingTicket?.dateStr,
+      existingTicket?.timeB,
+    ) ?? DateTime.now().add(const Duration(hours: 2));
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, void Function(void Function()) setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        existingTicket == null ? '录入机酒票务' : '修改订单',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            _buildTypeTab(
+                              'flight',
+                              '航班',
+                              Icons.flight,
+                              selectedType,
+                              () => setModalState(() => selectedType = 'flight'),
+                            ),
+                            _buildTypeTab(
+                              'train',
+                              '高铁',
+                              Icons.train,
+                              selectedType,
+                              () => setModalState(() => selectedType = 'train'),
+                            ),
+                            _buildTypeTab(
+                              'hotel',
+                              '酒店',
+                              Icons.hotel,
+                              selectedType,
+                              () => setModalState(() => selectedType = 'hotel'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: titleController,
+                        decoration: InputDecoration(
+                          hintText: selectedType == 'hotel' ? '酒店名称' : '航班号/车次',
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // ✅ 新方案：专业航旅时间选择卡片
+                      if (selectedType != 'hotel')
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: <Widget>[
+                              // ================= 左侧：起飞时间 =================
+                              GestureDetector(
+                                onTap: () {
+                                  showModernDateTimePicker(
+                                    context: context,
+                                    initialTime: departureTime,
+                                    onConfirm: (DateTime time) {
+                                      setModalState(() {
+                                        departureTime = time;
+                                        // 智能联动：如果起飞时间改了，自动把降落时间往后顺延2小时，防止用户填错
+                                        if (arrivalTime.isBefore(departureTime)) {
+                                          arrivalTime = departureTime.add(const Duration(hours: 2));
+                                        }
+                                      });
+                                    },
+                                  );
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    const Text(
+                                      '出发时间',
+                                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${departureTime.month}月${departureTime.day}日',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${departureTime.hour.toString().padLeft(2, '0')}:${departureTime.minute.toString().padLeft(2, '0')}',
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.indigo,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // ================= 中间：飞机图标及耗时 =================
+                              Column(
+                                children: <Widget>[
+                                  Icon(
+                                    selectedType == 'train' ? Icons.train : Icons.flight_takeoff,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // 计算总耗时
+                                  Text(
+                                    _calculateDuration(departureTime, arrivalTime),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                              // ================= 右侧：降落时间（带跨天提示） =================
+                              GestureDetector(
+                                onTap: () {
+                                  showModernDateTimePicker(
+                                    context: context,
+                                    initialTime: arrivalTime,
+                                    onConfirm: (DateTime time) {
+                                      setModalState(() {
+                                        arrivalTime = time;
+                                      });
+                                    },
+                                  );
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: <Widget>[
+                                    const Text(
+                                      '到达时间',
+                                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${arrivalTime.month}月${arrivalTime.day}日',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        Text(
+                                          '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}',
+                                          style: const TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.indigo,
+                                          ),
+                                        ),
+                                        // 🌟 核心：跨天逻辑计算与显示
+                                        if (_getCrossDay(departureTime, arrivalTime) > 0)
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 2, top: 4),
+                                            child: Text(
+                                              '+${_getCrossDay(departureTime, arrivalTime)}天',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.redAccent,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      // ✅ 酒店类型：简化的入住/退房时间选择
+                      if (selectedType == 'hotel')
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    showModernDateTimePicker(
+                                      context: context,
+                                      initialTime: departureTime,
+                                      onConfirm: (DateTime time) {
+                                        setModalState(() => departureTime = time);
+                                      },
+                                    );
+                                  },
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      const Text(
+                                        '入住时间',
+                                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${departureTime.month}月${departureTime.day}日',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${departureTime.hour.toString().padLeft(2, '0')}:${departureTime.minute.toString().padLeft(2, '0')}',
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.indigo,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    showModernDateTimePicker(
+                                      context: context,
+                                      initialTime: arrivalTime,
+                                      onConfirm: (DateTime time) {
+                                        setModalState(() => arrivalTime = time);
+                                      },
+                                    );
+                                  },
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      const Text(
+                                        '退房时间',
+                                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${arrivalTime.month}月${arrivalTime.day}日',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}',
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.indigo,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      // 出行人
+                      TextField(
+                        controller: passengerController,
+                        decoration: InputDecoration(
+                          hintText: selectedType == 'hotel' ? '入住人' : '出行人',
+                          prefixIcon: const Icon(Icons.person, size: 20),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: locAController,
+                              decoration: InputDecoration(
+                                hintText: selectedType == 'hotel' ? '房型' : '出发地',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: locBController,
+                              decoration: InputDecoration(
+                                hintText: selectedType == 'hotel' ? '详细地址' : '目的地',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          minimumSize: const Size(double.infinity, 56),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () {
+                          if (titleController.text.trim().isEmpty) {
+                            return;
+                          }
+                          final String? lid = provider.currentLedger?.id;
+                          if (lid == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('请先选择或创建一个旅行账本')),
+                            );
+                            return;
+                          }
+
+                          // ✅ 从 DateTime 对象格式化为存储格式
+                          final String dateStr = '${departureTime.month}月${departureTime.day}日';
+                          final String timeA = '${departureTime.hour.toString().padLeft(2, '0')}:${departureTime.minute.toString().padLeft(2, '0')}';
+                          final String timeB = '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}';
+
+                          final OrderTicket newTicket = OrderTicket(
+                            id: existingTicket?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                            ledgerId: lid,
+                            type: selectedType,
+                            title: titleController.text.trim(),
+                            dateStr: dateStr,
+                            timeA: timeA,
+                            timeB: timeB,
+                            locationA: locAController.text.trim(),
+                            locationB: locBController.text.trim(),
+                            passenger: passengerController.text.trim().isEmpty
+                                ? '我'
+                                : passengerController.text.trim(),
+                          );
+
+                          if (existingTicket != null) {
+                            provider.updateTicket(existingTicket.id, newTicket);
+                          } else {
+                            provider.addTicket(newTicket);
+                          }
+                          Navigator.pop(sheetContext);
+                        },
+                        child: const Text(
+                          '确定保存',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// 票根虚线：用交替色块模拟虚线段（与指令中的 `List.generate` 逻辑一致）。
+class _TicketDashRow extends StatelessWidget {
+  const _TicketDashRow({
+    required this.segments,
+    required this.dashColor,
+    this.segmentHeight = 1.5,
+  });
+
+  final int segments;
+  final Color dashColor;
+  final double segmentHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List<Widget>.generate(
+        segments,
+        (int index) => Expanded(
+          child: Container(
+            height: segmentHeight,
+            color: index.isEven ? dashColor : Colors.transparent,
+          ),
+        ),
+      ),
+    );
+  }
+}

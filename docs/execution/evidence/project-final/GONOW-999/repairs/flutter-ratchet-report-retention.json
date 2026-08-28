@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-GONOW-999",
+  "github_pull_request": 1,
+  "workflow_run_id": 30990516849,
+  "job_id": 92255285519,
+  "first_failure": {
+    "workflow": "flutter-quality-ratchet",
+    "step": "Run baseline and candidate ratchet",
+    "classification": "primary_ratchet_false_without_retained_report",
+    "duration_seconds": 367,
+    "report_written_before_exit": true,
+    "report_retained": false
+  },
+  "root_cause_status": "not_yet_distinguishable_without_report",
+  "excluded_by_prior_signal": [
+    "cross_revision_lock_equality_precondition",
+    "flutter_machine_version_parse_failure"
+  ],
+  "enabler": {
+    "implementation": "Upload the existing redacted bounded ratchet JSON in an always-running immutable action step.",
+    "threshold_changed": false,
+    "gate_exit_behavior_changed": false,
+    "test_or_build_command_changed": false,
+    "secret_value_output_contract": 0,
+    "production_write_count": 0,
+    "rollback": "Revert this enabler after preserving equivalent failure diagnostics elsewhere; do not bypass the ratchet."
+  },
+  "focused_validation": {
+    "yaml_parse_exit_code": 0,
+    "immutable_upload_action_pin_present": true,
+    "always_condition_present": true,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "recorded_at": "2026-08-05T16:58:00+08:00"
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P12D-999",
+  "profile": "personal_automated",
+  "overall_status": "passed",
+  "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+  "p12c_status": "dormant",
+  "single_agent_architecture": true,
+  "candidate_head_oid": "8c3ddfc532133bb9794dd61495c156eee9789cf1",
+  "candidate_tree_oid": "a2c2ec0fd412b81e6be3f2f585651cedcf52a63d",
+  "historical_merge": {"parent_count": 2, "tree_equal": true, "main_mutation_count": 0, "remote_write_count": 0},
+  "historical_focused_smoke": {"execution_contract": 1, "realpg_security_fault_openapi": 51, "flutter_command_and_routing": 22, "failed": 0, "skipped": 0, "xfailed": 0},
+  "production_improvement_claim": false,
+  "production_facts_status": "unknown",
+  "proofs": [
+    {"path": "docs/execution/evidence/phase-12d/merge.json", "sha256": "cd688107b19691e8c40c29acd66e86a2fb7d757cbb7ce4d006857ee4dd913447", "size_bytes": 1473},
+    {"path": "docs/execution/evidence/integration/8c3ddfc532133bb9794dd61495c156eee9789cf1/smoke-results.json", "sha256": "4c3f4d2f10dee42e978ad26cf486c90e30d1cea864b52c714bd8ff9d9f4be406", "size_bytes": 1527},
+    {"path": "docs/execution/evidence/phase-12d/P12D-990/cumulative-acceptance-attestation.json", "sha256": "4e11a4152dc5a6981f9484a7eb69c88350898269aec8fb913dd2a38a049064a4", "size_bytes": 2853},
+    {"path": "docs/execution/status/TASK-P12D-990.json", "sha256": "e14b1559ef469642e3e42559ac50d0cd75734031d487bd497e70bcdfbc751814", "size_bytes": 1226}
+  ],
+  "checks": {
+    "mandatory_gate_failures": 0,
+    "artifact_drift": 0,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "flaky_rerun_passes": 0,
+    "redline_failures": 0,
+    "open_p0_p1": 0,
+    "security_failures": 0,
+    "model_api_call_count": 0,
+    "multi_agent_component_count": 0,
+    "production_write_count": 0,
+    "production_allocation": 0,
+    "force_update_count": 0,
+    "direct_main_push_count": 0
+  },
+  "recorded_at": "2026-08-05T15:18:00+08:00"
+}

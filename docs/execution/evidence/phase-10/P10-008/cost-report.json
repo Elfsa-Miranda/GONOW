@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-P10-008",
+  "measurement_status": "blocked_pending_production_measurement",
+  "environment": "local_provisional_no_production_billing",
+  "join_contract": {
+    "keys": [
+      "behavior_digest",
+      "route",
+      "outcome"
+    ],
+    "behavior_digest_required": true,
+    "route_reason_required": true,
+    "failed_attempts_in_numerator": true
+  },
+  "traceability": {
+    "digest_required": true,
+    "route_reason_required": true
+  },
+  "global": {
+    "observed_attempt_count": 0,
+    "adopted_success_count": 0,
+    "total_attempt_cost_usd": null,
+    "cost_per_adopted_success_usd": null
+  },
+  "routes": [
+    {
+      "route": "economic",
+      "observed_attempt_count": 0,
+      "adopted_success_count": 0,
+      "total_attempt_cost_usd": null,
+      "cost_per_adopted_success_usd": null,
+      "route_reason_status": "required"
+    },
+    {
+      "route": "capability",
+      "observed_attempt_count": 0,
+      "adopted_success_count": 0,
+      "total_attempt_cost_usd": null,
+      "cost_per_adopted_success_usd": null,
+      "route_reason_status": "required"
+    }
+  ],
+  "budget": {
+    "status": "blocked_pending_production_measurement",
+    "approved_cost_per_adopted_success_usd": null,
+    "comparison": null,
+    "blocker": "Production billing, the adopted-success ledger, and an approved budget are unavailable in local_provisional mode."
+  },
+  "unknowns": [
+    "production attempt cost by behavior_digest and route",
+    "successfully adopted task count by outcome",
+    "approved budget per adopted success"
+  ],
+  "rollback": {
+    "first_route": "economic",
+    "old_path_available": true,
+    "production_write_count": 0
+  },
+  "formal_approval_status": "pending_external",
+  "production_write_count": 0
+}

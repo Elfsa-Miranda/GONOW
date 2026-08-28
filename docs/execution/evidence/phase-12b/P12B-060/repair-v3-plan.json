@@ -1,0 +1,51 @@
+{
+  "schema_version":"1.0",
+  "enabler_id":"REPAIR-P12B-060-V3-DEEPSEEK",
+  "plan_status":"preregistered_before_live",
+  "primary_model":"deepseek-v4-flash",
+  "gemini_live_calls_authorized":0,
+  "scenario_ids":["CR-V1-001","CR-V1-002","CR-V1-003","CR-V1-004","CR-V1-005","CR-V1-006","CR-V1-007","CR-V1-008","CR-V1-009","CR-V1-010"],
+  "execution": {
+    "primary_calls":10,
+    "retryable_codes":["llm.provider_unavailable","llm.rate_limited","llm.timeout"],
+    "maximum_retryable_retries":4,
+    "maximum_attempts_per_task":2,
+    "non_retryable_quality_or_contract_failure_retried":false,
+    "max_output_token_formula":"min(4096,max(768,requested_days*256))",
+    "temperature":0,
+    "thinking":"disabled",
+    "complete_schema_delivered":true,
+    "complete_local_schema_and_business_validation":true
+  },
+  "budget": {
+    "max_tasks":10,
+    "max_live_calls":14,
+    "max_total_tokens":60000,
+    "max_cost_microusd":500000,
+    "max_cost_usd":0.5,
+    "max_cost_cny_at_policy_rate":4.0,
+    "p12b_calls_before_v3":16,
+    "p12b_max_cumulative_calls_after_v3":30,
+    "p12b_tokens_before_v3":7008,
+    "p12b_max_cumulative_tokens_after_v3":67008,
+    "p12b_cost_microusd_before_v3":1701,
+    "p12b_max_cumulative_cost_microusd_after_v3":501701,
+    "p12b_max_cumulative_cost_cny_at_policy_rate":4.013608,
+    "frozen_experiment_cap_cny":8.0,
+    "user_total_cap_cny":10.0
+  },
+  "mandatory_quality_gate": {
+    "qualified_success_count":10,
+    "quality_rule_failure_count":0,
+    "unrecovered_provider_failure_count":0,
+    "successful_task_p95_latency_ms_lte":20000,
+    "maximum_attempts_per_task":2,
+    "redline_failure_count":0
+  },
+  "stop_rule":"Any non-retryable Schema/business failure stops blind retries and triggers offline repair. Retryable failures consume at most four targeted retries. If the mandatory gate still fails, preserve evidence and repair before any further live plan.",
+  "claim_boundary":"DeepSeek-only quality and unit-cost validation. It cannot create a live Cost Router benefit claim without a non-zero baseline.",
+  "candidate_allocation":0,
+  "allocation_change_authorized":false,
+  "key_handling":"Process environment only; no value in repository, logs or evidence.",
+  "production_write_count":0
+}

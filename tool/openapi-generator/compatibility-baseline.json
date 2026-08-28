@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "openapi": "3.1.0",
+  "contract_name": "agent-api",
+  "contract_version": "1.1.1",
+  "security_schemes": ["bearerAuth"],
+  "operations": [
+    {"method": "get", "path": "/health/live", "operation_id": "getLiveness", "responses": ["200"]},
+    {"method": "get", "path": "/health/ready", "operation_id": "getReadiness", "responses": ["200", "503"]},
+    {"method": "get", "path": "/v1/contracts/{name}/{major}", "operation_id": "getContractDescriptor", "responses": ["200", "401", "404", "503"]},
+    {"method": "post", "path": "/v1/runs", "operation_id": "startRun", "responses": ["202", "401", "403", "409", "503"]},
+    {"method": "get", "path": "/v1/runs/{run_id}/candidate", "operation_id": "getRunCandidate", "responses": ["200", "401", "403"]},
+    {"method": "get", "path": "/v1/runs/{run_id}/events", "operation_id": "streamRunEvents", "responses": ["200", "400", "401", "403"]},
+    {"method": "post", "path": "/v1/runs/{run_id}/resume", "operation_id": "resumeRun", "responses": ["200", "401", "403", "409"]},
+    {"method": "post", "path": "/v1/runs/{run_id}/cancel", "operation_id": "cancelRun", "responses": ["200", "401", "403", "409"]}
+  ],
+  "schemas": {
+    "HealthProbe": {"required": ["status", "reason_codes"], "properties": ["status", "reason_codes"]},
+    "ContractDescriptor": {"required": ["name", "major", "version", "spec_sha256"], "properties": ["name", "major", "version", "spec_sha256"]},
+    "ItineraryPlanningInput": {"required": ["schema_version", "origin", "destination", "starts_on", "days", "budget_minor", "currency", "locale", "timezone", "hard_constraints"], "properties": ["schema_version", "origin", "destination", "starts_on", "days", "budget_minor", "currency", "locale", "timezone", "hard_constraints"]},
+    "RunStartRequest": {"required": ["schema_version", "thread_id", "itinerary"], "properties": ["schema_version", "thread_id", "itinerary"]},
+    "RunStartResponse": {"required": ["run_id", "thread_id", "state", "version", "replayed", "behavior_digest"], "properties": ["run_id", "thread_id", "state", "version", "replayed", "behavior_digest"]},
+    "CandidateCitation": {"required": ["claim_id", "evidence_id", "source_ref", "sha256"], "properties": ["claim_id", "evidence_id", "source_ref", "sha256"]},
+    "CandidateItem": {"required": ["item_id", "title", "start_minute", "duration_minutes", "claim_ids"], "properties": ["item_id", "title", "start_minute", "duration_minutes", "claim_ids"]},
+    "CandidateDay": {"required": ["day_number", "items"], "properties": ["day_number", "items"]},
+    "ItineraryCandidate": {"required": ["schema_version", "candidate_id", "run_id", "behavior_digest", "input_digest", "title", "days", "citations", "evidence_refs", "status"], "properties": ["schema_version", "candidate_id", "run_id", "behavior_digest", "input_digest", "title", "days", "citations", "evidence_refs", "status"]},
+    "ResumeRequest": {"required": ["resume_token", "interrupt_id", "command_hash", "command_version"], "properties": ["resume_token", "interrupt_id", "command_hash", "command_version"]},
+    "ResumeResponse": {"required": ["status", "run_id", "interrupt_id", "command_version"], "properties": ["status", "run_id", "interrupt_id", "command_version"]},
+    "CancelRequest": {"required": ["expected_version"], "properties": ["expected_version"]},
+    "CancelResponse": {"required": ["status", "run_id", "version", "replayed"], "properties": ["status", "run_id", "version", "replayed"]},
+    "PublicError": {"required": ["code", "message", "request_id"], "properties": ["code", "message", "request_id", "retry_after_seconds"]},
+    "ErrorEnvelope": {"required": ["error"], "properties": ["error"]}
+  }
+}

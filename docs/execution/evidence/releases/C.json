@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "release": "C",
+  "release_status": "repository_close_accepted_pending_project_final_pull_request",
+  "repository_close_accepted": true,
+  "production_release_accepted": false,
+  "candidate_head_oid": "1459bd43ec71e6a43027db3809893283b83fb010",
+  "cumulative_capabilities": ["P12D", "P12B", "P12A"],
+  "active_c_capability_count": 3,
+  "p12c_status": "dormant",
+  "single_agent_architecture": true,
+  "multi_agent_component_count": 0,
+  "allocation": 0,
+  "production_write_count": 0,
+  "force_update_count": 0,
+  "direct_main_push_count": 0,
+  "final_pull_request_status": "pending_TASK-GONOW-999",
+  "production_facts_status": "unknown",
+  "rollback": "Disable P12A reads/proposals, P12B routing, and P12D command routing independently; preserve receipts, outbox, audit, tombstones, and deleted-state suppression. Revert repository merge only through an audited non-force pull request.",
+  "recorded_at": "2026-08-05T15:34:00+08:00"
+}

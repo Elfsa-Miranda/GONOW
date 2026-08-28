@@ -1,0 +1,117 @@
+schema_version: "1.0"
+contract_id: flutter-agent-boundary-v1
+contract_status: target_contract
+release_scope: release_b_itinerary_planning_only
+
+principles:
+  current_flutter_paths_are_compatibility_inputs: true
+  new_agent_service_is_a_separate_process_boundary: true
+  model_output_is_candidate_only: true
+  domain_write_requires_confirmed_domain_command: true
+  delete_policy: prohibited_until_retirement_gates_pass
+
+future_seam:
+  flutter_interface: FlutterAgentPlanningService
+  transport_owner: agent-api
+  execution_owner: agent-worker
+  domain_write_owner: DomainCommandService
+  request_dto: ItineraryPlanningRunRequestV1
+  event_dto: AgentRunEventV1
+  candidate_dto: ItineraryCandidateV1
+  feature_flag:
+    key: agent_itinerary_planning_v1
+    default: false
+    affects_only: itinerary_planning
+  forbidden_shortcuts:
+    - flutter_calls_model_provider
+    - agent_api_calls_model_or_tool
+    - agent_worker_writes_formal_itinerary_or_diary_tables
+    - candidate_bypasses_user_confirmation
+
+data_ownership:
+  flutter:
+    owns:
+      - view_state
+      - user_edit_buffer
+      - local_compatibility_cache
+    must_not_own:
+      - provider_secret
+      - run_truth
+      - durable_job_truth
+  agent-api:
+    owns:
+      - authenticated_control_plane
+      - idempotency_boundary
+      - run_resume_cancel_and_sse
+    must_not_own:
+      - model_execution
+      - tool_execution
+  agent-worker:
+    owns:
+      - bounded_planning_graph_execution
+      - typed_candidate_generation
+    must_not_own:
+      - formal_domain_tables
+  postgres:
+    owns:
+      - run_job_event_and_checkpoint_references
+      - invocation_ledger_and_release_pointers
+  domain-command:
+    owns:
+      - confirmed_cas_domain_write
+      - transactional_outbox
+
+compatibility_domains:
+  - domain: chat
+    current_path_status: current_fact
+    current_path: flutter_to_release_a_compatibility_gateway
+    release_b_path: unchanged_compatibility_path
+    agent_path_allowed: false
+    fallback: stable_compatibility_error_without_provider_direct_call
+  - domain: import
+    current_path_status: current_fact
+    current_path: flutter_manual_candidate_import
+    release_b_path: retained_alongside_agent_candidate_import
+    agent_path_allowed: false
+    fallback: preserve_original_user_input_as_importable_draft
+  - domain: auth
+    current_path_status: current_fact
+    current_path: flutter_supabase_auth_session
+    release_b_path: session_feeds_server_verified_principal_boundary
+    agent_path_allowed: false
+    fallback: fail_closed_without_anonymous_or_client_asserted_principal
+  - domain: fallback
+    current_path_status: current_fact
+    current_path: local_safe_state_and_manual_recovery
+    release_b_path: retained_for_compatibility_and_recovery
+    agent_path_allowed: false
+    fallback: no_domain_write_and_no_model_provider_direct_call
+
+rollout_matrix:
+  - state: flag_off
+    old_chat_import_auth_fallback: enabled
+    new_itinerary_planning: disabled
+    expected_behavior: compatibility_only
+  - state: flag_on_service_healthy
+    old_chat_import_auth_fallback: enabled
+    new_itinerary_planning: enabled
+    expected_behavior: new_planning_returns_typed_candidate_only
+  - state: flag_on_service_unavailable
+    old_chat_import_auth_fallback: enabled
+    new_itinerary_planning: unavailable
+    expected_behavior: preserve_input_and_offer_manual_import_without_direct_model_fallback
+  - state: rollback
+    old_chat_import_auth_fallback: enabled
+    new_itinerary_planning: disabled
+    expected_behavior: flag_off_stops_new_runs_existing_runs_follow_durable_recovery_policy
+
+retirement_gate:
+  delete_allowed: false
+  prerequisites:
+    - one_hundred_percent_rollout
+    - approved_observation_window
+    - two_mobile_release_cycles
+    - calibrated_legacy_usage_below_approved_threshold
+    - rollback_window_closed
+    - migration_and_export_complete
+    - user_and_owner_approval
